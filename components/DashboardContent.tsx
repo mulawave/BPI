@@ -18,12 +18,16 @@ import {
   Edit, Check, Eye, Heart, AlertCircle, MapPin,
   Phone, Mail, Flag, TrendingDown, ArrowUp, ArrowDown,
   Lock, Coins, BadgeDollarSign, EyeOff, RefreshCw,
-  Clock, Package, CircleDollarSign, AlertTriangle
+  Clock, Package, CircleDollarSign, AlertTriangle,
+  Megaphone, Sparkles, TrendingUpIcon, Leaf, Sun as SolarIcon,
+  GraduationCap, Download
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Modal } from "./ui/Modal";
 import { checkProfileCompletion, getCompletionMessage } from "@/lib/profile-completion";
 import DashboardPreview from "./DashboardPreview";
+import { CommunityCard } from "./CommunityCard";
+import { UpdatesModal } from "./community/UpdatesModal";
 
 interface DashboardContentProps {
   session: Session;
@@ -258,6 +262,10 @@ export default function DashboardContent({ session }: DashboardContentProps) {
   
   // Combined loading state - wait for critical data before rendering dashboard
   const isInitialLoading = isLoadingProfile || isLoadingWallets || isLoadingDetails || isDashboardLoading;
+
+  // Community Updates queries
+  const [isUpdatesModalOpen, setIsUpdatesModalOpen] = useState(false);
+  const { data: unreadUpdatesCount } = api.communityUpdates.getUnreadCount.useQuery();
 
   // Check profile completion
   const profileCompletionStatus = checkProfileCompletion({
@@ -2549,6 +2557,103 @@ export default function DashboardContent({ session }: DashboardContentProps) {
             </div>
           </div>
 
+          {/* Community Updates Section */}
+          <div className="col-span-12 lg:col-span-8">
+            <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-6 shadow-lg dark:shadow-none mb-6">
+              <h2 className="text-lg font-semibold text-foreground mb-3">Community Updates</h2>
+              <hr className="border-gray-200 dark:border-bpi-dark-accent mb-4" />
+              
+              {/* Community Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* BPI Calculator Card */}
+                <CommunityCard
+                  title="BPI Calculator"
+                  description="Calculate your potential earnings"
+                  icon={Calculator}
+                  state="active"
+                  onClick={() => {/* TODO: Open calculator modal */}}
+                />
+
+                {/* Leadership Pool Card */}
+                <CommunityCard
+                  title="Leadership Pool"
+                  description="Join our elite program"
+                  icon={Award}
+                  state="in-progress"
+                  progress={45}
+                  badge="45% Complete"
+                  onClick={() => {/* TODO: Open leadership pool */}}
+                />
+
+                {/* EPC & EPP Card */}
+                <CommunityCard
+                  title="EPC & EPP"
+                  description="Global promotion system"
+                  icon={TrendingUpIcon}
+                  state="active"
+                  onClick={() => {/* TODO: Open EPC dashboard */}}
+                />
+
+                {/* Solar Assessment Card */}
+                <CommunityCard
+                  title="Solar Assessment"
+                  description="Energy consulting services"
+                  icon={SolarIcon}
+                  state="active"
+                  onClick={() => {/* TODO: Open solar assessment */}}
+                />
+
+                {/* Digital Farm Card */}
+                <CommunityCard
+                  title="Digital Farm"
+                  description="Virtual agriculture platform"
+                  icon={Leaf}
+                  state="locked"
+                  onClick={() => {/* TODO: Show requirements */}}
+                />
+
+                {/* Training Center Card */}
+                <CommunityCard
+                  title="Training Center"
+                  description="Skill development courses"
+                  icon={GraduationCap}
+                  state="active"
+                  onClick={() => {/* TODO: Open training */}}
+                />
+
+                {/* Promotional Materials Card */}
+                <CommunityCard
+                  title="Promotional Materials"
+                  description="Download marketing assets"
+                  icon={Download}
+                  state="active"
+                  badge="24 New"
+                  onClick={() => {/* TODO: Open materials library */}}
+                />
+
+                {/* Latest Updates Card */}
+                <CommunityCard
+                  title="Latest Updates"
+                  description="Company news & announcements"
+                  icon={Megaphone}
+                  state="new"
+                  badge={unreadUpdatesCount?.unreadCount ? `${unreadUpdatesCount.unreadCount} New` : "New"}
+                  onClick={() => setIsUpdatesModalOpen(true)}
+                />
+
+                {/* Best Deals Card */}
+                <CommunityCard
+                  title="Best Deals"
+                  description="Exclusive offers & promotions"
+                  icon={Sparkles}
+                  state="active"
+                  badge="5 Active"
+                  onClick={() => {/* TODO: Open deals page */}}
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Right Sidebar */}
           <div className="col-span-12 lg:col-span-3">
             <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-6 shadow-lg dark:shadow-none mb-3">
@@ -2950,6 +3055,12 @@ export default function DashboardContent({ session }: DashboardContentProps) {
 
         </div>
       </main>
+
+      {/* Community Updates Modal */}
+      <UpdatesModal 
+        isOpen={isUpdatesModalOpen} 
+        onClose={() => setIsUpdatesModalOpen(false)} 
+      />
     </div>
   );
 }

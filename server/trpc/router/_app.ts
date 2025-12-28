@@ -13,6 +13,13 @@ import { userRouter } from "./user";
 import { blogRouter } from "./blog";
 import { dashboardRouter } from "./dashboard";
 
+// Community Features
+import { communityUpdatesRouter } from "./communityUpdates";
+import { bpiCalculatorRouter as communityCalculatorRouter } from "./bpiCalculator";
+import { dealsRouter } from "./deals";
+import { promotionalMaterialsRouter } from "./promotionalMaterials";
+import { leadershipPoolRouter } from "./leadershipPool";
+
 export const appRouter = createTRPCRouter({
   health: healthRouter,
   auth: authRouter,
@@ -27,6 +34,13 @@ export const appRouter = createTRPCRouter({
   user: userRouter,
   blog: blogRouter,
   dashboard: dashboardRouter,
+  
+  // Community Features
+  communityUpdates: communityUpdatesRouter,
+  communityCalculator: communityCalculatorRouter,
+  deals: dealsRouter,
+  promotionalMaterials: promotionalMaterialsRouter,
+  leadershipPool: leadershipPoolRouter,
 
   // Legacy router, to be deprecated
 });
