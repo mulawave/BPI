@@ -28,6 +28,9 @@ import { checkProfileCompletion, getCompletionMessage } from "@/lib/profile-comp
 import DashboardPreview from "./DashboardPreview";
 import { CommunityCard } from "./CommunityCard";
 import { UpdatesModal } from "./community/UpdatesModal";
+import CalculatorModal from "./community/CalculatorModal";
+import DealsModal from "./community/DealsModal";
+import LeadershipPoolModal from "./community/LeadershipPoolModal";
 
 interface DashboardContentProps {
   session: Session;
@@ -266,6 +269,15 @@ export default function DashboardContent({ session }: DashboardContentProps) {
   // Community Updates queries
   const [isUpdatesModalOpen, setIsUpdatesModalOpen] = useState(false);
   const { data: unreadUpdatesCount } = api.communityUpdates.getUnreadCount.useQuery();
+  
+  // Calculator modal state
+  const [isCalculatorModalOpen, setIsCalculatorModalOpen] = useState(false);
+  
+  // Deals modal state
+  const [isDealsModalOpen, setIsDealsModalOpen] = useState(false);
+  
+  // Leadership Pool modal state
+  const [isLeadershipPoolModalOpen, setIsLeadershipPoolModalOpen] = useState(false);
 
   // Check profile completion
   const profileCompletionStatus = checkProfileCompletion({
@@ -2571,7 +2583,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                   description="Calculate your potential earnings"
                   icon={Calculator}
                   state="active"
-                  onClick={() => {/* TODO: Open calculator modal */}}
+                  onClick={() => setIsCalculatorModalOpen(true)}
                 />
 
                 {/* Leadership Pool Card */}
@@ -2582,7 +2594,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                   state="in-progress"
                   progress={45}
                   badge="45% Complete"
-                  onClick={() => {/* TODO: Open leadership pool */}}
+                  onClick={() => setIsLeadershipPoolModalOpen(true)}
                 />
 
                 {/* EPC & EPP Card */}
@@ -2648,7 +2660,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                   icon={Sparkles}
                   state="active"
                   badge="5 Active"
-                  onClick={() => {/* TODO: Open deals page */}}
+                  onClick={() => setIsDealsModalOpen(true)}
                 />
               </div>
             </div>
@@ -3060,6 +3072,21 @@ export default function DashboardContent({ session }: DashboardContentProps) {
       <UpdatesModal 
         isOpen={isUpdatesModalOpen} 
         onClose={() => setIsUpdatesModalOpen(false)} 
+      />
+      
+      <CalculatorModal
+        isOpen={isCalculatorModalOpen}
+        onClose={() => setIsCalculatorModalOpen(false)}
+      />
+      
+      <DealsModal
+        isOpen={isDealsModalOpen}
+        onClose={() => setIsDealsModalOpen(false)}
+      />
+      
+      <LeadershipPoolModal
+        isOpen={isLeadershipPoolModalOpen}
+        onClose={() => setIsLeadershipPoolModalOpen(false)}
       />
     </div>
   );
