@@ -11,6 +11,7 @@ import { tokenRouter } from "./token";
 import { notificationRouter } from "./notification";
 import { userRouter } from "./user";
 import { blogRouter } from "./blog";
+import { dashboardRouter } from "./dashboard";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -25,6 +26,7 @@ export const appRouter = createTRPCRouter({
   notification: notificationRouter,
   user: userRouter,
   blog: blogRouter,
+  dashboard: dashboardRouter,
 
   // Legacy router, to be deprecated
 });

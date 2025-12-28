@@ -16,7 +16,9 @@ import {
   Archive, Database, Server, FileImage, Moon, Sun, X,
   Router, Book, Inbox, FileText, Bookmark, Camera,
   Edit, Check, Eye, Heart, AlertCircle, MapPin,
-  Phone, Mail, Flag
+  Phone, Mail, Flag, TrendingDown, ArrowUp, ArrowDown,
+  Lock, Coins, BadgeDollarSign, EyeOff, RefreshCw,
+  Clock, Package, CircleDollarSign, AlertTriangle
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Modal } from "./ui/Modal";
@@ -152,6 +154,10 @@ export default function DashboardContent({ session }: DashboardContentProps) {
   const [isClosing, setIsClosing] = useState<boolean>(false);
   const [showAllWallets, setShowAllWallets] = useState(false);
   
+  // Dashboard state
+  const [showBalances, setShowBalances] = useState(true); // Toggle to show/hide balances
+  const [activeWalletTab, setActiveWalletTab] = useState<'operational' | 'rewards' | 'investment' | 'community'>('operational');
+  
   // Email verification dialog state
   const [showEmailVerificationDialog, setShowEmailVerificationDialog] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
@@ -214,8 +220,8 @@ export default function DashboardContent({ session }: DashboardContentProps) {
 
   // Legacy API data fetching
   const utils = api.useUtils();
-  const { data: userProfile } = api.legacy.getUserProfile.useQuery();
-  const { data: walletBalances } = api.legacy.getWalletBalances.useQuery();
+  const { data: userProfile, isLoading: isLoadingProfile } = api.legacy.getUserProfile.useQuery();
+  const { data: walletBalances, isLoading: isLoadingWallets } = api.legacy.getWalletBalances.useQuery();
   const { data: referralStats } = api.legacy.getReferralStats.useQuery();
   const { data: communityStats } = api.legacy.getCommunityStats.useQuery();
   const { data: activeShelters } = api.legacy.getActiveShelters.useQuery();
@@ -237,6 +243,21 @@ export default function DashboardContent({ session }: DashboardContentProps) {
   
   // Get latest blog posts (2 for dashboard)
   const { data: latestBlogPosts } = api.blog.getLatestPosts.useQuery({ limit: 2 });
+  
+  // Get comprehensive dashboard overview
+  const { data: dashboardData, isLoading: isDashboardLoading } = api.dashboard.getOverview.useQuery(
+    undefined,
+    { 
+      refetchInterval: 30000, // Refetch every 30 seconds
+      staleTime: 10000 // Consider data fresh for 10 seconds
+    }
+  );
+  
+  // Get wallet health status
+  const { data: walletHealth } = api.dashboard.getWalletHealth.useQuery();
+  
+  // Combined loading state - wait for critical data before rendering dashboard
+  const isInitialLoading = isLoadingProfile || isLoadingWallets || isLoadingDetails || isDashboardLoading;
 
   // Check profile completion
   const profileCompletionStatus = checkProfileCompletion({
@@ -529,6 +550,14 @@ export default function DashboardContent({ session }: DashboardContentProps) {
     }
   });
 
+  // Helper function to format balance with visibility toggle
+  const formatBalance = (amount: number, currency: string = '₦') => {
+    if (!showBalances) {
+      return `${currency}•••••••`;
+    }
+    return `${currency}${amount.toLocaleString()}`;
+  };
+
   const handleSendInvite = () => {
     if (!inviteFirstName || !inviteLastName || !inviteEmail) {
       setInviteStatus('error');
@@ -559,6 +588,41 @@ export default function DashboardContent({ session }: DashboardContentProps) {
     }
   };
 
+  // Show loading screen while initial data is fetching
+  if (isInitialLoading) {
+    return (
+      <div className="min-h-screen bg-bpi-gradient-light dark:bg-bpi-gradient-dark flex items-center justify-center">
+        <div className="text-center">
+          {/* Animated Logo/Spinner */}
+          <div className="relative w-24 h-24 mx-auto mb-6">
+            <div className="absolute inset-0 bg-gradient-to-r from-bpi-primary to-bpi-secondary rounded-full animate-pulse"></div>
+            <div className="absolute inset-2 bg-white dark:bg-bpi-dark-card rounded-full flex items-center justify-center">
+              <span className="text-2xl font-bold bg-gradient-to-r from-bpi-primary to-bpi-secondary bg-clip-text text-transparent">BPI</span>
+            </div>
+          </div>
+          
+          {/* Loading Text */}
+          <h2 className="text-xl font-semibold text-foreground mb-2">Loading Your Dashboard</h2>
+          <p className="text-sm text-muted-foreground mb-6">Fetching your personalized data...</p>
+          
+          {/* Shimmer Progress Bar */}
+          <div className="w-64 h-2 bg-gray-200 dark:bg-bpi-dark-accent rounded-full overflow-hidden mx-auto">
+            <div className="h-full bg-gradient-to-r from-bpi-primary via-bpi-secondary to-bpi-primary bg-[length:200%_100%] animate-[shimmer_2s_infinite]" 
+                 style={{ animationTimingFunction: 'linear' }}></div>
+          </div>
+        </div>
+        
+        {/* Add shimmer animation to globals.css if not already present */}
+        <style jsx>{`
+          @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+          }
+        `}</style>
+      </div>
+    );
+  }
+  
   return (
     <div className="min-h-screen bg-bpi-gradient-light dark:bg-bpi-gradient-dark">
       {/* Email Verification Dialog */}
@@ -1803,24 +1867,260 @@ export default function DashboardContent({ session }: DashboardContentProps) {
             <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-6 shadow-lg dark:shadow-none mb-3">
               <h2 className="text-lg font-semibold text-foreground mb-3">Dashboard Overview</h2>
               <hr className="border-gray-200 dark:border-bpi-dark-accent mb-4" />
-            {/* Main Balance Card */}
+            
+            {/* Hero - Portfolio Value Card */}
             <Card className="p-6 mb-6 bg-gradient-to-br from-bpi-primary via-bpi-secondary to-yellow-500 text-white border-0 shadow-xl">
               <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-green-100 text-sm">Total Assets</p>
-                  <h2 className="text-3xl font-bold">
-                    ₦{walletBalances?.totalAssets?.toLocaleString() || '0.00'}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-white/90 text-sm font-medium">Total Portfolio Value</p>
+                    <button
+                      onClick={() => setShowBalances(!showBalances)}
+                      className="p-1 hover:bg-white/20 rounded transition-colors"
+                      title={showBalances ? "Hide balances" : "Show balances"}
+                    >
+                      {showBalances ? (
+                        <Eye className="w-3.5 h-3.5" />
+                      ) : (
+                        <EyeOff className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+                  <h2 className="text-3xl font-bold mb-2">
+                    {formatBalance(dashboardData?.portfolio.totalValue || 0)}
                   </h2>
+                  <div className="flex items-center gap-2">
+                    {dashboardData?.portfolio.changePercentage24h !== undefined && dashboardData.portfolio.changePercentage24h >= 0 ? (
+                      <div className="flex items-center gap-1 text-green-100">
+                        <ArrowUp className="w-4 h-4" />
+                        <span className="text-sm font-medium">
+                          +{formatBalance(dashboardData.portfolio.change24h)} ({dashboardData.portfolio.changePercentage24h.toFixed(2)}%)
+                        </span>
+                      </div>
+                    ) : dashboardData?.portfolio.changePercentage24h !== undefined ? (
+                      <div className="flex items-center gap-1 text-red-100">
+                        <ArrowDown className="w-4 h-4" />
+                        <span className="text-sm font-medium">
+                          {formatBalance(dashboardData.portfolio.change24h)} ({dashboardData.portfolio.changePercentage24h.toFixed(2)}%)
+                        </span>
+                      </div>
+                    ) : null}
+                    <span className="text-white/70 text-xs">24h</span>
+                  </div>
                 </div>
                 <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                  <CreditCard className="w-6 h-6" />
+                  <CircleDollarSign className="w-7 h-7" />
                 </div>
               </div>
               
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-green-100">•••• •••• •••• 9090</span>
-                <span className="text-green-100">07/25</span>
+              {/* Quick Portfolio Breakdown */}
+              <div className="grid grid-cols-4 gap-2 pt-4 border-t border-white/20">
+                <div className="text-center">
+                  <p className="text-white/70 text-xs mb-1">BPI Token</p>
+                  <p className="font-semibold text-sm">{showBalances ? `${dashboardData?.wallets.primary.bpiToken.balance.toFixed(2) || '0'} BPT` : '••••'}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-white/70 text-xs mb-1">Main</p>
+                  <p className="font-semibold text-sm">{showBalances ? `₦${(dashboardData?.wallets.primary.main.balance || 0).toLocaleString()}` : '₦••••'}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-white/70 text-xs mb-1">Locked</p>
+                  <p className="font-semibold text-sm">{showBalances ? `₦${(dashboardData?.wallets.primary.locked.balance || 0).toLocaleString()}` : '₦••••'}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-white/70 text-xs mb-1">Rewards</p>
+                  <p className="font-semibold text-sm">{showBalances ? `₦${(dashboardData?.wallets.primary.rewards.balance || 0).toLocaleString()}` : '₦••••'}</p>
+                </div>
               </div>
+              
+              {/* Quick Actions */}
+              <div className="grid grid-cols-3 gap-2 pt-4 border-t border-white/20">
+                <button className="flex flex-col items-center gap-1 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
+                  <ArrowDown className="w-4 h-4" />
+                  <span className="text-xs font-medium">Deposit</span>
+                </button>
+                <button className="flex flex-col items-center gap-1 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
+                  <ArrowUp className="w-4 h-4" />
+                  <span className="text-xs font-medium">Withdraw</span>
+                </button>
+                <button className="flex flex-col items-center gap-1 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
+                  <RefreshCw className="w-4 h-4" />
+                  <span className="text-xs font-medium">Transfer</span>
+                </button>
+              </div>
+            </Card>
+
+            {/* Primary Wallets Grid */}
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {/* BPI Token Wallet */}
+              <Card className="p-4 hover:shadow-md transition-shadow border-l-4 border-l-yellow-500">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-10 h-10 bg-yellow-500/10 rounded-lg flex items-center justify-center">
+                    <Coins className="w-5 h-5 text-yellow-600 dark:text-yellow-500" />
+                  </div>
+                  {walletHealth?.health.bpiToken === 'critical' && (
+                    <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-full">Critical</span>
+                  )}
+                  {walletHealth?.health.bpiToken === 'low' && (
+                    <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full">Low</span>
+                  )}
+                </div>
+                <h3 className="font-semibold text-foreground mb-1">BPI Token</h3>
+                <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-500 mb-1">
+                  {showBalances ? `${dashboardData?.wallets.primary.bpiToken.balance.toFixed(2) || '0'} BPT` : '••••••'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  ≈ {formatBalance(dashboardData?.wallets.primary.bpiToken.balanceInNaira || 0)}
+                </p>
+              </Card>
+
+              {/* Main Wallet */}
+              <Card className="p-4 hover:shadow-md transition-shadow border-l-4 border-l-bpi-primary">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-10 h-10 bg-bpi-primary/10 rounded-lg flex items-center justify-center">
+                    <Wallet className="w-5 h-5 text-bpi-primary" />
+                  </div>
+                  {walletHealth?.health.mainWallet === 'critical' && (
+                    <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-full">Critical</span>
+                  )}
+                  {walletHealth?.health.mainWallet === 'low' && (
+                    <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full">Low</span>
+                  )}
+                </div>
+                <h3 className="font-semibold text-foreground mb-1">Main Wallet</h3>
+                <p className="text-2xl font-bold text-bpi-primary mb-1">
+                  {formatBalance(dashboardData?.wallets.primary.main.balance || 0)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Available for operations
+                </p>
+              </Card>
+
+              {/* Locked Capital */}
+              <Card className="p-4 hover:shadow-md transition-shadow border-l-4 border-l-purple-500">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center">
+                    <Lock className="w-5 h-5 text-purple-600 dark:text-purple-500" />
+                  </div>
+                </div>
+                <h3 className="font-semibold text-foreground mb-1">Locked Capital</h3>
+                <p className="text-2xl font-bold text-purple-600 dark:text-purple-500 mb-1">
+                  {formatBalance(dashboardData?.wallets.primary.locked.balance || 0)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {dashboardData?.wallets.primary.locked.packagesCount || 0} active packages
+                </p>
+              </Card>
+
+              {/* Total Rewards */}
+              <Card className="p-4 hover:shadow-md transition-shadow border-l-4 border-l-green-500">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
+                    <BadgeDollarSign className="w-5 h-5 text-green-600 dark:text-green-500" />
+                  </div>
+                </div>
+                <h3 className="font-semibold text-foreground mb-1">Total Rewards</h3>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-500 mb-1">
+                  {formatBalance(dashboardData?.wallets.primary.rewards.balance || 0)}
+                </p>
+                <div className="text-xs text-muted-foreground space-y-0.5">
+                  <div className="flex justify-between">
+                    <span>Cashback:</span>
+                    <span>{showBalances ? `₦${(dashboardData?.wallets.primary.rewards.breakdown.cashback || 0).toLocaleString()}` : '••••'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Student:</span>
+                    <span>{showBalances ? `₦${(dashboardData?.wallets.primary.rewards.breakdown.studentCashback || 0).toLocaleString()}` : '••••'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Education:</span>
+                    <span>{showBalances ? `₦${(dashboardData?.wallets.primary.rewards.breakdown.education || 0).toLocaleString()}` : '••••'}</span>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* Active Packages Summary */}
+            <Card className="p-5 mb-6 border-l-4 border-l-blue-500">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                    <Package className="w-5 h-5 text-blue-600 dark:text-blue-500" />
+                  </div>
+                  <h3 className="font-semibold text-foreground">Active Packages</h3>
+                </div>
+                <span className="text-sm px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full">
+                  {dashboardData?.packages.stats.totalActive || 0} active
+                </span>
+              </div>
+              
+              <div className="grid md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Total Invested</p>
+                  <p className="text-lg font-bold text-foreground">
+                    {formatBalance(dashboardData?.packages.stats.totalInvested || 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Current Value</p>
+                  <p className="text-lg font-bold text-blue-600 dark:text-blue-500">
+                    {formatBalance(dashboardData?.packages.stats.totalCurrentValue || 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Total ROI Accrued</p>
+                  <p className="text-lg font-bold text-green-600 dark:text-green-500">
+                    {formatBalance(dashboardData?.packages.stats.totalAccruedROI || 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Maturing Soon</p>
+                  <p className="text-lg font-bold text-orange-600 dark:text-orange-500">
+                    {dashboardData?.packages.stats.upcomingMaturities || 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground">within 7 days</p>
+                </div>
+              </div>
+
+              {/* Package List Preview */}
+              {dashboardData?.packages.active && dashboardData.packages.active.length > 0 && (
+                <div className="space-y-2">
+                  {dashboardData.packages.active.slice(0, 3).map((pkg) => {
+                    const daysLeft = pkg.maturityDate 
+                      ? Math.ceil((new Date(pkg.maturityDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+                      : 0;
+                    
+                    return (
+                      <div key={pkg.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-bpi-dark-accent/50 rounded-lg">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium text-sm text-foreground">{pkg.packageName}</h4>
+                            <span className="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded">
+                              {pkg.roiPercentage}% ROI
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {showBalances ? `₦${pkg.amount.toLocaleString()}` : '₦••••••'} • {daysLeft} days remaining
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-blue-600 dark:text-blue-500">
+                            {showBalances ? `₦${pkg.currentValue.toLocaleString()}` : '₦••••••'}
+                          </p>
+                          <p className="text-xs text-green-600 dark:text-green-500">
+                            +{showBalances ? `₦${pkg.accruedROI.toLocaleString()}` : '₦•••••'}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {dashboardData.packages.active.length > 3 && (
+                    <button className="w-full text-sm text-bpi-primary hover:underline py-2">
+                      View all {dashboardData.packages.active.length} packages →
+                    </button>
+                  )}
+                </div>
+              )}
             </Card>
 
 
@@ -1863,129 +2163,120 @@ export default function DashboardContent({ session }: DashboardContentProps) {
               </Card>
             </div>
 
-            {/* View More Wallets Button */}
-            <div className="mb-6">
-              <Button 
-                onClick={() => setShowAllWallets(!showAllWallets)}
-                variant="outline" 
-                className="w-full border-bpi-border dark:border-bpi-dark-accent hover:bg-bpi-primary/5 dark:hover:bg-bpi-primary/10 transition-all duration-200"
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                {showAllWallets ? 'View Less Wallets' : 'View More Wallets'}
-                <ChevronDown className={`w-4 h-4 ml-2 transition-transform duration-200 ${showAllWallets ? 'rotate-180' : ''}`} />
-              </Button>
-            </div>
-
-            {/* Additional Wallets - Collapsible */}
-            {showAllWallets && (
-              <div className="space-y-6 mb-6">
-                {/* Additional Wallets - Legacy BPI System */}
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                  <Card className="p-3 backdrop-blur-md backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-lg">
-                    <div className="text-center">
-                      <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
-                        <Shield className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      </div>
-                      <p className="text-xs text-muted-foreground">Palliative</p>
-                      <p className="text-sm font-semibold text-foreground">₦{walletBalances?.palliative?.toLocaleString() || '0'}</p>
-                    </div>
-                  </Card>
-                  
-                  <Card className="p-3 backdrop-blur-md backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-lg">
-                    <div className="text-center">
-                      <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
-                        <Home className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                      </div>
-                      <p className="text-xs text-muted-foreground">Shelter</p>
-                      <p className="text-sm font-semibold text-foreground">₦{walletBalances?.shelter?.toLocaleString() || '0'}</p>
-                    </div>
-                  </Card>
-                  
-                  <Card className="p-3 backdrop-blur-md backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-lg">
-                    <div className="text-center">
-                      <div className="w-8 h-8 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
-                        <BookOpen className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                      </div>
-                      <p className="text-xs text-muted-foreground">Student</p>
-                      <p className="text-sm font-semibold text-foreground">₦{(walletBalances as any)?.student?.toLocaleString() || '0'}</p>
-                    </div>
-                  </Card>
-                  
-                  <Card className="p-3 backdrop-blur-md backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-lg">
-                    <div className="text-center">
-                      <div className="w-8 h-8 bg-brown-100 dark:bg-brown-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
-                        <Globe className="w-4 h-4 text-brown-600 dark:text-brown-400" />
-                      </div>
-                      <p className="text-xs text-muted-foreground">Land</p>
-                      <p className="text-sm font-semibold text-foreground">₦{(walletBalances as any)?.land?.toLocaleString() || '0'}</p>
-                    </div>
-                  </Card>
-                  
-                  <Card className="p-3 backdrop-blur-md backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-lg">
-                    <div className="text-center">
-                      <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
-                        <Cpu className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                      </div>
-                      <p className="text-xs text-muted-foreground">Business</p>
-                      <p className="text-sm font-semibold text-foreground">₦{(walletBalances as any)?.business?.toLocaleString() || '0'}</p>
-                    </div>
-                  </Card>
-                  
-                  <Card className="p-3 backdrop-blur-md backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-lg">
-                    <div className="text-center">
-                      <div className="w-8 h-8 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
-                        <Zap className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
-                      </div>
-                      <p className="text-xs text-muted-foreground">Solar</p>
-                      <p className="text-sm font-semibold text-foreground">₦{(walletBalances as any)?.solar?.toLocaleString() || '0'}</p>
-                    </div>
-                  </Card>
-                </div>
-
-                {/* Additional Specialized Wallets Row */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <Card className="p-3 backdrop-blur-md backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-lg">
-                    <div className="text-center">
-                      <div className="w-8 h-8 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
-                        <ShoppingCart className="w-4 h-4 text-red-600 dark:text-red-400" />
-                      </div>
-                      <p className="text-xs text-muted-foreground">Car</p>
-                      <p className="text-sm font-semibold text-foreground">₦{(walletBalances as any)?.car?.toLocaleString() || '0'}</p>
-                    </div>
-                  </Card>
-                  
-                  <Card className="p-3 backdrop-blur-md backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-lg">
-                    <div className="text-center">
-                      <div className="w-8 h-8 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
-                        <Youtube className="w-4 h-4 text-red-600 dark:text-red-400" />
-                      </div>
-                      <p className="text-xs text-muted-foreground">YouTube</p>
-                      <p className="text-sm font-semibold text-foreground">₦{(walletBalances as any)?.youtube?.toLocaleString() || '0'}</p>
-                    </div>
-                  </Card>
-                  
-                  <Card className="p-3 backdrop-blur-md backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-lg">
-                    <div className="text-center">
-                      <div className="w-8 h-8 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
-                        <Users className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
-                      </div>
-                      <p className="text-xs text-muted-foreground">Community</p>
-                      <p className="text-sm font-semibold text-foreground">₦{walletBalances?.community?.toLocaleString() || '0'}</p>
-                    </div>
-                  </Card>
-                  
-                  <Card className="p-3 backdrop-blur-md backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-lg">
-                    <div className="text-center">
-                      <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center mx-auto mb-2">
-                        <Award className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                      </div>
-                      <p className="text-xs text-muted-foreground">BPT Token</p>
-                      <p className="text-sm font-semibold text-foreground">{(walletBalances as any)?.bpt?.toFixed(8) || '0.00000000'} BPT</p>
-                    </div>
-                  </Card>
+            {/* Categorized Wallets Tabs */}
+            <Card className="p-5 mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-foreground">All Wallets</h3>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setActiveWalletTab('operational')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      activeWalletTab === 'operational'
+                        ? 'bg-bpi-primary text-white'
+                        : 'bg-gray-100 dark:bg-bpi-dark-accent text-muted-foreground hover:bg-gray-200 dark:hover:bg-bpi-dark-accent/70'
+                    }`}
+                  >
+                    Operational
+                  </button>
+                  <button
+                    onClick={() => setActiveWalletTab('investment')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      activeWalletTab === 'investment'
+                        ? 'bg-bpi-primary text-white'
+                        : 'bg-gray-100 dark:bg-bpi-dark-accent text-muted-foreground hover:bg-gray-200 dark:hover:bg-bpi-dark-accent/70'
+                    }`}
+                  >
+                    Investment
+                  </button>
+                  <button
+                    onClick={() => setActiveWalletTab('community')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      activeWalletTab === 'community'
+                        ? 'bg-bpi-primary text-white'
+                        : 'bg-gray-100 dark:bg-bpi-dark-accent text-muted-foreground hover:bg-gray-200 dark:hover:bg-bpi-dark-accent/70'
+                    }`}
+                  >
+                    Community
+                  </button>
                 </div>
               </div>
-            )}
+
+              {/* Operational Wallets */}
+              {activeWalletTab === 'operational' && (
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {dashboardData?.wallets.operational.map((wallet) => {
+                    const isLow = walletHealth?.health.spendable === 'low' && wallet.id === 'spendable';
+                    const isCritical = walletHealth?.health.spendable === 'critical' && wallet.id === 'spendable';
+                    
+                    return (
+                      <div
+                        key={wallet.id}
+                        className="p-4 bg-gray-50 dark:bg-bpi-dark-accent/50 rounded-lg hover:shadow-sm transition-shadow"
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="w-8 h-8 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                            <Wallet className="w-4 h-4 text-blue-600 dark:text-blue-500" />
+                          </div>
+                          {isCritical && (
+                            <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full">Critical</span>
+                          )}
+                          {isLow && (
+                            <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full">Low</span>
+                          )}
+                        </div>
+                        <h4 className="font-medium text-sm text-foreground mb-1">{wallet.name}</h4>
+                        <p className="text-lg font-bold text-foreground mb-1">
+                          {formatBalance(wallet.balance)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{wallet.description}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Investment Wallets */}
+              {activeWalletTab === 'investment' && (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {dashboardData?.wallets.investment.map((wallet) => (
+                    <div
+                      key={wallet.id}
+                      className="p-4 bg-gray-50 dark:bg-bpi-dark-accent/50 rounded-lg hover:shadow-sm transition-shadow"
+                    >
+                      <div className="w-8 h-8 bg-purple-500/10 rounded-lg flex items-center justify-center mb-2">
+                        <TrendingUp className="w-4 h-4 text-purple-600 dark:text-purple-500" />
+                      </div>
+                      <h4 className="font-medium text-sm text-foreground mb-1">{wallet.name}</h4>
+                      <p className="text-lg font-bold text-foreground mb-1">
+                        {formatBalance(wallet.balance)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{wallet.description}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Community Wallets */}
+              {activeWalletTab === 'community' && (
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {dashboardData?.wallets.community.map((wallet) => (
+                    <div
+                      key={wallet.id}
+                      className="p-4 bg-gray-50 dark:bg-bpi-dark-accent/50 rounded-lg hover:shadow-sm transition-shadow"
+                    >
+                      <div className="w-8 h-8 bg-green-500/10 rounded-lg flex items-center justify-center mb-2">
+                        <Users className="w-4 h-4 text-green-600 dark:text-green-500" />
+                      </div>
+                      <h4 className="font-medium text-sm text-foreground mb-1">{wallet.name}</h4>
+                      <p className="text-lg font-bold text-foreground mb-1">
+                        {formatBalance(wallet.balance)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{wallet.description}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
             </div>
 
             {/* YouTube Channel Section */}
@@ -2263,72 +2554,192 @@ export default function DashboardContent({ session }: DashboardContentProps) {
             <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-6 shadow-lg dark:shadow-none mb-3">
               <h2 className="text-lg font-semibold text-foreground mb-3">Activity Center</h2>
               <hr className="border-gray-200 dark:border-bpi-dark-accent mb-4" />
-            {/* Recent Transactions - Enhanced */}
+            {/* Recent Transactions - Real Data */}
             <Card className="p-6 backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-xl mb-4 relative z-10">
               <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-bpi-primary" />
                 Recent Transactions
               </h3>
               <div className="space-y-3">
-                {/* Enhanced Mock Transactions */}
-                {[
-                  { type: "Referral Commission", info: "Membership Activation", amount: "5000", status: "successful", date: "4 hours ago", icon: Users, isBPT: false },
-                  { type: "BPT Transfer", info: "Token Exchange", amount: "0.00125000", status: "pending", date: "1 day ago", icon: Award, isBPT: true },
-                  { type: "Palliative Withdrawal", info: "Emergency Fund Access", amount: "8000", status: "failed", date: "1 month ago", icon: Shield, isBPT: false }
-                ].map((transaction, index) => (
-                  <div key={index} className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-bpi-dark-accent/30 rounded-xl border border-gray-200 dark:border-bpi-dark-accent hover:shadow-md transition-shadow">
-                    {/* Column 1: Transaction Icon */}
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                      transaction.status === 'successful' ? 'bg-green-100 dark:bg-green-900/30' :
-                      transaction.status === 'pending' ? 'bg-orange-100 dark:bg-orange-900/30' : 'bg-red-100 dark:bg-red-900/30'
-                    }`}>
-                      <transaction.icon className={`w-5 h-5 ${
-                        transaction.status === 'successful' ? 'text-green-600 dark:text-green-400' :
-                        transaction.status === 'pending' ? 'text-orange-600 dark:text-orange-400' : 'text-red-600 dark:text-red-400'
-                      }`} />
-                    </div> 
-                    
-                    {/* Column 2: Transaction Details */}
-                    <div className="flex-1 min-w-0">
-                      {/* Row 1: Transaction Type */}
-                      <p className="text-sm font-medium text-foreground truncate">{transaction.type}</p>
-                      
-                      {/* Row 2: Transaction Info */}
-                      <p className="text-xs text-muted-foreground truncate mt-1">{transaction.info}</p>
-                      
-                      {/* Row 3: Amount and Status */}
-                      <div className="flex items-center gap-2 mt-2">
-                        <p className={`text-sm font-bold ${
-                          transaction.status === 'successful' ? 'text-green-600 dark:text-green-400' :
-                          transaction.status === 'pending' ? 'text-orange-600 dark:text-orange-400' : 'text-red-600 dark:text-red-400'
+                {/* Real transaction data from dashboard query */}
+                {dashboardData?.transactions && dashboardData.transactions.length > 0 ? (
+                  <>
+                    {dashboardData.transactions.slice(0, 5).map((transaction: any, index: number) => (
+                      <div key={transaction.id || index} className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-bpi-dark-accent/30 rounded-xl border border-gray-200 dark:border-bpi-dark-accent hover:shadow-md transition-shadow">
+                        {/* Transaction Icon */}
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                          transaction.status === 'completed' ? 'bg-green-100 dark:bg-green-900/30' :
+                          transaction.status === 'pending' ? 'bg-orange-100 dark:bg-orange-900/30' : 'bg-red-100 dark:bg-red-900/30'
                         }`}>
-                          {transaction.isBPT ? 
-                            `${parseFloat(transaction.amount).toFixed(8)} BPT` :
-                            `₦${parseFloat(transaction.amount).toLocaleString()}`
-                          }
-                        </p>
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                          transaction.status === 'successful' 
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                            : transaction.status === 'pending'
-                            ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
-                            : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                        }`}>
-                          {transaction.status === 'successful' ? 'Success' : 
-                           transaction.status === 'pending' ? 'Pending' : 'Failed'}
-                        </span>
+                          <CreditCard className={`w-5 h-5 ${
+                            transaction.status === 'completed' ? 'text-green-600 dark:text-green-400' :
+                            transaction.status === 'pending' ? 'text-orange-600 dark:text-orange-400' : 'text-red-600 dark:text-red-400'
+                          }`} />
+                        </div> 
+                        
+                        {/* Transaction Details */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{transaction.type}</p>
+                          <p className="text-xs text-muted-foreground truncate mt-1">{transaction.description || 'Transaction'}</p>
+                          
+                          <div className="flex items-center gap-2 mt-2">
+                            <p className={`text-sm font-bold ${
+                              transaction.status === 'completed' ? 'text-green-600 dark:text-green-400' :
+                              transaction.status === 'pending' ? 'text-orange-600 dark:text-orange-400' : 'text-red-600 dark:text-red-400'
+                            }`}>
+                              {transaction.currency === 'BPT' ? 
+                                `${transaction.amount.toFixed(8)} BPT` :
+                                `₦${transaction.amount.toLocaleString()}`
+                              }
+                            </p>
+                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                              transaction.status === 'completed' 
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                : transaction.status === 'pending'
+                                ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
+                                : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                            }`}>
+                              {transaction.status === 'completed' ? 'Success' : 
+                               transaction.status === 'pending' ? 'Pending' : 'Failed'}
+                            </span>
+                          </div>
+                          
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {new Date(transaction.createdAt).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </p>
+                        </div>
                       </div>
-                      
-                      {/* Row 4: Transaction Date */}
-                      <p className="text-xs text-muted-foreground mt-1">{transaction.date}</p>
+                    ))}
+                    
+                    <Button variant="outline" className="w-full text-sm mt-4">
+                      <Eye className="w-4 h-4 mr-2" />
+                      View All Transactions
+                    </Button>
+                  </>
+                ) : (
+                  <div className="p-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-center">
+                    <CreditCard className="w-12 h-12 mx-auto mb-3 text-blue-500 opacity-50" />
+                    <p className="text-sm text-blue-800 dark:text-blue-200 font-medium mb-1">
+                      No Recent Transactions
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                      Your transaction history will appear here once you start making transfers, referrals, or package activations.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </Card>
+            </div>
+
+            {/* Smart Notifications & Alerts */}
+            <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-6 shadow-lg dark:shadow-none mb-3">
+              <h2 className="text-lg font-semibold text-foreground mb-3">Alerts & Notifications</h2>
+              <hr className="border-gray-200 dark:border-bpi-dark-accent mb-4" />
+            <Card className="p-5 backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-xl mb-4 relative z-10">
+              <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                <Bell className="w-5 h-5 text-orange-600 dark:text-orange-500" />
+                Smart Alerts
+              </h3>
+              <div className="space-y-3">
+                {/* Wallet Health Warnings */}
+                {walletHealth?.warnings && walletHealth.warnings.length > 0 && (
+                  <>
+                    {walletHealth.warnings.map((warning, index) => (
+                      <div key={index} className="flex items-start gap-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                        <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-500 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                            Wallet Warning
+                          </p>
+                          <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+                            {warning}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {/* Package Maturity Alerts */}
+                {dashboardData?.packages.stats.upcomingMaturities && dashboardData.packages.stats.upcomingMaturities > 0 && (
+                  <div className="flex items-start gap-3 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                    <Clock className="w-5 h-5 text-orange-600 dark:text-orange-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                        Package Maturing Soon
+                      </p>
+                      <p className="text-xs text-orange-700 dark:text-orange-300 mt-1">
+                        {dashboardData.packages.stats.upcomingMaturities} package{dashboardData.packages.stats.upcomingMaturities > 1 ? 's' : ''} will mature within 7 days. Plan your reinvestment strategy.
+                      </p>
                     </div>
                   </div>
-                ))}
-                
-                <Button variant="outline" className="w-full text-sm mt-4">
-                  <Eye className="w-4 h-4 mr-2" />
-                  View All Transactions
-                </Button>
+                )}
+
+                {/* Profile Incomplete Warning */}
+                {!profileCompletionStatus?.isComplete && (
+                  <div className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <User className="w-5 h-5 text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                        Complete Your Profile
+                      </p>
+                      <p className="text-xs text-red-700 dark:text-red-300 mt-1">
+                        Your profile is {profileCompletionStatus?.completionPercentage}% complete. Complete it to unlock all dashboard features.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Email Verification Pending */}
+                {!userProfile?.emailVerified && (
+                  <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <Mail className="w-5 h-5 text-blue-600 dark:text-blue-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                        Verify Your Email
+                      </p>
+                      <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                        Please verify your email address to receive important notifications and updates.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Positive Notifications */}
+                {walletHealth?.overall === 'healthy' && 
+                 profileCompletionStatus?.isComplete && 
+                 userProfile?.emailVerified && 
+                 (!dashboardData?.packages.stats.upcomingMaturities || dashboardData.packages.stats.upcomingMaturities === 0) && (
+                  <div className="flex items-start gap-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                    <Check className="w-5 h-5 text-green-600 dark:text-green-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                        All Systems Normal
+                      </p>
+                      <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                        Your account is in good standing. All wallets are healthy and no urgent actions required.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* No Alerts Message */}
+                {!walletHealth?.warnings?.length && 
+                 !dashboardData?.packages.stats.upcomingMaturities && 
+                 profileCompletionStatus?.isComplete && 
+                 userProfile?.emailVerified && (
+                  <div className="p-4 text-center">
+                    <Bell className="w-12 h-12 mx-auto mb-2 text-gray-400 opacity-50" />
+                    <p className="text-sm text-muted-foreground">
+                      No alerts at this time
+                    </p>
+                  </div>
+                )}
               </div>
             </Card>
             </div>
