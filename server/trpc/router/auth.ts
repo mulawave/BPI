@@ -65,9 +65,9 @@ export const authRouter = createTRPCRouter({
 
       // Create referral record if referred by someone
       if (ref_id && ref_id !== "1") {
-        // Find the referrer by ID
+        // Find the referrer by invite code (encrypted format)
         const referrer = await ctx.prisma.user.findUnique({
-          where: { id: ref_id },
+          where: { inviteCode: ref_id },
         });
 
         if (referrer) {
@@ -75,11 +75,27 @@ export const authRouter = createTRPCRouter({
           try {
             await ctx.prisma.$executeRaw`
               INSERT INTO "Referral" (id, "referrerId", "referredId", status, "rewardPaid", "createdAt", "updatedAt")
-              VALUES (${randomUUID()}, ${ref_id}, ${user.id}, 'active', false, NOW(), NOW())
+              VALUES (${randomUUID()}, ${referrer.id}, ${user.id}, 'active', false, NOW(), NOW())
             `;
           } catch (error) {
             console.error("Failed to create referral record:", error);
             // Don't fail registration if referral creation fails
+          }
+        } else {
+          // If no referrer found with invite code, try as user ID (backward compatibility for old links)
+          const referrerById = await ctx.prisma.user.findUnique({
+            where: { id: ref_id },
+          });
+          
+          if (referrerById) {
+            try {
+              await ctx.prisma.$executeRaw`
+                INSERT INTO "Referral" (id, "referrerId", "referredId", status, "rewardPaid", "createdAt", "updatedAt")
+                VALUES (${randomUUID()}, ${ref_id}, ${user.id}, 'active', false, NOW(), NOW())
+              `;
+            } catch (error) {
+              console.error("Failed to create referral record:", error);
+            }
           }
         }
       }

@@ -15,7 +15,8 @@ import {
   Store, Grid3x3, Wrench, HelpCircle, ShoppingCart,
   Archive, Database, Server, FileImage, Moon, Sun, X,
   Router, Book, Inbox, FileText, Bookmark, Camera,
-  Edit, Check, Eye, Heart, AlertCircle
+  Edit, Check, Eye, Heart, AlertCircle, MapPin,
+  Phone, Mail, Flag
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Modal } from "./ui/Modal";
@@ -32,10 +33,11 @@ interface ProfileFieldProps {
   value: string;
   fieldKey: string;
   isEditable: boolean;
+  icon?: React.ComponentType<{ className?: string }>;
   onUpdateStatus?: (status: 'loading' | 'success' | 'error', message: string) => void;
 }
 
-function ProfileField({ label, value, fieldKey, isEditable, onUpdateStatus }: ProfileFieldProps) {
+function ProfileField({ label, value, fieldKey, isEditable, icon: Icon, onUpdateStatus }: ProfileFieldProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
   const utils = api.useUtils();
@@ -80,7 +82,8 @@ function ProfileField({ label, value, fieldKey, isEditable, onUpdateStatus }: Pr
   return (
     <div className="flex items-center justify-between py-1 border-b border-gray-100 dark:border-bpi-dark-accent last:border-b-0">
       <div className="flex-1">
-        <label className="text-xs font-medium text-muted-foreground mb-0 block">
+        <label className="text-xs font-medium text-muted-foreground mb-0 flex items-center gap-1.5">
+          {Icon && <Icon className="w-3 h-3 text-bpi-primary" />}
           {label}
         </label>
         {isEditing ? (
@@ -148,8 +151,23 @@ export default function DashboardContent({ session }: DashboardContentProps) {
   const [showAnnouncement, setShowAnnouncement] = useState<boolean>(true);
   const [isClosing, setIsClosing] = useState<boolean>(false);
   const [showAllWallets, setShowAllWallets] = useState(false);
+  
+  // Email verification dialog state
+  const [showEmailVerificationDialog, setShowEmailVerificationDialog] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<'idle' | 'sending' | 'sent' | 'verifying' | 'success' | 'error'>('idle');
+  const [lastEmailReminderTime, setLastEmailReminderTime] = useState<number>(Date.now());
   const [showNotifications, setShowNotifications] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
+  
+  // Auto Inviter state
+  const [inviteFirstName, setInviteFirstName] = useState('');
+  const [inviteLastName, setInviteLastName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteStatus, setInviteStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [inviteMessage, setInviteMessage] = useState('');
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   
   // Mock notification count
   const notificationCount = 4;
@@ -207,6 +225,18 @@ export default function DashboardContent({ session }: DashboardContentProps) {
   // New membership package query for gating
   const { data: userDetails, isLoading: isLoadingDetails } = api.user.getDetails.useQuery();
   const needsActivation = !isLoadingDetails && !userDetails?.activeMembership;
+  
+  // Daily invite count query
+  const { data: inviteCount } = api.referral.getDailyInviteCount.useQuery();
+  
+  // Get user's referral link
+  const { data: referralLinkData } = api.referral.getMyReferralLink.useQuery();
+  
+  // Get recent referrals (last 5)
+  const { data: recentReferralsData } = api.referral.getRecentReferrals.useQuery();
+  
+  // Get latest blog posts (2 for dashboard)
+  const { data: latestBlogPosts } = api.blog.getLatestPosts.useQuery({ limit: 2 });
 
   // Check profile completion
   const profileCompletionStatus = checkProfileCompletion({
@@ -297,6 +327,22 @@ export default function DashboardContent({ session }: DashboardContentProps) {
       return () => clearTimeout(t);
     }
   }, [showAnnouncement]);
+
+  // Automated email verification reminder - Show modal every 30 seconds if email not verified
+  useEffect(() => {
+    if (!userProfile?.emailVerified && !showEmailVerificationDialog) {
+      const interval = setInterval(() => {
+        // Only show reminder if it's been more than 30 seconds since last reminder
+        const now = Date.now();
+        if (now - lastEmailReminderTime >= 30000) {
+          setShowEmailVerificationDialog(true);
+          setLastEmailReminderTime(now);
+        }
+      }, 30000); // Check every 30 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [userProfile?.emailVerified, showEmailVerificationDialog, lastEmailReminderTime]);
 
   // API queries - temporarily commented for demo
   // const { data: bpiMember } = api.bpi.getBpiMember.useQuery();
@@ -397,8 +443,229 @@ export default function DashboardContent({ session }: DashboardContentProps) {
     input?.click();
   };
 
+  // Email verification mutations
+  const sendVerificationEmail = api.user.sendVerificationEmail.useMutation({
+    onMutate: () => {
+      setVerificationStatus('sending');
+    },
+    onSuccess: () => {
+      setVerificationStatus('sent');
+      setEmailSent(true);
+    },
+    onError: (error: any) => {
+      setVerificationStatus('error');
+      console.error('Failed to send verification email:', error);
+    }
+  });
+
+  const verifyEmailCode = api.user.verifyEmailCode.useMutation({
+    onMutate: () => {
+      setVerificationStatus('verifying');
+    },
+    onSuccess: async () => {
+      setVerificationStatus('success');
+      // Refetch user profile to update email verification status
+      await utils.legacy.getUserProfile.invalidate();
+      setTimeout(() => {
+        setShowEmailVerificationDialog(false);
+        setVerificationCode('');
+        setEmailSent(false);
+        setVerificationStatus('idle');
+      }, 2000);
+    },
+    onError: (error: any) => {
+      setVerificationStatus('error');
+      console.error('Failed to verify code:', error);
+    }
+  });
+
+  const handleSendVerificationEmail = () => {
+    sendVerificationEmail.mutate();
+  };
+
+  const handleVerifyCode = () => {
+    if (verificationCode.length === 6) {
+      verifyEmailCode.mutate({ code: verificationCode });
+    }
+  };
+
+  // Auto-submit when code is 6 digits
+  useEffect(() => {
+    if (verificationCode.length === 6 && verificationStatus === 'sent') {
+      handleVerifyCode();
+    }
+  }, [verificationCode]);
+
+  // Referral invite mutation
+  const sendReferralInvite = api.referral.sendReferralInvite.useMutation({
+    onMutate: () => {
+      setInviteStatus('sending');
+      setInviteMessage('');
+    },
+    onSuccess: async (data) => {
+      setInviteStatus('success');
+      setInviteMessage(data.message);
+      // Reset form
+      setInviteFirstName('');
+      setInviteLastName('');
+      setInviteEmail('');
+      // Refetch wallet balance and invite count
+      await utils.legacy.getWalletBalances.invalidate();
+      await utils.referral.getDailyInviteCount.invalidate();
+      // Auto-dismiss success after 5 seconds
+      setTimeout(() => {
+        setInviteStatus('idle');
+        setInviteMessage('');
+      }, 5000);
+    },
+    onError: (error: any) => {
+      setInviteStatus('error');
+      setInviteMessage(error.message || 'Failed to send invite. Please try again.');
+      // Auto-dismiss error after 7 seconds
+      setTimeout(() => {
+        setInviteStatus('idle');
+        setInviteMessage('');
+      }, 7000);
+    }
+  });
+
+  const handleSendInvite = () => {
+    if (!inviteFirstName || !inviteLastName || !inviteEmail) {
+      setInviteStatus('error');
+      setInviteMessage('Please fill in all fields');
+      setTimeout(() => {
+        setInviteStatus('idle');
+        setInviteMessage('');
+      }, 3000);
+      return;
+    }
+    
+    sendReferralInvite.mutate({
+      firstname: inviteFirstName,
+      lastname: inviteLastName,
+      email: inviteEmail
+    });
+  };
+  
+  const handleCopyLink = async () => {
+    if (referralLinkData?.referralLink) {
+      try {
+        await navigator.clipboard.writeText(referralLinkData.referralLink);
+        setCopyStatus('copied');
+        setTimeout(() => setCopyStatus('idle'), 2000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-bpi-gradient-light dark:bg-bpi-gradient-dark">
+      {/* Email Verification Dialog */}
+      <Modal 
+        isOpen={showEmailVerificationDialog} 
+        title="Verify Your Email"
+        onClose={() => {
+          setShowEmailVerificationDialog(false);
+          setVerificationCode('');
+          setEmailSent(false);
+          setVerificationStatus('idle');
+        }}
+      >
+        <div className="space-y-4">
+          {!emailSent ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Click the button below to receive a verification code at your registered email address: <span className="font-semibold text-foreground">{session.user?.email}</span>
+              </p>
+              <Button 
+                onClick={handleSendVerificationEmail}
+                disabled={verificationStatus === 'sending'}
+                className="w-full bg-bpi-primary hover:bg-bpi-primary/90"
+              >
+                {verificationStatus === 'sending' ? (
+                  <span className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Sending...
+                  </span>
+                ) : (
+                  'Send Verification Email'
+                )}
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground mb-4">
+                We've sent a 6-digit verification code to <span className="font-semibold text-foreground">{session.user?.email}</span>
+              </p>
+              
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Enter Verification Code
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  className="w-full p-3 text-center text-2xl font-mono tracking-widest border border-bpi-border dark:border-bpi-dark-accent rounded-lg bg-background text-foreground focus:border-bpi-primary focus:outline-none"
+                  disabled={verificationStatus === 'verifying' || verificationStatus === 'success'}
+                  autoFocus
+                />
+              </div>
+
+              {verificationStatus === 'verifying' && (
+                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <div className="w-4 h-4 border-2 border-bpi-primary border-t-transparent rounded-full animate-spin" />
+                  Verifying...
+                </div>
+              )}
+
+              {verificationStatus === 'success' && (
+                <div className="flex items-center justify-center gap-2 text-sm text-green-600 dark:text-green-400">
+                  <Check className="w-4 h-4" />
+                  Email verified successfully!
+                </div>
+              )}
+
+              {verificationStatus === 'error' && (
+                <div className="flex items-center justify-center gap-2 text-sm text-red-600 dark:text-red-400">
+                  <AlertCircle className="w-4 h-4" />
+                  Invalid code. Please try again.
+                </div>
+              )}
+
+              <button
+                onClick={handleSendVerificationEmail}
+                disabled={verificationStatus === 'sending' || verificationStatus === 'verifying'}
+                className="text-sm text-bpi-primary hover:underline disabled:opacity-50"
+              >
+                Resend verification email
+              </button>
+            </>
+          )}
+          
+          {/* Cancel Button */}
+          <div className="flex gap-2 mt-4">
+            <Button
+              onClick={() => {
+                setShowEmailVerificationDialog(false);
+                setVerificationCode('');
+                setEmailSent(false);
+                setVerificationStatus('idle');
+                setLastEmailReminderTime(Date.now()); // Reset reminder timer when cancelled
+              }}
+              variant="outline"
+              className="flex-1"
+              disabled={verificationStatus === 'sending' || verificationStatus === 'verifying'}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Subscription Activation Modal */}
       <Modal isOpen={needsActivation} title="Activate Your Account">
         <p className="mb-6 text-muted-foreground">
@@ -887,6 +1154,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                     label="First Name"
                     value={userProfile?.firstname || ''}
                     fieldKey="firstname"
+                    icon={User}
                     isEditable={true}
                     onUpdateStatus={handleUpdateStatus}
                   />
@@ -896,6 +1164,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                     label="Last Name"
                     value={userProfile?.lastname || ''}
                     fieldKey="lastname"
+                    icon={User}
                     isEditable={true}
                     onUpdateStatus={handleUpdateStatus}
                   />
@@ -905,6 +1174,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                     label="Email"
                     value={userProfile?.email || ''}
                     fieldKey="email"
+                    icon={Mail}
                     isEditable={false}
                   />
                   
@@ -913,6 +1183,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                     label="Phone"
                     value={userProfile?.mobile || ''}
                     fieldKey="mobile"
+                    icon={Phone}
                     isEditable={true}
                     onUpdateStatus={handleUpdateStatus}
                   />
@@ -922,6 +1193,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                     label="Address"
                     value={userProfile?.address || ''}
                     fieldKey="address"
+                    icon={MapPin}
                     isEditable={true}
                     onUpdateStatus={handleUpdateStatus}
                   />
@@ -931,6 +1203,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                     label="City"
                     value={userProfile?.city || ''}
                     fieldKey="city"
+                    icon={Home}
                     isEditable={true}
                     onUpdateStatus={handleUpdateStatus}
                   />
@@ -940,6 +1213,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                     label="State"
                     value={userProfile?.state || ''}
                     fieldKey="state"
+                    icon={MapPin}
                     isEditable={true}
                     onUpdateStatus={handleUpdateStatus}
                   />
@@ -949,6 +1223,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                     label="Country"
                     value={userProfile?.country || ''}
                     fieldKey="country"
+                    icon={Globe}
                     isEditable={true}
                     onUpdateStatus={handleUpdateStatus}
                   />
@@ -958,6 +1233,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                     label="Gender"
                     value={userProfile?.gender || ''}
                     fieldKey="gender"
+                    icon={User}
                     isEditable={true}
                     onUpdateStatus={handleUpdateStatus}
                   />
@@ -974,92 +1250,247 @@ export default function DashboardContent({ session }: DashboardContentProps) {
           </div>
 
 
-            {/* Storage Stats */}
+            {/* Account Statistics */}
             <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-6 shadow-lg dark:shadow-none mb-3">
               <h3 className="text-base font-semibold text-foreground mb-3">Account Statistics</h3>
               <hr className="border-gray-200 dark:border-bpi-dark-accent mb-4" />
             <Card className="p-4 mt-4 bg-white dark:bg-bpi-dark-card backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-lg">
               <h3 className="font-semibold text-foreground mb-4">Account Activity</h3>
               <div className="space-y-3">
+                {/* Total Referrals */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                    <Users className="w-4 h-4 text-blue-500 animate-pulse" />
                     <span className="text-sm text-muted-foreground">Total Referrals</span>
                   </div>
                   <span className="text-sm font-semibold text-foreground">
                     {referralStats?.referralCounts?.total || 0}
                   </span>
                 </div>
+
+                {/* Level 1 (Direct) */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-bpi-primary rounded-full" />
-                    <span className="text-sm text-muted-foreground">Level 1</span>
+                    <User className="w-4 h-4 text-bpi-primary" />
+                    <span className="text-sm text-muted-foreground">Direct Referrals</span>
                   </div>
                   <span className="text-sm font-semibold text-foreground">
                     {referralStats?.referralCounts?.level1 || 0}
                   </span>
                 </div>
+
+                {/* Level 2 */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-bpi-secondary rounded-full" />
-                    <span className="text-sm text-muted-foreground">Direct</span>
+                    <Users className="w-4 h-4 text-purple-500" />
+                    <span className="text-sm text-muted-foreground">Level 2 Referrals</span>
                   </div>
                   <span className="text-sm font-semibold text-foreground">
-                    {referralStats?.directReferrals?.length || 0}
+                    {referralStats?.referralCounts?.level2 || 0}
+                  </span>
+                </div>
+
+                {/* Total Team Size */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-green-500 animate-pulse" />
+                    <span className="text-sm text-muted-foreground">Total Team Size</span>
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">
+                    {referralStats?.referralCounts?.total || 0}
+                  </span>
+                </div>
+
+                {/* Member Since */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-pink-500" />
+                    <span className="text-sm text-muted-foreground">Member Since</span>
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">
+                    {userProfile?.createdAt 
+                      ? new Date(userProfile.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                      : 'N/A'}
                   </span>
                 </div>
               </div>
             </Card>
             </div>
 
-            {/* Account Status & Activations */}
+            {/* Membership Status */}
             <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-6 shadow-lg dark:shadow-none mb-3">
-              <h3 className="text-base font-semibold text-foreground mb-3">Account Status</h3>
+              <h3 className="text-base font-semibold text-foreground mb-3">Membership Status</h3>
               <hr className="border-gray-200 dark:border-bpi-dark-accent mb-4" />
             <Card className="p-4 mt-4 bg-white dark:bg-bpi-dark-card backdrop-blur-md border border-bpi-border dark:border-bpi-dark-accent shadow-lg">
-              <h3 className="font-semibold text-foreground mb-4">Account Status</h3>
+              <h3 className="font-semibold text-foreground mb-4">Membership Status</h3>
               <div className="space-y-3">
-                {/* BPI Activation Status */}
-                <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                {/* BPI Activation Status - Green if has active membership */}
+                <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                  userDetails?.activeMembership 
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                }`}>
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                    <span className="text-sm font-medium text-green-700 dark:text-green-400">BPI Activation</span>
+                    <Shield className={`w-4 h-4 ${
+                      userDetails?.activeMembership 
+                        ? 'text-green-500 animate-pulse' 
+                        : 'text-red-500'
+                    }`} />
+                    <span className={`text-sm font-medium ${
+                      userDetails?.activeMembership
+                        ? 'text-green-700 dark:text-green-400'
+                        : 'text-red-700 dark:text-red-400'
+                    }`}>BPI Activation</span>
                   </div>
-                  <span className="px-2 py-1 text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
-                    Active
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    userDetails?.activeMembership
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                      : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                  }`}>
+                    {userDetails?.activeMembership ? 'Active' : 'Inactive'}
                   </span>
                 </div>
 
-                {/* Profile Status */}
-                <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                {/* Profile Status - Green when 100% complete */}
+                <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                  profileCompletionStatus?.isComplete
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                }`}>
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                    <span className="text-sm font-medium text-blue-700 dark:text-blue-400">Profile Status</span>
+                    <User className={`w-4 h-4 ${
+                      profileCompletionStatus?.isComplete
+                        ? 'text-green-500 animate-pulse'
+                        : 'text-red-500'
+                    }`} />
+                    <span className={`text-sm font-medium ${
+                      profileCompletionStatus?.isComplete
+                        ? 'text-green-700 dark:text-green-400'
+                        : 'text-red-700 dark:text-red-400'
+                    }`}>Profile Status</span>
                   </div>
-                  <span className="px-2 py-1 text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded-full">
-                    {profileStatus?.completionPercentage >= 80 ? 'Complete' : 'Incomplete'}
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    profileCompletionStatus?.isComplete
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                      : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                  }`}>
+                    {profileCompletionStatus?.isComplete ? 'Complete' : `${profileCompletionStatus?.completionPercentage}%`}
                   </span>
                 </div>
 
-                {/* Shelter Palliative Activation */}
-                <div className="flex items-center justify-between p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
+                {/* Shelter Activation - Green if active */}
+                <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                  (walletBalances?.shelter || 0) > 0
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                }`}>
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-orange-500 rounded-full" />
-                    <span className="text-sm font-medium text-orange-700 dark:text-orange-400">Shelter Palliative</span>
+                    <Home className={`w-4 h-4 ${
+                      (walletBalances?.shelter || 0) > 0
+                        ? 'text-green-500 animate-pulse'
+                        : 'text-red-500'
+                    }`} />
+                    <span className={`text-sm font-medium ${
+                      (walletBalances?.shelter || 0) > 0
+                        ? 'text-green-700 dark:text-green-400'
+                        : 'text-red-700 dark:text-red-400'
+                    }`}>Shelter Activation</span>
                   </div>
-                  <span className="px-2 py-1 text-xs font-semibold bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200 rounded-full">
-                    Inactive
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    (walletBalances?.shelter || 0) > 0
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                      : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                  }`}>
+                    {(walletBalances?.shelter || 0) > 0 ? 'Active' : 'Inactive'}
                   </span>
                 </div>
 
-                {/* Student Palliative Activation */}
-                <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                {/* Community Support - Green if eligible (has active membership + complete profile) */}
+                <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                  (userDetails?.activeMembership && profileCompletionStatus?.isComplete)
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                }`}>
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-purple-500 rounded-full" />
-                    <span className="text-sm font-medium text-purple-700 dark:text-purple-400">Student Palliative</span>
+                    <Users className={`w-4 h-4 ${
+                      (userDetails?.activeMembership && profileCompletionStatus?.isComplete)
+                        ? 'text-green-500 animate-pulse'
+                        : 'text-red-500'
+                    }`} />
+                    <span className={`text-sm font-medium ${
+                      (userDetails?.activeMembership && profileCompletionStatus?.isComplete)
+                        ? 'text-green-700 dark:text-green-400'
+                        : 'text-red-700 dark:text-red-400'
+                    }`}>Community Support</span>
                   </div>
-                  <span className="px-2 py-1 text-xs font-semibold bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
-                    Inactive
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    (userDetails?.activeMembership && profileCompletionStatus?.isComplete)
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                      : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                  }`}>
+                    {(userDetails?.activeMembership && profileCompletionStatus?.isComplete) ? 'Eligible' : 'Not Eligible'}
+                  </span>
+                </div>
+
+                {/* Email Verification */}
+                <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                  userProfile?.emailVerified
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <Bell className={`w-4 h-4 ${
+                      userProfile?.emailVerified
+                        ? 'text-green-500'
+                        : 'text-red-500 animate-pulse'
+                    }`} />
+                    <span className={`text-sm font-medium ${
+                      userProfile?.emailVerified
+                        ? 'text-green-700 dark:text-green-400'
+                        : 'text-red-700 dark:text-red-400'
+                    }`}>Email Verification</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (!userProfile?.emailVerified) {
+                        setShowEmailVerificationDialog(true);
+                      }
+                    }}
+                    disabled={!!userProfile?.emailVerified}
+                    className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                      !!userProfile?.emailVerified
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 cursor-default'
+                        : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 hover:bg-red-200 dark:hover:bg-red-800 cursor-pointer transition-colors'
+                    }`}
+                  >
+                    {!!userProfile?.emailVerified ? 'Verified' : 'Pending'}
+                  </button>
+                </div>
+
+                {/* Referral Program */}
+                <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                  (referralStats?.referralCounts?.level1 || 0) > 0
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <Award className={`w-4 h-4 ${
+                      (referralStats?.referralCounts?.level1 || 0) > 0
+                        ? 'text-green-500 animate-pulse'
+                        : 'text-red-500'
+                    }`} />
+                    <span className={`text-sm font-medium ${
+                      (referralStats?.referralCounts?.level1 || 0) > 0
+                        ? 'text-green-700 dark:text-green-400'
+                        : 'text-red-700 dark:text-red-400'
+                    }`}>Referral Program</span>
+                  </div>
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    (referralStats?.referralCounts?.level1 || 0) > 0
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                      : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                  }`}>
+                    {(referralStats?.referralCounts?.level1 || 0) > 0 ? 'Active' : 'Inactive'}
                   </span>
                 </div>
               </div>
@@ -1076,29 +1507,100 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                 <Users className="w-5 h-5 text-bpi-primary" />
                 Auto Inviter
               </h3>
+              
+              {/* Cost & Limit Notice */}
+              <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                <p className="text-xs text-green-800 dark:text-green-200 font-medium">
+                  💰 Cost: <span className="font-bold">0.5 BPT</span> per invite | 
+                  📧 Daily Limit: <span className="font-bold">10 invites</span>
+                </p>
+              </div>
+              
               <p className="text-sm text-muted-foreground mb-4">
-                Enter your friend's email and we'll send them an invite from you
+                Enter your friend's details and we'll send them an invite from you
               </p>
+              
+              {/* Status Alert */}
+              {inviteMessage && (
+                <div className={`mb-4 p-3 rounded-lg border text-sm ${
+                  inviteStatus === 'success'
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
+                }`}>
+                  {inviteMessage}
+                </div>
+              )}
+              
               <div className="space-y-3">
                 <input
                   type="text"
                   placeholder="Friend's First Name"
-                  className="w-full p-3 border border-bpi-border dark:border-bpi-dark-accent rounded-lg bg-background text-foreground text-sm"
+                  value={inviteFirstName}
+                  onChange={(e) => setInviteFirstName(e.target.value)}
+                  disabled={inviteStatus === 'sending'}
+                  className="w-full p-3 border border-bpi-border dark:border-bpi-dark-accent rounded-lg bg-background text-foreground text-sm disabled:opacity-50"
+                />
+                <input
+                  type="text"
+                  placeholder="Friend's Last Name"
+                  value={inviteLastName}
+                  onChange={(e) => setInviteLastName(e.target.value)}
+                  disabled={inviteStatus === 'sending'}
+                  className="w-full p-3 border border-bpi-border dark:border-bpi-dark-accent rounded-lg bg-background text-foreground text-sm disabled:opacity-50"
                 />
                 <input
                   type="email"
                   placeholder="Friend's Email"
-                  className="w-full p-3 border border-bpi-border dark:border-bpi-dark-accent rounded-lg bg-background text-foreground text-sm"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  disabled={inviteStatus === 'sending'}
+                  className="w-full p-3 border border-bpi-border dark:border-bpi-dark-accent rounded-lg bg-background text-foreground text-sm disabled:opacity-50"
                 />
-                <div className="flex gap-2">
-                  <Button className="flex-1 bg-bpi-primary hover:bg-bpi-primary/90 text-sm">
-                    <Users className="w-4 h-4 mr-2" />
-                    Send Invite
+                <div className="flex gap-2 items-center">
+                  <Button 
+                    onClick={handleSendInvite}
+                    disabled={
+                      inviteStatus === 'sending' || 
+                      !inviteCount?.canSend || 
+                      (walletBalances?.bpiTokenWallet || 0) < 0.5
+                    }
+                    className="flex-1 bg-bpi-primary hover:bg-bpi-primary/90 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {inviteStatus === 'sending' ? (
+                      <>
+                        <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="w-4 h-4 mr-2" />
+                        Send Invite
+                      </>
+                    )}
                   </Button>
-                  <Button variant="outline" className="px-3">
-                    <Inbox className="w-4 h-4" />
-                  </Button>
+                  
+                  {/* Daily Counter */}
+                  <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-bpi-dark-accent rounded-lg border border-bpi-border dark:border-bpi-dark-accent">
+                    <Mail className="w-4 h-4 text-bpi-primary" />
+                    <span className="text-sm font-semibold text-foreground">
+                      {inviteCount?.remaining || 0}/{inviteCount?.total || 10}
+                    </span>
+                  </div>
                 </div>
+                
+                {/* Insufficient BPT Warning */}
+                {(walletBalances?.bpiTokenWallet || 0) < 0.5 && (
+                  <p className="text-xs text-red-600 dark:text-red-400 font-medium">
+                    ⚠️ Insufficient BPT balance. You need at least 0.5 BPT to send invites.
+                  </p>
+                )}
+                
+                {/* Daily Limit Warning */}
+                {inviteCount && !inviteCount.canSend && (
+                  <p className="text-xs text-orange-600 dark:text-orange-400 font-medium">
+                    ⚠️ Daily invite limit reached. You can send {inviteCount.total} more invites tomorrow.
+                  </p>
+                )}
               </div>
             </Card>
             </div>
@@ -1113,20 +1615,37 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                 Referral Link
               </h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Share your unique referral link
+                Share your unique referral link to earn rewards
               </p>
               <div className="space-y-3">
                 <div className="p-3 bg-gray-50 dark:bg-bpi-dark-accent/30 rounded-lg border border-bpi-border dark:border-bpi-dark-accent">
-                  <p className="text-xs text-muted-foreground break-all">
-                    https://bpi.beepagro.com/register?ref=BPI{Math.random().toString(36).substr(2, 6).toUpperCase()}
+                  <p className="text-xs text-foreground break-all font-mono">
+                    {referralLinkData?.referralLink || 'Loading...'}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button className="flex-1 bg-bpi-secondary hover:bg-bpi-secondary/90 text-sm">
-                    <FileText className="w-4 h-4 mr-2" />
-                    Copy Link
+                  <Button 
+                    onClick={handleCopyLink}
+                    className="flex-1 bg-bpi-secondary hover:bg-bpi-secondary/90 text-sm"
+                  >
+                    {copyStatus === 'copied' ? (
+                      <>
+                        <Check className="w-4 h-4 mr-2" />
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-4 h-4 mr-2" />
+                        Copy Link
+                      </>
+                    )}
                   </Button>
-                  <Button variant="outline" className="px-3">
+                  <Button 
+                    variant="outline" 
+                    className="px-3"
+                    onClick={() => window.open(referralLinkData?.referralLink, '_blank')}
+                    disabled={!referralLinkData?.referralLink}
+                  >
                     <Globe className="w-4 h-4" />
                   </Button>
                 </div>
@@ -1144,34 +1663,49 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                 Latest Invites
               </h3>
               <div className="space-y-3">
-                {/* Mock referral data */}
-                {[
-                  { name: "John Doe", date: "Nov 14", status: "Active" },
-                  { name: "Jane Smith", date: "Nov 12", status: "Pending" },
-                  { name: "Mike Johnson", date: "Nov 10", status: "Active" }
-                ].map((invite, index) => (
-                  <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-bpi-dark-accent/30 rounded-lg">
-                    <div className="w-8 h-8 bg-gradient-to-r from-bpi-primary to-bpi-secondary rounded-full flex items-center justify-center">
-                      <span className="text-xs font-bold text-white">{invite.name.charAt(0)}</span>
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-foreground">{invite.name}</p>
-                      <p className="text-xs text-muted-foreground">Joined: {invite.date}</p>
-                    </div>
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                      invite.status === 'Active' 
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                        : 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
-                    }`}>
-                      {invite.status}
-                    </span>
+                {/* Real referral data or empty state */}
+                {recentReferralsData?.referrals && recentReferralsData.referrals.length > 0 ? (
+                  <>
+                    {recentReferralsData.referrals.map((referral) => {
+                      const referredName = referral.referredUserName || 'Unknown User';
+                      const joinedDate = new Date(referral.createdAt).toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric' 
+                      });
+                      const status = referral.status === 'active' ? 'Active' : 'Pending';
+                      
+                      return (
+                        <div key={referral.id} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-bpi-dark-accent/30 rounded-lg">
+                          <div className="w-8 h-8 bg-gradient-to-r from-bpi-primary to-bpi-secondary rounded-full flex items-center justify-center">
+                            <span className="text-xs font-bold text-white">{referredName.charAt(0).toUpperCase()}</span>
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-foreground">{referredName}</p>
+                            <p className="text-xs text-muted-foreground">Joined: {joinedDate}</p>
+                          </div>
+                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                            status === 'Active' 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                              : 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
+                          }`}>
+                            {status}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    
+                    <Button variant="outline" className="w-full text-sm">
+                      <Eye className="w-4 h-4 mr-2" />
+                      View All Referrals
+                    </Button>
+                  </>
+                ) : (
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      You do not currently have any referrals. Use the auto-invite form to send out invites to your contacts or copy your ref link and share with your friends.
+                    </p>
                   </div>
-                ))}
-                
-                <Button variant="outline" className="w-full text-sm">
-                  <Eye className="w-4 h-4 mr-2" />
-                  View All Referrals
-                </Button>
+                )}
               </div>
             </Card>
             </div>
@@ -1186,74 +1720,76 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                 Latest From Our Blog
               </h3>
               <div className="space-y-4">
-                {/* Mock blog posts */}
-                {[
-                  {
-                    title: "BPI Leadership Pool Opens 100 New Slots",
-                    excerpt: "Exciting opportunity for members to join our prestigious leadership program and become part of our transformative initiatives...",
-                    author: "BPI Admin",
-                    date: "Nov 14, 2024",
-                    views: 248,
-                    comments: 12,
-                    likes: 45,
-                    image: "blog-1.jpg"
-                  },
-                  {
-                    title: "Solar Palliative Program Launch",
-                    excerpt: "Revolutionary green energy initiative now available for BPI members to participate in sustainable development projects...",
-                    author: "Energy Team",
-                    date: "Nov 12, 2024",
-                    views: 156,
-                    comments: 8,
-                    likes: 32,
-                    image: "blog-2.jpg"
-                  },
-                ].map((post, index) => (
-                  <div key={index} className="p-4 bg-gray-50 dark:bg-bpi-dark-accent/30 rounded-xl hover:shadow-md transition-shadow cursor-pointer">
-                    {/* Row 1: Blog Image */}
-                    <div className="w-full h-32 bg-gradient-to-r from-bpi-primary to-bpi-secondary rounded-lg flex items-center justify-center mb-3">
-                      <FileImage className="w-12 h-12 text-white" />
-                    </div>
+                {/* Real blog posts or empty state */}
+                {latestBlogPosts?.posts && latestBlogPosts.posts.length > 0 ? (
+                  <>
+                    {latestBlogPosts.posts.map((post) => {
+                      const excerpt = post.content.substring(0, 150) + '...';
+                      const formattedDate = new Date(post.createdAt).toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric',
+                        year: 'numeric'
+                      });
+                      
+                      return (
+                        <div key={post.id} className="p-4 bg-gray-50 dark:bg-bpi-dark-accent/30 rounded-xl hover:shadow-md transition-shadow cursor-pointer">
+                          {/* Row 1: Blog Image */}
+                          <div className="w-full h-32 bg-gradient-to-r from-bpi-primary to-bpi-secondary rounded-lg flex items-center justify-center mb-3 overflow-hidden">
+                            {post.image ? (
+                              <img 
+                                src={post.image} 
+                                alt={post.title}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <FileImage className="w-12 h-12 text-white" />
+                            )}
+                          </div>
+                          
+                          {/* Row 2: Blog Title */}
+                          <h4 className="font-semibold text-foreground text-base mb-2">{post.title}</h4>
+                          
+                          {/* Row 3: Blog Excerpt with Read More */}
+                          <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                            {excerpt}
+                            <span className="text-bpi-primary hover:underline cursor-pointer ml-1">read more</span>
+                          </p>
+                          
+                          {/* Row 4: Blog Statistics */}
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-1">
+                                <Eye className="w-3 h-3" />
+                                <span>{post.viewers}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                <span>{formattedDate}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-1">
+                                <User className="w-3 h-3" />
+                                <span>{post.author.name}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                     
-                    {/* Row 2: Blog Title */}
-                    <h4 className="font-semibold text-foreground text-base mb-2">{post.title}</h4>
-                    
-                    {/* Row 3: Blog Excerpt with Read More */}
-                    <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                      {post.excerpt}
-                      <span className="text-bpi-primary hover:underline cursor-pointer ml-1">read more</span>
+                    <Button variant="outline" className="w-full text-sm">
+                      <BookOpen className="w-4 h-4 mr-2" />
+                      View All Posts
+                    </Button>
+                  </>
+                ) : (
+                  <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                      The blog is currently not available. Check back soon for exciting updates and articles from the BPI community!
                     </p>
-                    
-                    {/* Row 4: Blog Statistics */}
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1">
-                          <Eye className="w-3 h-3" />
-                          <span>{post.views}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          <span>{post.date}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1">
-                          <Heart className="w-3 h-3" />
-                          <span>{post.likes}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Inbox className="w-3 h-3" />
-                          <span>{post.comments}</span>
-                        </div>
-                      </div>
-                    </div>
                   </div>
-                ))}
-                
-                <Button variant="outline" className="w-full text-sm">
-                  <BookOpen className="w-4 h-4 mr-2" />
-                  View All Posts
-                </Button>
+                )}
               </div>
             </Card>
             </div>

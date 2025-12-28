@@ -28,6 +28,7 @@ model User {
   secondaryEmail     String?
   username           String?              @unique
   referralLink       String?
+  inviteCode         String?              @unique
   userType           String               @default("user")
   rank               String               @default("Newbie")
   activated          Boolean              @default(false)
@@ -115,6 +116,8 @@ model User {
   transactionHistory     TransactionHistory[]
   withdrawalHistory      WithdrawalHistory[]
   youtubeChannels        YoutubeChannel[]
+  contacts               Contact[]
+  inviteUsage            InviteUsage[]
 }
 
 model MembershipPackage {
@@ -908,4 +911,41 @@ model BptConversionRate {
   effectiveDate   DateTime @default(now())
   createdBy       String?  // Admin user ID
   createdAt       DateTime @default(now())
+}
+
+model Contact {
+  id                  String    @id @default(cuid())
+  userId              String    // User who created the contact
+  firstname           String
+  lastname            String
+  email               String
+  dateInvited         DateTime  @default(now())
+  dateRegistered      DateTime? // When they actually sign up
+  bpiMembershipStatus String    @default("Not Registered")
+  profileSetup        Boolean   @default(false)
+  bptSpent            Float     @default(0.5) // BPT spent per invite
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, email]) // Prevent duplicate contacts per user
+  @@index([userId])
+  @@index([email])
+}
+
+model InviteUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  date      String   // Format: YYYY-MM-DD for daily tracking
+  count     Int      @default(1)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, date]) // Track daily usage per user
+  @@index([userId, date])
 }
