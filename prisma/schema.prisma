@@ -1,0 +1,911 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("POSTGRES_URL")
+}
+
+model User {
+  id                 String               @id @default(cuid())
+  name               String?
+  email              String?              @unique
+  emailVerified      DateTime?
+  image              String?
+  firstname          String?
+  lastname           String?
+  mobile             String?
+  ssc                String?
+  gender             String?
+  address            String?
+  city               String?
+  state              String?
+  zip                String?
+  country            String?
+  profilePic         String?
+  secondaryEmail     String?
+  username           String?              @unique
+  referralLink       String?
+  userType           String               @default("user")
+  rank               String               @default("Newbie")
+  activated          Boolean              @default(false)
+  kyc                String?
+  kycPending         Int                  @default(0)
+  withdrawBan        Int                  @default(0)
+  verified           Boolean              @default(false)
+  pendingActivation  Int?
+  isVip              Int                  @default(0)
+  isShelter          Int                  @default(0)
+  vipPending         Int                  @default(0)
+  shelterPending     Int                  @default(0)
+  shelterWallet      Int                  @default(0)
+  isShareholder      Int                  @default(0)
+  wallet             Float                @default(0)
+  spendable          Float                @default(0)
+  palliative         Float                @default(0)
+  cashback           Float                @default(0)
+  studentCashback    Float                @default(0)
+  community          Float                @default(0)
+  shareholder        Float                @default(0)
+  shelter            Float                @default(0)
+  education          Float                @default(0)
+  car                Float                @default(0)
+  business           Float                @default(0)
+  solar              Float?
+  legals             Float?
+  land               Float                @default(0)
+  meal               Float                @default(0)
+  health             Float                @default(0)
+  defaultCurrency    Int                  @default(1)
+  level1Count        Int                  @default(0)
+  level2Count        Int                  @default(0)
+  level3Count        Int                  @default(0)
+  level4Count        Int                  @default(0)
+  role               String               @default("user")
+  passwordHash       String?
+  verificationCode   String?
+  resetToken         String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  lastLogin          DateTime             @default(now())
+  legacyId           Int?                 @unique
+  referredBy         String?
+
+  // Membership & Packages
+  activeMembershipPackageId String?
+  membershipActivatedAt     DateTime?
+  membershipExpiresAt       DateTime?
+  renewalCount              Int          @default(0)
+  sponsorId                 String?
+  
+  // BPI Token Wallet (member visible 50% only)
+  bpiTokenWallet     Float                @default(0)
+  
+  // Security wallet (new - for renewal rewards)
+  security           Float                @default(0)
+  
+  // Relationships
+  sponsor                User?                @relation("Sponsorship", fields: [sponsorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sponsored              User[]               @relation("Sponsorship")
+  empowermentPackages    EmpowermentPackage[] @relation("SponsorToEmpowerment")
+  beneficiaryOf          EmpowermentPackage[] @relation("BeneficiaryToEmpowerment")
+
+  accounts               Account[]
+  activeShelters         ActiveShelter[]
+  blogPosts              Blog[]
+  bpiMember              BpiMember?
+  communityPosts         CommunityPost[]
+  fundingHistory         FundingHistory[]
+  notifications          Notification[]
+  packageActivations     PackageActivation[]
+  createdTickets         PalliativeTicket[]   @relation("TicketCreator")
+  ticketsUsed            PalliativeTicket[]
+  passwordResets         PasswordReset[]
+  referralsMade          Referral[]           @relation("ReferredUserToReferrals")
+  referrals              Referral[]           @relation("ReferrerToReferrals")
+  referralTree           ReferralTree?
+  renewalHistory         RenewalHistory[]
+  shelterRewards         ShelterReward[]
+  tokenTransactions      TokenTransaction[]
+  sessions               Session[]
+  storeOrders            StoreOrder[]
+  transactions           Transaction[]
+  transactionHistory     TransactionHistory[]
+  withdrawalHistory      WithdrawalHistory[]
+  youtubeChannels        YoutubeChannel[]
+}
+
+model MembershipPackage {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  packageType   String   @default("STANDARD")  // "STANDARD" | "EMPOWERMENT"
+  
+  // Pricing
+  price         Float
+  vat           Float
+  
+  // Activation Referral Rewards (L1-L4)
+  cash_l1       Float    @default(0)
+  cash_l2       Float    @default(0)
+  cash_l3       Float    @default(0)
+  cash_l4       Float    @default(0)
+  
+  palliative_l1 Float    @default(0)
+  palliative_l2 Float    @default(0)
+  palliative_l3 Float    @default(0)
+  palliative_l4 Float    @default(0)
+  
+  bpt_l1        Float    @default(0)  // BPT in Naira value (before 50/50 split)
+  bpt_l2        Float    @default(0)
+  bpt_l3        Float    @default(0)
+  bpt_l4        Float    @default(0)
+  
+  // Cashback (Gold+, Platinum+, Travel)
+  cashback_l1   Float?
+  cashback_l2   Float?
+  cashback_l3   Float?
+  cashback_l4   Float?
+  
+  // Shelter Rewards (10 levels for Gold/Platinum - admin only visibility)
+  shelter_l1    Float?
+  shelter_l2    Float?
+  shelter_l3    Float?
+  shelter_l4    Float?
+  shelter_l5    Float?
+  shelter_l6    Float?
+  shelter_l7    Float?
+  shelter_l8    Float?
+  shelter_l9    Float?
+  shelter_l10   Float?
+  
+  // Renewal Settings
+  hasRenewal          Boolean  @default(true)
+  renewalFee          Float?
+  renewalCycle        Int      @default(365)  // days
+  
+  // Renewal Rewards (L1-L4 only)
+  renewal_cash_l1     Float?
+  renewal_cash_l2     Float?
+  renewal_cash_l3     Float?
+  renewal_cash_l4     Float?
+  
+  renewal_palliative_l1 Float?
+  renewal_palliative_l2 Float?
+  renewal_palliative_l3 Float?
+  renewal_palliative_l4 Float?
+  
+  renewal_bpt_l1      Float?
+  renewal_bpt_l2      Float?
+  renewal_bpt_l3      Float?
+  renewal_bpt_l4      Float?
+  
+  renewal_cashback_l1 Float?
+  renewal_cashback_l2 Float?
+  renewal_cashback_l3 Float?
+  renewal_cashback_l4 Float?
+  
+  // Renewal Welfare Wallets (Health, Meal, Security - NO Shelter on renewal)
+  renewal_health_l1   Float?
+  renewal_health_l2   Float?
+  renewal_health_l3   Float?
+  renewal_health_l4   Float?
+  
+  renewal_meal_l1     Float?
+  renewal_meal_l2     Float?
+  renewal_meal_l3     Float?
+  renewal_meal_l4     Float?
+  
+  renewal_security_l1 Float?
+  renewal_security_l2 Float?
+  renewal_security_l3 Float?
+  renewal_security_l4 Float?
+  
+  // Features & metadata
+  features        String[]  @default([])
+  isActive        Boolean   @default(true)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model EmpowermentPackage {
+  id                      String    @id @default(cuid())
+  sponsorId               String
+  beneficiaryId           String    // Sub-account (child/skill trainee)
+  
+  // Package Details
+  packageFee              Float     @default(330000)
+  vat                     Float     @default(24750)
+  empowermentType         String    // "CHILD_EDUCATION" | "VOCATIONAL_SKILL"
+  
+  // Status & Lifecycle
+  status                  String    @default("Active - Countdown Running")
+  // Possible statuses: 
+  // "Active - Countdown Running"
+  // "Pending Maturity (24 Months)"
+  // "Approved - Activation Pending"
+  // "Empowerment Released (Tax Applied)"
+  // "Fallback Protection Activated"
+  // "Converted to Regular Plus"
+  
+  activatedAt             DateTime  @default(now())
+  maturityDate            DateTime  // activatedAt + 24 months
+  approvedAt              DateTime?
+  releasedAt              DateTime?
+  
+  // Empowerment Values (After 24 months)
+  grossEmpowermentValue   Float     @default(7250000)  // ₦7.25M
+  netEmpowermentValue     Float     @default(6706250)  // After 7.5% tax
+  grossSponsorReward      Float     @default(1000000)  // ₦1M
+  netSponsorReward        Float     @default(925000)   // After 7.5% tax
+  
+  // Fallback Protection
+  fallbackEnabled         Boolean   @default(false)
+  fallbackGrossAmount     Float     @default(396000)   // ₦330k + 20%
+  fallbackNetAmount       Float     @default(366300)   // After 7.5% tax
+  
+  // Conversion Option
+  isConverted             Boolean   @default(false)
+  convertedAt             DateTime?
+  conversionAmount        Float?    // ₦64,000 for Regular Plus + MYNGUL
+  walletCreditAmount      Float?    // Remaining restricted to community
+  
+  // Admin Controls
+  adminApproved           Boolean   @default(false)
+  approvedBy              String?
+  rejectionReason         String?
+  
+  // Beneficiary Restrictions
+  beneficiaryCanView      Boolean   @default(true)
+  beneficiaryCanWithdraw  Boolean   @default(false)
+  
+  // Tax Records
+  taxRate                 Float     @default(7.5)
+  totalTaxDeducted        Float     @default(0)
+  
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  sponsor                 User      @relation("SponsorToEmpowerment", fields: [sponsorId], references: [id])
+  beneficiary             User      @relation("BeneficiaryToEmpowerment", fields: [beneficiaryId], references: [id])
+  
+  transactions            EmpowermentTransaction[]
+}
+
+model SystemWallet {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  walletType        String   // "BUY_BACK_BURN" | "TREASURY" | "COMMUNITY_SUPPORT"
+  
+  balanceNgn        Float    @default(0)
+  balanceUsd        Float    @default(0)
+  balanceBpt        Float    @default(0)  // Equivalent BPT tokens
+  
+  isPubliclyVisible Boolean  @default(false)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  burnEvents        BurnEvent[]
+  buyBackEvents     BuyBackEvent[]
+}
+
+model BuyBackEvent {
+  id              String   @id @default(cuid())
+  systemWalletId  String
+  
+  amountNgn       Float    // Amount used to buy back
+  amountUsd       Float
+  bptPurchased    Float    // BPT tokens purchased
+  exchangeRate    Float    // BPT/NGN rate at time (currently ₦5)
+  
+  triggeredBy     String   // Admin user ID
+  description     String?
+  
+  createdAt       DateTime @default(now())
+  
+  systemWallet    SystemWallet @relation(fields: [systemWalletId], references: [id])
+  
+  @@index([systemWalletId])
+}
+
+model BurnEvent {
+  id              String   @id @default(cuid())
+  systemWalletId  String?
+  
+  amountBpt       Float    // BPT burned
+  valueNgn        Float    // ₦ value at burn time
+  valueUsd        Float    // $ value at burn time
+  
+  burnType        String   // "MANUAL_ADMIN" | "AUTOMATIC_THRESHOLD"
+  triggeredBy     String?  // Admin user ID
+  txHash          String?  // Blockchain transaction hash
+  
+  description     String?
+  
+  createdAt       DateTime @default(now())
+  
+  systemWallet    SystemWallet? @relation(fields: [systemWalletId], references: [id])
+  
+  @@index([systemWalletId])
+}
+
+model Referral {
+  id         String   @id @default(cuid())
+  referrerId String
+  referredId String
+  status     String   @default("pending")
+  rewardPaid Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  referred   User     @relation("ReferredUserToReferrals", fields: [referredId], references: [id], onDelete: Cascade)
+  referrer   User     @relation("ReferrerToReferrals", fields: [referrerId], references: [id], onDelete: Cascade)
+
+  @@unique([referrerId, referredId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expires   DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BpiMember {
+  id                String             @id @default(cuid())
+  userId            String             @unique
+  membershipType    String             @default("regular")
+  isVip             Boolean            @default(false)
+  isActivated       Boolean            @default(false)
+  pendingActivation Boolean            @default(false)
+  isShelter         Boolean            @default(false)
+  shelterWallet     Boolean            @default(false)
+  shelterPending    Boolean            @default(false)
+  wallet            Float              @default(0)
+  spendable         Float              @default(0)
+  cashback          Float              @default(0)
+  defaultCurrency   String             @default("NGN")
+  referralLink      String?
+  profilePic        String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ticketsUsed       PalliativeTicket[]
+  transactions      Transaction[]
+  youtubeChannels   YoutubeChannel[]
+}
+
+model PalliativePackage {
+  id          String              @id @default(cuid())
+  name        String
+  amount      Float
+  description String?
+  benefits    String?
+  active      Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  activations PackageActivation[]
+}
+
+model PackageActivation {
+  id        String            @id @default(cuid())
+  userId    String
+  packageId String
+  amount    Float
+  status    String            @default("pending")
+  createdAt DateTime          @default(now())
+  expiresAt DateTime?
+  package   PalliativePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PalliativeTicket {
+  id            String         @id @default(cuid())
+  userId        String
+  offerId       String
+  partnerId     String
+  categoryId    String
+  code          String         @unique
+  status        String         @default("active")
+  dateClaimed   DateTime?
+  createdBy     String
+  activatedDate DateTime       @default(now())
+  createdAt     DateTime       @default(now())
+  category      TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  creator       User           @relation("TicketCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  member        BpiMember      @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "PalliativeTicket_member_fkey")
+  offer         PartnerOffer   @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  partner       Partner        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Partner {
+  id          String             @id @default(cuid())
+  name        String
+  logo        String?
+  description String?
+  status      Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  tickets     PalliativeTicket[]
+  offers      PartnerOffer[]
+}
+
+model PartnerOffer {
+  id          String             @id @default(cuid())
+  partnerId   String
+  offer       String
+  amount      Float
+  image       String?
+  locationId  String?
+  description String?
+  status      Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  tickets     PalliativeTicket[]
+  partner     Partner            @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+}
+
+model TicketCategory {
+  id          String             @id @default(cuid())
+  name        String
+  description String?
+  icon        String?
+  tickets     PalliativeTicket[]
+}
+
+model YoutubeChannel {
+  id          String    @id @default(cuid())
+  userId      String
+  channelName String
+  channelUrl  String
+  status      String    @default("pending")
+  subscribers Int?
+  verified    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  member      BpiMember @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "YoutubeChannel_member_fkey")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Transaction {
+  id              String    @id @default(cuid())
+  userId          String
+  transactionType String
+  amount          Float
+  description     String
+  status          String    @default("pending")
+  reference       String?
+  createdAt       DateTime  @default(now())
+  member          BpiMember @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "Transaction_member_fkey")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LeadershipPool {
+  id          String   @id @default(cuid())
+  source      String   @unique
+  amount      Float
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model CommunityStats {
+  id                String   @id @default(cuid())
+  totalMembers      Int      @default(0)
+  palliativeMembers Int      @default(0)
+  totalPartners     Int      @default(0)
+  totalOffers       Int      @default(0)
+  activeTickets     Int      @default(0)
+  lastUpdated       DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean  @default(false)
+  userId    String?
+  isGlobal  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ReferralTree {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  referredBy   Int?
+  level1       Int?
+  level2       Int?
+  level3       Int?
+  level4       Int?
+  level5       Int?
+  level6       Int?
+  level7       Int?
+  level8       Int?
+  level9       Int?
+  level10      Int?
+  referralDate DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ActiveShelter {
+  id             String   @id @default(cuid())
+  userId         String
+  shelterPackage Int
+  shelterOption  Int
+  starterPack    Int?
+  amount         Int?
+  status         String?
+  activatedDate  DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CommissionWallet {
+  id        String @id @default(cuid())
+  packageId Int
+  direct    Float
+  level1    Float
+  level2    Float
+  level3    Float
+  level4    Float
+  level5    Float
+  level6    Float
+  level7    Float
+  level8    Float
+  level9    Float
+  level10   Float
+}
+
+model CommissionPalliative {
+  id        String @id @default(cuid())
+  packageId Int
+  direct    Float
+  level1    Float
+  level2    Float
+  level3    Float
+  level4    Float
+  level5    Float
+  level6    Float
+  level7    Float
+  level8    Float
+  level9    Float
+  level10   Float
+}
+
+model CommissionShelter {
+  id        String @id @default(cuid())
+  packageId Int
+  direct    Float
+  level1    Float
+  level2    Float
+  level3    Float
+  level4    Float
+  level5    Float
+  level6    Float
+  level7    Float
+  level8    Float
+  level9    Float
+  level10   Float
+}
+
+model TransactionHistory {
+  id              String   @id @default(cuid())
+  userId          String
+  orderId         Int?
+  transactionType String
+  amount          String
+  description     String?
+  transactionDate DateTime @default(now())
+  status          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WithdrawalHistory {
+  id          String   @id @default(cuid())
+  userId      String
+  description String
+  amount      Float
+  currency    String
+  status      String
+  date        DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model FundingHistory {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String
+  description String
+  amount      Float
+  currency    String
+  status      String
+  date        DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model InvestorsPool {
+  id     String @id @default(cuid())
+  source String @unique
+  amount Float
+}
+
+model CurrencyManagement {
+  id      String  @id @default(cuid())
+  name    String
+  symbol  String
+  rate    Float
+  default Int?
+  sign    String?
+  country String?
+}
+
+model StoreProduct {
+  id                String       @id @default(cuid())
+  pickupCenterId    Int
+  productName       String
+  unit              String
+  quantity          Int
+  price             Float
+  image1            String
+  image2            String?
+  image3            String?
+  image4            String?
+  description       String
+  discount          Int          @default(0)
+  pickupReward      Float        @default(0)
+  revenue           Float        @default(0)
+  direct            Float        @default(0)
+  level1            Float        @default(0)
+  level2            Float        @default(0)
+  level3            Float        @default(0)
+  level4            Float        @default(0)
+  cashbackDirect    Float        @default(0)
+  cashbackLevel1    Float        @default(0)
+  cashbackLevel2    Float        @default(0)
+  cashbackLevel3    Float        @default(0)
+  cashbackLevel4    Float        @default(0)
+  studentPalliative Int          @default(0)
+  lifetimeRoyalty   Float        @default(0)
+  logistics         Float        @default(0)
+  inStock           Int          @default(1)
+  orders            StoreOrder[]
+}
+
+model StoreOrder {
+  id           String       @id @default(cuid())
+  productId    String
+  userId       String
+  quantity     Int
+  amount       Float
+  note         String?
+  status       String
+  deliveryDate DateTime?
+  orderDate    DateTime     @default(now())
+  product      StoreProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CommunityCategory {
+  id           String          @id @default(cuid())
+  categoryName String
+  categoryIcon String
+  slug         String          @unique
+  posts        CommunityPost[]
+}
+
+model CommunityPost {
+  id          String               @id @default(cuid())
+  categoryId  String
+  authorId    String
+  amount      Float                @default(0)
+  title       String
+  post        String
+  image       String?
+  views       Int                  @default(0)
+  dateCreated DateTime             @default(now())
+  author      User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  category    CommunityCategory    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  replies     CommunityPostReply[]
+}
+
+model CommunityPostReply {
+  id         String        @id @default(cuid())
+  postId     String
+  categoryId String
+  userId     String
+  reply      String
+  dateAdded  DateTime      @default(now())
+  post       CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+model Blog {
+  id        String   @id @default(cuid())
+  title     String
+  slug      String   @unique
+  content   String
+  image     String?
+  tags      String?
+  category  String?
+  status    String   @default("draft")
+  authorId  String
+  viewers   Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+model SupportTicket {
+  id          String        @id @default(cuid())
+  title       String
+  description String
+  createdBy   String
+  status      String        @default("open")
+  assignedTo  Int?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  replies     TicketReply[]
+}
+
+model TicketReply {
+  id        String        @id @default(cuid())
+  ticketId  String
+  userId    Int
+  reply     String
+  createdAt DateTime      @default(now())
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model Assessment {
+  id                        String    @id @default(cuid())
+  installerSsc              String?
+  ssc                       String?
+  clientName                String
+  clientEmail               String
+  region                    String?
+  state                     String?
+  totalLoad                 Float
+  inverterCapacity          Float
+  batteryCapacity           Int
+  solarPanels               Int
+  isBpiMember               Boolean
+  installationType          String
+  installationAddress       String
+  contactPerson             String
+  contactPhone              String
+  preferredInstallationDate DateTime?
+  paymentReceiptPath        String?
+  status                    String
+  amountPaid                Float
+  createdAt                 DateTime  @default(now())
+}
+
+model RenewalHistory {
+  id                String   @id @default(cuid())
+  userId            String
+  packageId         String
+  packageName       String
+  
+  renewalNumber     Int      // 1st, 2nd, 3rd renewal
+  renewalFee        Float
+  vat               Float
+  totalPaid         Float
+  
+  renewedAt         DateTime @default(now())
+  expiresAt         DateTime
+  
+  // Rewards Distributed
+  cashDistributed       Float @default(0)
+  bptDistributed        Float @default(0)
+  palliativeDistributed Float @default(0)
+  cashbackDistributed   Float @default(0)
+  healthDistributed     Float @default(0)
+  mealDistributed       Float @default(0)
+  securityDistributed   Float @default(0)
+  
+  user              User     @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+}
+
+model ShelterReward {
+  id              String   @id @default(cuid())
+  userId          String
+  level           Int      // 1-10 (admin only visibility for L5-L10)
+  amount          Float
+  packageType     String   // "GOLD_PLUS" | "PLATINUM_PLUS"
+  sourceActivationId String // PackageActivation ID that triggered it
+  
+  createdAt       DateTime @default(now())
+  
+  user            User     @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+}
+
+model TokenTransaction {
+  id                String   @id @default(cuid())
+  userId            String
+  transactionType   String   // "REWARD" | "PURCHASE" | "BURN" | "TRANSFER"
+  
+  // Amount split (50/50 rule)
+  grossAmount       Float    // Total BPT value in ₦
+  memberAmount      Float    // 50% to user wallet
+  buyBackAmount     Float    // 50% to buy-back wallet
+  
+  source            String   // "MEMBERSHIP_ACTIVATION" | "RENEWAL" | "REFERRAL_L1" etc.
+  sourceId          String?  // Related PackageActivation/Renewal ID
+  
+  description       String?
+  
+  createdAt         DateTime @default(now())
+  
+  user              User     @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([transactionType])
+}
+
+model EmpowermentTransaction {
+  id                    String   @id @default(cuid())
+  empowermentPackageId  String
+  transactionType       String   // "ACTIVATION" | "MATURITY" | "APPROVAL" | "RELEASE" | "FALLBACK" | "CONVERSION"
+  
+  grossAmount           Float
+  taxAmount             Float
+  netAmount             Float
+  
+  description           String
+  performedBy           String?  // Admin user ID
+  
+  createdAt             DateTime @default(now())
+  
+  empowermentPackage    EmpowermentPackage @relation(fields: [empowermentPackageId], references: [id])
+  
+  @@index([empowermentPackageId])
+}
+
+model BptConversionRate {
+  id              String   @id @default(cuid())
+  rateUsd         Float    @default(0.002)  // $0.002 per BPT
+  rateNgn         Float    @default(5)      // ₦5 per BPT
+  isActive        Boolean  @default(true)
+  effectiveDate   DateTime @default(now())
+  createdBy       String?  // Admin user ID
+  createdAt       DateTime @default(now())
+}
