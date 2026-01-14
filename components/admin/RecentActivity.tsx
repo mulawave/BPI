@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { MdPerson, MdPayment, MdSettings, MdNotifications } from "react-icons/md";
 import { formatDistanceToNow } from "date-fns";
 
@@ -15,6 +16,9 @@ interface Activity {
 
 interface RecentActivityProps {
   activities: Activity[];
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 const activityIcons: Record<string, React.ElementType> = {
@@ -30,14 +34,18 @@ const statusColors: Record<string, string> = {
   failed: "text-red-600 bg-red-50 dark:bg-red-950/30 dark:text-red-400",
 };
 
-export default function RecentActivity({ activities }: RecentActivityProps) {
+export default function RecentActivity({ activities, hasMore, loadingMore, onLoadMore }: RecentActivityProps) {
+  const router = useRouter();
   return (
     <div className="rounded-xl border border-slate-200/80 bg-white/80 p-6 shadow-lg backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/80">
       <div className="mb-6 flex items-center justify-between">
         <h3 className="text-lg font-bold text-slate-900 dark:text-white">
           Recent Activity
         </h3>
-        <button className="text-sm font-medium text-green-600 transition-colors hover:text-green-700 dark:text-green-400">
+        <button
+          onClick={() => router.push("/admin/activity")}
+          className="text-sm font-medium text-green-600 transition-colors hover:text-green-700 dark:text-green-400"
+        >
           View All
         </button>
       </div>
@@ -93,6 +101,19 @@ export default function RecentActivity({ activities }: RecentActivityProps) {
               </motion.div>
             );
           })}
+
+          {/* Pagination */}
+          {hasMore && (
+            <div className="flex justify-center pt-4">
+              <button
+                onClick={onLoadMore}
+                disabled={loadingMore}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900"
+              >
+                {loadingMore ? "Loading..." : "Load More"}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

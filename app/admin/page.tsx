@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { motion } from "framer-motion";
 import {
   MdPeople,
@@ -30,10 +31,13 @@ export default function AdminDashboardPage() {
   // Get dashboard statistics
   const { data: stats, isLoading } = api.admin.getDashboardStats.useQuery();
 
-  // Get recent activity
-  const { data: activities } = api.admin.getRecentActivity.useQuery({
+  // Paginated recent activity
+  const [activityCursor, setActivityCursor] = React.useState<string | undefined>(undefined);
+  const { data: activityPage, isFetching: isFetchingActivity } = api.admin.getRecentActivity.useQuery({
     limit: 10,
+    cursor: activityCursor,
   });
+  const activities = activityPage?.items || [];
 
   // Get new enhanced data
   const { data: alerts } = api.admin.getDashboardAlerts.useQuery();
@@ -192,7 +196,14 @@ export default function AdminDashboardPage() {
           <div className="relative overflow-hidden rounded-2xl border border-border bg-card/75 backdrop-blur-xl shadow-xl shadow-black/5 dark:shadow-black/20">
             <div className="absolute -bottom-20 -right-20 h-40 w-40 rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--secondary))] opacity-8 blur-3xl" />
             <div className="relative">
-              <RecentActivity activities={activities || []} />
+              <RecentActivity
+                activities={activities}
+                hasMore={Boolean(activityPage?.nextCursor)}
+                loadingMore={isFetchingActivity}
+                onLoadMore={() => {
+                  if (activityPage?.nextCursor) setActivityCursor(activityPage.nextCursor);
+                }}
+              />
             </div>
           </div>
         </motion.div>
@@ -246,6 +257,24 @@ export default function AdminDashboardPage() {
           </motion.div>
         )}
       </div>
+
+      {/* Financial Overview CTA */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.5 }}
+      >
+        <div className="relative overflow-hidden rounded-2xl border border-border bg-card/75 backdrop-blur-xl shadow-xl shadow-black/5 dark:shadow-black/20">
+          <div className="absolute -top-20 -left-20 h-40 w-40 rounded-full bg-gradient-to-br from-[hsl(var(--secondary))] to-[hsl(var(--primary))] opacity-8 blur-3xl" />
+          <div className="relative p-6 flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-xl font-semibold">Financial Overview</h3>
+              <p className="text-sm text-muted-foreground">Full analytics, breakdowns, and exports moved to a dedicated page.</p>
+            </div>
+            <a href="/admin/financials" className="rounded-lg border px-4 py-2 text-sm hover:bg-muted">Open Financials</a>
+          </div>
+        </div>
+      </motion.div>
 
       {/* Admin Activity Tracker */}
       <motion.div

@@ -51,7 +51,7 @@ export default function AdminLayout({
   }, [status, adminAccess, isLoading, router]);
 
   // Get pending payments count
-  const { data: dashboardStats } = api.adminAuth.getDashboardStats.useQuery(
+  const { data: dashboardStats } = api.admin.getDashboardStats.useQuery(
     undefined,
     {
       enabled: (adminAccess?.isAdmin || false) && !isAdminAuthRoute,

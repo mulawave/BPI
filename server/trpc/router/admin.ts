@@ -3321,7 +3321,12 @@ export const adminRouter = createTRPCRouter({
     const revenueTransactions = await prisma.transaction.aggregate({
       where: {
         status: "completed",
-        transactionType: "membership_activation",
+        transactionType: { in: [
+          "membership_activation",
+          "MEMBERSHIP_ACTIVATION",
+          "deposit",
+          "DEPOSIT",
+        ] },
         createdAt: { gte: thirtyDaysAgo },
       },
       _sum: { amount: true },
@@ -3331,7 +3336,12 @@ export const adminRouter = createTRPCRouter({
     const previousRevenue = await prisma.transaction.aggregate({
       where: {
         status: "completed",
-        transactionType: "membership_activation",
+        transactionType: { in: [
+          "membership_activation",
+          "MEMBERSHIP_ACTIVATION",
+          "deposit",
+          "DEPOSIT",
+        ] },
         createdAt: {
           gte: new Date(thirtyDaysAgo.getTime() - 30 * 24 * 60 * 60 * 1000),
           lt: thirtyDaysAgo,
@@ -3371,19 +3381,54 @@ export const adminRouter = createTRPCRouter({
 
   // Recent Activity
   getRecentActivity: adminProcedure
-    .input(z.object({ limit: z.number().default(10) }))
+    .input(
+      z.object({
+        limit: z.number().min(1).max(100).default(20),
+        cursor: z.string().optional(),
+        action: z.string().optional(),
+        entity: z.string().optional(),
+        status: z.string().optional(),
+        userId: z.string().optional(),
+        search: z.string().optional(),
+        dateFrom: z.string().optional(),
+        dateTo: z.string().optional(),
+      })
+    )
     .query(async ({ input }) => {
+      const { limit, cursor, action, entity, status, userId, search, dateFrom, dateTo } = input;
+
+      const where: any = {};
+      if (action) where.action = action;
+      if (entity) where.entity = entity;
+      if (status) where.status = status;
+      if (userId) where.userId = userId;
+      if (search) {
+        where.OR = [
+          { action: { contains: search, mode: "insensitive" } },
+          { entity: { contains: search, mode: "insensitive" } },
+          { entityId: { contains: search, mode: "insensitive" } },
+        ];
+      }
+      if (dateFrom || dateTo) {
+        where.createdAt = {
+          ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+          ...(dateTo ? { lte: new Date(dateTo) } : {}),
+        };
+      }
+
       const activities = await prisma.auditLog.findMany({
-        take: input.limit,
+        where,
+        take: limit,
+        skip: cursor ? 1 : 0,
+        cursor: cursor ? { id: cursor } : undefined,
         orderBy: { createdAt: "desc" },
         include: {
-          User: {
-            select: { name: true, email: true },
-          },
+          User: { select: { name: true, email: true } },
         },
       });
 
-      return activities;
+      const nextCursor = activities.length === limit ? activities[activities.length - 1]?.id : undefined;
+      return { items: activities, nextCursor };
     }),
 
   // Chart Data
@@ -3535,6 +3580,113 @@ export const adminRouter = createTRPCRouter({
 
     return alerts;
   }),
+
+  // Financial Summary
+  getFinancialSummary: adminProcedure
+    .input(z.object({
+      dateFrom: z.date().optional(),
+      dateTo: z.date().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const now = new Date();
+      const dateTo = input?.dateTo ?? now;
+      const dateFrom = input?.dateFrom ?? new Date(dateTo.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      const whereRange = { createdAt: { gte: dateFrom, lte: dateTo } };
+
+      // Inflows
+      const deposits = await prisma.transaction.aggregate({
+        where: { ...whereRange, status: "completed", transactionType: { in: ["DEPOSIT", "deposit"] } },
+        _sum: { amount: true },
+      });
+      const vat = await prisma.transaction.aggregate({
+        where: { ...whereRange, status: "completed", transactionType: { in: ["VAT", "vat"] } },
+        _sum: { amount: true },
+      });
+      const withdrawalFeesRaw = await prisma.transaction.aggregate({
+        where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_FEE"] } },
+        _sum: { amount: true },
+      });
+      const withdrawalFees = Math.abs(withdrawalFeesRaw._sum.amount || 0);
+      const membershipRevenueRaw = await prisma.transaction.aggregate({
+        where: { ...whereRange, status: "completed", transactionType: { in: [
+          "MEMBERSHIP_PAYMENT", "membership_payment",
+          "MEMBERSHIP_ACTIVATION", "membership_activation",
+          "MEMBERSHIP_UPGRADE", "membership_upgrade",
+        ] } },
+        _sum: { amount: true },
+      });
+      const membershipRevenue = Math.abs(membershipRevenueRaw._sum.amount || 0);
+
+      // Outflows
+      const withdrawalCash = await prisma.transaction.aggregate({
+        where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_CASH"] } },
+        _sum: { amount: true },
+      });
+      const withdrawalBpt = await prisma.transaction.aggregate({
+        where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_BPT"] } },
+        _sum: { amount: true },
+      });
+      const rewardsBpt = await prisma.transaction.aggregate({
+        where: { ...whereRange, status: "completed", transactionType: { startsWith: "REFERRAL_" } as any },
+        _sum: { amount: true },
+      });
+
+      // BPT activities
+      const convertToContactRaw = await prisma.transaction.aggregate({
+        where: { ...whereRange, status: "completed", walletType: "bpiToken", transactionType: { in: ["CONVERT_TO_CONTACT"] } },
+        _sum: { amount: true },
+      });
+      const convertToContact = Math.abs(convertToContactRaw._sum.amount || 0);
+
+      // Wallet totals
+      const walletTotals = await prisma.user.aggregate({ _sum: {
+        wallet: true, spendable: true, cashback: true, community: true, shareholder: true,
+        education: true, car: true, business: true, palliative: true, studentCashback: true,
+        bpiTokenWallet: true,
+      } });
+
+      // Palliatives
+      const totalPalliativeTickets = await prisma.palliativeTicket.count();
+
+      return {
+        range: { from: dateFrom, to: dateTo },
+        inflows: {
+          deposits: deposits._sum.amount || 0,
+          membershipRevenue,
+          vat: vat._sum.amount || 0,
+          withdrawalFees,
+          total: (deposits._sum.amount || 0) + membershipRevenue + (vat._sum.amount || 0) + withdrawalFees,
+        },
+        outflows: {
+          withdrawalsCash: Math.abs(withdrawalCash._sum.amount || 0),
+          withdrawalsBpt: Math.abs(withdrawalBpt._sum.amount || 0),
+          rewardsBpt: rewardsBpt._sum.amount || 0,
+          total: Math.abs(withdrawalCash._sum.amount || 0) + Math.abs(withdrawalBpt._sum.amount || 0) + (rewardsBpt._sum.amount || 0),
+        },
+        bptActivities: {
+          convertToContact,
+        },
+        wallets: {
+          ngn: {
+            main: walletTotals._sum.wallet || 0,
+            spendable: walletTotals._sum.spendable || 0,
+            cashback: walletTotals._sum.cashback || 0,
+            community: walletTotals._sum.community || 0,
+            shareholder: walletTotals._sum.shareholder || 0,
+            education: walletTotals._sum.education || 0,
+            car: walletTotals._sum.car || 0,
+            business: walletTotals._sum.business || 0,
+            palliative: walletTotals._sum.palliative || 0,
+            studentCashback: walletTotals._sum.studentCashback || 0,
+          },
+          bpt: walletTotals._sum.bpiTokenWallet || 0,
+        },
+        palliatives: {
+          totalTickets: totalPalliativeTickets,
+        },
+      };
+    }),
 
   // Performance Metrics
   getPerformanceMetrics: adminProcedure.query(async () => {
@@ -3882,4 +4034,164 @@ export const adminRouter = createTRPCRouter({
       count: packages.length,
     };
   }),
+
+  // Export Financial Summary to CSV
+  exportFinancialSummaryToCSV: adminProcedure
+    .input(z.object({ dateFrom: z.string().optional(), dateTo: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      const now = new Date();
+      const dateTo = input?.dateTo ? new Date(input.dateTo) : now;
+      const dateFrom = input?.dateFrom ? new Date(input.dateFrom) : new Date(dateTo.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      const whereRange = { createdAt: { gte: dateFrom, lte: dateTo } };
+
+      // Reuse aggregation similar to getFinancialSummary
+      const deposits = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["DEPOSIT", "deposit"] } }, _sum: { amount: true } });
+      const vat = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["VAT", "vat"] } }, _sum: { amount: true } });
+      const withdrawalFeesRaw = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_FEE"] } }, _sum: { amount: true } });
+      const withdrawalFees = Math.abs(withdrawalFeesRaw._sum.amount || 0);
+      const membershipRevenueRaw = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["MEMBERSHIP_PAYMENT", "membership_payment", "MEMBERSHIP_ACTIVATION", "membership_activation", "MEMBERSHIP_UPGRADE", "membership_upgrade"] } }, _sum: { amount: true } });
+      const membershipRevenue = Math.abs(membershipRevenueRaw._sum.amount || 0);
+
+      const withdrawalCash = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_CASH"] } }, _sum: { amount: true } });
+      const withdrawalBpt = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_BPT"] } }, _sum: { amount: true } });
+      const rewardsBpt = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { startsWith: "REFERRAL_" } as any }, _sum: { amount: true } });
+
+      const convertToContactRaw = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", walletType: "bpiToken", transactionType: { in: ["CONVERT_TO_CONTACT"] } }, _sum: { amount: true } });
+      const convertToContact = Math.abs(convertToContactRaw._sum.amount || 0);
+
+      const walletTotals = await prisma.user.aggregate({ _sum: { wallet: true, spendable: true, cashback: true, community: true, shareholder: true, education: true, car: true, business: true, palliative: true, studentCashback: true, bpiTokenWallet: true } });
+
+      const inflowsTotal = (deposits._sum.amount || 0) + membershipRevenue + (vat._sum.amount || 0) + withdrawalFees;
+      const outflowsTotal = Math.abs(withdrawalCash._sum.amount || 0) + Math.abs(withdrawalBpt._sum.amount || 0) + (rewardsBpt._sum.amount || 0);
+
+      // Build CSV
+      const headers = ["Section", "Category", "Amount"];
+      const rows: Array<[string, string, string]> = [];
+      rows.push(["Range", "From", dateFrom.toISOString()]);
+      rows.push(["Range", "To", dateTo.toISOString()]);
+      rows.push(["", "", ""]);
+
+      rows.push(["Inflows", "Deposits", ((deposits._sum.amount || 0)).toString()]);
+      rows.push(["Inflows", "Membership Revenue", (membershipRevenue).toString()]);
+      rows.push(["Inflows", "VAT", ((vat._sum.amount || 0)).toString()]);
+      rows.push(["Inflows", "Withdrawal Fees", (withdrawalFees).toString()]);
+      rows.push(["Inflows", "Total", inflowsTotal.toString()]);
+      rows.push(["", "", ""]);
+
+      rows.push(["Outflows", "Cash Withdrawals", (Math.abs(withdrawalCash._sum.amount || 0)).toString()]);
+      rows.push(["Outflows", "BPT Withdrawals", (Math.abs(withdrawalBpt._sum.amount || 0)).toString()]);
+      rows.push(["Outflows", "BPT Rewards", ((rewardsBpt._sum.amount || 0)).toString()]);
+      rows.push(["Outflows", "Total", outflowsTotal.toString()]);
+      rows.push(["", "", ""]);
+
+      rows.push(["BPT Activities", "Convert To Contact", convertToContact.toString()]);
+      rows.push(["", "", ""]);
+
+      rows.push(["Wallets (NGN)", "main", ((walletTotals._sum.wallet || 0)).toString()]);
+      rows.push(["Wallets (NGN)", "spendable", ((walletTotals._sum.spendable || 0)).toString()]);
+      rows.push(["Wallets (NGN)", "cashback", ((walletTotals._sum.cashback || 0)).toString()]);
+      rows.push(["Wallets (NGN)", "community", ((walletTotals._sum.community || 0)).toString()]);
+      rows.push(["Wallets (NGN)", "shareholder", ((walletTotals._sum.shareholder || 0)).toString()]);
+      rows.push(["Wallets (NGN)", "education", ((walletTotals._sum.education || 0)).toString()]);
+      rows.push(["Wallets (NGN)", "car", ((walletTotals._sum.car || 0)).toString()]);
+      rows.push(["Wallets (NGN)", "business", ((walletTotals._sum.business || 0)).toString()]);
+      rows.push(["Wallets (NGN)", "palliative", ((walletTotals._sum.palliative || 0)).toString()]);
+      rows.push(["Wallets (NGN)", "studentCashback", ((walletTotals._sum.studentCashback || 0)).toString()]);
+      rows.push(["Wallets (BPT)", "bpiTokenWallet", ((walletTotals._sum.bpiTokenWallet || 0)).toString()]);
+
+      const csvContent = [
+        headers.join(","),
+        ...rows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")),
+      ].join("\n");
+
+      return {
+        data: csvContent,
+        filename: `financial-summary-${new Date().toISOString().split("T")[0]}.csv`,
+        count: rows.length,
+        range: { from: dateFrom, to: dateTo },
+      };
+    }),
+
+  // Export Audit Logs to CSV
+  exportAuditLogsToCSV: adminProcedure
+    .input(
+      z.object({
+        filters: z
+          .object({
+            action: z.string().optional(),
+            entity: z.string().optional(),
+            status: z.string().optional(),
+            userId: z.string().optional(),
+            search: z.string().optional(),
+            dateFrom: z.string().optional(),
+            dateTo: z.string().optional(),
+          })
+          .optional(),
+      }),
+    )
+    .query(async ({ input }) => {
+      const where: any = {};
+      const f = input.filters;
+      if (f?.action) where.action = f.action;
+      if (f?.entity) where.entity = f.entity;
+      if (f?.status) where.status = f.status;
+      if (f?.userId) where.userId = f.userId;
+      if (f?.search) {
+        where.OR = [
+          { action: { contains: f.search, mode: "insensitive" } },
+          { entity: { contains: f.search, mode: "insensitive" } },
+          { entityId: { contains: f.search, mode: "insensitive" } },
+        ];
+      }
+      if (f?.dateFrom || f?.dateTo) {
+        where.createdAt = {
+          ...(f.dateFrom ? { gte: new Date(f.dateFrom) } : {}),
+          ...(f.dateTo ? { lte: new Date(f.dateTo) } : {}),
+        };
+      }
+
+      const logs = await prisma.auditLog.findMany({
+        where,
+        include: {
+          User: { select: { email: true, name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const headers = [
+        "ID",
+        "Created At",
+        "Action",
+        "Entity",
+        "Entity ID",
+        "User Email",
+        "User Name",
+        "Status",
+        "Changes",
+      ];
+
+      const rows = logs.map((log: any) => [
+        log.id,
+        log.createdAt.toISOString(),
+        log.action,
+        log.entity || "",
+        log.entityId || "",
+        log.User?.email || "",
+        log.User?.name || "",
+        log.status || "",
+        (typeof log.changes === "string" ? log.changes : JSON.stringify(log.changes)) || "",
+      ]);
+
+      const csvContent = [
+        headers.join(","),
+        ...rows.map((row) => row.map((cell) => `"${cell.toString().replace(/"/g, '""')}"`).join(",")),
+      ].join("\n");
+
+      return {
+        data: csvContent,
+        filename: `audit-logs-${new Date().toISOString().split("T")[0]}.csv`,
+        count: logs.length,
+      };
+    }),
 });
