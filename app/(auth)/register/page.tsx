@@ -6,14 +6,23 @@ import Image from "next/image";
 import RegisterForm from "@/components/auth/RegisterForm";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { api } from "@/client/trpc";
 
 
 export default function RegisterPage() {
   const searchParams = useSearchParams();
   const refId = searchParams?.get("ref") || "1";
   const [showInvite, setShowInvite] = React.useState(true);
-  const inviter = refId !== "1" ? "Dominique Fravoux" : "Administrator";
+  
+  // Fetch referrer info
+  const { data: referrerData, isLoading } = api.auth.getReferrerInfo.useQuery(
+    { refId },
+    { enabled: !!refId }
+  );
+  
+  const inviter = referrerData?.name || (isLoading ? "Loading..." : "Administrator");
   const inviteMsg = `You have been invited by ${inviter}.`;
+  
   return (
     <div className="min-h-screen bg-[radial-gradient(1200px_800px_at_20%_10%,#2a6b47_0%,#0f3a29_35%,#0b2b1f_70%)] flex items-center justify-center p-4 md:p-10">
       <div className="flex w-full max-w-[1440px] h-[750px] rounded-2xl shadow-2xl overflow-visible backdrop-blur relative">

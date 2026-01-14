@@ -14,13 +14,13 @@ export async function getReferralChain(userId: string, maxLevels: number = 4): P
     const referral = await prisma.referral.findFirst({
       where: { referredId: currentUserId },
       include: {
-        referrer: true,
+        User_Referral_referrerIdToUser: true,
       },
     });
 
-    if (referral && referral.referrer) {
-      chain.push(referral.referrer);
-      currentUserId = referral.referrer.id;
+    if (referral && referral.User_Referral_referrerIdToUser) {
+      chain.push(referral.User_Referral_referrerIdToUser);
+      currentUserId = referral.User_Referral_referrerIdToUser.id;
     } else {
       // No more referrers in the chain
       break;

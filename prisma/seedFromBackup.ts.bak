@@ -1,0 +1,145 @@
+import { PrismaClient } from "@prisma/client";
+import {
+  membershipPackagesBackup,
+  adminSettingsBackup,
+  systemWalletsBackup,
+  bptConversionRatesBackup,
+  youtubePlansBackup,
+  thirdPartyPlatformsBackup,
+  palliativeOptionsBackup,
+  communityFeaturesBackup,
+  leadershipPoolsBackup,
+  investorsPoolsBackup,
+} from "./seed-data/systemDataBackup";
+
+const prisma = new PrismaClient();
+
+async function seedFromBackup() {
+  console.log("🌱 Restoring database from backup...");
+
+  try {
+    // 1. Seed Membership Packages
+    console.log("\n📦 Seeding Membership Packages...");
+    for (const pkg of membershipPackagesBackup) {
+      await prisma.membershipPackage.upsert({
+        where: { name: pkg.name },
+        update: pkg,
+        create: pkg,
+      });
+      console.log(`  ✅ ${pkg.name}`);
+    }
+
+    // 2. Seed Admin Settings
+    console.log("\n⚙️  Seeding Admin Settings...");
+    for (const setting of adminSettingsBackup) {
+      await prisma.adminSettings.upsert({
+        where: { settingKey: setting.settingKey },
+        update: setting,
+        create: setting,
+      });
+      console.log(`  ✅ ${setting.settingKey}`);
+    }
+
+    // 3. Seed System Wallets
+    console.log("\n💰 Seeding System Wallets...");
+    for (const wallet of systemWalletsBackup) {
+      await prisma.systemWallet.upsert({
+        where: { name: wallet.name },
+        update: {},
+        create: wallet,
+      });
+      console.log(`  ✅ ${wallet.name}`);
+    }
+
+    // 4. Seed BPT Conversion Rates
+    console.log("\n💱 Seeding BPT Conversion Rates...");
+    for (const rate of bptConversionRatesBackup) {
+      const existing = await prisma.bptConversionRate.findFirst({
+        where: { conversionRate: rate.conversionRate },
+      });
+      if (!existing) {
+        await prisma.bptConversionRate.create({ data: rate });
+        console.log(`  ✅ Rate: ${rate.conversionRate}`);
+      }
+    }
+
+    // 5. Seed YouTube Plans
+    console.log("\n📺 Seeding YouTube Plans...");
+    for (const plan of youtubePlansBackup) {
+      await prisma.youtubePlan.upsert({
+        where: { name: plan.name },
+        update: plan,
+        create: plan,
+      });
+      console.log(`  ✅ ${plan.name}`);
+    }
+
+    // 6. Seed Third Party Platforms
+    console.log("\n🔗 Seeding Third Party Platforms...");
+    for (const platform of thirdPartyPlatformsBackup) {
+      await prisma.thirdPartyPlatform.upsert({
+        where: { name: platform.name },
+        update: platform,
+        create: platform,
+      });
+      console.log(`  ✅ ${platform.name}`);
+    }
+
+    // 7. Seed Palliative Options
+    console.log("\n🏥 Seeding Palliative Options...");
+    for (const option of palliativeOptionsBackup) {
+      await prisma.palliativeOption.upsert({
+        where: { slug: option.slug },
+        update: option,
+        create: option,
+      });
+      console.log(`  ✅ ${option.name}`);
+    }
+
+    // 8. Seed Community Features
+    console.log("\n👥 Seeding Community Features...");
+    for (const feature of communityFeaturesBackup) {
+      await prisma.communityFeature.upsert({
+        where: { slug: feature.slug },
+        update: feature,
+        create: feature,
+      });
+      console.log(`  ✅ ${feature.name}`);
+    }
+
+    // 9. Seed Leadership Pools
+    console.log("\n🏆 Seeding Leadership Pools...");
+    for (const pool of leadershipPoolsBackup) {
+      await prisma.leadershipPool.upsert({
+        where: { source: pool.source },
+        update: pool,
+        create: pool,
+      });
+      console.log(`  ✅ ${pool.source}`);
+    }
+
+    // 10. Seed Investors Pools
+    console.log("\n💼 Seeding Investors Pools...");
+    for (const pool of investorsPoolsBackup) {
+      await prisma.investorsPool.upsert({
+        where: { source: pool.source },
+        update: pool,
+        create: pool,
+      });
+      console.log(`  ✅ ${pool.source}`);
+    }
+
+    console.log("\n✅ Database restore complete!");
+  } catch (error) {
+    console.error("❌ Error during restore:", error);
+    throw error;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+seedFromBackup()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });

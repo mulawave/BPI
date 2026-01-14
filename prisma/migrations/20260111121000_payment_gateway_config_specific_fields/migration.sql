@@ -1,0 +1,15 @@
+-- Add gateway-specific configuration fields to PaymentGatewayConfig
+
+ALTER TABLE "PaymentGatewayConfig"
+ADD COLUMN IF NOT EXISTS "merchantKey" TEXT,
+ADD COLUMN IF NOT EXISTS "apiUrl" TEXT,
+ADD COLUMN IF NOT EXISTS "bankName" TEXT,
+ADD COLUMN IF NOT EXISTS "bankAccount" TEXT,
+ADD COLUMN IF NOT EXISTS "bankAccountName" TEXT,
+ADD COLUMN IF NOT EXISTS "tokenName" TEXT,
+ADD COLUMN IF NOT EXISTS "tokenSymbol" TEXT,
+ADD COLUMN IF NOT EXISTS "tokenContractAddress" TEXT,
+ADD COLUMN IF NOT EXISTS "tokenomicsUrl" TEXT,
+ADD COLUMN IF NOT EXISTS "homePageUrl" TEXT,
+ADD COLUMN IF NOT EXISTS "currentPriceNgn" DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS "currentPriceUsd" DOUBLE PRECISION;

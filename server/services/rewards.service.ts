@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { randomUUID } from "crypto";
 
 const BUY_BACK_WALLET_NAME = "BPI Token Buy-Back Wallet";
 
@@ -28,9 +29,11 @@ export async function distributeBptReward(
   if (!buyBackWallet) {
     buyBackWallet = await prisma.systemWallet.create({
       data: {
+        id: randomUUID(),
         name: BUY_BACK_WALLET_NAME,
         walletType: "BUY_BACK_BURN",
         balanceBpt: 0,
+        updatedAt: new Date(),
       },
     });
   }
@@ -50,6 +53,7 @@ export async function distributeBptReward(
     // Record user transaction
     await tx.tokenTransaction.create({
       data: {
+        id: randomUUID(),
         userId,
         transactionType,
         grossAmount: totalBptReward,
@@ -73,6 +77,7 @@ export async function distributeBptReward(
     // Record buy-back transaction
     await tx.tokenTransaction.create({
       data: {
+        id: randomUUID(),
         userId,
         transactionType: "BUY_BACK_ALLOCATION",
         grossAmount: totalBptReward,

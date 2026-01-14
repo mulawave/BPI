@@ -3,18 +3,25 @@ import { api } from "@/client/trpc";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useTheme } from "@/contexts/ThemeContext";
-import { Award, Check, TrendingUp, Users, Gift, Shield, Moon, Sun, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
+import { useCurrency } from "@/contexts/CurrencyContext";
+import { Award, Check, TrendingUp, Users, Gift, Shield, Moon, Sun, LogOut, ChevronDown, ChevronUp, ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { signOut } from "next-auth/react";
+import LoadingScreen from "@/components/LoadingScreen";
 
 export default function MembershipPage() {
   const { data: packages, isLoading } = api.package.getPackages.useQuery();
+  const { data: activeMembership, isLoading: loadingActive } = api.package.getUserActiveMembership.useQuery();
   const activateMutation = api.package.activateStandard.useMutation();
   const { theme, toggleTheme } = useTheme();
+  const { formatAmount } = useCurrency();
   const router = useRouter();
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [expandedPackages, setExpandedPackages] = useState<Record<string, boolean>>({});
+  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const togglePackageDetails = (packageId: string) => {
     setExpandedPackages(prev => ({
@@ -23,29 +30,36 @@ export default function MembershipPage() {
     }));
   };
 
-  const handleActivate = async (packageId: string) => {
+  const handleActivate = async (packageId: string, isUpgrade: boolean = false) => {
+    // Set loading state immediately
     setActivatingId(packageId);
-    try {
-      await activateMutation.mutateAsync({ packageId });
-      // Redirect to dashboard on success
-      router.push('/dashboard');
-    } catch (error) {
-      console.error('Activation failed:', error);
-      setActivatingId(null);
+    
+    // Navigate to payment page (both activation and upgrade use same payment gateway selection)
+    if (isUpgrade && activeMembership?.package) {
+    if (activeMembership && activeMembership.package) {
+      router.push(`/membership/activate/${packageId}?upgrade=true&from=${activeMembership.package.id}`);
+    } else {
+      router.push(`/membership/activate/${packageId}`);
+    }
+    } else {
+      router.push(`/membership/activate/${packageId}`);
     }
   };
   
   // Sort packages by price (ascending order)
   const sortedPackages = packages ? [...packages].sort((a, b) => a.price - b.price) : [];
 
-  if (isLoading) {
+  // Get current package index for comparison
+  const currentPackageIndex = sortedPackages.findIndex(
+    pkg => pkg.id === activeMembership?.package?.id
+  );
+
+  if (isLoading || loadingActive) {
     return (
-      <div className="min-h-screen bg-bpi-gradient-light dark:bg-bpi-gradient-dark flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-bpi-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-lg font-semibold text-foreground">Loading membership packages...</p>
-        </div>
-      </div>
+      <LoadingScreen 
+        message="Loading Membership Packages"
+        subtitle="Preparing your membership options..."
+      />
     );
   }
 
@@ -68,6 +82,28 @@ export default function MembershipPage() {
             </div>
             
             <div className="flex items-center gap-4">
+              {activeMembership && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="gap-2"
+                  onClick={() => {
+                    setIsDashboardLoading(true);
+                    router.push('/dashboard');
+                  }}
+                  disabled={isDashboardLoading}
+                >
+                  {isDashboardLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <ArrowLeft className="w-4 h-4" />
+                  )}
+                  <span className="hidden md:inline">
+                    {isDashboardLoading ? 'Loading...' : 'Back to Dashboard'}
+                  </span>
+                </Button>
+              )}
+
               <Button
                 variant="outline"
                 size="sm"
@@ -79,13 +115,26 @@ export default function MembershipPage() {
                   {theme === 'light' ? 'Dark' : 'Light'}
                 </span>
               </Button>
-              
-              <Link href="/dashboard">
-                <Button variant="outline" size="sm" className="gap-2">
-                  <ArrowLeft className="w-4 h-4" />
-                  Back to Dashboard
-                </Button>
-              </Link>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsLoggingOut(true);
+                  signOut({ callbackUrl: '/login' });
+                }}
+                disabled={isLoggingOut}
+                className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+              >
+                {isLoggingOut ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <LogOut className="w-4 h-4" />
+                )}
+                <span className="hidden md:inline">
+                  {isLoggingOut ? 'Logging out...' : 'Logout'}
+                </span>
+              </Button>
             </div>
           </div>
         </div>
@@ -99,10 +148,13 @@ export default function MembershipPage() {
             <Award className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
-            Activate Your Membership
+            {activeMembership ? 'Upgrade Your Membership' : 'Activate Your Membership'}
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Choose a membership plan that suits your goals and unlock access to BPI's powerful ecosystem of rewards, referrals, and community benefits.
+            {activeMembership && activeMembership.package
+              ? `You're currently on the ${activeMembership.package.name} plan. Take your journey further by upgrading to unlock greater rewards, higher referral bonuses, and enhanced community benefits.`
+              : "Choose a membership plan that suits your goals and unlock access to BPI's powerful ecosystem of rewards, referrals, and community benefits."
+            }
           </p>
         </div>
 
@@ -164,14 +216,14 @@ export default function MembershipPage() {
                   <div className="text-center">
                     <h3 className="text-xl font-bold mb-3 tracking-wide">{pkg.name}</h3>
                     <div className="mb-2">
-                      <span className="text-4xl font-extrabold">₦{pkg.price.toLocaleString()}</span>
+                      <span className="text-4xl font-extrabold">{formatAmount(pkg.price)}</span>
                     </div>
                     <p className="text-sm text-white/80">
-                      + ₦{pkg.vat.toLocaleString()} VAT
+                      + {formatAmount(pkg.vat)} VAT
                     </p>
                     <div className="mt-3 pt-3 border-t border-white/20">
                       <p className="text-lg font-semibold">
-                        Total: ₦{totalCost.toLocaleString()}
+                        Total: {formatAmount(totalCost)}
                       </p>
                     </div>
                   </div>
@@ -216,16 +268,16 @@ export default function MembershipPage() {
                                 <p className="text-xs font-semibold text-foreground mb-1">{reward.level}</p>
                                 <div className="flex flex-wrap gap-2 text-xs">
                                   {reward.cash > 0 && (
-                                    <span className="text-emerald-600 dark:text-emerald-400">Cash: ₦{reward.cash.toLocaleString()}</span>
+                                    <span className="text-emerald-600 dark:text-emerald-400">Cash: {formatAmount(reward.cash)}</span>
                                   )}
                                   {reward.palliative > 0 && (
-                                    <span className="text-blue-600 dark:text-blue-400">Pal: ₦{reward.palliative.toLocaleString()}</span>
+                                    <span className="text-blue-600 dark:text-blue-400">Pal: {formatAmount(reward.palliative)}</span>
                                   )}
                                   {reward.bpt > 0 && (
-                                    <span className="text-purple-600 dark:text-purple-400">BPT: ₦{reward.bpt.toLocaleString()}</span>
+                                    <span className="text-purple-600 dark:text-purple-400">BPT: {formatAmount(reward.bpt)}</span>
                                   )}
                                   {reward.cashback && reward.cashback > 0 && (
-                                    <span className="text-amber-600 dark:text-amber-400">CB: ₦{reward.cashback.toLocaleString()}</span>
+                                    <span className="text-amber-600 dark:text-amber-400">CB: {formatAmount(reward.cashback)}</span>
                                   )}
                                 </div>
                               </div>
@@ -254,7 +306,7 @@ export default function MembershipPage() {
                         {pkg.hasRenewal && (
                           <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
                             <p className="text-xs text-muted-foreground">
-                              <span className="font-semibold">Renewal:</span> Every 365 days at ₦{((pkg.renewalFee || 0) + ((pkg.renewalFee || 0) * 0.075)).toLocaleString()} (incl. VAT)
+                              <span className="font-semibold">Renewal:</span> Every 365 days at {formatAmount((pkg.renewalFee || 0) + ((pkg.renewalFee || 0) * 0.075))} (incl. VAT)
                             </p>
                           </div>
                         )}
@@ -264,24 +316,96 @@ export default function MembershipPage() {
 
                   {/* Action Button - Always at bottom */}
                   <div className="mt-auto">
-                    <Button
-                      onClick={() => handleActivate(pkg.id)}
-                      className={`w-full bg-gradient-to-r ${colors.gradient} hover:opacity-90 text-white border-0 shadow-md font-semibold`}
-                      disabled={activatingId !== null}
-                      size="lg"
-                    >
-                      {activatingId === pkg.id ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                          Activating...
-                        </>
-                      ) : (
-                        <>
-                          <Shield className="w-4 h-4 mr-2" />
-                          Activate Now
-                        </>
-                      )}
-                    </Button>
+                    {(() => {
+                      const pkgIndex = sortedPackages.indexOf(pkg);
+                      const isCurrent = currentPackageIndex === pkgIndex;
+                      const isLower = currentPackageIndex > -1 && pkgIndex <= currentPackageIndex;
+                      const isUpgrade = currentPackageIndex > -1 && pkgIndex > currentPackageIndex;
+                      const upgradeCost = isUpgrade && activeMembership?.package 
+                        ? (pkg.price + pkg.vat) - (activeMembership.package.price + activeMembership.package.vat)
+                        : 0;
+
+                      if (isCurrent) {
+                        return (
+                          <div className="bg-green-100 dark:bg-green-900/30 border-2 border-green-500 dark:border-green-600 rounded-lg p-4 text-center">
+                            <Check className="w-8 h-8 text-green-600 dark:text-green-400 mx-auto mb-2" />
+                            <p className="font-bold text-green-800 dark:text-green-300">ACTIVE PLAN</p>
+                            <p className="text-xs text-green-700 dark:text-green-400 mt-1">
+                              {activeMembership?.expiresAt && `Expires: ${new Date(activeMembership.expiresAt).toLocaleDateString()}`}
+                            </p>
+                          </div>
+                        );
+                      }
+
+                      if (isLower) {
+                        return (
+                          <Button
+                            disabled
+                            className="w-full bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed opacity-60"
+                            size="lg"
+                          >
+                            <Shield className="w-4 h-4 mr-2" />
+                            Lower Tier
+                          </Button>
+                        );
+                      }
+
+                      if (isUpgrade) {
+                        return (
+                          <div className="space-y-2">
+                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-2 text-center">
+                              <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold">Upgrade Cost</p>
+                              <p className="text-lg font-bold text-blue-800 dark:text-blue-200">
+                                {formatAmount(upgradeCost)}
+                              </p>
+                              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                {activeMembership?.package && `(${formatAmount(pkg.price + pkg.vat)} - ${formatAmount(activeMembership.package.price + activeMembership.package.vat)})`}
+                              </p>
+                            </div>
+                            <Button
+                              onClick={() => handleActivate(pkg.id, true)}
+                              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white border-0 shadow-md font-semibold"
+                              disabled={activatingId !== null}
+                              size="lg"
+                            >
+                              {activatingId === pkg.id ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                  Processing...
+                                </>
+                              ) : (
+                                <>
+                                  <TrendingUp className="w-4 h-4 mr-2" />
+                                  UPGRADE MEMBERSHIP
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        );
+                      }
+
+                      // No active membership - show normal activate button
+                      return (
+                        <Button
+                          onClick={() => handleActivate(pkg.id, false)}
+                          className={`w-full bg-gradient-to-r ${colors.gradient} hover:opacity-90 text-white border-0 shadow-md font-semibold`}
+                          disabled={activatingId !== null}
+                          size="lg"
+                        >
+                          {activatingId === pkg.id ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                              Activating...
+                            </>
+                          ) : (
+                            <>
+                              <Shield className="w-4 h-4 mr-2" />
+                              Activate Now
+                            </>
+                          )}
+                        </Button>
+                      );
+                    })()}
                   </div>
                 </div>
               </Card>

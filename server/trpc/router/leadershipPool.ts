@@ -1,273 +1,220 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { prisma } from "@/lib/prisma";
+import { randomUUID } from "crypto";
 
 export const leadershipPoolRouter = createTRPCRouter({
-  // Get current qualification status
-  getQualificationStatus: protectedProcedure.query(async ({ ctx }) => {
-    const qualification = await ctx.db.leadershipPoolQualification.findUnique({
-      where: {
-        userId: ctx.session.user.id,
-      },
+  getPoolInfo: protectedProcedure.query(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id;
+    if (!userId) throw new Error("Not authenticated");
+
+    // Get total pool amount from all sources
+    const pools = await prisma.leadershipPool.findMany();
+    const totalPool = pools.reduce((sum, pool) => sum + pool.amount, 0);
+
+    // Get user's qualification status
+    const qualification = await prisma.leadershipPoolQualification.findUnique({
+      where: { userId },
     });
 
-    // If no record exists, create one
-    if (!qualification) {
-      const newQualification = await ctx.db.leadershipPoolQualification.create({
-        data: {
-          userId: ctx.session.user.id,
+    // Count total qualified members
+    const members = await prisma.leadershipPoolQualification.count({
+      where: { isQualified: true },
+    });
+
+    // Calculate user's share based on their pool share percentage
+    const myShare = qualification?.isQualified
+      ? totalPool * (qualification.poolSharePercentage / 100)
+      : 0;
+
+    // Get user's rank among qualified members
+    const allQualified = await prisma.leadershipPoolQualification.findMany({
+      where: { isQualified: true },
+      orderBy: { poolSharePercentage: 'desc' },
+      select: { userId: true },
+    });
+    const rank = allQualified.findIndex(q => q.userId === userId) + 1;
+
+    return {
+      totalPool,
+      myShare,
+      rank: rank || 0,
+      members,
+      isQualified: qualification?.isQualified || false,
+      tier: qualification?.currentTier || null,
+      sharePercentage: qualification?.poolSharePercentage || 0,
+    };
+  }),
+
+  getLeaderboard: protectedProcedure
+    .input(
+      z.object({
+        limit: z.number().min(1).max(100).default(10),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id;
+      if (!userId) throw new Error("Not authenticated");
+
+      // Get top qualified members with user details
+      const leaders = await prisma.leadershipPoolQualification.findMany({
+        where: { isQualified: true },
+        orderBy: { poolSharePercentage: 'desc' },
+        take: input.limit,
+        include: {
+          User: {
+            select: {
+              id: true,
+              firstname: true,
+              lastname: true,
+              email: true,
+            },
+          },
         },
       });
-      return newQualification;
-    }
 
-    return qualification;
-  }),
+      // Get total pool for earnings calculation
+      const pools = await prisma.leadershipPool.findMany();
+      const totalPool = pools.reduce((sum, pool) => sum + pool.amount, 0);
 
-  // Get detailed progress breakdown
-  getProgressDetails: protectedProcedure.query(async ({ ctx }) => {
-    const qualification = await ctx.db.leadershipPoolQualification.findUnique({
-      where: {
-        userId: ctx.session.user.id,
-      },
+      // Get user's referral count from Referral table
+      const formattedLeaders = await Promise.all(
+        leaders.map(async (leader, index) => {
+          const referrals = await prisma.referral.count({
+            where: { referrerId: leader.userId },
+          });
+
+          return {
+            rank: index + 1,
+            userId: leader.userId,
+            name: `${leader.User.firstname || ''} ${leader.User.lastname || ''}`.trim() || 'Anonymous',
+            earnings: totalPool * (leader.poolSharePercentage / 100),
+            sharePercentage: leader.poolSharePercentage,
+            tier: leader.currentTier || 'Bronze',
+            referrals,
+          };
+        })
+      );
+
+      // Find user's rank
+      const allQualified = await prisma.leadershipPoolQualification.findMany({
+        where: { isQualified: true },
+        orderBy: { poolSharePercentage: 'desc' },
+        select: { userId: true },
+      });
+      const myRank = allQualified.findIndex(q => q.userId === userId) + 1;
+
+      return {
+        leaders: formattedLeaders,
+        myRank: myRank || 0,
+      };
+    }),
+
+  claimPoolReward: protectedProcedure.mutation(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id;
+    if (!userId) throw new Error("Not authenticated");
+
+    // Check if user is qualified
+    const qualification = await prisma.leadershipPoolQualification.findUnique({
+      where: { userId },
     });
 
-    if (!qualification) {
+    if (!qualification?.isQualified) {
       return {
-        hasRegularPlus: false,
-        option1: {
-          current: 0,
-          required: 70,
-          percentage: 0,
-        },
-        option2: {
-          firstGen: { current: 0, required: 50, percentage: 0 },
-          secondGen: { current: 0, required: 50, percentage: 0 },
-          total: { current: 0, required: 100, percentage: 0 },
-        },
-        isQualified: false,
-        recommendedOption: null,
+        success: false,
+        amount: 0,
+        message: "You are not qualified for leadership pool rewards",
       };
     }
 
-    const option1Progress = (qualification.sponsoredRegularPlus / 70) * 100;
-    const option2FirstGen = (qualification.firstGenRegularPlus / 50) * 100;
-    const option2SecondGen = (qualification.secondGenRegularPlus / 50) * 100;
-    const option2Total = ((qualification.firstGenRegularPlus + qualification.secondGenRegularPlus) / 100) * 100;
+    // Get total pool
+    const pools = await prisma.leadershipPool.findMany();
+    const totalPool = pools.reduce((sum, pool) => sum + pool.amount, 0);
 
-    // Recommend which option is closer to completion
-    let recommendedOption = null;
-    if (!qualification.isQualified) {
-      if (option1Progress > option2Total) {
-        recommendedOption = 1;
-      } else {
-        recommendedOption = 2;
-      }
-    }
+    // Calculate claimable amount
+    const claimableAmount = totalPool * (qualification.poolSharePercentage / 100);
 
-    return {
-      hasRegularPlus: qualification.hasRegularPlusPackage,
-      option1: {
-        current: qualification.sponsoredRegularPlus,
-        required: 70,
-        percentage: Math.min(option1Progress, 100),
-      },
-      option2: {
-        firstGen: {
-          current: qualification.firstGenRegularPlus,
-          required: 50,
-          percentage: Math.min(option2FirstGen, 100),
-        },
-        secondGen: {
-          current: qualification.secondGenRegularPlus,
-          required: 50,
-          percentage: Math.min(option2SecondGen, 100),
-        },
-        total: {
-          current: qualification.firstGenRegularPlus + qualification.secondGenRegularPlus,
-          required: 100,
-          percentage: Math.min(option2Total, 100),
-        },
-      },
-      isQualified: qualification.isQualified,
-      qualifiedAt: qualification.qualifiedAt,
-      currentTier: qualification.currentTier,
-      recommendedOption,
-    };
-  }),
-
-  // Get referral tree for leadership pool
-  getReferralTree: protectedProcedure.query(async ({ ctx }) => {
-    // Get user's referral tree
-    const tree = await ctx.db.referralTree.findUnique({
-      where: {
-        userId: ctx.session.user.id,
-      },
-    });
-
-    if (!tree) {
+    if (claimableAmount <= 0) {
       return {
-        firstGeneration: [],
-        secondGeneration: [],
+        success: false,
+        amount: 0,
+        message: "No rewards available to claim at this time",
       };
     }
 
-    const firstGenIds = tree.firstGeneration as string[];
-    const secondGenIds = tree.secondGeneration as string[];
-
-    // Get first generation users with their packages
-    const firstGen = await ctx.db.user.findMany({
-      where: {
-        id: { in: firstGenIds },
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        activeMembershipPackageId: true,
-        activated: true,
-        createdAt: true,
+    // Create transaction record
+    await prisma.transaction.create({
+      data: {
+        id: randomUUID(),
+        userId,
+        transactionType: "LEADERSHIP_POOL_REWARD",
+        amount: claimableAmount,
+        description: `Leadership Pool Reward - ${qualification.currentTier || 'Bronze'} Tier`,
+        status: "completed",
+        reference: `LP-${Date.now()}`,
       },
     });
 
-    // Get second generation users
-    const secondGen = await ctx.db.user.findMany({
-      where: {
-        id: { in: secondGenIds },
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        activeMembershipPackageId: true,
-        activated: true,
-        sponsorId: true,
-        createdAt: true,
-      },
-    });
-
-    // Count Regular Plus members
-    const firstGenRegularPlus = firstGen.filter(
-      u => u.activeMembershipPackageId && u.activeMembershipPackageId.includes('regular-plus')
-    );
-
-    const secondGenRegularPlus = secondGen.filter(
-      u => u.activeMembershipPackageId && u.activeMembershipPackageId.includes('regular-plus')
-    );
-
-    return {
-      firstGeneration: firstGen.map(u => ({
-        ...u,
-        isRegularPlus: u.activeMembershipPackageId?.includes('regular-plus') || false,
-      })),
-      secondGeneration: secondGen.map(u => ({
-        ...u,
-        isRegularPlus: u.activeMembershipPackageId?.includes('regular-plus') || false,
-      })),
-      stats: {
-        firstGenTotal: firstGen.length,
-        firstGenRegularPlus: firstGenRegularPlus.length,
-        secondGenTotal: secondGen.length,
-        secondGenRegularPlus: secondGenRegularPlus.length,
-      },
-    };
-  }),
-
-  // Manually trigger qualification check
-  checkQualification: protectedProcedure.mutation(async ({ ctx }) => {
-    const user = await ctx.db.user.findUnique({
-      where: { id: ctx.session.user.id },
-      select: {
-        activeMembershipPackageId: true,
-      },
-    });
-
-    const hasRegularPlus = user?.activeMembershipPackageId?.includes('regular-plus') || false;
-
-    // Get referral tree
-    const tree = await ctx.db.referralTree.findUnique({
-      where: {
-        userId: ctx.session.user.id,
-      },
-    });
-
-    if (!tree) {
-      return {
-        checked: true,
-        qualified: false,
-        message: "No referral tree found",
-      };
-    }
-
-    const firstGenIds = tree.firstGeneration as string[];
-    const secondGenIds = tree.secondGeneration as string[];
-
-    // Count Regular Plus members in each generation
-    const firstGen = await ctx.db.user.findMany({
-      where: {
-        id: { in: firstGenIds },
-        activeMembershipPackageId: { contains: 'regular-plus' },
-        activated: true,
-      },
-    });
-
-    const secondGen = await ctx.db.user.findMany({
-      where: {
-        id: { in: secondGenIds },
-        activeMembershipPackageId: { contains: 'regular-plus' },
-        activated: true,
-      },
-    });
-
-    const firstGenCount = firstGen.length;
-    const secondGenCount = secondGen.length;
-    const totalRegularPlus = firstGenCount + secondGenCount;
-
-    // Check qualification
-    const option1Qualified = hasRegularPlus && totalRegularPlus >= 70;
-    const option2Qualified = hasRegularPlus && firstGenCount >= 50 && secondGenCount >= 50;
-    const isQualified = option1Qualified || option2Qualified;
-
-    // Update or create qualification record
-    await ctx.db.leadershipPoolQualification.upsert({
-      where: {
-        userId: ctx.session.user.id,
-      },
-      update: {
-        hasRegularPlusPackage: hasRegularPlus,
-        sponsoredRegularPlus: totalRegularPlus,
-        firstGenRegularPlus: firstGenCount,
-        secondGenRegularPlus: secondGenCount,
-        isQualified,
-        qualifiedAt: isQualified ? new Date() : null,
-        qualificationOption: option1Qualified ? 1 : option2Qualified ? 2 : null,
-        lastEvaluatedAt: new Date(),
-      },
-      create: {
-        userId: ctx.session.user.id,
-        hasRegularPlusPackage: hasRegularPlus,
-        sponsoredRegularPlus: totalRegularPlus,
-        firstGenRegularPlus: firstGenCount,
-        secondGenRegularPlus: secondGenCount,
-        isQualified,
-        qualifiedAt: isQualified ? new Date() : null,
-        qualificationOption: option1Qualified ? 1 : option2Qualified ? 2 : null,
-        lastEvaluatedAt: new Date(),
+    // Update user's wallet balance
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        wallet: {
+          increment: claimableAmount,
+        },
       },
     });
 
     return {
-      checked: true,
-      qualified: isQualified,
-      qualificationOption: option1Qualified ? 1 : option2Qualified ? 2 : null,
-      stats: {
-        hasRegularPlus,
-        totalRegularPlus,
-        firstGenCount,
-        secondGenCount,
-      },
-      message: isQualified 
-        ? "Congratulations! You are qualified for the Leadership Pool!" 
-        : "Keep building your team to qualify",
+      success: true,
+      amount: claimableAmount,
+      message: `Successfully claimed ${claimableAmount}`,
     };
+  }),
+
+  getMyPoolHistory: protectedProcedure.query(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id;
+    if (!userId) throw new Error("Not authenticated");
+
+    // Get user's leadership pool reward transactions
+    const history = await prisma.transaction.findMany({
+      where: {
+        userId,
+        transactionType: "LEADERSHIP_POOL_REWARD",
+        status: "completed",
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    return history.map(record => ({
+      id: record.id,
+      amount: record.amount,
+      description: record.description,
+      date: record.createdAt.toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      }),
+      period: new Date(record.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      reference: record.reference || '',
+    }));
+  }),
+
+  getPoolSources: protectedProcedure.query(async ({ ctx }) => {
+    // Get all pool sources
+    const sources = await prisma.leadershipPool.findMany({
+      orderBy: { amount: 'desc' },
+    });
+
+    const totalPool = sources.reduce((sum, pool) => sum + pool.amount, 0);
+
+    return sources.map(source => ({
+      id: source.id,
+      name: source.source,
+      amount: source.amount,
+      description: source.description,
+      percentage: totalPool > 0 ? (source.amount / totalPool) * 100 : 0,
+    }));
   }),
 });

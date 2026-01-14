@@ -3,372 +3,13 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("POSTGRES_URL")
 }
 
-model User {
-  id                 String               @id @default(cuid())
-  name               String?
-  email              String?              @unique
-  emailVerified      DateTime?
-  image              String?
-  firstname          String?
-  lastname           String?
-  mobile             String?
-  ssc                String?
-  gender             String?
-  address            String?
-  city               String?
-  state              String?
-  zip                String?
-  country            String?
-  profilePic         String?
-  secondaryEmail     String?
-  username           String?              @unique
-  referralLink       String?
-  inviteCode         String?              @unique
-  userType           String               @default("user")
-  rank               String               @default("Newbie")
-  activated          Boolean              @default(false)
-  kyc                String?
-  kycPending         Int                  @default(0)
-  withdrawBan        Int                  @default(0)
-  verified           Boolean              @default(false)
-  pendingActivation  Int?
-  isVip              Int                  @default(0)
-  isShelter          Int                  @default(0)
-  vipPending         Int                  @default(0)
-  shelterPending     Int                  @default(0)
-  shelterWallet      Int                  @default(0)
-  isShareholder      Int                  @default(0)
-  wallet             Float                @default(0)
-  spendable          Float                @default(0)
-  palliative         Float                @default(0)
-  cashback           Float                @default(0)
-  studentCashback    Float                @default(0)
-  community          Float                @default(0)
-  shareholder        Float                @default(0)
-  shelter            Float                @default(0)
-  education          Float                @default(0)
-  car                Float                @default(0)
-  business           Float                @default(0)
-  solar              Float?
-  legals             Float?
-  land               Float                @default(0)
-  meal               Float                @default(0)
-  health             Float                @default(0)
-  defaultCurrency    Int                  @default(1)
-  level1Count        Int                  @default(0)
-  level2Count        Int                  @default(0)
-  level3Count        Int                  @default(0)
-  level4Count        Int                  @default(0)
-  role               String               @default("user")
-  passwordHash       String?
-  verificationCode   String?
-  resetToken         String?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  lastLogin          DateTime             @default(now())
-  legacyId           Int?                 @unique
-  referredBy         String?
-
-  // Membership & Packages
-  activeMembershipPackageId String?
-  membershipActivatedAt     DateTime?
-  membershipExpiresAt       DateTime?
-  renewalCount              Int          @default(0)
-  sponsorId                 String?
-  
-  // BPI Token Wallet (member visible 50% only)
-  bpiTokenWallet     Float                @default(0)
-  
-  // Security wallet (new - for renewal rewards)
-  security           Float                @default(0)
-  
-  // Relationships
-  sponsor                User?                @relation("Sponsorship", fields: [sponsorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  sponsored              User[]               @relation("Sponsorship")
-  empowermentPackages    EmpowermentPackage[] @relation("SponsorToEmpowerment")
-  beneficiaryOf          EmpowermentPackage[] @relation("BeneficiaryToEmpowerment")
-
-  accounts               Account[]
-  activeShelters         ActiveShelter[]
-  blogPosts              Blog[]
-  bpiMember              BpiMember?
-  communityPosts         CommunityPost[]
-  fundingHistory         FundingHistory[]
-  notifications          Notification[]
-  packageActivations     PackageActivation[]
-  createdTickets         PalliativeTicket[]   @relation("TicketCreator")
-  ticketsUsed            PalliativeTicket[]
-  passwordResets         PasswordReset[]
-  referralsMade          Referral[]           @relation("ReferredUserToReferrals")
-  referrals              Referral[]           @relation("ReferrerToReferrals")
-  referralTree           ReferralTree?
-  renewalHistory         RenewalHistory[]
-  shelterRewards         ShelterReward[]
-  tokenTransactions      TokenTransaction[]
-  sessions               Session[]
-  storeOrders            StoreOrder[]
-  transactions           Transaction[]
-  transactionHistory     TransactionHistory[]
-  withdrawalHistory      WithdrawalHistory[]
-  youtubeChannels        YoutubeChannel[]
-  contacts               Contact[]
-  inviteUsage            InviteUsage[]
-  
-  // Community Features
-  featureProgress        UserFeatureProgress[]
-  leadershipPool         LeadershipPoolQualification?
-  communityUpdates       CommunityUpdate[]
-  updateReads            UpdateRead[]
-  promotionalMaterials   PromotionalMaterial[]
-  materialDownloads      MaterialDownload[]
-  bpiCalculations        BPICalculation[]
-  solarAssessments       SolarAssessment[]
-  digitalFarm            DigitalFarm?
-  farmHarvests           FarmHarvest[]
-  trainingCourses        TrainingCourse[]
-  trainingProgress       TrainingProgress[]
-  epcProgress            EPCandEPP?
-  epcPointHistory        EPCPointHistory[]
-  dealsCreated           BestDeal[]
-  dealsClaimed           DealClaim[]
-}
-
-model MembershipPackage {
-  id            String   @id @default(cuid())
-  name          String   @unique
-  packageType   String   @default("STANDARD")  // "STANDARD" | "EMPOWERMENT"
-  
-  // Pricing
-  price         Float
-  vat           Float
-  
-  // Activation Referral Rewards (L1-L4)
-  cash_l1       Float    @default(0)
-  cash_l2       Float    @default(0)
-  cash_l3       Float    @default(0)
-  cash_l4       Float    @default(0)
-  
-  palliative_l1 Float    @default(0)
-  palliative_l2 Float    @default(0)
-  palliative_l3 Float    @default(0)
-  palliative_l4 Float    @default(0)
-  
-  bpt_l1        Float    @default(0)  // BPT in Naira value (before 50/50 split)
-  bpt_l2        Float    @default(0)
-  bpt_l3        Float    @default(0)
-  bpt_l4        Float    @default(0)
-  
-  // Cashback (Gold+, Platinum+, Travel)
-  cashback_l1   Float?
-  cashback_l2   Float?
-  cashback_l3   Float?
-  cashback_l4   Float?
-  
-  // Shelter Rewards (10 levels for Gold/Platinum - admin only visibility)
-  shelter_l1    Float?
-  shelter_l2    Float?
-  shelter_l3    Float?
-  shelter_l4    Float?
-  shelter_l5    Float?
-  shelter_l6    Float?
-  shelter_l7    Float?
-  shelter_l8    Float?
-  shelter_l9    Float?
-  shelter_l10   Float?
-  
-  // Renewal Settings
-  hasRenewal          Boolean  @default(true)
-  renewalFee          Float?
-  renewalCycle        Int      @default(365)  // days
-  
-  // Renewal Rewards (L1-L4 only)
-  renewal_cash_l1     Float?
-  renewal_cash_l2     Float?
-  renewal_cash_l3     Float?
-  renewal_cash_l4     Float?
-  
-  renewal_palliative_l1 Float?
-  renewal_palliative_l2 Float?
-  renewal_palliative_l3 Float?
-  renewal_palliative_l4 Float?
-  
-  renewal_bpt_l1      Float?
-  renewal_bpt_l2      Float?
-  renewal_bpt_l3      Float?
-  renewal_bpt_l4      Float?
-  
-  renewal_cashback_l1 Float?
-  renewal_cashback_l2 Float?
-  renewal_cashback_l3 Float?
-  renewal_cashback_l4 Float?
-  
-  // Renewal Welfare Wallets (Health, Meal, Security - NO Shelter on renewal)
-  renewal_health_l1   Float?
-  renewal_health_l2   Float?
-  renewal_health_l3   Float?
-  renewal_health_l4   Float?
-  
-  renewal_meal_l1     Float?
-  renewal_meal_l2     Float?
-  renewal_meal_l3     Float?
-  renewal_meal_l4     Float?
-  
-  renewal_security_l1 Float?
-  renewal_security_l2 Float?
-  renewal_security_l3 Float?
-  renewal_security_l4 Float?
-  
-  // Features & metadata
-  features        String[]  @default([])
-  isActive        Boolean   @default(true)
-  
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-}
-
-model EmpowermentPackage {
-  id                      String    @id @default(cuid())
-  sponsorId               String
-  beneficiaryId           String    // Sub-account (child/skill trainee)
-  
-  // Package Details
-  packageFee              Float     @default(330000)
-  vat                     Float     @default(24750)
-  empowermentType         String    // "CHILD_EDUCATION" | "VOCATIONAL_SKILL"
-  
-  // Status & Lifecycle
-  status                  String    @default("Active - Countdown Running")
-  // Possible statuses: 
-  // "Active - Countdown Running"
-  // "Pending Maturity (24 Months)"
-  // "Approved - Activation Pending"
-  // "Empowerment Released (Tax Applied)"
-  // "Fallback Protection Activated"
-  // "Converted to Regular Plus"
-  
-  activatedAt             DateTime  @default(now())
-  maturityDate            DateTime  // activatedAt + 24 months
-  approvedAt              DateTime?
-  releasedAt              DateTime?
-  
-  // Empowerment Values (After 24 months)
-  grossEmpowermentValue   Float     @default(7250000)  // ₦7.25M
-  netEmpowermentValue     Float     @default(6706250)  // After 7.5% tax
-  grossSponsorReward      Float     @default(1000000)  // ₦1M
-  netSponsorReward        Float     @default(925000)   // After 7.5% tax
-  
-  // Fallback Protection
-  fallbackEnabled         Boolean   @default(false)
-  fallbackGrossAmount     Float     @default(396000)   // ₦330k + 20%
-  fallbackNetAmount       Float     @default(366300)   // After 7.5% tax
-  
-  // Conversion Option
-  isConverted             Boolean   @default(false)
-  convertedAt             DateTime?
-  conversionAmount        Float?    // ₦64,000 for Regular Plus + MYNGUL
-  walletCreditAmount      Float?    // Remaining restricted to community
-  
-  // Admin Controls
-  adminApproved           Boolean   @default(false)
-  approvedBy              String?
-  rejectionReason         String?
-  
-  // Beneficiary Restrictions
-  beneficiaryCanView      Boolean   @default(true)
-  beneficiaryCanWithdraw  Boolean   @default(false)
-  
-  // Tax Records
-  taxRate                 Float     @default(7.5)
-  totalTaxDeducted        Float     @default(0)
-  
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
-
-  sponsor                 User      @relation("SponsorToEmpowerment", fields: [sponsorId], references: [id])
-  beneficiary             User      @relation("BeneficiaryToEmpowerment", fields: [beneficiaryId], references: [id])
-  
-  transactions            EmpowermentTransaction[]
-}
-
-model SystemWallet {
-  id                String   @id @default(cuid())
-  name              String   @unique
-  walletType        String   // "BUY_BACK_BURN" | "TREASURY" | "COMMUNITY_SUPPORT"
-  
-  balanceNgn        Float    @default(0)
-  balanceUsd        Float    @default(0)
-  balanceBpt        Float    @default(0)  // Equivalent BPT tokens
-  
-  isPubliclyVisible Boolean  @default(false)
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  burnEvents        BurnEvent[]
-  buyBackEvents     BuyBackEvent[]
-}
-
-model BuyBackEvent {
-  id              String   @id @default(cuid())
-  systemWalletId  String
-  
-  amountNgn       Float    // Amount used to buy back
-  amountUsd       Float
-  bptPurchased    Float    // BPT tokens purchased
-  exchangeRate    Float    // BPT/NGN rate at time (currently ₦5)
-  
-  triggeredBy     String   // Admin user ID
-  description     String?
-  
-  createdAt       DateTime @default(now())
-  
-  systemWallet    SystemWallet @relation(fields: [systemWalletId], references: [id])
-  
-  @@index([systemWalletId])
-}
-
-model BurnEvent {
-  id              String   @id @default(cuid())
-  systemWalletId  String?
-  
-  amountBpt       Float    // BPT burned
-  valueNgn        Float    // ₦ value at burn time
-  valueUsd        Float    // $ value at burn time
-  
-  burnType        String   // "MANUAL_ADMIN" | "AUTOMATIC_THRESHOLD"
-  triggeredBy     String?  // Admin user ID
-  txHash          String?  // Blockchain transaction hash
-  
-  description     String?
-  
-  createdAt       DateTime @default(now())
-  
-  systemWallet    SystemWallet? @relation(fields: [systemWalletId], references: [id])
-  
-  @@index([systemWalletId])
-}
-
-model Referral {
-  id         String   @id @default(cuid())
-  referrerId String
-  referredId String
-  status     String   @default("pending")
-  rewardPaid Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  referred   User     @relation("ReferredUserToReferrals", fields: [referredId], references: [id], onDelete: Cascade)
-  referrer   User     @relation("ReferrerToReferrals", fields: [referrerId], references: [id], onDelete: Cascade)
-
-  @@unique([referrerId, referredId])
-}
-
 model Account {
-  id                String  @id @default(cuid())
+  id                String  @id
   userId            String
   type              String
   provider          String
@@ -380,39 +21,125 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
 
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model ActiveShelter {
+  id             String   @id
+  userId         String
+  shelterPackage Int
+  shelterOption  Int
+  starterPack    Int?
+  amount         Int?
+  status         String?
+  activatedDate  DateTime @default(now())
+  User           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
+model AdminSettings {
+  id           String   @id
+  settingKey   String   @unique
+  settingValue String
+  description  String?
+  updatedAt    DateTime
 }
 
-model PasswordReset {
-  id        String   @id @default(cuid())
-  userId    String
-  token     String   @unique
-  expires   DateTime
-  used      Boolean  @default(false)
+model Assessment {
+  id                        String    @id
+  installerSsc              String?
+  ssc                       String?
+  clientName                String
+  clientEmail               String
+  region                    String?
+  state                     String?
+  totalLoad                 Float
+  inverterCapacity          Float
+  batteryCapacity           Int
+  solarPanels               Int
+  isBpiMember               Boolean
+  installationType          String
+  installationAddress       String
+  contactPerson             String
+  contactPhone              String
+  preferredInstallationDate DateTime?
+  paymentReceiptPath        String?
+  status                    String
+  amountPaid                Float
+  createdAt                 DateTime  @default(now())
+}
+
+model BPICalculation {
+  id                 String   @id
+  userId             String
+  calculationType    String
+  inputParameters    Json
+  currentPackage     String?
+  investmentAmount   Float?
+  referralCount      Int?
+  teamSize           Int?
+  timePeriodMonths   Int?
+  calculatedEarnings Float    @default(0)
+  projectedEarnings  Float    @default(0)
+  breakEvenMonths    Int?
+  roi                Float?
+  createdAt          DateTime @default(now())
+  User               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model BestDeal {
+  id                String      @id
+  title             String
+  description       String
+  dealType          String
+  discountType      String
+  discountValue     Float
+  originalPrice     Float?
+  discountedPrice   Float?
+  startDate         DateTime
+  endDate           DateTime
+  usageLimit        Int?
+  usagePerUser      Int         @default(1)
+  currentUsage      Int         @default(0)
+  eligiblePackages  String?
+  eligibleRanks     String?
+  minPurchaseAmount Float?
+  isActive          Boolean     @default(true)
+  isFeatured        Boolean     @default(false)
+  imageUrl          String?
+  ctaText           String?
+  createdBy         String
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime
+  User              User        @relation(fields: [createdBy], references: [id])
+  DealClaim         DealClaim[]
+
+  @@index([dealType])
+  @@index([isActive, endDate])
+}
+
+model Blog {
+  id        String   @id
+  title     String
+  slug      String   @unique
+  content   String
+  image     String?
+  tags      String?
+  category  String?
+  status    String   @default("draft")
+  authorId  String
+  viewers   Int      @default(0)
   createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime
+  User      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }
 
 model BpiMember {
-  id                String             @id @default(cuid())
+  id                String             @id
   userId            String             @unique
   membershipType    String             @default("regular")
   isVip             Boolean            @default(false)
@@ -428,193 +155,73 @@ model BpiMember {
   referralLink      String?
   profilePic        String?
   createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ticketsUsed       PalliativeTicket[]
-  transactions      Transaction[]
-  youtubeChannels   YoutubeChannel[]
+  updatedAt         DateTime
+  User              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  PalliativeTicket  PalliativeTicket[]
 }
 
-model PalliativePackage {
-  id          String              @id @default(cuid())
-  name        String
-  amount      Float
-  description String?
-  benefits    String?
-  active      Boolean             @default(true)
-  createdAt   DateTime            @default(now())
-  activations PackageActivation[]
+model BptConversionRate {
+  id            String   @id
+  rateUsd       Float    @default(0.002)
+  rateNgn       Float    @default(5)
+  isActive      Boolean  @default(true)
+  effectiveDate DateTime @default(now())
+  createdBy     String?
+  createdAt     DateTime @default(now())
 }
 
-model PackageActivation {
-  id        String            @id @default(cuid())
-  userId    String
-  packageId String
-  amount    Float
-  status    String            @default("pending")
-  createdAt DateTime          @default(now())
-  expiresAt DateTime?
-  package   PalliativePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+model BurnEvent {
+  id             String        @id
+  amountBpt      Float
+  valueNgn       Float
+  valueUsd       Float
+  txHash         String?
+  createdAt      DateTime      @default(now())
+  burnType       String
+  description    String?
+  systemWalletId String?
+  triggeredBy    String?
+  SystemWallet   SystemWallet? @relation(fields: [systemWalletId], references: [id])
+
+  @@index([systemWalletId])
 }
 
-model PalliativeTicket {
-  id            String         @id @default(cuid())
-  userId        String
-  offerId       String
-  partnerId     String
-  categoryId    String
-  code          String         @unique
-  status        String         @default("active")
-  dateClaimed   DateTime?
-  createdBy     String
-  activatedDate DateTime       @default(now())
-  createdAt     DateTime       @default(now())
-  category      TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  creator       User           @relation("TicketCreator", fields: [createdBy], references: [id], onDelete: Cascade)
-  member        BpiMember      @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "PalliativeTicket_member_fkey")
-  offer         PartnerOffer   @relation(fields: [offerId], references: [id], onDelete: Cascade)
-  partner       Partner        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+model BuyBackEvent {
+  id             String       @id
+  systemWalletId String
+  amountNgn      Float
+  amountUsd      Float
+  bptPurchased   Float
+  exchangeRate   Float
+  triggeredBy    String
+  description    String?
+  createdAt      DateTime     @default(now())
+  SystemWallet   SystemWallet @relation(fields: [systemWalletId], references: [id])
+
+  @@index([systemWalletId])
 }
 
-model Partner {
-  id          String             @id @default(cuid())
-  name        String
-  logo        String?
-  description String?
-  status      Boolean            @default(true)
-  createdAt   DateTime           @default(now())
-  tickets     PalliativeTicket[]
-  offers      PartnerOffer[]
-}
+model ChannelSubscription {
+  id               String         @id
+  subscriberId     String
+  channelId        String
+  status           String         @default("pending")
+  subscriptionDate DateTime       @default(now())
+  verifiedAt       DateTime?
+  paidAt           DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime
+  YoutubeChannel   YoutubeChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  User             User           @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
 
-model PartnerOffer {
-  id          String             @id @default(cuid())
-  partnerId   String
-  offer       String
-  amount      Float
-  image       String?
-  locationId  String?
-  description String?
-  status      Boolean            @default(true)
-  createdAt   DateTime           @default(now())
-  tickets     PalliativeTicket[]
-  partner     Partner            @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-}
-
-model TicketCategory {
-  id          String             @id @default(cuid())
-  name        String
-  description String?
-  icon        String?
-  tickets     PalliativeTicket[]
-}
-
-model YoutubeChannel {
-  id          String    @id @default(cuid())
-  userId      String
-  channelName String
-  channelUrl  String
-  status      String    @default("pending")
-  subscribers Int?
-  verified    Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  member      BpiMember @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "YoutubeChannel_member_fkey")
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model Transaction {
-  id              String    @id @default(cuid())
-  userId          String
-  transactionType String
-  amount          Float
-  description     String
-  status          String    @default("pending")
-  reference       String?
-  createdAt       DateTime  @default(now())
-  member          BpiMember @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "Transaction_member_fkey")
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model LeadershipPool {
-  id          String   @id @default(cuid())
-  source      String   @unique
-  amount      Float
-  description String?
-  updatedAt   DateTime @updatedAt
-}
-
-model CommunityStats {
-  id                String   @id @default(cuid())
-  totalMembers      Int      @default(0)
-  palliativeMembers Int      @default(0)
-  totalPartners     Int      @default(0)
-  totalOffers       Int      @default(0)
-  activeTickets     Int      @default(0)
-  lastUpdated       DateTime @updatedAt
-}
-
-model Notification {
-  id        String   @id @default(cuid())
-  title     String
-  message   String
-  link      String?
-  isRead    Boolean  @default(false)
-  userId    String?
-  isGlobal  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model ReferralTree {
-  id           String   @id @default(cuid())
-  userId       String   @unique
-  referredBy   Int?
-  level1       Int?
-  level2       Int?
-  level3       Int?
-  level4       Int?
-  level5       Int?
-  level6       Int?
-  level7       Int?
-  level8       Int?
-  level9       Int?
-  level10      Int?
-  referralDate DateTime @default(now())
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model ActiveShelter {
-  id             String   @id @default(cuid())
-  userId         String
-  shelterPackage Int
-  shelterOption  Int
-  starterPack    Int?
-  amount         Int?
-  status         String?
-  activatedDate  DateTime @default(now())
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model CommissionWallet {
-  id        String @id @default(cuid())
-  packageId Int
-  direct    Float
-  level1    Float
-  level2    Float
-  level3    Float
-  level4    Float
-  level5    Float
-  level6    Float
-  level7    Float
-  level8    Float
-  level9    Float
-  level10   Float
+  @@unique([subscriberId, channelId])
+  @@index([channelId])
+  @@index([status])
+  @@index([subscriberId])
 }
 
 model CommissionPalliative {
-  id        String @id @default(cuid())
+  id        String @id
   packageId Int
   direct    Float
   level1    Float
@@ -630,7 +237,7 @@ model CommissionPalliative {
 }
 
 model CommissionShelter {
-  id        String @id @default(cuid())
+  id        String @id
   packageId Int
   direct    Float
   level1    Float
@@ -645,49 +252,134 @@ model CommissionShelter {
   level10   Float
 }
 
-model TransactionHistory {
-  id              String   @id @default(cuid())
-  userId          String
-  orderId         Int?
-  transactionType String
-  amount          String
-  description     String?
-  transactionDate DateTime @default(now())
-  status          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model CommissionWallet {
+  id        String @id
+  packageId Int
+  direct    Float
+  level1    Float
+  level2    Float
+  level3    Float
+  level4    Float
+  level5    Float
+  level6    Float
+  level7    Float
+  level8    Float
+  level9    Float
+  level10   Float
 }
 
-model WithdrawalHistory {
-  id          String   @id @default(cuid())
-  userId      String
-  description String
-  amount      Float
-  currency    String
-  status      String
-  date        DateTime @default(now())
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model CommunityCategory {
+  id            String          @id
+  categoryName  String
+  categoryIcon  String
+  slug          String          @unique
+  CommunityPost CommunityPost[]
 }
 
-model FundingHistory {
-  id          String   @id @default(cuid())
-  userId      String
-  type        String
-  description String
-  amount      Float
-  currency    String
-  status      String
-  date        DateTime @default(now())
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model CommunityFeature {
+  id                    String                @id
+  name                  String
+  slug                  String                @unique
+  description           String?
+  icon                  String?
+  category              String                @default("general")
+  isActive              Boolean               @default(true)
+  requiresQualification Boolean               @default(false)
+  qualificationCriteria Json?
+  displayOrder          Int                   @default(0)
+  cardColor             String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime
+  UserFeatureProgress   UserFeatureProgress[]
+
+  @@index([isActive, displayOrder])
 }
 
-model InvestorsPool {
-  id     String @id @default(cuid())
-  source String @unique
-  amount Float
+model CommunityPost {
+  id                 String               @id
+  categoryId         String
+  authorId           String
+  amount             Float                @default(0)
+  title              String
+  post               String
+  image              String?
+  views              Int                  @default(0)
+  dateCreated        DateTime             @default(now())
+  User               User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  CommunityCategory  CommunityCategory    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  CommunityPostReply CommunityPostReply[]
+}
+
+model CommunityPostReply {
+  id            String        @id
+  postId        String
+  categoryId    String
+  userId        String
+  reply         String
+  dateAdded     DateTime      @default(now())
+  CommunityPost CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+model CommunityStats {
+  id                String   @id
+  totalMembers      Int      @default(0)
+  palliativeMembers Int      @default(0)
+  totalPartners     Int      @default(0)
+  totalOffers       Int      @default(0)
+  activeTickets     Int      @default(0)
+  lastUpdated       DateTime
+}
+
+model CommunityUpdate {
+  id             String       @id
+  title          String
+  content        String
+  category       String       @default("announcement")
+  priority       String       @default("MEDIUM")
+  isActive       Boolean      @default(true)
+  publishedAt    DateTime     @default(now())
+  expiresAt      DateTime?
+  imageUrl       String?
+  ctaText        String?
+  ctaLink        String?
+  viewCount      Int          @default(0)
+  clickCount     Int          @default(0)
+  targetPackages String?
+  targetRanks    String?
+  targetRegions  String?
+  createdBy      String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime
+  User           User         @relation(fields: [createdBy], references: [id])
+  UpdateRead     UpdateRead[]
+
+  @@index([category])
+  @@index([isActive, publishedAt])
+  @@index([priority])
+}
+
+model Contact {
+  id                  String    @id
+  userId              String
+  firstname           String
+  lastname            String
+  email               String
+  dateInvited         DateTime  @default(now())
+  dateRegistered      DateTime?
+  bpiMembershipStatus String    @default("Not Registered")
+  profileSetup        Boolean   @default(false)
+  bptSpent            Float     @default(0.5)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime
+  User                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, email])
+  @@index([email])
+  @@index([userId])
 }
 
 model CurrencyManagement {
-  id      String  @id @default(cuid())
+  id      String  @id
   name    String
   symbol  String
   rate    Float
@@ -696,8 +388,593 @@ model CurrencyManagement {
   country String?
 }
 
+model DealClaim {
+  id             String    @id
+  userId         String
+  dealId         String
+  claimedAt      DateTime  @default(now())
+  usedAt         DateTime?
+  discountAmount Float
+  BestDeal       BestDeal  @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  User           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([userId])
+}
+
+model DigitalCrop {
+  id               String      @id
+  farmId           String
+  cropType         String
+  plantedAt        DateTime    @default(now())
+  maturityDays     Int
+  harvestAt        DateTime
+  investmentAmount Float
+  expectedYield    Float
+  actualYield      Float?
+  status           String      @default("growing")
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime
+  DigitalFarm      DigitalFarm @relation(fields: [farmId], references: [id], onDelete: Cascade)
+
+  @@index([farmId])
+  @@index([harvestAt])
+  @@index([status])
+}
+
+model DigitalFarm {
+  id             String        @id
+  userId         String        @unique
+  farmLevel      Int           @default(1)
+  farmSize       Float         @default(100)
+  farmName       String?
+  cropTypes      Json?
+  totalInvested  Float         @default(0)
+  totalHarvested Float         @default(0)
+  harvestCount   Int           @default(0)
+  nextHarvestAt  DateTime?
+  lastHarvestAt  DateTime?
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime
+  DigitalCrop    DigitalCrop[]
+  User           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  FarmHarvest    FarmHarvest[]
+
+  @@index([userId])
+}
+
+model EPCPointHistory {
+  id        String    @id
+  epcId     String
+  userId    String
+  points    Int
+  reason    String
+  category  String
+  createdAt DateTime  @default(now())
+  EPCandEPP EPCandEPP @relation(fields: [epcId], references: [id], onDelete: Cascade)
+  User      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([epcId])
+  @@index([userId])
+}
+
+model EPCandEPP {
+  id                   String            @id
+  userId               String            @unique
+  currentRank          String            @default("Starter")
+  rankLevel            Int               @default(1)
+  totalPoints          Int               @default(0)
+  monthlyPoints        Int               @default(0)
+  lastMonthPoints      Int               @default(0)
+  nextRankPoints       Int               @default(100)
+  achievementsUnlocked Json?
+  regionalRank         Int?
+  globalRank           Int?
+  region               String?
+  lastPromotionAt      DateTime?
+  lastPointsResetAt    DateTime          @default(now())
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime
+  EPCPointHistory      EPCPointHistory[]
+  User                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([currentRank])
+  @@index([globalRank])
+  @@index([userId])
+}
+
+model EmpowermentPackage {
+  id                                          String                   @id
+  sponsorId                                   String
+  beneficiaryId                               String
+  status                                      String                   @default("Active - Countdown Running")
+  maturityDate                                DateTime
+  grossEmpowermentValue                       Float                    @default(7250000)
+  netEmpowermentValue                         Float                    @default(6706250)
+  grossSponsorReward                          Float                    @default(1000000)
+  netSponsorReward                            Float                    @default(925000)
+  isConverted                                 Boolean                  @default(false)
+  createdAt                                   DateTime                 @default(now())
+  updatedAt                                   DateTime
+  activatedAt                                 DateTime                 @default(now())
+  adminApproved                               Boolean                  @default(false)
+  approvedAt                                  DateTime?
+  approvedBy                                  String?
+  beneficiaryCanView                          Boolean                  @default(true)
+  beneficiaryCanWithdraw                      Boolean                  @default(false)
+  conversionAmount                            Float?
+  convertedAt                                 DateTime?
+  empowermentType                             String
+  fallbackEnabled                             Boolean                  @default(false)
+  fallbackGrossAmount                         Float                    @default(396000)
+  fallbackNetAmount                           Float                    @default(366300)
+  packageFee                                  Float                    @default(330000)
+  rejectionReason                             String?
+  releasedAt                                  DateTime?
+  taxRate                                     Float                    @default(7.5)
+  totalTaxDeducted                            Float                    @default(0)
+  vat                                         Float                    @default(24750)
+  walletCreditAmount                          Float?
+  User_EmpowermentPackage_beneficiaryIdToUser User                     @relation("EmpowermentPackage_beneficiaryIdToUser", fields: [beneficiaryId], references: [id])
+  User_EmpowermentPackage_sponsorIdToUser     User                     @relation("EmpowermentPackage_sponsorIdToUser", fields: [sponsorId], references: [id])
+  EmpowermentTransaction                      EmpowermentTransaction[]
+}
+
+model EmpowermentTransaction {
+  id                   String             @id
+  empowermentPackageId String
+  transactionType      String
+  grossAmount          Float
+  taxAmount            Float
+  netAmount            Float
+  description          String
+  performedBy          String?
+  createdAt            DateTime           @default(now())
+  EmpowermentPackage   EmpowermentPackage @relation(fields: [empowermentPackageId], references: [id])
+
+  @@index([empowermentPackageId])
+}
+
+model FarmHarvest {
+  id             String      @id
+  farmId         String
+  userId         String
+  cropType       String
+  yieldAmount    Float
+  earningsAmount Float
+  harvestedAt    DateTime    @default(now())
+  DigitalFarm    DigitalFarm @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  User           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([farmId])
+  @@index([userId])
+}
+
+model FundingHistory {
+  id          String   @id
+  userId      String
+  type        String
+  description String
+  amount      Float
+  currency    String
+  status      String
+  date        DateTime @default(now())
+  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model InvestorsPool {
+  id     String @id
+  source String @unique
+  amount Float
+}
+
+model InviteUsage {
+  id        String   @id
+  userId    String
+  date      String
+  count     Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+model LeadershipPool {
+  id          String   @id
+  source      String   @unique
+  amount      Float
+  description String?
+  updatedAt   DateTime
+}
+
+model LeadershipPoolQualification {
+  id                    String    @id
+  userId                String    @unique
+  qualificationOption   Int?
+  hasRegularPlusPackage Boolean   @default(false)
+  sponsoredRegularPlus  Int       @default(0)
+  firstGenRegularPlus   Int       @default(0)
+  secondGenRegularPlus  Int       @default(0)
+  isQualified           Boolean   @default(false)
+  qualifiedAt           DateTime?
+  currentTier           String?
+  poolSharePercentage   Float     @default(0)
+  lastEvaluatedAt       DateTime  @default(now())
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime
+  User                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isQualified])
+  @@index([userId])
+}
+
+model MaterialDownload {
+  id                  String              @id
+  userId              String
+  materialId          String
+  downloadedAt        DateTime            @default(now())
+  PromotionalMaterial PromotionalMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  User                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([materialId])
+  @@index([userId])
+}
+
+model MembershipPackage {
+  id                    String   @id
+  name                  String   @unique
+  price                 Float
+  vat                   Float
+  cash_l1               Float    @default(0)
+  bpt_l1                Float    @default(0)
+  palliative_l1         Float    @default(0)
+  cash_l2               Float    @default(0)
+  bpt_l2                Float    @default(0)
+  palliative_l2         Float    @default(0)
+  cash_l3               Float    @default(0)
+  bpt_l3                Float    @default(0)
+  palliative_l3         Float    @default(0)
+  cash_l4               Float    @default(0)
+  bpt_l4                Float    @default(0)
+  palliative_l4         Float    @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime
+  cashback_l1           Float?
+  cashback_l2           Float?
+  cashback_l3           Float?
+  cashback_l4           Float?
+  features              String[] @default([])
+  hasRenewal            Boolean  @default(true)
+  isActive              Boolean  @default(true)
+  packageType           String   @default("STANDARD")
+  renewalCycle          Int      @default(365)
+  renewalFee            Float?
+  renewal_bpt_l1        Float?
+  renewal_bpt_l2        Float?
+  renewal_bpt_l3        Float?
+  renewal_bpt_l4        Float?
+  renewal_cash_l1       Float?
+  renewal_cash_l2       Float?
+  renewal_cash_l3       Float?
+  renewal_cash_l4       Float?
+  renewal_cashback_l1   Float?
+  renewal_cashback_l2   Float?
+  renewal_cashback_l3   Float?
+  renewal_cashback_l4   Float?
+  renewal_health_l1     Float?
+  renewal_health_l2     Float?
+  renewal_health_l3     Float?
+  renewal_health_l4     Float?
+  renewal_meal_l1       Float?
+  renewal_meal_l2       Float?
+  renewal_meal_l3       Float?
+  renewal_meal_l4       Float?
+  renewal_palliative_l1 Float?
+  renewal_palliative_l2 Float?
+  renewal_palliative_l3 Float?
+  renewal_palliative_l4 Float?
+  renewal_security_l1   Float?
+  renewal_security_l2   Float?
+  renewal_security_l3   Float?
+  renewal_security_l4   Float?
+  shelter_l1            Float?
+  shelter_l10           Float?
+  shelter_l2            Float?
+  shelter_l3            Float?
+  shelter_l4            Float?
+  shelter_l5            Float?
+  shelter_l6            Float?
+  shelter_l7            Float?
+  shelter_l8            Float?
+  shelter_l9            Float?
+}
+
+model Notification {
+  id        String   @id
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean  @default(false)
+  userId    String?
+  isGlobal  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  User      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PackageActivation {
+  id                String            @id
+  userId            String
+  packageId         String
+  amount            Float
+  status            String            @default("pending")
+  createdAt         DateTime          @default(now())
+  expiresAt         DateTime?
+  PalliativePackage PalliativePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  User              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PalliativeMaturity {
+  id              String    @id
+  userId          String
+  palliativeType  String
+  targetAmount    Float
+  completedAmount Float
+  status          String    @default("pending")
+  dateCompleted   DateTime  @default(now())
+  claimedAt       DateTime?
+  approvedAt      DateTime?
+  approvedBy      String?
+  notes           String?
+  User            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([dateCompleted])
+  @@index([status])
+  @@index([userId])
+}
+
+model PalliativeOption {
+  id           String   @id
+  name         String   @unique
+  slug         String   @unique
+  targetAmount Float
+  description  String?
+  icon         String?
+  active       Boolean  @default(true)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+
+  @@index([active, displayOrder])
+}
+
+model PalliativePackage {
+  id                String              @id
+  name              String
+  amount            Float
+  description       String?
+  benefits          String?
+  active            Boolean             @default(true)
+  createdAt         DateTime            @default(now())
+  PackageActivation PackageActivation[]
+}
+
+model PalliativeTicket {
+  id                                    String         @id
+  userId                                String
+  offerId                               String
+  partnerId                             String
+  categoryId                            String
+  code                                  String         @unique
+  status                                String         @default("active")
+  dateClaimed                           DateTime?
+  createdBy                             String
+  activatedDate                         DateTime       @default(now())
+  createdAt                             DateTime       @default(now())
+  TicketCategory                        TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  User_PalliativeTicket_createdByToUser User           @relation("PalliativeTicket_createdByToUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  BpiMember                             BpiMember      @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "PalliativeTicket_member_fkey")
+  PartnerOffer                          PartnerOffer   @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  Partner                               Partner        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  User_PalliativeTicket_userIdToUser    User           @relation("PalliativeTicket_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PalliativeWalletActivation {
+  id              String   @id
+  userId          String
+  palliativeType  String
+  membershipTier  String
+  activationType  String
+  thresholdAmount Float?
+  activatedAt     DateTime @default(now())
+  User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([activatedAt])
+  @@index([userId])
+}
+
+model Partner {
+  id               String             @id
+  name             String
+  logo             String?
+  description      String?
+  status           Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  PalliativeTicket PalliativeTicket[]
+  PartnerOffer     PartnerOffer[]
+}
+
+model PartnerOffer {
+  id               String             @id
+  partnerId        String
+  offer            String
+  amount           Float
+  image            String?
+  locationId       String?
+  description      String?
+  status           Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  PalliativeTicket PalliativeTicket[]
+  Partner          Partner            @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+}
+
+model PasswordReset {
+  id        String   @id
+  userId    String
+  token     String   @unique
+  expires   DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PromotionalMaterial {
+  id               String             @id
+  title            String
+  description      String?
+  type             String
+  category         String
+  fileUrl          String
+  thumbnailUrl     String?
+  fileSize         Int?
+  downloadCount    Int                @default(0)
+  shareCount       Int                @default(0)
+  isActive         Boolean            @default(true)
+  minPackageLevel  String?
+  minRank          String?
+  targetAudience   Json?
+  createdBy        String
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime
+  MaterialDownload MaterialDownload[]
+  User             User               @relation(fields: [createdBy], references: [id])
+
+  @@index([isActive, category])
+  @@index([type])
+}
+
+model Referral {
+  id                             String   @id
+  referrerId                     String
+  referredId                     String
+  status                         String   @default("pending")
+  rewardPaid                     Boolean  @default(false)
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime
+  User_Referral_referredIdToUser User     @relation("Referral_referredIdToUser", fields: [referredId], references: [id], onDelete: Cascade)
+  User_Referral_referrerIdToUser User     @relation("Referral_referrerIdToUser", fields: [referrerId], references: [id], onDelete: Cascade)
+
+  @@unique([referrerId, referredId])
+}
+
+model ReferralTree {
+  id           String   @id
+  userId       String   @unique
+  referredBy   Int?
+  level1       Int?
+  level2       Int?
+  level3       Int?
+  level4       Int?
+  level5       Int?
+  level6       Int?
+  level7       Int?
+  level8       Int?
+  level9       Int?
+  level10      Int?
+  referralDate DateTime @default(now())
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RenewalHistory {
+  id                    String   @id
+  userId                String
+  packageId             String
+  packageName           String
+  renewalNumber         Int
+  renewalFee            Float
+  vat                   Float
+  totalPaid             Float
+  renewedAt             DateTime @default(now())
+  expiresAt             DateTime
+  cashDistributed       Float    @default(0)
+  bptDistributed        Float    @default(0)
+  palliativeDistributed Float    @default(0)
+  cashbackDistributed   Float    @default(0)
+  healthDistributed     Float    @default(0)
+  mealDistributed       Float    @default(0)
+  securityDistributed   Float    @default(0)
+  User                  User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ShelterReward {
+  id                 String   @id
+  userId             String
+  level              Int
+  amount             Float
+  packageType        String
+  sourceActivationId String
+  createdAt          DateTime @default(now())
+  User               User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model SolarAssessment {
+  id                    String    @id
+  userId                String
+  assessmentStatus      String    @default("pending")
+  location              String?
+  propertyType          String?
+  currentEnergyBill     Float?
+  averageMonthlyUsage   Float?
+  roofType              String?
+  roofArea              Float?
+  budgetRange           String?
+  estimatedSystemSize   Float?
+  estimatedSavings      Float?
+  recommendedSystem     String?
+  quotedAmount          Float?
+  consultationScheduled DateTime?
+  consultantId          String?
+  consultantNotes       String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime
+  completedAt           DateTime?
+  User                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentStatus])
+  @@index([userId])
+}
+
+model StoreOrder {
+  id           String       @id
+  productId    String
+  userId       String
+  quantity     Int
+  amount       Float
+  note         String?
+  status       String
+  deliveryDate DateTime?
+  orderDate    DateTime     @default(now())
+  StoreProduct StoreProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  User         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 model StoreProduct {
-  id                String       @id @default(cuid())
+  id                String       @id
   pickupCenterId    Int
   productName       String
   unit              String
@@ -725,730 +1002,578 @@ model StoreProduct {
   lifetimeRoyalty   Float        @default(0)
   logistics         Float        @default(0)
   inStock           Int          @default(1)
-  orders            StoreOrder[]
-}
-
-model StoreOrder {
-  id           String       @id @default(cuid())
-  productId    String
-  userId       String
-  quantity     Int
-  amount       Float
-  note         String?
-  status       String
-  deliveryDate DateTime?
-  orderDate    DateTime     @default(now())
-  product      StoreProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model CommunityCategory {
-  id           String          @id @default(cuid())
-  categoryName String
-  categoryIcon String
-  slug         String          @unique
-  posts        CommunityPost[]
-}
-
-model CommunityPost {
-  id          String               @id @default(cuid())
-  categoryId  String
-  authorId    String
-  amount      Float                @default(0)
-  title       String
-  post        String
-  image       String?
-  views       Int                  @default(0)
-  dateCreated DateTime             @default(now())
-  author      User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  category    CommunityCategory    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  replies     CommunityPostReply[]
-}
-
-model CommunityPostReply {
-  id         String        @id @default(cuid())
-  postId     String
-  categoryId String
-  userId     String
-  reply      String
-  dateAdded  DateTime      @default(now())
-  post       CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-}
-
-model Blog {
-  id        String   @id @default(cuid())
-  title     String
-  slug      String   @unique
-  content   String
-  image     String?
-  tags      String?
-  category  String?
-  status    String   @default("draft")
-  authorId  String
-  viewers   Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  StoreOrder        StoreOrder[]
 }
 
 model SupportTicket {
-  id          String        @id @default(cuid())
+  id          String        @id
   title       String
   description String
   createdBy   String
   status      String        @default("open")
   assignedTo  Int?
   createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  replies     TicketReply[]
+  updatedAt   DateTime
+  TicketReply TicketReply[]
 }
 
-model TicketReply {
-  id        String        @id @default(cuid())
-  ticketId  String
-  userId    Int
-  reply     String
-  createdAt DateTime      @default(now())
-  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+model SystemWallet {
+  id                String         @id
+  name              String         @unique
+  walletType        String
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime
+  balanceBpt        Float          @default(0)
+  balanceNgn        Float          @default(0)
+  balanceUsd        Float          @default(0)
+  isPubliclyVisible Boolean        @default(false)
+  BurnEvent         BurnEvent[]
+  BuyBackEvent      BuyBackEvent[]
 }
 
-model Assessment {
-  id                        String    @id @default(cuid())
-  installerSsc              String?
-  ssc                       String?
-  clientName                String
-  clientEmail               String
-  region                    String?
-  state                     String?
-  totalLoad                 Float
-  inverterCapacity          Float
-  batteryCapacity           Int
-  solarPanels               Int
-  isBpiMember               Boolean
-  installationType          String
-  installationAddress       String
-  contactPerson             String
-  contactPhone              String
-  preferredInstallationDate DateTime?
-  paymentReceiptPath        String?
-  status                    String
-  amountPaid                Float
-  createdAt                 DateTime  @default(now())
-}
+model ThirdPartyPlatform {
+  id                     String                   @id
+  name                   String                   @unique
+  description            String?
+  registrationUrl        String?
+  adminDefaultLink       String?
+  category               String?
+  logo                   String?
+  isActive               Boolean                  @default(true)
+  displayOrder           Int                      @default(0)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime
+  ThirdPartyRegistration ThirdPartyRegistration[]
+  UserThirdPartyLink     UserThirdPartyLink[]
 
-model RenewalHistory {
-  id                String   @id @default(cuid())
-  userId            String
-  packageId         String
-  packageName       String
-  
-  renewalNumber     Int      // 1st, 2nd, 3rd renewal
-  renewalFee        Float
-  vat               Float
-  totalPaid         Float
-  
-  renewedAt         DateTime @default(now())
-  expiresAt         DateTime
-  
-  // Rewards Distributed
-  cashDistributed       Float @default(0)
-  bptDistributed        Float @default(0)
-  palliativeDistributed Float @default(0)
-  cashbackDistributed   Float @default(0)
-  healthDistributed     Float @default(0)
-  mealDistributed       Float @default(0)
-  securityDistributed   Float @default(0)
-  
-  user              User     @relation(fields: [userId], references: [id])
-  
-  @@index([userId])
-}
-
-model ShelterReward {
-  id              String   @id @default(cuid())
-  userId          String
-  level           Int      // 1-10 (admin only visibility for L5-L10)
-  amount          Float
-  packageType     String   // "GOLD_PLUS" | "PLATINUM_PLUS"
-  sourceActivationId String // PackageActivation ID that triggered it
-  
-  createdAt       DateTime @default(now())
-  
-  user            User     @relation(fields: [userId], references: [id])
-  
-  @@index([userId])
-}
-
-model TokenTransaction {
-  id                String   @id @default(cuid())
-  userId            String
-  transactionType   String   // "REWARD" | "PURCHASE" | "BURN" | "TRANSFER"
-  
-  // Amount split (50/50 rule)
-  grossAmount       Float    // Total BPT value in ₦
-  memberAmount      Float    // 50% to user wallet
-  buyBackAmount     Float    // 50% to buy-back wallet
-  
-  source            String   // "MEMBERSHIP_ACTIVATION" | "RENEWAL" | "REFERRAL_L1" etc.
-  sourceId          String?  // Related PackageActivation/Renewal ID
-  
-  description       String?
-  
-  createdAt         DateTime @default(now())
-  
-  user              User     @relation(fields: [userId], references: [id])
-  
-  @@index([userId])
-  @@index([transactionType])
-}
-
-model EmpowermentTransaction {
-  id                    String   @id @default(cuid())
-  empowermentPackageId  String
-  transactionType       String   // "ACTIVATION" | "MATURITY" | "APPROVAL" | "RELEASE" | "FALLBACK" | "CONVERSION"
-  
-  grossAmount           Float
-  taxAmount             Float
-  netAmount             Float
-  
-  description           String
-  performedBy           String?  // Admin user ID
-  
-  createdAt             DateTime @default(now())
-  
-  empowermentPackage    EmpowermentPackage @relation(fields: [empowermentPackageId], references: [id])
-  
-  @@index([empowermentPackageId])
-}
-
-model BptConversionRate {
-  id              String   @id @default(cuid())
-  rateUsd         Float    @default(0.002)  // $0.002 per BPT
-  rateNgn         Float    @default(5)      // ₦5 per BPT
-  isActive        Boolean  @default(true)
-  effectiveDate   DateTime @default(now())
-  createdBy       String?  // Admin user ID
-  createdAt       DateTime @default(now())
-}
-
-model Contact {
-  id                  String    @id @default(cuid())
-  userId              String    // User who created the contact
-  firstname           String
-  lastname            String
-  email               String
-  dateInvited         DateTime  @default(now())
-  dateRegistered      DateTime? // When they actually sign up
-  bpiMembershipStatus String    @default("Not Registered")
-  profileSetup        Boolean   @default(false)
-  bptSpent            Float     @default(0.5) // BPT spent per invite
-  
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  
-  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@unique([userId, email]) // Prevent duplicate contacts per user
-  @@index([userId])
-  @@index([email])
-}
-
-model InviteUsage {
-  id        String   @id @default(cuid())
-  userId    String
-  date      String   // Format: YYYY-MM-DD for daily tracking
-  count     Int      @default(1)
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@unique([userId, date]) // Track daily usage per user
-  @@index([userId, date])
-}
-
-// ============================================
-// COMMUNITY FEATURES SYSTEM
-// ============================================
-
-model CommunityFeature {
-  id                    String                 @id @default(cuid())
-  name                  String
-  slug                  String                 @unique
-  description           String?
-  icon                  String?                // Icon name from lucide-react
-  category              String                 @default("general") // general, finance, growth, learning
-  isActive              Boolean                @default(true)
-  requiresQualification Boolean                @default(false)
-  qualificationCriteria Json?                  // Flexible JSON for different criteria
-  displayOrder          Int                    @default(0)
-  cardColor             String?                // Custom card color
-  
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  
-  userProgress          UserFeatureProgress[]
-  
   @@index([isActive, displayOrder])
 }
 
-model UserFeatureProgress {
-  id                String           @id @default(cuid())
-  userId            String
-  featureId         String
-  
-  currentProgress   Json?            // Flexible progress data per feature
-  progressPercent   Float            @default(0) // 0-100
-  isQualified       Boolean          @default(false)
-  qualifiedAt       DateTime?
-  lastCalculatedAt  DateTime         @default(now())
-  milestones        Json?            // Array of achieved milestones
-  
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  
-  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  feature           CommunityFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
-  
-  @@unique([userId, featureId])
-  @@index([userId])
-  @@index([featureId])
-  @@index([isQualified])
-}
+model ThirdPartyRegistration {
+  id                                                 String             @id
+  userId                                             String
+  platformId                                         String
+  username                                           String?
+  email                                              String?
+  referredByUserId                                   String?
+  status                                             String             @default("pending")
+  registeredAt                                       DateTime           @default(now())
+  approvedAt                                         DateTime?
+  rejectedAt                                         DateTime?
+  notes                                              String?
+  ThirdPartyPlatform                                 ThirdPartyPlatform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  User_ThirdPartyRegistration_referredByUserIdToUser User?              @relation("ThirdPartyRegistration_referredByUserIdToUser", fields: [referredByUserId], references: [id])
+  User_ThirdPartyRegistration_userIdToUser           User               @relation("ThirdPartyRegistration_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
 
-model LeadershipPoolQualification {
-  id                    String    @id @default(cuid())
-  userId                String    @unique
-  
-  qualificationOption   Int?      // 1 or 2
-  hasRegularPlusPackage Boolean   @default(false)
-  
-  // Option 1 tracking
-  sponsoredRegularPlus  Int       @default(0)
-  
-  // Option 2 tracking
-  firstGenRegularPlus   Int       @default(0)
-  secondGenRegularPlus  Int       @default(0)
-  
-  isQualified           Boolean   @default(false)
-  qualifiedAt           DateTime?
-  currentTier           String?   // Bronze, Silver, Gold, etc.
-  poolSharePercentage   Float     @default(0)
-  
-  lastEvaluatedAt       DateTime  @default(now())
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([isQualified])
+  @@unique([userId, platformId])
+  @@index([platformId])
+  @@index([referredByUserId])
   @@index([userId])
 }
 
-model CommunityUpdate {
-  id          String    @id @default(cuid())
-  title       String
-  content     String    @db.Text
-  category    String    @default("announcement") // announcement, promotion, news, event, policy, success
-  priority    String    @default("MEDIUM") // HIGH, MEDIUM, LOW
-  
-  isActive    Boolean   @default(true)
-  publishedAt DateTime  @default(now())
-  expiresAt   DateTime?
-  
-  imageUrl    String?
-  ctaText     String?
-  ctaLink     String?
-  
-  viewCount   Int       @default(0)
-  clickCount  Int       @default(0)
-  
-  // Targeting
-  targetPackages      String?  // JSON array of package IDs
-  targetRanks         String?  // JSON array of ranks
-  targetRegions       String?  // JSON array of regions
-  
-  createdBy   String    // Admin user ID
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
-  creator     User      @relation(fields: [createdBy], references: [id])
-  readBy      UpdateRead[]
-  
-  @@index([isActive, publishedAt])
-  @@index([category])
-  @@index([priority])
+model TicketCategory {
+  id               String             @id
+  name             String
+  description      String?
+  icon             String?
+  PalliativeTicket PalliativeTicket[]
 }
 
-model UpdateRead {
-  id        String         @id @default(cuid())
-  userId    String
-  updateId  String
-  readAt    DateTime       @default(now())
-  
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  update    CommunityUpdate @relation(fields: [updateId], references: [id], onDelete: Cascade)
-  
-  @@unique([userId, updateId])
-  @@index([userId])
+model TicketReply {
+  id            String        @id
+  ticketId      String
+  userId        Int
+  reply         String
+  createdAt     DateTime      @default(now())
+  SupportTicket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 }
 
-model PromotionalMaterial {
-  id              String   @id @default(cuid())
-  title           String
-  description     String?  @db.Text
-  type            String   // IMAGE, VIDEO, PDF, LINK, TEMPLATE
-  category        String   // social, presentation, flyer, email, whatsapp
-  
-  fileUrl         String
-  thumbnailUrl    String?
-  fileSize        Int?     // In bytes
-  
-  downloadCount   Int      @default(0)
-  shareCount      Int      @default(0)
-  isActive        Boolean  @default(true)
-  
-  // Access control
-  minPackageLevel String?  // Minimum package required
-  minRank         String?  // Minimum rank required
-  targetAudience  Json?    // Flexible targeting
-  
-  createdBy       String   // Admin user ID
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  creator         User     @relation(fields: [createdBy], references: [id])
-  downloads       MaterialDownload[]
-  
-  @@index([isActive, category])
-  @@index([type])
-}
-
-model MaterialDownload {
-  id          String               @id @default(cuid())
-  userId      String
-  materialId  String
-  downloadedAt DateTime            @default(now())
-  
-  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  material    PromotionalMaterial  @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([materialId])
-}
-
-model BPICalculation {
-  id                  String   @id @default(cuid())
-  userId              String
-  
-  calculationType     String   // earnings, roi, projection
-  inputParameters     Json     // Store all input data
-  
-  currentPackage      String?
-  investmentAmount    Float?
-  referralCount       Int?
-  teamSize            Int?
-  timePeriodMonths    Int?
-  
-  calculatedEarnings  Float    @default(0)
-  projectedEarnings   Float    @default(0)
-  breakEvenMonths     Int?
-  roi                 Float?
-  
-  createdAt           DateTime @default(now())
-  
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([createdAt])
-}
-
-model SolarAssessment {
-  id                    String    @id @default(cuid())
-  userId                String
-  
-  assessmentStatus      String    @default("pending") // pending, under_review, assigned, scheduled, completed, quote_sent
-  
-  // Assessment data
-  location              String?
-  propertyType          String?
-  currentEnergyBill     Float?
-  averageMonthlyUsage   Float?
-  roofType              String?
-  roofArea              Float?
-  budgetRange           String?
-  
-  // Results
-  estimatedSystemSize   Float?
-  estimatedSavings      Float?
-  recommendedSystem     String?   @db.Text
-  quotedAmount          Float?
-  
-  // Consultation
-  consultationScheduled DateTime?
-  consultantId          String?
-  consultantNotes       String?   @db.Text
-  
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  completedAt           DateTime?
-  
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([assessmentStatus])
-}
-
-model DigitalFarm {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  
-  farmLevel       Int      @default(1)
-  farmSize        Float    @default(100) // Square meters
-  farmName        String?
-  
-  cropTypes       Json?    // Array of current crops
-  totalInvested   Float    @default(0)
-  totalHarvested  Float    @default(0)
-  harvestCount    Int      @default(0)
-  
-  nextHarvestAt   DateTime?
-  lastHarvestAt   DateTime?
-  
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  crops           DigitalCrop[]
-  harvests        FarmHarvest[]
-  
-  @@index([userId])
-}
-
-model DigitalCrop {
-  id              String   @id @default(cuid())
-  farmId          String
-  
-  cropType        String   // corn, wheat, tomato, etc.
-  plantedAt       DateTime @default(now())
-  maturityDays    Int      // Days until harvest
-  harvestAt       DateTime
-  
-  investmentAmount Float
-  expectedYield    Float
-  actualYield      Float?
-  
-  status          String   @default("growing") // growing, ready, harvested, failed
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  farm            DigitalFarm @relation(fields: [farmId], references: [id], onDelete: Cascade)
-  
-  @@index([farmId])
-  @@index([status])
-  @@index([harvestAt])
-}
-
-model FarmHarvest {
-  id              String   @id @default(cuid())
-  farmId          String
+model TokenTransaction {
+  id              String   @id
   userId          String
-  
-  cropType        String
-  yieldAmount     Float
-  earningsAmount  Float
-  
-  harvestedAt     DateTime @default(now())
-  
-  farm            DigitalFarm @relation(fields: [farmId], references: [id], onDelete: Cascade)
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([farmId])
+  transactionType String
+  grossAmount     Float
+  memberAmount    Float
+  buyBackAmount   Float
+  source          String
+  sourceId        String?
+  description     String?
+  createdAt       DateTime @default(now())
+  User            User     @relation(fields: [userId], references: [id])
+
+  @@index([transactionType])
   @@index([userId])
 }
 
 model TrainingCourse {
-  id              String   @id @default(cuid())
-  title           String
-  description     String   @db.Text
-  category        String   // basics, referral, finance, leadership, solar, agriculture, marketing
-  
-  thumbnailUrl    String?
-  difficulty      String   @default("beginner") // beginner, intermediate, advanced
-  estimatedHours  Float?
-  
-  isMandatory     Boolean  @default(false)
-  isActive        Boolean  @default(true)
-  displayOrder    Int      @default(0)
-  
-  // Access control
-  minPackageLevel String?
-  minRank         String?
-  
-  createdBy       String   // Admin user ID
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  creator         User              @relation(fields: [createdBy], references: [id])
-  lessons         TrainingLesson[]
-  enrollments     TrainingProgress[]
-  
-  @@index([isActive, displayOrder])
+  id               String             @id
+  title            String
+  description      String
+  category         String
+  thumbnailUrl     String?
+  difficulty       String             @default("beginner")
+  estimatedHours   Float?
+  isMandatory      Boolean            @default(false)
+  isActive         Boolean            @default(true)
+  displayOrder     Int                @default(0)
+  minPackageLevel  String?
+  minRank          String?
+  createdBy        String
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime
+  User             User               @relation(fields: [createdBy], references: [id])
+  TrainingLesson   TrainingLesson[]
+  TrainingProgress TrainingProgress[]
+
   @@index([category])
+  @@index([isActive, displayOrder])
 }
 
 model TrainingLesson {
-  id              String   @id @default(cuid())
-  courseId        String
-  title           String
-  content         String   @db.Text
-  videoUrl        String?
-  documentUrl     String?
-  
-  lessonOrder     Int      @default(0)
+  id               String         @id
+  courseId         String
+  title            String
+  content          String
+  videoUrl         String?
+  documentUrl      String?
+  lessonOrder      Int            @default(0)
   estimatedMinutes Int?
-  
-  quizQuestions   Json?    // Array of quiz questions
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  course          TrainingCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  
+  quizQuestions    Json?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime
+  TrainingCourse   TrainingCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
   @@index([courseId, lessonOrder])
 }
 
 model TrainingProgress {
-  id                String   @id @default(cuid())
+  id                String         @id
   userId            String
   courseId          String
-  
-  progress          Float    @default(0) // 0-100
-  completedLessons  Json?    // Array of lesson IDs
-  quizScores        Json?    // Object with lessonId: score
-  
-  certificateIssued Boolean  @default(false)
+  progress          Float          @default(0)
+  completedLessons  Json?
+  quizScores        Json?
+  certificateIssued Boolean        @default(false)
   certificateUrl    String?
-  
-  startedAt         DateTime @default(now())
+  startedAt         DateTime       @default(now())
   completedAt       DateTime?
-  lastAccessedAt    DateTime @default(now())
-  
-  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course            TrainingCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  
+  lastAccessedAt    DateTime       @default(now())
+  TrainingCourse    TrainingCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  User              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([userId, courseId])
-  @@index([userId])
   @@index([courseId])
-}
-
-model EPCandEPP {
-  id                  String   @id @default(cuid())
-  userId              String   @unique
-  
-  currentRank         String   @default("Starter")
-  rankLevel           Int      @default(1)
-  
-  totalPoints         Int      @default(0)
-  monthlyPoints       Int      @default(0)
-  lastMonthPoints     Int      @default(0)
-  
-  nextRankPoints      Int      @default(100)
-  achievementsUnlocked Json?   // Array of achievement IDs
-  
-  regionalRank        Int?
-  globalRank          Int?
-  region              String?
-  
-  lastPromotionAt     DateTime?
-  lastPointsResetAt   DateTime @default(now())
-  
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  pointHistory        EPCPointHistory[]
-  
   @@index([userId])
-  @@index([currentRank])
-  @@index([globalRank])
 }
 
-model EPCPointHistory {
-  id          String    @id @default(cuid())
-  epcId       String
+model Transaction {
+  id              String   @id
+  userId          String
+  transactionType String
+  amount          Float
+  description     String
+  status          String   @default("pending")
+  reference       String?
+  createdAt       DateTime @default(now())
+  walletType      String   @default("main")
+  User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TransactionHistory {
+  id              String   @id
+  userId          String
+  orderId         Int?
+  transactionType String
+  amount          String
+  description     String?
+  transactionDate DateTime @default(now())
+  status          String
+  User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UpdateRead {
+  id              String          @id
+  userId          String
+  updateId        String
+  readAt          DateTime        @default(now())
+  CommunityUpdate CommunityUpdate @relation(fields: [updateId], references: [id], onDelete: Cascade)
+  User            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, updateId])
+  @@index([userId])
+}
+
+model User {
+  id                                                                   String                       @id
+  name                                                                 String?
+  email                                                                String?                      @unique
+  emailVerified                                                        DateTime?
+  image                                                                String?
+  firstname                                                            String?
+  lastname                                                             String?
+  mobile                                                               String?
+  ssc                                                                  String?
+  gender                                                               String?
+  address                                                              String?
+  city                                                                 String?
+  state                                                                String?
+  zip                                                                  String?
+  country                                                              String?
+  profilePic                                                           String?
+  secondaryEmail                                                       String?
+  username                                                             String?                      @unique
+  referralLink                                                         String?
+  userType                                                             String                       @default("user")
+  rank                                                                 String                       @default("Newbie")
+  activated                                                            Boolean                      @default(false)
+  kyc                                                                  String?
+  kycPending                                                           Int                          @default(0)
+  withdrawBan                                                          Int                          @default(0)
+  verified                                                             Boolean                      @default(false)
+  pendingActivation                                                    Int?
+  isVip                                                                Int                          @default(0)
+  isShelter                                                            Int                          @default(0)
+  vipPending                                                           Int                          @default(0)
+  shelterPending                                                       Int                          @default(0)
+  shelterWallet                                                        Int                          @default(0)
+  isShareholder                                                        Int                          @default(0)
+  wallet                                                               Float                        @default(0)
+  spendable                                                            Float                        @default(0)
+  palliative                                                           Float                        @default(0)
+  cashback                                                             Float                        @default(0)
+  studentCashback                                                      Float                        @default(0)
+  community                                                            Float                        @default(0)
+  shareholder                                                          Float                        @default(0)
+  shelter                                                              Float                        @default(0)
+  education                                                            Float                        @default(0)
+  car                                                                  Float                        @default(0)
+  business                                                             Float                        @default(0)
+  solar                                                                Float?
+  legals                                                               Float?
+  land                                                                 Float                        @default(0)
+  meal                                                                 Float                        @default(0)
+  health                                                               Float                        @default(0)
+  defaultCurrency                                                      Int                          @default(1)
+  level1Count                                                          Int                          @default(0)
+  level2Count                                                          Int                          @default(0)
+  level3Count                                                          Int                          @default(0)
+  level4Count                                                          Int                          @default(0)
+  role                                                                 String                       @default("user")
+  passwordHash                                                         String?
+  verificationCode                                                     String?
+  resetToken                                                           String?
+  createdAt                                                            DateTime                     @default(now())
+  updatedAt                                                            DateTime                     @updatedAt
+  lastLogin                                                            DateTime                     @default(now())
+  legacyId                                                             Int?                         @unique
+  referredBy                                                           String?
+  activeMembershipPackageId                                            String?
+  bpiTokenWallet                                                       Float                        @default(0)
+  sponsorId                                                            String?
+  membershipActivatedAt                                                DateTime?
+  membershipExpiresAt                                                  DateTime?
+  renewalCount                                                         Int                          @default(0)
+  security                                                             Float                        @default(0)
+  inviteCode                                                           String?                      @unique
+  accountName                                                          String?
+  accountNumber                                                        String?
+  bankName                                                             String?
+  bnbWalletAddress                                                     String?
+  myngulActivationPin                                                  String?
+  palliativeActivated                                                  Boolean                      @default(false)
+  palliativeActivatedAt                                                DateTime?
+  palliativeTier                                                       String?
+  selectedPalliative                                                   String?
+  socialMedia                                                          Float                        @default(0)
+  Account                                                              Account[]
+  ActiveShelter                                                        ActiveShelter[]
+  BPICalculation                                                       BPICalculation[]
+  BestDeal                                                             BestDeal[]
+  Blog                                                                 Blog[]
+  BpiMember                                                            BpiMember?
+  ChannelSubscription                                                  ChannelSubscription[]
+  CommunityPost                                                        CommunityPost[]
+  CommunityUpdate                                                      CommunityUpdate[]
+  Contact                                                              Contact[]
+  DealClaim                                                            DealClaim[]
+  DigitalFarm                                                          DigitalFarm?
+  EPCPointHistory                                                      EPCPointHistory[]
+  EPCandEPP                                                            EPCandEPP?
+  EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser            EmpowermentPackage[]         @relation("EmpowermentPackage_beneficiaryIdToUser")
+  EmpowermentPackage_EmpowermentPackage_sponsorIdToUser                EmpowermentPackage[]         @relation("EmpowermentPackage_sponsorIdToUser")
+  FarmHarvest                                                          FarmHarvest[]
+  FundingHistory                                                       FundingHistory[]
+  InviteUsage                                                          InviteUsage[]
+  LeadershipPoolQualification                                          LeadershipPoolQualification?
+  MaterialDownload                                                     MaterialDownload[]
+  Notification                                                         Notification[]
+  PackageActivation                                                    PackageActivation[]
+  PalliativeMaturity                                                   PalliativeMaturity[]
+  PalliativeTicket_PalliativeTicket_createdByToUser                    PalliativeTicket[]           @relation("PalliativeTicket_createdByToUser")
+  PalliativeTicket_PalliativeTicket_userIdToUser                       PalliativeTicket[]           @relation("PalliativeTicket_userIdToUser")
+  PalliativeWalletActivation                                           PalliativeWalletActivation[]
+  PasswordReset                                                        PasswordReset[]
+  PromotionalMaterial                                                  PromotionalMaterial[]
+  Referral_Referral_referredIdToUser                                   Referral[]                   @relation("Referral_referredIdToUser")
+  Referral_Referral_referrerIdToUser                                   Referral[]                   @relation("Referral_referrerIdToUser")
+  ReferralTree                                                         ReferralTree?
+  RenewalHistory                                                       RenewalHistory[]
+  Session                                                              Session[]
+  ShelterReward                                                        ShelterReward[]
+  SolarAssessment                                                      SolarAssessment[]
+  StoreOrder                                                           StoreOrder[]
+  ThirdPartyRegistration_ThirdPartyRegistration_referredByUserIdToUser ThirdPartyRegistration[]     @relation("ThirdPartyRegistration_referredByUserIdToUser")
+  ThirdPartyRegistration_ThirdPartyRegistration_userIdToUser           ThirdPartyRegistration[]     @relation("ThirdPartyRegistration_userIdToUser")
+  TokenTransaction                                                     TokenTransaction[]
+  TrainingCourse                                                       TrainingCourse[]
+  TrainingProgress                                                     TrainingProgress[]
+  Transaction                                                          Transaction[]
+  TransactionHistory                                                   TransactionHistory[]
+  UpdateRead                                                           UpdateRead[]
+  User                                                                 User?                        @relation("UserToUser", fields: [sponsorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_User                                                           User[]                       @relation("UserToUser")
+  UserEarning                                                          UserEarning[]
+  UserFeatureProgress                                                  UserFeatureProgress[]
+  UserThirdPartyLink                                                   UserThirdPartyLink[]
+  WithdrawalHistory                                                    WithdrawalHistory[]
+  YoutubeChannel                                                       YoutubeChannel[]
+  YoutubeProvider                                                      YoutubeProvider?
+  AuditLog                                                             AuditLog[]
+  PendingPayment                                                       PendingPayment[]
+  ReviewedPayments                                                     PendingPayment[]             @relation("PaymentReviewer")
+}
+
+model UserEarning {
+  id             String         @id
+  userId         String
+  channelId      String
+  amount         Decimal        @db.Decimal(10, 2)
+  type           String
+  isPaid         Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  YoutubeChannel YoutubeChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  User           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([channelId])
+  @@index([isPaid])
+  @@index([type])
+  @@index([userId])
+}
+
+model UserFeatureProgress {
+  id               String           @id
+  userId           String
+  featureId        String
+  currentProgress  Json?
+  progressPercent  Float            @default(0)
+  isQualified      Boolean          @default(false)
+  qualifiedAt      DateTime?
+  lastCalculatedAt DateTime         @default(now())
+  milestones       Json?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime
+  CommunityFeature CommunityFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  User             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, featureId])
+  @@index([featureId])
+  @@index([isQualified])
+  @@index([userId])
+}
+
+model UserThirdPartyLink {
+  id                 String             @id
+  userId             String
+  platformId         String
+  username           String?
+  profileUrl         String?
+  referralLink       String?
+  isVerified         Boolean            @default(false)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime
+  ThirdPartyPlatform ThirdPartyPlatform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  User               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platformId])
+  @@index([platformId])
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model WithdrawalHistory {
+  id          String   @id
   userId      String
-  
-  points      Int
-  reason      String
-  category    String    // purchase, referral, training, engagement
-  
-  createdAt   DateTime  @default(now())
-  
-  epc         EPCandEPP @relation(fields: [epcId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([epcId])
+  description String
+  amount      Float
+  currency    String
+  status      String
+  date        DateTime @default(now())
+  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model YoutubeChannel {
+  id                  String                @id
+  userId              String
+  channelName         String?
+  channelUrl          String?
+  status              String                @default("DRAFT")
+  subscribers         Int?
+  createdAt           DateTime              @default(now())
+  channelLink         String?
+  channelLogo         String?
+  isVerified          Boolean               @default(false)
+  updatedAt           DateTime
+  verificationCode    String?               @unique
+  ChannelSubscription ChannelSubscription[]
+  UserEarning         UserEarning[]
+  User                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isVerified])
+  @@index([status])
   @@index([userId])
+}
+
+model YoutubePlan {
+  id              String            @id
+  name            String            @unique
+  amount          Decimal           @db.Decimal(10, 2)
+  vat             Decimal           @db.Decimal(10, 2)
+  totalSub        Int
+  description     String?
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime
+  YoutubeProvider YoutubeProvider[]
+
+  @@index([isActive])
+}
+
+model YoutubeProvider {
+  id            String      @id
+  userId        String      @unique
+  youtubePlanId String
+  balance       Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime
+  User          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  YoutubePlan   YoutubePlan @relation(fields: [youtubePlanId], references: [id])
+
+  @@index([userId])
+  @@index([youtubePlanId])
+}
+
+// Admin Panel Models
+
+model PaymentGatewayConfig {
+  id               String   @id
+  gatewayName      String   @unique
+  displayName      String
+  provider         String
+  isActive         Boolean  @default(false)
+  
+  // Paystack & Flutterwave fields
+  publicKey        String?
+  secretKey        String?
+  merchantId       String?
+  webhookUrl       String?
+  callbackUrl      String?
+  
+  // Crypto fields
+  apiProvider      String?
+  merchantKey      String?
+  cryptoPublicKey  String?
+  cryptoSecretKey  String?
+  
+  // Bank Transfer fields
+  bankName         String?
+  bankAccount      String?
+  bankAccountName  String?
+  
+  // Utility Token fields
+  tokenName            String?
+  tokenSymbol          String?
+  tokenContractAddress String?
+  tokenomicsUrl        String?
+  homePageUrl          String?
+  currentPriceNgn      Float?
+  currentPriceUsd      Float?
+  
+  supportedMethods String[] @default([])
+  currency         String   @default("NGN")
+  fees             Json?
+  limits           Json?
+  logo             String?
+  description      String?
+  displayOrder     Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+
+  @@index([isActive, displayOrder])
+}
+
+model AuditLog {
+  id          String   @id
+  userId      String
+  action      String
+  entity      String
+  entityId    String?
+  changes     Json?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  status      String   @default("success")
+  errorMessage String?
+  createdAt   DateTime @default(now())
+  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
   @@index([createdAt])
 }
 
-model BestDeal {
-  id              String    @id @default(cuid())
-  title           String
-  description     String    @db.Text
-  dealType        String    // package_discount, referral_bonus, bundle, loyalty, seasonal
-  
-  discountType    String    // percentage, fixed_amount
-  discountValue   Float
-  originalPrice   Float?
-  discountedPrice Float?
-  
-  startDate       DateTime
-  endDate         DateTime
-  
-  usageLimit      Int?      // Total times this deal can be claimed
-  usagePerUser    Int       @default(1)
-  currentUsage    Int       @default(0)
-  
-  // Eligibility
-  eligiblePackages String?  // JSON array
-  eligibleRanks    String?  // JSON array
-  minPurchaseAmount Float?
-  
-  isActive        Boolean   @default(true)
-  isFeatured      Boolean   @default(false)
-  
-  imageUrl        String?
-  ctaText         String?
-  
-  createdBy       String    // Admin user ID
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  
-  creator         User      @relation(fields: [createdBy], references: [id])
-  claims          DealClaim[]
-  
-  @@index([isActive, endDate])
-  @@index([dealType])
+model PendingPayment {
+  id              String   @id
+  userId          String
+  transactionType String
+  amount          Float
+  currency        String   @default("NGN")
+  paymentMethod   String
+  gatewayReference String?
+  status          String   @default("pending")
+  metadata        Json?
+  proofOfPayment  String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  reviewNotes     String?
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime
+  User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Reviewer        User?    @relation("PaymentReviewer", fields: [reviewedBy], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }
 
-model DealClaim {
-  id          String    @id @default(cuid())
-  userId      String
-  dealId      String
-  
-  claimedAt   DateTime  @default(now())
-  usedAt      DateTime?
-  
-  discountAmount Float
-  
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  deal        BestDeal  @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([dealId])
+model AdminNotificationSettings {
+  id              String   @id
+  notificationType String  @unique
+  enabled         Boolean  @default(true)
+  emailEnabled    Boolean  @default(true)
+  smsEnabled      Boolean  @default(false)
+  pushEnabled     Boolean  @default(true)
+  recipients      String[] @default([])
+  template        String?
+  thresholds      Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime
 }

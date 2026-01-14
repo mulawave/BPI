@@ -2,6 +2,7 @@
 
 import { Wallet, Gift, DollarSign, Coins, Heart, Home, BookOpen, Utensils, Shield, Users } from "lucide-react";
 import { Card } from "./ui/card";
+import { useCurrency } from "@/contexts/CurrencyContext";
 
 interface WalletData {
   // Main wallets
@@ -28,6 +29,8 @@ interface MultiWalletDisplayProps {
 }
 
 export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWalletDisplayProps) {
+  const { formatAmount } = useCurrency();
+  
   const mainWallets = [
     {
       name: "Main Wallet",
@@ -44,8 +47,8 @@ export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWa
       icon: Coins,
       color: "text-yellow-600",
       bgColor: "bg-yellow-50 dark:bg-yellow-900/20",
-      description: "50% of BPT rewards (₦5 per BPT)",
-      displayValue: `${wallets.bpiTokenWallet.toLocaleString()} BPT (₦${(wallets.bpiTokenWallet * 5).toLocaleString()})`,
+      description: "50% of BPT rewards (5 per BPT value)",
+      displayValue: `${wallets.bpiTokenWallet.toFixed(2)} BPT (${formatAmount(wallets.bpiTokenWallet * 5)})`,
     },
     {
       name: "Palliative Wallet",
@@ -158,7 +161,7 @@ export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWa
                     {wallet.name}
                   </h3>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {wallet.displayValue || `₦${wallet.balance.toLocaleString()}`}
+                    {wallet.displayValue || formatAmount(wallet.balance)}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     {wallet.description}
@@ -183,7 +186,7 @@ export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWa
           <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">💡 Wallet Information</h4>
           <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
             <li><strong>Main Wallet:</strong> Fully withdrawable cash balance</li>
-            <li><strong>BPI Token (BPT):</strong> 50% of your token rewards (₦5 per BPT). Other 50% goes to buy-back wallet</li>
+            <li><strong>BPI Token (BPT):</strong> 50% of your token rewards (5 per BPT value). Other 50% goes to buy-back wallet</li>
             <li><strong>Palliative:</strong> Welfare support from referral activations</li>
             <li><strong>Cashback:</strong> Available for Gold Plus, Platinum Plus, and Travel packages</li>
             <li><strong>Shelter:</strong> Housing support for Gold/Platinum packages (10 referral levels)</li>

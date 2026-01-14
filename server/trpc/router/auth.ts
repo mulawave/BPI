@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { hash, compare } from "bcryptjs";
-import { createTRPCRouter, publicProcedure } from "../trpc";
+import { createTRPCRouter, publicProcedure, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { randomUUID } from "crypto";
 
@@ -53,13 +53,44 @@ export const authRouter = createTRPCRouter({
       // Hash password
       const passwordHash = await hash(password, 12);
 
-      // Create user
+      // Generate unique invite code for new user
+      const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let inviteCode = '';
+      for (let i = 0; i < 12; i++) {
+        inviteCode += characters.charAt(Math.floor(Math.random() * characters.length));
+      }
+      
+      // Ensure uniqueness
+      let isUnique = false;
+      let attempts = 0;
+      while (!isUnique && attempts < 10) {
+        const existing = await ctx.prisma.user.findUnique({
+          where: { inviteCode }
+        });
+        if (!existing) {
+          isUnique = true;
+        } else {
+          inviteCode = '';
+          for (let i = 0; i < 12; i++) {
+            inviteCode += characters.charAt(Math.floor(Math.random() * characters.length));
+          }
+          attempts++;
+        }
+      }
+
+      // Create user with invite code
       const user = await ctx.prisma.user.create({
         data: {
+          id: randomUUID(),
           name: screenname,
+          firstname,
+          lastname,
+          gender,
           email,
           passwordHash,
-          role: "member",
+          role: "user",
+          inviteCode,
+          referralLink: `https://beepagro.com/register?ref=${inviteCode}`,
         },
       });
 
@@ -251,5 +282,101 @@ export const authRouter = createTRPCRouter({
       `;
 
       return { valid: resetTokens && resetTokens.length > 0 };
+    }),
+
+  verifyPassword: protectedProcedure
+    .input(z.object({ password: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.session?.user) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Not authenticated",
+        });
+      }
+
+      const userId = (ctx.session.user as any).id;
+
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: userId },
+        select: { passwordHash: true },
+      });
+
+      if (!user || !user.passwordHash) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found",
+        });
+      }
+
+      const isValid = await compare(input.password, user.passwordHash);
+
+      return { success: isValid };
+    }),
+
+  getReferrerInfo: publicProcedure
+    .input(z.object({ refId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { refId } = input;
+
+      // Return default if refId is "1" (no referrer)
+      if (!refId || refId === "1") {
+        return {
+          name: "Administrator",
+          firstname: "BPI",
+          lastname: "Administrator",
+        };
+      }
+
+      console.log(`[getReferrerInfo] Looking up refId: ${refId}`);
+
+      // Try to find by invite code first
+      let referrer = await ctx.prisma.user.findUnique({
+        where: { inviteCode: refId },
+        select: {
+          name: true,
+          firstname: true,
+          lastname: true,
+          inviteCode: true,
+        },
+      });
+
+      console.log(`[getReferrerInfo] Found by inviteCode:`, referrer);
+
+      // If not found, try by user ID (backward compatibility)
+      if (!referrer) {
+        try {
+          referrer = await ctx.prisma.user.findUnique({
+            where: { id: refId },
+            select: {
+              name: true,
+              firstname: true,
+              lastname: true,
+              inviteCode: true,
+            },
+          });
+          console.log(`[getReferrerInfo] Found by userId:`, referrer);
+        } catch (e) {
+          console.log(`[getReferrerInfo] Not found by userId either`);
+        }
+      }
+
+      // Return referrer info or default
+      if (referrer) {
+        const fullName = referrer.name || `${referrer.firstname} ${referrer.lastname}`;
+        console.log(`[getReferrerInfo] Returning name: ${fullName}`);
+        return {
+          name: fullName,
+          firstname: referrer.firstname || "",
+          lastname: referrer.lastname || "",
+        };
+      }
+
+      // If no referrer found, return default
+      console.log(`[getReferrerInfo] No referrer found, returning Administrator`);
+      return {
+        name: "Administrator",
+        firstname: "BPI",
+        lastname: "Administrator",
+      };
     }),
 });

@@ -52,11 +52,9 @@ export default function LoginForm() {
 
     if (result.ok) {
       setAlert({ type: "success", message: "Login Successful, connecting to your Dashboard" });
-      // Keep loading state true during redirect to prevent re-submission
-      // Use Next.js router for more reliable navigation
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 1500);
+      // Immediate redirect for better UX
+      router.push("/dashboard");
+      router.refresh();
     }
   }
 

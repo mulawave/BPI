@@ -1,256 +1,242 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
+import { FiX, FiBell, FiExternalLink } from "react-icons/fi";
+import { Bell, TrendingUp, AlertCircle, Calendar, Eye, Star, Filter } from "lucide-react";
 import { api } from "@/client/trpc";
-import { Card } from "@/components/ui/card";
-import { Modal } from "@/components/ui/Modal";
-import { formatDistanceToNow } from "date-fns";
-import { X, ExternalLink, Calendar, User } from "lucide-react";
 
 interface UpdatesModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function UpdatesModal({ isOpen, onClose }: UpdatesModalProps) {
-  const [selectedUpdate, setSelectedUpdate] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
+export default function UpdatesModal({ isOpen, onClose }: UpdatesModalProps) {
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedUpdate, setSelectedUpdate] = useState<any>(null);
 
-  const { data: updatesData, isLoading } = api.communityUpdates.getUpdates.useQuery({
-    limit: 20,
-    category: selectedCategory,
+  const { data: updates, refetch } = api.communityUpdates.getUpdates.useQuery({
+    limit: 50,
+    category: selectedCategory === 'all' ? undefined : selectedCategory,
   });
 
-  const { data: updateDetails } = api.communityUpdates.getUpdateDetails.useQuery(
-    { id: selectedUpdate! },
-    { enabled: !!selectedUpdate }
-  );
+  const markAsReadMutation = api.communityUpdates.markAsRead.useMutation({
+    onSuccess: () => refetch(),
+  });
 
-  const markAsReadMutation = api.communityUpdates.markAsRead.useMutation();
   const trackClickMutation = api.communityUpdates.trackClick.useMutation();
 
-  const handleUpdateClick = async (updateId: string) => {
-    setSelectedUpdate(updateId);
-    await markAsReadMutation.mutateAsync({ updateId });
-  };
-
-  const handleCtaClick = async (updateId: string, ctaLink: string) => {
-    await trackClickMutation.mutateAsync({ updateId });
-    window.open(ctaLink, '_blank');
-  };
+  if (!isOpen) return null;
 
   const categories = [
-    { value: undefined, label: "All Updates" },
-    { value: "announcement", label: "Announcements" },
-    { value: "promotion", label: "Promotions" },
-    { value: "news", label: "News" },
-    { value: "event", label: "Events" },
-    { value: "policy", label: "Policies" },
-    { value: "success", label: "Success Stories" },
+    { value: 'all', label: 'All Updates', icon: Bell },
+    { value: 'announcement', label: 'Announcements', icon: AlertCircle },
+    { value: 'promotion', label: 'Promotions', icon: Star },
+    { value: 'news', label: 'News', icon: TrendingUp },
+    { value: 'event', label: 'Events', icon: Calendar },
   ];
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "HIGH":
-        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
-      case "MEDIUM":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
-      case "LOW":
-        return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200";
-      default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200";
+  const priorityColors = {
+    HIGH: 'border-red-500 bg-red-50 dark:bg-red-900/20',
+    MEDIUM: 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20',
+    LOW: 'border-gray-300 dark:border-gray-700',
+  };
+
+  const categoryColors = {
+    announcement: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30',
+    promotion: 'text-purple-600 bg-purple-100 dark:bg-purple-900/30',
+    news: 'text-green-600 bg-green-100 dark:bg-green-900/30',
+    event: 'text-orange-600 bg-orange-100 dark:bg-orange-900/30',
+    policy: 'text-gray-600 bg-gray-100 dark:bg-gray-900/30',
+    success: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30',
+  };
+
+  const handleUpdateClick = (update: any) => {
+    setSelectedUpdate(update);
+    if (!update.isRead) {
+      markAsReadMutation.mutate({ updateId: update.id });
     }
   };
 
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case "announcement":
-        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
-      case "promotion":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
-      case "news":
-        return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
-      case "event":
-        return "bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200";
-      case "policy":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
-      case "success":
-        return "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200";
-      default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200";
+  const handleCTAClick = (update: any) => {
+    trackClickMutation.mutate({ updateId: update.id });
+    if (update.ctaLink) {
+      window.open(update.ctaLink, '_blank');
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl">
-      <div className="flex flex-col h-[80vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border">
-          <div>
-            <h2 className="text-2xl font-bold text-foreground">Community Updates</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Stay informed with the latest news and announcements
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Category Filter */}
-        <div className="flex gap-2 p-4 border-b border-border overflow-x-auto">
-          {categories.map((cat) => (
-            <button
-              key={cat.value || 'all'}
-              onClick={() => setSelectedCategory(cat.value)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                selectedCategory === cat.value
-                  ? "bg-bpi-primary text-white"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-              }`}
-            >
-              {cat.label}
+    <div className="fixed inset-0 z-[9999] bg-white dark:bg-bpi-dark-card">
+      {/* Header */}
+      <div className="sticky top-0 z-20 bg-gradient-to-r from-green-600 via-emerald-600 to-teal-600 text-white shadow-lg">
+        <div className="px-6 py-5">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-full">
+                <FiBell className="w-7 h-7" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold">Community Updates</h1>
+                <p className="text-emerald-100 text-sm">Stay informed with the latest news and announcements</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+              <FiX className="w-7 h-7" />
             </button>
-          ))}
-        </div>
+          </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-bpi-primary"></div>
-            </div>
-          ) : !updatesData?.updates || updatesData.updates.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-center">
-              <Calendar className="h-16 w-16 text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300">
-                No updates available
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                Check back later for new announcements
-              </p>
-            </div>
-          ) : selectedUpdate && updateDetails ? (
-            /* Detail View */
-            <div className="space-y-6">
+          {/* Category Filter */}
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {categories.map(({ value, label, icon: Icon }) => (
               <button
-                onClick={() => setSelectedUpdate(null)}
-                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                key={value}
+                onClick={() => setSelectedCategory(value)}
+                className={`flex items-center gap-2 px-5 py-3 rounded-lg transition-all whitespace-nowrap ${
+                  selectedCategory === value
+                    ? 'bg-white text-emerald-600 shadow-lg font-semibold'
+                    : 'bg-white/10 text-white hover:bg-white/20'
+                }`}
               >
-                ← Back to all updates
+                <Icon className="w-5 h-5" />
+                <span>{label}</span>
               </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
-              <Card className="p-6">
-                {/* Image */}
-                {updateDetails.imageUrl && (
-                  <img
-                    src={updateDetails.imageUrl}
-                    alt={updateDetails.title}
-                    className="w-full h-64 object-cover rounded-lg mb-6"
-                  />
-                )}
-
-                {/* Title & Badges */}
-                <div className="flex items-start justify-between mb-4">
-                  <h3 className="text-2xl font-bold text-foreground flex-1">
-                    {updateDetails.title}
-                  </h3>
-                  <div className="flex gap-2">
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(updateDetails.priority)}`}>
-                      {updateDetails.priority}
-                    </span>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${getCategoryColor(updateDetails.category)}`}>
-                      {updateDetails.category}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Meta */}
-                <div className="flex items-center gap-4 text-sm text-muted-foreground mb-6">
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4" />
-                    <span>{updateDetails.creator.name || 'Admin'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    <span>{formatDistanceToNow(new Date(updateDetails.publishedAt), { addSuffix: true })}</span>
-                  </div>
-                </div>
-
-                {/* Content */}
+      {/* Content */}
+      <div className="h-[calc(100vh-180px)] overflow-y-auto">
+        {!selectedUpdate ? (
+          <div className="max-w-5xl mx-auto p-6 space-y-4">
+            {updates && updates.length > 0 ? (
+              updates.map((update: any) => (
                 <div
-                  className="prose dark:prose-invert max-w-none mb-6"
-                  dangerouslySetInnerHTML={{ __html: updateDetails.content }}
-                />
-
-                {/* CTA */}
-                {updateDetails.ctaLink && updateDetails.ctaText && (
-                  <button
-                    onClick={() => handleCtaClick(updateDetails.id, updateDetails.ctaLink!)}
-                    className="flex items-center gap-2 bg-bpi-primary text-white px-6 py-3 rounded-lg hover:bg-bpi-secondary transition-colors"
-                  >
-                    {updateDetails.ctaText}
-                    <ExternalLink className="h-4 w-4" />
-                  </button>
-                )}
-              </Card>
-            </div>
-          ) : (
-            /* List View */
-            <div className="space-y-4">
-              {updatesData.updates.map((update) => (
-                <Card
                   key={update.id}
-                  className={`p-4 cursor-pointer transition-all hover:shadow-lg ${
-                    !update.isRead ? "border-l-4 border-l-bpi-primary" : ""
-                  }`}
-                  onClick={() => handleUpdateClick(update.id)}
+                  className={`bg-white dark:bg-bpi-dark-card border-l-4 rounded-xl p-6 hover:shadow-lg transition-all cursor-pointer ${
+                    priorityColors[update.priority as keyof typeof priorityColors]
+                  } ${!update.isRead ? 'ring-2 ring-emerald-500/20' : ''}`}
+                  onClick={() => handleUpdateClick(update)}
                 >
-                  <div className="flex gap-4">
-                    {update.imageUrl && (
-                      <img
-                        src={update.imageUrl}
-                        alt={update.title}
-                        className="w-24 h-24 object-cover rounded-lg flex-shrink-0"
-                      />
+                  <div className="flex items-start gap-4">
+                    {!update.isRead && (
+                      <div className="flex-shrink-0 w-2 h-2 bg-emerald-500 rounded-full mt-2" />
                     )}
                     <div className="flex-1">
                       <div className="flex items-start justify-between mb-2">
-                        <h3 className={`font-semibold ${!update.isRead ? 'text-foreground' : 'text-muted-foreground'}`}>
-                          {update.title}
-                          {!update.isRead && (
-                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                              New
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${
+                              categoryColors[update.category as keyof typeof categoryColors]
+                            }`}>
+                              {update.category}
                             </span>
-                          )}
-                        </h3>
-                        <div className="flex gap-2">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(update.priority)}`}>
-                            {update.priority}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getCategoryColor(update.category)}`}>
-                            {update.category}
-                          </span>
+                            {update.priority === 'HIGH' && (
+                              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-100 dark:bg-red-900/30 text-red-600">
+                                Priority
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="text-xl font-bold text-foreground mb-2">{update.title}</h3>
+                          <p className="text-sm text-muted-foreground line-clamp-2">{update.content.substring(0, 200)}...</p>
                         </div>
+                        {update.imageUrl && (
+                          <img
+                            src={update.imageUrl}
+                            alt={update.title}
+                            className="w-24 h-24 object-cover rounded-lg ml-4"
+                          />
+                        )}
                       </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
-                        {update.content.replace(/<[^>]*>/g, '').substring(0, 150)}...
-                      </p>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span>{formatDistanceToNow(new Date(update.publishedAt), { addSuffix: true })}</span>
-                        <span>• {update.viewCount} views</span>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground mt-3">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4" />
+                          <span>{new Date(update.publishedAt).toLocaleDateString()}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Eye className="w-4 h-4" />
+                          <span>{update.viewCount} views</span>
+                        </div>
+                        {update.creator && (
+                          <span>By {update.creator.firstname} {update.creator.lastname}</span>
+                        )}
                       </div>
                     </div>
                   </div>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-20">
+                <Bell className="w-16 h-16 text-gray-300 dark:text-gray-700 mx-auto mb-4" />
+                <p className="text-muted-foreground">No updates available</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="max-w-4xl mx-auto p-6">
+            <button
+              onClick={() => setSelectedUpdate(null)}
+              className="text-emerald-600 hover:underline mb-6"
+            >
+              ← Back to updates
+            </button>
+
+            <article className="bg-white dark:bg-bpi-dark-card rounded-xl p-8 shadow-lg">
+              <div className="flex items-center gap-2 mb-4">
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${
+                  categoryColors[selectedUpdate.category as keyof typeof categoryColors]
+                }`}>
+                  {selectedUpdate.category}
+                </span>
+                {selectedUpdate.priority === 'HIGH' && (
+                  <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-100 dark:bg-red-900/30 text-red-600">
+                    High Priority
+                  </span>
+                )}
+              </div>
+
+              <h1 className="text-3xl font-bold text-foreground mb-4">{selectedUpdate.title}</h1>
+
+              <div className="flex items-center gap-4 text-sm text-muted-foreground mb-6 pb-6 border-b border-bpi-border dark:border-bpi-dark-accent">
+                <div className="flex items-center gap-1">
+                  <Calendar className="w-4 h-4" />
+                  <span>{new Date(selectedUpdate.publishedAt).toLocaleDateString()}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Eye className="w-4 h-4" />
+                  <span>{selectedUpdate.viewCount} views</span>
+                </div>
+                {selectedUpdate.creator && (
+                  <span>By {selectedUpdate.creator.firstname} {selectedUpdate.creator.lastname}</span>
+                )}
+              </div>
+
+              {selectedUpdate.imageUrl && (
+                <img
+                  src={selectedUpdate.imageUrl}
+                  alt={selectedUpdate.title}
+                  className="w-full h-64 object-cover rounded-lg mb-6"
+                />
+              )}
+
+              <div className="prose dark:prose-invert max-w-none mb-8">
+                {selectedUpdate.content.split('\n').map((para: string, i: number) => (
+                  <p key={i} className="mb-4">{para}</p>
+                ))}
+              </div>
+
+              {selectedUpdate.ctaText && selectedUpdate.ctaLink && (
+                <button
+                  onClick={() => handleCTAClick(selectedUpdate)}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg hover:shadow-lg transition-all"
+                >
+                  <span>{selectedUpdate.ctaText}</span>
+                  <FiExternalLink className="w-4 h-4" />
+                </button>
+              )}
+            </article>
+          </div>
+        )}
       </div>
-    </Modal>
+    </div>
   );
 }

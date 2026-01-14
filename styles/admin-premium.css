@@ -1,0 +1,366 @@
+/* Premium Admin Panel Styles - BPI Themed (Look & Feel Only) */
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 0.8;
+    filter: brightness(1.2);
+  }
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes particle-float {
+  0% {
+    transform: translateY(0) translateX(0) scale(1);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100vh) translateX(50px) scale(0.5);
+    opacity: 0;
+  }
+}
+
+@keyframes admin-sweep-lines {
+  0% {
+    transform: translate3d(-12%, 12%, 0) rotate(-8deg);
+  }
+  100% {
+    transform: translate3d(12%, -12%, 0) rotate(-8deg);
+  }
+}
+
+@keyframes admin-sweep-glow {
+  0% {
+    transform: translateX(-60%) skewX(-18deg);
+    opacity: 0.15;
+  }
+  45% {
+    opacity: 0.45;
+  }
+  100% {
+    transform: translateX(60%) skewX(-18deg);
+    opacity: 0.15;
+  }
+}
+
+/* Admin Login: Green–Brown–Yellow gradient with sweeping light lines */
+.admin-login-sweep {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(at 15% 20%, hsla(var(--secondary), 0.22) 0px, transparent 55%),
+    radial-gradient(at 85% 15%, hsla(var(--primary), 0.20) 0px, transparent 60%),
+    radial-gradient(at 55% 95%, hsla(var(--primary), 0.14) 0px, transparent 65%),
+    linear-gradient(
+      135deg,
+      hsl(var(--primary)) 0%,
+      hsl(var(--secondary)) 48%,
+      hsl(var(--primary)) 100%
+    );
+  filter: saturate(115%) contrast(105%);
+}
+
+.admin-login-sweep::before {
+  content: "";
+  position: absolute;
+  inset: -45%;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    repeating-linear-gradient(
+      115deg,
+      rgba(255, 255, 255, 0) 0px,
+      rgba(255, 255, 255, 0) 28px,
+      hsla(var(--secondary), 0.20) 30px,
+      rgba(255, 255, 255, 0) 44px,
+      rgba(255, 255, 255, 0) 96px
+    ),
+    repeating-linear-gradient(
+      65deg,
+      rgba(255, 255, 255, 0) 0px,
+      rgba(255, 255, 255, 0) 56px,
+      hsla(var(--primary), 0.14) 58px,
+      rgba(255, 255, 255, 0) 74px,
+      rgba(255, 255, 255, 0) 150px
+    );
+  opacity: 0.7;
+  filter: blur(1.5px);
+  mix-blend-mode: screen;
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.35) 58%, transparent 72%);
+  mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.35) 58%, transparent 72%);
+  animation: admin-sweep-lines 16s linear infinite;
+}
+
+.admin-login-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsla(var(--secondary), 0.28) 42%,
+    hsla(var(--secondary), 0.06) 52%,
+    transparent 100%
+  );
+  filter: blur(14px);
+  mix-blend-mode: screen;
+  animation: admin-sweep-glow 9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-login-sweep::before,
+  .admin-login-sweep::after {
+    animation: none;
+  }
+}
+
+.premium-gradient-text {
+  background: linear-gradient(
+    135deg,
+    hsl(var(--primary)) 0%,
+    hsl(var(--primary)) 35%,
+    hsl(var(--secondary)) 70%,
+    hsl(var(--secondary)) 100%
+  );
+  background-size: 300% 300%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-shift 8s ease infinite;
+}
+
+.premium-card {
+  position: relative;
+  background: linear-gradient(
+    135deg,
+    hsla(var(--card), 0.95) 0%,
+    hsla(var(--card), 0.85) 100%
+  );
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid hsla(var(--border), 0.55);
+  box-shadow: 
+    0 8px 32px 0 rgba(31, 38, 135, 0.15),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset,
+    0 20px 60px -10px rgba(0, 0, 0, 0.1);
+}
+
+.dark .premium-card {
+  background: linear-gradient(
+    135deg,
+    hsla(var(--card), 0.92) 0%,
+    hsla(var(--card), 0.82) 100%
+  );
+  border: 1px solid hsla(var(--border), 0.35);
+  box-shadow: 
+    0 8px 32px 0 rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+    0 20px 60px -10px rgba(0, 0, 0, 0.3);
+}
+
+.premium-button {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+  background-size: 200% 200%;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.premium-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  transition: left 0.5s;
+}
+
+.premium-button:hover::before {
+  left: 100%;
+}
+
+.premium-button:hover {
+  background-position: 100% 0;
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px -10px hsla(var(--primary), 0.35);
+}
+
+.glass-morphism-premium {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(30px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 
+    0 8px 32px 0 rgba(31, 38, 135, 0.2),
+    inset 0 0 20px rgba(255, 255, 255, 0.05);
+}
+
+.dark .glass-morphism-premium {
+  background: hsla(var(--card), 0.55);
+  border: 1px solid hsla(var(--border), 0.25);
+  box-shadow: 
+    0 8px 32px 0 rgba(0, 0, 0, 0.4),
+    inset 0 0 20px rgba(255, 255, 255, 0.02);
+}
+
+.shimmer-effect {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 3s infinite linear;
+}
+
+.neon-glow {
+  box-shadow: 
+    0 0 5px currentColor,
+    0 0 10px currentColor,
+    0 0 20px currentColor,
+    0 0 40px currentColor;
+}
+
+.hover-lift {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-lift:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 
+    0 20px 60px -10px rgba(0, 0, 0, 0.3),
+    0 0 40px -10px currentColor;
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: radial-gradient(circle, currentColor 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: particle-float 15s linear infinite;
+}
+
+.aurora-background {
+  background: 
+    linear-gradient(135deg, hsla(var(--primary), 0.35) 0%, transparent 55%),
+    linear-gradient(225deg, hsla(var(--secondary), 0.30) 0%, transparent 55%),
+    linear-gradient(315deg, hsla(var(--primary), 0.22) 0%, transparent 60%),
+    linear-gradient(45deg, hsla(var(--secondary), 0.22) 0%, transparent 60%);
+  background-size: 400% 400%;
+  animation: gradient-shift 15s ease infinite;
+}
+
+.premium-stat-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.premium-stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, 
+    hsl(var(--primary)) 0%,
+    hsla(var(--primary), 0.75) 30%,
+    hsl(var(--secondary)) 70%,
+    hsla(var(--secondary), 0.85) 100%
+  );
+  background-size: 200% 100%;
+  animation: gradient-shift 3s linear infinite;
+}
+
+.holographic {
+  position: relative;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+}
+
+.holographic::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(255, 255, 255, 0.1) 60deg,
+    transparent 120deg
+  );
+  animation: spin 4s linear infinite;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.mesh-gradient {
+  background: 
+    radial-gradient(at 0% 0%, hsla(var(--primary), 0.16) 0px, transparent 55%),
+    radial-gradient(at 50% 0%, hsla(var(--secondary), 0.14) 0px, transparent 55%),
+    radial-gradient(at 100% 0%, hsla(var(--primary), 0.12) 0px, transparent 55%),
+    radial-gradient(at 0% 50%, hsla(var(--secondary), 0.12) 0px, transparent 55%),
+    radial-gradient(at 50% 50%, hsla(var(--primary), 0.10) 0px, transparent 60%),
+    radial-gradient(at 100% 50%, hsla(var(--secondary), 0.10) 0px, transparent 60%),
+    radial-gradient(at 0% 100%, hsla(var(--secondary), 0.12) 0px, transparent 55%),
+    radial-gradient(at 50% 100%, hsla(var(--primary), 0.12) 0px, transparent 55%),
+    radial-gradient(at 100% 100%, hsla(var(--primary), 0.10) 0px, transparent 60%);
+}

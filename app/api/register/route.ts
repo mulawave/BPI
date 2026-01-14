@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hash } from "bcryptjs";
+import { randomUUID } from "crypto";
 
 export async function POST(req: Request) {
   const { email, name, password } = await req.json();
@@ -11,6 +12,6 @@ export async function POST(req: Request) {
   if (exists) return NextResponse.json({ error: "User exists" }, { status: 409 });
 
   const passwordHash = await hash(password, 10);
-  await prisma.user.create({ data: { email, name, passwordHash } });
+  await prisma.user.create({ data: { id: randomUUID(), updatedAt: new Date(), email, name, passwordHash } });
   return NextResponse.json({ ok: true });
 }

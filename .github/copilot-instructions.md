@@ -14,10 +14,36 @@
   - Auth.js (NextAuth) with credentials and OAuth providers
   - Sessions are database-backed by default (see `server/auth.ts`)
   - Custom login/register/forgot-password pages in `app/(auth)/`
-- **UI:**
+- **UI & Design Philosophy:**
+  - **CRITICAL: MAINTAIN HIGHEST LEVEL OF SOPHISTICATION**
+  - All modals and complex components MUST match the quality standard set by `NotificationsModal.tsx`
+  - Features required for sophisticated components:
+    - Fullscreen or near-fullscreen modals with backdrop blur
+    - Multi-column layouts (sidebar, main content, analytics/details pane)
+    - Smooth Framer Motion animations (entrance, exit, list items)
+    - Rich data visualization (charts, graphs, progress bars)
+    - Advanced filtering, sorting, and search capabilities
+    - Bulk actions with checkboxes and action bars
+    - Analytics dashboards with trends and breakdowns
+    - Responsive hover effects and transitions
+    - Proper loading states and error handling
+    - Toast notifications for all user actions
+    - Category-based organization with icons
+    - Reading/detail panes for expanded views
   - ShadCN UI primitives, extended with custom Tailwind classes
   - Use `react-icons` for all icons (outline, no fill, inside bordered circles)
   - Form fields: sharp value text (#232323), lighter placeholder (#b0b0b0), focus border dark green (#0d3b29)
+  - Glassmorphism and gradient accents for modern aesthetic
+  - Dark mode support for all components
+- **Notifications:**
+  - **NEVER** use `alert()`, `confirm()`, or `prompt()` - these are outdated and provide poor UX
+  - **ALWAYS** use `toast` from `react-hot-toast` for user feedback
+  - Import: `import toast from "react-hot-toast";`
+  - Success: `toast.success('Message');`
+  - Error: `toast.error('Error message');`
+  - Info: `toast('Info message');`
+  - Loading: `toast.loading('Processing...');`
+  - Toast provider is configured in `components/providers.tsx`
 - **Forms:**
   - Client-side validation for all forms
   - Registration supports referral codes via URL (?ref=)
@@ -51,6 +77,7 @@
 ## Examples
 - See `app/(auth)/register/page.tsx` for registration flow, referral, and captcha
 - See `components/auth/RegisterForm.tsx` for form field conventions and icon usage
+- See `components/wallet/WalletTimelineModal.tsx` for toast notification examples
 - See `README.md` for setup and workflow details
 
 ## Guardrails

@@ -4,14 +4,17 @@ import { authRouter } from "./auth";
 import { referralRouter } from "./referral";
 import { bpiRouter } from "./bpi";
 import { bpiCalculatorRouter } from "./calculator";
-import { legacyRouter } from "./legacy";
+// REMOVED: legacy router - all endpoints replaced with proper implementations
+// import { legacyRouter } from "./legacy";
 import { packageRouter } from "./package";
 import { adminRouter } from "./admin";
+import { adminAuthRouter } from "./adminAuth";
 import { tokenRouter } from "./token";
 import { notificationRouter } from "./notification";
 import { userRouter } from "./user";
 import { blogRouter } from "./blog";
 import { dashboardRouter } from "./dashboard";
+import { paymentRouter } from "./payment";
 
 // Community Features
 import { communityUpdatesRouter } from "./communityUpdates";
@@ -19,6 +22,18 @@ import { bpiCalculatorRouter as communityCalculatorRouter } from "./bpiCalculato
 import { dealsRouter } from "./deals";
 import { promotionalMaterialsRouter } from "./promotionalMaterials";
 import { leadershipPoolRouter } from "./leadershipPool";
+import { leadershipRouter } from "./leadership";
+import { membershipPackagesRouter } from "./membershipPackages";
+import { epcEppRouter } from "./epcEpp";
+import { solarAssessmentRouter } from "./solarAssessment";
+import { trainingCenterRouter } from "./trainingCenter";
+import { currencyRouter } from "./currency";
+import { youtubeRouter } from "./youtube";
+import { thirdPartyPlatformsRouter } from "./thirdPartyPlatforms";
+import { taxesRouter } from "./taxes";
+import { palliativeRouter } from "./palliative";
+import { walletRouter } from "./wallet";
+import { communityRouter } from "./community";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -26,9 +41,11 @@ export const appRouter = createTRPCRouter({
   referral: referralRouter,
   bpi: bpiRouter,
   calculator: bpiCalculatorRouter,
-  legacy: legacyRouter,
+  // REMOVED: legacy: legacyRouter - all endpoints replaced with proper implementations
   package: packageRouter,
+  payment: paymentRouter,
   admin: adminRouter,
+  adminAuth: adminAuthRouter,
   token: tokenRouter,
   notification: notificationRouter,
   user: userRouter,
@@ -41,6 +58,18 @@ export const appRouter = createTRPCRouter({
   deals: dealsRouter,
   promotionalMaterials: promotionalMaterialsRouter,
   leadershipPool: leadershipPoolRouter,
+  leadership: leadershipRouter,
+  membershipPackages: membershipPackagesRouter,
+  epcEpp: epcEppRouter,
+  solarAssessment: solarAssessmentRouter,
+  trainingCenter: trainingCenterRouter,
+  currency: currencyRouter,
+  youtube: youtubeRouter,
+  thirdPartyPlatforms: thirdPartyPlatformsRouter,
+  taxes: taxesRouter,
+  palliative: palliativeRouter,
+  wallet: walletRouter,
+  community: communityRouter,
 
   // Legacy router, to be deprecated
 });

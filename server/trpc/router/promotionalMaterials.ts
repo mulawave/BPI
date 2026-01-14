@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { randomUUID } from "crypto";
 
 export const promotionalMaterialsRouter = createTRPCRouter({
   // Get all materials
@@ -12,8 +13,13 @@ export const promotionalMaterialsRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const user = await ctx.db.user.findUnique({
-        where: { id: ctx.session.user.id },
+      const userId = (ctx.session?.user as any)?.id;
+      if (!userId) {
+        throw new Error("Unauthorized");
+      }
+
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: userId },
         select: {
           activeMembershipPackageId: true,
           rank: true,
@@ -32,16 +38,16 @@ export const promotionalMaterialsRouter = createTRPCRouter({
         where.type = input.type;
       }
 
-      const materials = await ctx.db.promotionalMaterial.findMany({
+      const materials = await ctx.prisma.promotionalMaterial.findMany({
         where,
         take: input.limit,
         orderBy: {
           createdAt: 'desc',
         },
         include: {
-          downloads: {
+          MaterialDownload: {
             where: {
-              userId: ctx.session.user.id,
+              userId: userId,
             },
           },
         },
@@ -66,8 +72,12 @@ export const promotionalMaterialsRouter = createTRPCRouter({
       return {
         materials: accessibleMaterials.map(m => ({
           ...m,
-          hasDownloaded: m.downloads.length > 0,
-          lastDownloadedAt: m.downloads[0]?.downloadedAt,
+          // UI expects these names
+          downloads: m.downloadCount,
+          views: m.shareCount,
+
+          hasDownloaded: m.MaterialDownload.length > 0,
+          lastDownloadedAt: m.MaterialDownload[0]?.downloadedAt,
         })),
         totalCount: accessibleMaterials.length,
       };
@@ -77,7 +87,12 @@ export const promotionalMaterialsRouter = createTRPCRouter({
   downloadMaterial: protectedProcedure
     .input(z.object({ materialId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const material = await ctx.db.promotionalMaterial.findUnique({
+      const userId = (ctx.session?.user as any)?.id;
+      if (!userId) {
+        throw new Error("Unauthorized");
+      }
+
+      const material = await ctx.prisma.promotionalMaterial.findUnique({
         where: { id: input.materialId },
       });
 
@@ -86,15 +101,16 @@ export const promotionalMaterialsRouter = createTRPCRouter({
       }
 
       // Track download
-      await ctx.db.materialDownload.create({
+      await ctx.prisma.materialDownload.create({
         data: {
-          userId: ctx.session.user.id,
+          id: randomUUID(),
+          userId: userId,
           materialId: input.materialId,
         },
       });
 
       // Increment download count
-      await ctx.db.promotionalMaterial.update({
+      await ctx.prisma.promotionalMaterial.update({
         where: { id: input.materialId },
         data: {
           downloadCount: { increment: 1 },
@@ -111,7 +127,7 @@ export const promotionalMaterialsRouter = createTRPCRouter({
   trackShare: protectedProcedure
     .input(z.object({ materialId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db.promotionalMaterial.update({
+      await ctx.prisma.promotionalMaterial.update({
         where: { id: input.materialId },
         data: {
           shareCount: { increment: 1 },
@@ -123,12 +139,17 @@ export const promotionalMaterialsRouter = createTRPCRouter({
 
   // Get download history
   getMyDownloads: protectedProcedure.query(async ({ ctx }) => {
-    const downloads = await ctx.db.materialDownload.findMany({
+    const userId = (ctx.session?.user as any)?.id;
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+
+    const downloads = await ctx.prisma.materialDownload.findMany({
       where: {
-        userId: ctx.session.user.id,
+        userId: userId,
       },
       include: {
-        material: true,
+        PromotionalMaterial: true,
       },
       orderBy: {
         downloadedAt: 'desc',
@@ -141,7 +162,7 @@ export const promotionalMaterialsRouter = createTRPCRouter({
 
   // Get categories
   getCategories: protectedProcedure.query(async ({ ctx }) => {
-    const materials = await ctx.db.promotionalMaterial.findMany({
+    const materials = await ctx.prisma.promotionalMaterial.findMany({
       where: { isActive: true },
       select: { category: true },
       distinct: ['category'],

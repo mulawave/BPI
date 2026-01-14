@@ -25,7 +25,7 @@ export const blogRouter = createTRPCRouter({
           category: true,
           viewers: true,
           createdAt: true,
-          author: {
+          User: {
             select: {
               name: true
             }

@@ -25,7 +25,7 @@ export const tokenRouter = createTRPCRouter({
     });
 
     return {
-      buyBackWalletBalance: buyBackWallet?.balance ?? 0,
+      buyBackWalletBalance: buyBackWallet?.balanceNgn ?? 0,
       totalBptBurned: totalBptBurned._sum.amountBpt ?? 0,
       burnHistory,
     };

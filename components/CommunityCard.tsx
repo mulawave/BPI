@@ -3,7 +3,7 @@
 import React from "react";
 import { Card } from "./ui/card";
 import { LucideIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/styles/utils";
 
 export type CardState = "locked" | "in-progress" | "active" | "new";
 
@@ -162,7 +162,6 @@ export function CommunityCard({
             state === "new" && "text-blue-700 dark:text-blue-300",
             state === "in-progress" && "text-yellow-700 dark:text-yellow-300"
           )}>
-            {state === "locked" && "Qualification Required"}
             {state === "in-progress" && "Continue"}
             {state === "active" && "Access Now"}
             {state === "new" && "Explore"}

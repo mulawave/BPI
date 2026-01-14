@@ -4,8 +4,9 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { AiOutlineUser, AiOutlineIdcard, AiOutlineMan, AiOutlineMail, AiOutlineLock, AiOutlineReload, AiOutlineCheckCircle } from "react-icons/ai";
+import { AiOutlineUser, AiOutlineIdcard, AiOutlineMan, AiOutlineMail, AiOutlineLock, AiOutlineReload, AiOutlineCheckCircle, AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import { api } from "@/client/trpc";
+import toast from "react-hot-toast";
 
 export default function RegisterForm({ refId = "1" }: { refId?: string }) {
   const router = useRouter();
@@ -26,6 +27,8 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [captchaNums, setCaptchaNums] = useState<[number, number]>([0, 0]);
   const [captchaKey, setCaptchaKey] = useState(0); // for resetting
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     // Generate two random numbers for the captcha
@@ -80,7 +83,7 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
       
       if (result.success) {
         // Show success message and redirect to login
-        alert("Registration successful! Please log in to continue.");
+        toast.success("Registration successful! Please log in to continue.");
         router.push("/login");
       }
     } catch (error: any) {
@@ -158,25 +161,39 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
         <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#b0b0b0] text-[#b0b0b0] text-xl pointer-events-none"><AiOutlineLock /></span>
         <Input
           name="password"
-          type="password"
+          type={showPassword ? "text" : "password"}
           placeholder="Password"
           value={form.password}
           onChange={handleChange}
           required
-          className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#b0b0b0] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] rounded-xl"
+          className="pl-10 pr-12 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#b0b0b0] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] rounded-xl"
         />
+        <button
+          type="button"
+          onClick={() => setShowPassword(!showPassword)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#b0b0b0] hover:text-[#0d3b29] transition-colors"
+        >
+          {showPassword ? <AiOutlineEyeInvisible className="w-5 h-5" /> : <AiOutlineEye className="w-5 h-5" />}
+        </button>
       </div>
       <div className="relative">
         <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#b0b0b0] text-[#b0b0b0] text-xl pointer-events-none"><AiOutlineCheckCircle /></span>
         <Input
           name="confirmPassword"
-          type="password"
+          type={showConfirmPassword ? "text" : "password"}
           placeholder="Confirm Password"
           value={form.confirmPassword}
           onChange={handleChange}
           required
-          className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#b0b0b0] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] rounded-xl"
+          className="pl-10 pr-12 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#b0b0b0] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] rounded-xl"
         />
+        <button
+          type="button"
+          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#b0b0b0] hover:text-[#0d3b29] transition-colors"
+        >
+          {showConfirmPassword ? <AiOutlineEyeInvisible className="w-5 h-5" /> : <AiOutlineEye className="w-5 h-5" />}
+        </button>
       </div>
       <input
         type="hidden"

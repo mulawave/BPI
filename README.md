@@ -41,3 +41,26 @@ Visit <http://localhost:3000>
 - Sessions are database-backed (durable). Switch to `strategy: "jwt"` in `server/auth.ts` if you prefer.
 - Add more ShadCN components via `npx shadcn-ui@latest add <component>`.
 - Add routers in `server/trpc/router/*` and merge in `_app.ts`.
+
+## Admin Smoke Tests
+
+These scripts call the admin tRPC router directly (no HTTP) to validate critical admin flows on any environment.
+
+Run from project root:
+
+```powershell
+# Backups: list → create → list → delete
+npx tsx scripts/smokeAdminBackups.ts
+
+# Reports: export Users, Payments, Packages CSVs
+npx tsx scripts/smokeAdminReports.ts
+
+# Payments: seed a pending payment, then review (reject) it
+npx tsx scripts/seedPendingPaymentForSmoke.ts
+npx tsx scripts/smokeAdminPayments.ts
+```
+
+Troubleshooting:
+- Ensure `.env.local` is configured and the database is reachable.
+- If Prisma types seem stale, run `npx prisma generate`.
+- For audit logging foreign keys, scripts automatically use an existing admin (or first user) as the session user.

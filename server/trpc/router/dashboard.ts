@@ -127,9 +127,33 @@ export const dashboardRouter = createTRPCRouter({
         }
       }
 
-      // Get recent transactions (placeholder - you'll need to create Transaction model)
-      // For now, we'll return empty array
-      const recentTransactions: any[] = [];
+      // Get recent transactions (all types: payments, bonuses, withdrawals)
+      const recentTransactions = await ctx.prisma.transaction.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: {
+          id: true,
+          transactionType: true,
+          amount: true,
+          description: true,
+          status: true,
+          reference: true,
+          createdAt: true,
+        },
+      });
+
+      // Format transactions for display
+      const formattedTransactions = recentTransactions.map(tx => ({
+        id: tx.id,
+        type: tx.transactionType,
+        amount: tx.amount,
+        description: tx.description,
+        status: tx.status,
+        reference: tx.reference,
+        currency: 'NGN', // Default to Naira, can be extended later
+        createdAt: tx.createdAt,
+      }));
 
       // Calculate total locked capital from active package
       const totalLocked = packageStats.totalInvested;
@@ -137,13 +161,13 @@ export const dashboardRouter = createTRPCRouter({
       // Calculate total rewards (cashback + student cashback + education)
       const totalRewards = (user.cashback || 0) + (user.studentCashback || 0) + (user.education || 0);
 
-      // Calculate total portfolio value
+      // Calculate total portfolio value (excluding membership package payments)
       const BPI_TOKEN_RATE = 2.5; // 1 BPT = ₦2.5 (should be dynamic)
       const totalAssets = (user.wallet || 0) +
         (user.spendable || 0) +
         (user.bpiTokenWallet || 0) * BPI_TOKEN_RATE +
         totalRewards +
-        totalLocked +
+        // totalLocked + // Excluded: membership package payments not counted in portfolio
         (user.palliative || 0) +
         (user.shelter || 0) +
         (user.community || 0) +
@@ -156,9 +180,10 @@ export const dashboardRouter = createTRPCRouter({
         (user.solar || 0) +
         (user.shareholder || 0);
 
-      // Calculate 24h change (placeholder - you'll need historical data)
-      const change24h = 0; // TODO: Implement historical tracking
-      const changePercentage24h = 0; // TODO: Calculate percentage
+      // Calculate 24h change using stored snapshots
+      // This will be computed on the client side using localStorage
+      const change24h = 0; 
+      const changePercentage24h = 0;
 
       // Organize wallets by tier/category
       const wallets = {
@@ -326,7 +351,7 @@ export const dashboardRouter = createTRPCRouter({
           active: activePackage ? [activePackage] : [],
           stats: packageStats,
         },
-        transactions: recentTransactions,
+        transactions: formattedTransactions,
         notifications: [
           // TODO: Generate smart notifications based on wallet states
         ],
@@ -368,20 +393,38 @@ export const dashboardRouter = createTRPCRouter({
       });
     }
 
+    const bpiTokenWallet = user.bpiTokenWallet ?? 0;
+    const mainWallet = user.wallet ?? 0;
+    const spendable = user.spendable ?? 0;
+
     const health = {
-      bpiToken: user.bpiTokenWallet || 0 >= 10 ? 'healthy' : 
-                user.bpiTokenWallet || 0 >= 1 ? 'low' : 'critical',
-      mainWallet: user.wallet || 0 >= 100000 ? 'healthy' :
-                  user.wallet || 0 >= 10000 ? 'low' : 'critical',
-      spendable: user.spendable || 0 >= 50000 ? 'healthy' :
-                 user.spendable || 0 >= 10000 ? 'low' : 'critical',
+      bpiToken:
+        bpiTokenWallet >= 10 ? "healthy" : bpiTokenWallet >= 1 ? "low" : "critical",
+      mainWallet:
+        mainWallet >= 100000 ? "healthy" : mainWallet >= 10000 ? "low" : "critical",
+      spendable:
+        spendable >= 50000 ? "healthy" : spendable >= 10000 ? "low" : "critical",
     };
 
-    const warnings = [];
-    if (health.bpiToken === 'critical') {
-      warnings.push("BPI Token balance critically low. Buy more to continue using services.");
-    } else if (health.bpiToken === 'low') {
+    const warnings: string[] = [];
+    if (health.bpiToken === "critical") {
+      warnings.push(
+        "BPI Token balance critically low. Buy more to continue using services.",
+      );
+    } else if (health.bpiToken === "low") {
       warnings.push("BPI Token balance is low. Consider topping up.");
+    }
+
+    if (health.mainWallet === "critical") {
+      warnings.push("Main Wallet balance is critically low.");
+    } else if (health.mainWallet === "low") {
+      warnings.push("Main Wallet balance is low.");
+    }
+
+    if (health.spendable === "critical") {
+      warnings.push("Spendable Wallet balance is critically low.");
+    } else if (health.spendable === "low") {
+      warnings.push("Spendable Wallet balance is low.");
     }
 
     return {
@@ -391,4 +434,142 @@ export const dashboardRouter = createTRPCRouter({
                Object.values(health).some(h => h === 'critical') ? 'critical' : 'low'
     };
   }),
+
+  /**
+   * Get all transactions for user
+   */
+  getAllTransactions: protectedProcedure.query(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id;
+    if (!userId) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "User ID not found",
+      });
+    }
+
+    const transactions = await ctx.prisma.transaction.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        transactionType: true,
+        amount: true,
+        description: true,
+        status: true,
+        reference: true,
+        createdAt: true,
+      },
+    });
+
+    return transactions;
+  }),
+
+  getWalletTimeline: protectedProcedure
+    .input(z.object({
+      limit: z.number().min(1).max(100).default(30),
+      cursor: z.string().optional(),
+      dateFrom: z.date().optional(),
+      dateTo: z.date().optional(),
+      transactionType: z.enum(['all', 'debit', 'credit']).default('all'),
+      status: z.enum(['all', 'completed', 'pending', 'failed']).default('all'),
+      walletType: z.string().optional().default('main'), // main, bpiToken, referral
+      minAmount: z.number().optional(),
+      maxAmount: z.number().optional(),
+      searchTerm: z.string().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id;
+      if (!userId) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "User ID not found",
+        });
+      }
+
+      const { limit, cursor, dateFrom, dateTo, transactionType, status, walletType, minAmount, maxAmount, searchTerm } = input;
+
+      // Build where clause
+      const where: any = { userId, walletType };
+
+      // Date range filter
+      if (dateFrom || dateTo) {
+        where.createdAt = {};
+        if (dateFrom) where.createdAt.gte = dateFrom;
+        if (dateTo) where.createdAt.lte = dateTo;
+      }
+
+      // Transaction type filter
+      if (transactionType !== 'all') {
+        where.transactionType = transactionType;
+      }
+
+      // Status filter
+      if (status !== 'all') {
+        where.status = status;
+      }
+
+      // Amount range filter
+      if (minAmount !== undefined || maxAmount !== undefined) {
+        where.amount = {};
+        if (minAmount !== undefined) where.amount.gte = minAmount;
+        if (maxAmount !== undefined) where.amount.lte = maxAmount;
+      }
+
+      // Search filter
+      if (searchTerm) {
+        where.OR = [
+          { description: { contains: searchTerm, mode: 'insensitive' } },
+          { reference: { contains: searchTerm, mode: 'insensitive' } },
+        ];
+      }
+
+      // Cursor pagination
+      const transactions = await ctx.prisma.transaction.findMany({
+        where,
+        take: limit + 1,
+        ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          transactionType: true,
+          amount: true,
+          description: true,
+          status: true,
+          reference: true,
+          createdAt: true,
+        },
+      });
+
+      let nextCursor: string | undefined = undefined;
+      if (transactions.length > limit) {
+        const nextItem = transactions.pop();
+        nextCursor = nextItem!.id;
+      }
+
+      // For first page, get current wallet balance based on wallet type
+      // For subsequent pages, client will calculate running balance
+      let currentBalance = 0;
+      if (!cursor) {
+        const user = await ctx.prisma.user.findUnique({
+          where: { id: userId },
+          select: { 
+            wallet: true,
+            bpiTokenWallet: true,
+          },
+        });
+        
+        // Select balance based on wallet type
+        if (walletType === 'bpiToken') {
+          currentBalance = user?.bpiTokenWallet || 0;
+        } else {
+          currentBalance = user?.wallet || 0;
+        }
+      }
+
+      return {
+        transactions,
+        nextCursor,
+        currentBalance, // Current wallet balance (only on first page)
+      };
+    }),
 });

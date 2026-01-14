@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { randomUUID } from "crypto";
 
 /**
  * This script is intended to be run as a daily cron job.
@@ -50,9 +51,11 @@ async function checkMaturedPackages() {
       for (const admin of admins) {
         await prisma.notification.create({
           data: {
+            id: randomUUID(),
             userId: admin.id,
             title,
             message,
+            isRead: false,
           },
         });
       }

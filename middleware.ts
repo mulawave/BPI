@@ -7,6 +7,35 @@ export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.AUTH_SECRET });
   const { pathname } = req.nextUrl;
 
+  // Admin routes protection
+  if (pathname.startsWith("/admin")) {
+    // Allow admin login page
+    if (pathname === "/admin/login") {
+      return NextResponse.next();
+    }
+
+    // Check if user is authenticated
+    if (!token) {
+      return NextResponse.redirect(new URL("/admin/login", req.url));
+    }
+
+    // Check if user has admin role
+    const user = await prisma.user.findUnique({
+      where: { id: token.sub },
+      select: { role: true },
+    });
+
+    const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+
+    if (!isAdmin) {
+      // Not an admin, redirect to user dashboard
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+
+    // Admin authenticated, allow access
+    return NextResponse.next();
+  }
+
   // Allow requests for API, auth, static files, and public pages
   if (
     pathname.startsWith("/api") ||
@@ -26,11 +55,11 @@ export async function middleware(req: NextRequest) {
     // If user is authenticated, check for active subscription
     const user = await prisma.user.findUnique({
       where: { id: token.sub },
-      include: { empowermentPackages: true },
+      include: { EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser: true },
     });
 
     const hasActiveStandardPackage = !!user?.activeMembershipPackageId;
-    const hasActiveEmpowermentPackage = user?.empowermentPackages.some((p) =>
+    const hasActiveEmpowermentPackage = user?.EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser.some((p: any) =>
       p.status.startsWith("Active")
     );
 

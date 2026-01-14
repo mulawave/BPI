@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { randomUUID } from "crypto";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 
@@ -15,7 +16,7 @@ export const bpiRouter = createTRPCRouter({
     let member = await ctx.prisma.bpiMember.findUnique({
       where: { userId },
       include: {
-        user: {
+        User: {
           select: {
             name: true,
             email: true,
@@ -29,11 +30,13 @@ export const bpiRouter = createTRPCRouter({
     if (!member) {
       member = await ctx.prisma.bpiMember.create({
         data: {
+          id: randomUUID(),
           userId,
-          referralLink: Math.random().toString(36).substring(2, 15)
+          referralLink: Math.random().toString(36).substring(2, 15),
+          updatedAt: new Date(),
         },
         include: {
-          user: {
+          User: {
             select: {
               name: true,
               email: true,
@@ -109,10 +112,10 @@ export const bpiRouter = createTRPCRouter({
     const user = await ctx.prisma.user.findUnique({
       where: { id: userId },
       include: {
-        bpiMember: true
+        BpiMember: true
       }
     });
-
+    
     if (!user) return { completionPercentage: 0, missingFields: [] };
 
     const requiredFields = ['name', 'email'];
@@ -131,9 +134,9 @@ export const bpiRouter = createTRPCRouter({
     });
 
     // Check member fields
-    if (user.bpiMember) {
+    if (user.BpiMember) {
       memberFields.forEach(field => {
-        if ((user.bpiMember as any)?.[field]) {
+        if ((user.BpiMember as any)?.[field]) {
           completedFields++;
         } else {
           missingFields.push(field);
@@ -176,11 +179,13 @@ export const bpiRouter = createTRPCRouter({
 
       stats = await ctx.prisma.communityStats.create({
         data: {
+          id: randomUUID(),
           totalMembers,
           palliativeMembers,
           totalPartners,
           totalOffers,
-          activeTickets
+          activeTickets,
+          lastUpdated: new Date()
         }
       });
     }
@@ -254,10 +259,12 @@ export const bpiRouter = createTRPCRouter({
 
       return await ctx.prisma.youtubeChannel.create({
         data: {
+          id: randomUUID(),
           userId,
           channelName: input.channelName,
           channelUrl: input.channelUrl,
-          subscribers: input.subscribers
+          subscribers: input.subscribers,
+          updatedAt: new Date(),
         }
       });
     }),
@@ -270,13 +277,13 @@ export const bpiRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       return await ctx.prisma.youtubeChannel.findMany({
         where: { 
-          status: "verified",
-          verified: true 
+          status: "VERIFIED",
+          isVerified: true
         },
         orderBy: { subscribers: 'desc' },
         take: input.limit,
         include: {
-          user: {
+          User: {
             select: {
               name: true
             }
@@ -296,13 +303,13 @@ export const bpiRouter = createTRPCRouter({
     return await ctx.prisma.palliativeTicket.findMany({
       where: { userId },
       include: {
-        offer: {
+        PartnerOffer: {
           include: {
-            partner: true
+            Partner: true
           }
         },
-        category: true,
-        creator: {
+        TicketCategory: true,
+        User_PalliativeTicket_createdByToUser: {
           select: {
             name: true
           }
@@ -321,13 +328,13 @@ export const bpiRouter = createTRPCRouter({
       return await ctx.prisma.palliativeTicket.findMany({
         where: { status: "active" },
         include: {
-          offer: {
+          PartnerOffer: {
             include: {
-              partner: true
+              Partner: true
             }
           },
-          category: true,
-          creator: {
+          TicketCategory: true,
+          User_PalliativeTicket_createdByToUser: {
             select: {
               name: true
             }
@@ -347,7 +354,7 @@ export const bpiRouter = createTRPCRouter({
       return await ctx.prisma.partnerOffer.findMany({
         where: { status: true },
         include: {
-          partner: true
+          Partner: true
         },
         orderBy: { createdAt: 'desc' },
         take: input.limit

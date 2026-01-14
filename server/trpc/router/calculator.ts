@@ -100,10 +100,10 @@ export const bpiCalculatorRouter = createTRPCRouter({
       return await ctx.prisma.palliativePackage.findUnique({
         where: { id: input.packageId },
         include: {
-          activations: {
+          PackageActivation: {
             where: { status: "active" },
             select: {
-              user: {
+              User: {
                 select: {
                   name: true
                 }
