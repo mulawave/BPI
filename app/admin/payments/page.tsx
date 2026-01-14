@@ -12,6 +12,8 @@ import {
   MdPending,
   MdAttachMoney,
   MdEvent,
+  MdCheckCircle,
+  MdCancel,
 } from "react-icons/md";
 import { format } from "date-fns";
 import ExportButton from "@/components/admin/ExportButton";
@@ -85,8 +87,12 @@ export default function PaymentsPage() {
     switch (status) {
       case "pending":
         return <MdPending className="text-yellow-500" size={20} />;
-      case "completed":
-        return <MdPending className="text-green-500" size={20} />;
+      case "approved":
+        return <MdCheckCircle className="text-green-500" size={20} />;
+      case "rejected":
+        return <MdCancel className="text-red-500" size={20} />;
+      case "expired":
+        return <MdEvent className="text-gray-500" size={20} />;
       default:
         return <MdPending className="text-gray-500" size={20} />;
     }

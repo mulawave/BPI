@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { api } from "@/client/trpc";
+import toast from "react-hot-toast";
 import {
   MdPeople,
   MdAttachMoney,
@@ -17,12 +18,21 @@ import { useState } from "react";
 export default function AnalyticsPage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const { data: analytics, isLoading } = api.admin.getSystemAnalytics.useQuery(undefined, {
+  const { data: analytics, isLoading, refetch } = api.admin.getSystemAnalytics.useQuery(undefined, {
     refetchInterval: 60000, // Refresh every minute
   });
 
-  const handleRefresh = () => {
-    setRefreshKey((prev) => prev + 1);
+  const handleRefresh = async () => {
+    const t = toast.loading("Refreshing analytics...");
+    try {
+      await refetch();
+      setRefreshKey((prev) => prev + 1);
+      toast.success("Analytics refreshed");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to refresh");
+    } finally {
+      toast.dismiss(t);
+    }
   };
 
   if (isLoading) {

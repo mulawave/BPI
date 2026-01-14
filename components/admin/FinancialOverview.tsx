@@ -53,8 +53,25 @@ export default function FinancialOverview() {
   }, [dateFrom, dateTo]);
 
   // Time series data
+  const [granularity, setGranularity] = React.useState<"day" | "week" | "month">("day");
+  // Persist granularity across sessions
+  React.useEffect(() => {
+    try {
+      const savedGran = localStorage.getItem("financials:granularity");
+      if (savedGran === "day" || savedGran === "week" || savedGran === "month") {
+        setGranularity(savedGran);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("financials:granularity", granularity);
+    } catch {}
+  }, [granularity]);
+
   const { data: series, error: seriesError, refetch: refetchSeries } = api.admin.getFinancialTimeSeries.useQuery(
-    { dateFrom: new Date(dateFrom), dateTo: new Date(dateTo), granularity: "day" },
+    { dateFrom: new Date(dateFrom), dateTo: new Date(dateTo), granularity },
     { refetchOnWindowFocus: false }
   );
   React.useEffect(() => {
@@ -191,6 +208,30 @@ export default function FinancialOverview() {
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
             />
+            {/* Granularity selector */}
+            <div className="ml-1 hidden sm:flex items-center overflow-hidden rounded-lg border text-xs">
+              <button
+                className={`px-2 py-1 ${granularity === "day" ? "bg-muted font-semibold" : "hover:bg-accent"}`}
+                onClick={() => setGranularity("day")}
+                aria-pressed={granularity === "day"}
+              >
+                Day
+              </button>
+              <button
+                className={`px-2 py-1 border-l ${granularity === "week" ? "bg-muted font-semibold" : "hover:bg-accent"}`}
+                onClick={() => setGranularity("week")}
+                aria-pressed={granularity === "week"}
+              >
+                Week
+              </button>
+              <button
+                className={`px-2 py-1 border-l ${granularity === "month" ? "bg-muted font-semibold" : "hover:bg-accent"}`}
+                onClick={() => setGranularity("month")}
+                aria-pressed={granularity === "month"}
+              >
+                Month
+              </button>
+            </div>
             <button onClick={() => { refetch(); refetchSeries(); }} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">Apply</button>
             <button onClick={onExportCSV} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">Export CSV</button>
             <button onClick={onExportJSON} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">Export JSON</button>
@@ -318,6 +359,30 @@ export default function FinancialOverview() {
               <div className="text-xs font-semibold text-muted-foreground">Actions</div>
               <div className="mt-2 flex gap-2">
                 <button onClick={() => refetchSeries()} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted">Reload Series</button>
+                {/* Mobile granularity selector */}
+                <div className="flex sm:hidden items-center overflow-hidden rounded-lg border text-[10px]">
+                  <button
+                    className={`px-2 py-1 ${granularity === "day" ? "bg-muted font-semibold" : "hover:bg-accent"}`}
+                    onClick={() => setGranularity("day")}
+                    aria-pressed={granularity === "day"}
+                  >
+                    Day
+                  </button>
+                  <button
+                    className={`px-2 py-1 border-l ${granularity === "week" ? "bg-muted font-semibold" : "hover:bg-accent"}`}
+                    onClick={() => setGranularity("week")}
+                    aria-pressed={granularity === "week"}
+                  >
+                    Week
+                  </button>
+                  <button
+                    className={`px-2 py-1 border-l ${granularity === "month" ? "bg-muted font-semibold" : "hover:bg-accent"}`}
+                    onClick={() => setGranularity("month")}
+                    aria-pressed={granularity === "month"}
+                  >
+                    Month
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { api } from "@/client/trpc";
 import { useState } from "react";
+import toast from "react-hot-toast";
 import {
   MdTrendingUp,
   MdAttachMoney,
@@ -49,6 +50,7 @@ export default function ReportsPage() {
             </div>
             <button
               onClick={async () => {
+                const t = toast.loading("Exporting all reports...");
                 try {
                   const usersQ = api.admin.exportUsersToCSV.useQuery({ filters: {} }, { enabled: false });
                   const paymentsQ = api.admin.exportPaymentsToCSV.useQuery({ filters: {} }, { enabled: false });
@@ -71,8 +73,11 @@ export default function ReportsPage() {
                     link.click();
                     document.body.removeChild(link);
                   });
-                } catch (e) {
-                  console.error("Export All failed", e);
+                  toast.success("Exports generated");
+                } catch (e: any) {
+                  toast.error(e?.message || "Export failed");
+                } finally {
+                  toast.dismiss(t);
                 }
               }}
               className="premium-button flex items-center gap-2 px-4 py-2 text-white rounded-xl shadow-lg font-semibold"
