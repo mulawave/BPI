@@ -12,6 +12,7 @@ import {
   MdCheckCircle,
   MdPending,
   MdAttachMoney,
+  MdRefresh,
 } from "react-icons/md";
 import { HiSparkles, HiLightningBolt } from "react-icons/hi";
 import { api } from "@/client/trpc";
@@ -30,20 +31,20 @@ export default function AdminDashboardPage() {
   const { formatAmount } = useCurrency();
 
   // Get dashboard statistics
-  const { data: stats, isLoading, error: statsError } = api.admin.getDashboardStats.useQuery();
+  const { data: stats, isLoading, error: statsError, refetch: refetchStats } = api.admin.getDashboardStats.useQuery();
 
   // Paginated recent activity
   const [activityCursor, setActivityCursor] = React.useState<string | undefined>(undefined);
-  const { data: activityPage, isFetching: isFetchingActivity, error: activityError } = api.admin.getRecentActivity.useQuery({
+  const { data: activityPage, isFetching: isFetchingActivity, error: activityError, refetch: refetchActivity } = api.admin.getRecentActivity.useQuery({
     limit: 10,
     cursor: activityCursor,
   });
   const activities = activityPage?.items || [];
 
   // Get new enhanced data
-  const { data: alerts, error: alertsError } = api.admin.getDashboardAlerts.useQuery();
-  const { data: performance, error: perfError } = api.admin.getPerformanceMetrics.useQuery();
-  const { data: quickStats, error: quickStatsError } = api.admin.getQuickStats.useQuery();
+  const { data: alerts, error: alertsError, refetch: refetchAlerts } = api.admin.getDashboardAlerts.useQuery();
+  const { data: performance, error: perfError, refetch: refetchPerformance } = api.admin.getPerformanceMetrics.useQuery();
+  const { data: quickStats, error: quickStatsError, refetch: refetchQuickStats } = api.admin.getQuickStats.useQuery();
 
   React.useEffect(() => {
     const err = statsError || activityError || alertsError || perfError || quickStatsError;
@@ -107,20 +108,59 @@ export default function AdminDashboardPage() {
               </div>
             </div>
           </div>
-          <GlobalSearch />
+            <div className="flex items-center gap-3">
+              <button
+                onClick={async () => {
+                  const t = toast.loading("Refreshing...");
+                  try {
+                    await Promise.all([
+                      refetchStats(),
+                      refetchActivity(),
+                      refetchAlerts(),
+                      refetchPerformance(),
+                      refetchQuickStats(),
+                    ]);
+                    toast.success("Dashboard refreshed");
+                  } catch (e) {
+                    toast.error("Refresh failed");
+                  } finally {
+                    toast.dismiss(t);
+                  }
+                }}
+                className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-1"
+              >
+                <MdRefresh />
+                <span>Refresh</span>
+              </button>
+              <GlobalSearch />
+            </div>
         </div>
       </motion.div>
 
       {/* Alerts */}
-      {alerts && alerts.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.05 }}
-        >
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.05 }}
+      >
+        {alertsError ? (
+          <div className="rounded-2xl border border-border bg-card/75 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">Alerts failed to load</span>
+              <button onClick={() => refetchAlerts()} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted">Retry</button>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">{alertsError.message}</p>
+          </div>
+        ) : alerts && alerts.length > 0 ? (
           <DashboardAlerts alerts={alerts} />
-        </motion.div>
-      )}
+        ) : (
+          <div className="rounded-2xl border border-border bg-card/75 p-6 animate-pulse">
+            <div className="h-4 w-32 bg-muted rounded" />
+            <div className="mt-3 h-3 w-full bg-muted/70 rounded" />
+            <div className="mt-2 h-3 w-5/6 bg-muted/70 rounded" />
+          </div>
+        )}
+      </motion.div>
 
       {/* Stats Grid */}
       <motion.div
@@ -234,36 +274,64 @@ export default function AdminDashboardPage() {
       {/* Additional Widgets */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Performance Metrics */}
-        {performance && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.45 }}
-          >
-            <div className="relative overflow-hidden rounded-2xl border border-border bg-card/75 backdrop-blur-xl shadow-xl shadow-black/5 dark:shadow-black/20">
-              <div className="absolute -top-20 -left-20 h-40 w-40 rounded-full bg-gradient-to-br from-[hsl(var(--secondary))] to-[hsl(var(--primary))] opacity-8 blur-3xl" />
-              <div className="relative">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.45 }}
+        >
+          <div className="relative overflow-hidden rounded-2xl border border-border bg-card/75 backdrop-blur-xl shadow-xl shadow-black/5 dark:shadow-black/20">
+            <div className="absolute -top-20 -left-20 h-40 w-40 rounded-full bg-gradient-to-br from-[hsl(var(--secondary))] to-[hsl(var(--primary))] opacity-8 blur-3xl" />
+            <div className="relative">
+              {perfError ? (
+                <div className="p-6">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold">Performance data failed to load</span>
+                    <button onClick={() => refetchPerformance()} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted">Retry</button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">{perfError.message}</p>
+                </div>
+              ) : performance ? (
                 <PerformanceWidget metrics={performance} />
-              </div>
+              ) : (
+                <div className="p-6 animate-pulse">
+                  <div className="h-4 w-28 bg-muted rounded" />
+                  <div className="mt-3 h-3 w-full bg-muted/70 rounded" />
+                  <div className="mt-2 h-3 w-4/6 bg-muted/70 rounded" />
+                </div>
+              )}
             </div>
-          </motion.div>
-        )}
+          </div>
+        </motion.div>
 
         {/* Quick Stats */}
-        {quickStats && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.45 }}
-          >
-            <div className="relative overflow-hidden rounded-2xl border border-border bg-card/75 backdrop-blur-xl shadow-xl shadow-black/5 dark:shadow-black/20">
-              <div className="absolute -bottom-20 -right-20 h-40 w-40 rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--secondary))] opacity-8 blur-3xl" />
-              <div className="relative">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.45 }}
+        >
+          <div className="relative overflow-hidden rounded-2xl border border-border bg-card/75 backdrop-blur-xl shadow-xl shadow-black/5 dark:shadow-black/20">
+            <div className="absolute -bottom-20 -right-20 h-40 w-40 rounded-full bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--secondary))] opacity-8 blur-3xl" />
+            <div className="relative">
+              {quickStatsError ? (
+                <div className="p-6">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold">Quick stats failed to load</span>
+                    <button onClick={() => refetchQuickStats()} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted">Retry</button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">{quickStatsError.message}</p>
+                </div>
+              ) : quickStats ? (
                 <QuickStatsWidget stats={quickStats} />
-              </div>
+              ) : (
+                <div className="p-6 animate-pulse">
+                  <div className="h-4 w-24 bg-muted rounded" />
+                  <div className="mt-3 h-3 w-full bg-muted/70 rounded" />
+                  <div className="mt-2 h-3 w-3/6 bg-muted/70 rounded" />
+                </div>
+              )}
             </div>
-          </motion.div>
-        )}
+          </div>
+        </motion.div>
       </div>
 
       {/* Financial Overview CTA */}

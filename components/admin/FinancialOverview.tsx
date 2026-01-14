@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { api } from "@/client/trpc";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { MdTrendingUp, MdTrendingDown, MdAttachMoney, MdPercent, MdAccountBalanceWallet } from "react-icons/md";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell } from "recharts";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, AreaChart, Area } from "recharts";
 import toast from "react-hot-toast";
 
 export default function FinancialOverview() {
@@ -32,6 +32,36 @@ export default function FinancialOverview() {
     { dateFrom: new Date(dateFrom), dateTo: new Date(dateTo) },
     { refetchOnWindowFocus: false }
   );
+
+  // Persist date range across sessions
+  React.useEffect(() => {
+    try {
+      const savedFrom = localStorage.getItem("financials:dateFrom");
+      const savedTo = localStorage.getItem("financials:dateTo");
+      if (savedFrom && savedTo) {
+        setDateFrom(savedFrom);
+        setDateTo(savedTo);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("financials:dateFrom", dateFrom);
+      localStorage.setItem("financials:dateTo", dateTo);
+    } catch {}
+  }, [dateFrom, dateTo]);
+
+  // Time series data
+  const { data: series, error: seriesError, refetch: refetchSeries } = api.admin.getFinancialTimeSeries.useQuery(
+    { dateFrom: new Date(dateFrom), dateTo: new Date(dateTo), granularity: "day" },
+    { refetchOnWindowFocus: false }
+  );
+  React.useEffect(() => {
+    if (seriesError) {
+      toast.error((seriesError as any)?.message || "Failed to load time series");
+    }
+  }, [seriesError]);
 
   // Export financial summary CSV
   const exportSummaryQuery = api.admin.exportFinancialSummaryToCSV.useQuery(
@@ -161,7 +191,7 @@ export default function FinancialOverview() {
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
             />
-            <button onClick={() => refetch()} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">Apply</button>
+            <button onClick={() => { refetch(); refetchSeries(); }} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">Apply</button>
             <button onClick={onExportCSV} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">Export CSV</button>
             <button onClick={onExportJSON} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">Export JSON</button>
             <button
@@ -189,6 +219,7 @@ export default function FinancialOverview() {
                     from.setDate(from.getDate() - p.days);
                     setDateFrom(from.toISOString().slice(0, 10));
                     refetch();
+                    refetchSeries();
                   }}
                 >
                   {p.label}
@@ -243,6 +274,50 @@ export default function FinancialOverview() {
                 <div className="flex justify-between"><span>Cash Withdrawals</span><span>{formatAmount(summary?.outflows.withdrawalsCash || 0)}</span></div>
                 <div className="flex justify-between"><span>BPT Withdrawals</span><span>{formatAmount(summary?.outflows.withdrawalsBpt || 0)}</span></div>
                 <div className="flex justify-between"><span>BPT Rewards</span><span>{formatAmount(summary?.outflows.rewardsBpt || 0)}</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Category Time Series */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="relative overflow-hidden rounded-2xl border border-border bg-card/75 p-4 backdrop-blur-xl"
+      >
+        <div className="absolute -top-16 -right-16 h-32 w-32 rounded-full bg-gradient-to-br from-[hsl(var(--secondary))] to-[hsl(var(--primary))] opacity-10 blur-2xl" />
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={series?.points || []} margin={{ left: 0, right: 0, top: 10, bottom: 0 }}>
+                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatAmount(v || 0)} />
+                <Tooltip formatter={(v?: number) => formatAmount(typeof v === "number" ? v : 0)} />
+                <Legend formatter={(value) => legendLabelMap[value] || value} />
+                <Area type="monotone" dataKey="deposits" stackId="1" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.25} />
+                <Area type="monotone" dataKey="membershipRevenue" stackId="1" stroke="hsl(var(--secondary))" fill="hsl(var(--secondary))" fillOpacity={0.25} />
+                <Area type="monotone" dataKey="vat" stackId="1" stroke="hsl(var(--muted))" fill="hsl(var(--muted))" fillOpacity={0.25} />
+                <Area type="monotone" dataKey="withdrawalFees" stackId="1" stroke="#0d3b29" fill="#0d3b29" fillOpacity={0.25} />
+                <Area type="monotone" dataKey="withdrawalsCash" stackId="2" stroke="#ff7f50" fill="#ff7f50" fillOpacity={0.2} />
+                <Area type="monotone" dataKey="withdrawalsBpt" stackId="2" stroke="#ffa500" fill="#ffa500" fillOpacity={0.2} />
+                <Area type="monotone" dataKey="rewardsBpt" stackId="2" stroke="#f0ad4e" fill="#f0ad4e" fillOpacity={0.2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border p-4">
+              <div className="text-xs font-semibold text-muted-foreground">Series Info</div>
+              <div className="mt-2 space-y-1 text-xs">
+                <div className="flex justify-between"><span>Granularity</span><span>{series?.granularity || "day"}</span></div>
+                <div className="flex justify-between"><span>Points</span><span>{series ? series.points.length : 0}</span></div>
+              </div>
+            </div>
+            <div className="rounded-xl border p-4">
+              <div className="text-xs font-semibold text-muted-foreground">Actions</div>
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => refetchSeries()} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted">Reload Series</button>
               </div>
             </div>
           </div>

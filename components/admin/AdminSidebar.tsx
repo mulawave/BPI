@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Banknote,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -51,6 +52,12 @@ const navigation = [
     href: "/admin/analytics", 
     icon: TrendingUp,
     description: "System analytics"
+  },
+  { 
+    name: "Financials", 
+    href: "/admin/financials", 
+    icon: Banknote,
+    description: "Inflows & outflows"
   },
   { 
     name: "Reports", 

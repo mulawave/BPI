@@ -3688,6 +3688,89 @@ export const adminRouter = createTRPCRouter({
       };
     }),
 
+  // Financial Time Series (per-category by day/week/month)
+  getFinancialTimeSeries: adminProcedure
+    .input(z.object({
+      dateFrom: z.date().optional(),
+      dateTo: z.date().optional(),
+      granularity: z.enum(["day", "week", "month"]).optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const now = new Date();
+      const dateTo = input?.dateTo ?? now;
+      const dateFrom = input?.dateFrom ?? new Date(dateTo.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const granularity = input?.granularity ?? "day";
+
+      const whereRange = { createdAt: { gte: dateFrom, lte: dateTo }, status: "completed" as const };
+
+      const txns = await prisma.transaction.findMany({
+        where: whereRange,
+        select: { createdAt: true, transactionType: true, amount: true },
+        orderBy: { createdAt: "asc" },
+      });
+
+      function bucketKey(d: Date): string {
+        if (granularity === "day") {
+          return d.toISOString().slice(0, 10);
+        }
+        if (granularity === "week") {
+          // ISO week: use Monday-based week number approximation
+          const tmp = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+          const dayNum = (tmp.getUTCDay() + 6) % 7; // 0=Mon
+          tmp.setUTCDate(tmp.getUTCDate() - dayNum + 3);
+          const firstThursday = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 4));
+          const weekNum = 1 + Math.round(((tmp.getTime() - firstThursday.getTime()) / 86400000 - 3) / 7);
+          return `${tmp.getUTCFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+        }
+        // month
+        return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+      }
+
+      const buckets: Record<string, {
+        deposits: number; membershipRevenue: number; vat: number; withdrawalFees: number;
+        withdrawalsCash: number; withdrawalsBpt: number; rewardsBpt: number;
+      }> = {};
+
+      for (const t of txns) {
+        const key = bucketKey(t.createdAt);
+        if (!buckets[key]) {
+          buckets[key] = { deposits: 0, membershipRevenue: 0, vat: 0, withdrawalFees: 0, withdrawalsCash: 0, withdrawalsBpt: 0, rewardsBpt: 0 };
+        }
+        const amt = t.amount || 0;
+        const type = t.transactionType || "";
+
+        if (type === "DEPOSIT" || type === "deposit") {
+          buckets[key].deposits += Math.abs(amt);
+        } else if (
+          type === "MEMBERSHIP_PAYMENT" || type === "membership_payment" ||
+          type === "MEMBERSHIP_ACTIVATION" || type === "membership_activation" ||
+          type === "MEMBERSHIP_UPGRADE" || type === "membership_upgrade"
+        ) {
+          buckets[key].membershipRevenue += Math.abs(amt);
+        } else if (type === "VAT" || type === "vat") {
+          buckets[key].vat += Math.abs(amt);
+        } else if (type === "WITHDRAWAL_FEE") {
+          buckets[key].withdrawalFees += Math.abs(amt);
+        } else if (type === "WITHDRAWAL_CASH") {
+          buckets[key].withdrawalsCash += Math.abs(amt);
+        } else if (type === "WITHDRAWAL_BPT") {
+          buckets[key].withdrawalsBpt += Math.abs(amt);
+        } else if (type.startsWith("REFERRAL_")) {
+          buckets[key].rewardsBpt += Math.abs(amt);
+        }
+      }
+
+      const points = Object.keys(buckets)
+        .sort()
+        .map((date) => ({ date, ...buckets[date] }));
+
+      return {
+        range: { from: dateFrom, to: dateTo },
+        granularity,
+        points,
+      };
+    }),
+
   // Performance Metrics
   getPerformanceMetrics: adminProcedure.query(async () => {
     const now = new Date();
