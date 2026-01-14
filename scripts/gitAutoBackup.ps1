@@ -26,6 +26,11 @@ try {
   $remotes = git remote -v | Out-String
   Write-Host "Remotes:`n$remotes"
 
+  # Clean up any in-progress rebase/merge to avoid dirty states
+  if (Test-Path ".git/rebase-apply") { Write-Host "Rebase detected. Aborting rebase..." -ForegroundColor Yellow; git rebase --abort }
+  if (Test-Path ".git/rebase-merge") { Write-Host "Rebase (merge) detected. Aborting rebase..." -ForegroundColor Yellow; git rebase --abort }
+  if (Test-Path ".git/MERGE_HEAD") { Write-Host "Merge in progress detected. Aborting merge..." -ForegroundColor Yellow; git merge --abort }
+
   # Stage and commit only if there are changes
   $status = git status --porcelain
   if ($status) {
@@ -39,16 +44,11 @@ try {
     Write-Host "No changes to commit" -ForegroundColor Yellow
   }
 
-  # Push current branch; handle non-fast-forward gracefully
+  # Push current branch; if upstream is ahead, force-with-lease (local is king)
   git push $Remote $branch
   if ($LASTEXITCODE -ne 0) {
-    Write-Host "Push rejected. Attempting pull --rebase..." -ForegroundColor Yellow
-    git pull $Remote $branch --rebase
-    git push $Remote $branch
-    if ($LASTEXITCODE -ne 0) {
-      Write-Host "Push still rejected. Forcing push (local is king) with --force-with-lease" -ForegroundColor Yellow
-      git push --force-with-lease $Remote $branch
-    }
+    Write-Host "Push rejected. Enforcing local as source of truth with --force-with-lease" -ForegroundColor Yellow
+    git push --force-with-lease $Remote $branch
   }
 
   # Push tags (best-effort)
