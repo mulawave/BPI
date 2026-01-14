@@ -21,7 +21,8 @@
     "db:backup": "npx tsx scripts/exportDatabaseToSeed.ts",
     "db:restore": "npx tsx prisma/seedFromBackup.ts",
     "db:seed": "npx tsx prisma/seed.ts",
-    "db:reset": "npx prisma migrate reset --force && npm run db:seed"
+    "db:reset": "npx prisma migrate reset --force && npm run db:seed",
+    "backup:git": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gitAutoBackup.ps1"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
