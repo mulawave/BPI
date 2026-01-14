@@ -39,8 +39,19 @@ try {
     Write-Host "No changes to commit" -ForegroundColor Yellow
   }
 
-  # Push current branch and tags
+  # Push current branch; handle non-fast-forward gracefully
   git push $Remote $branch
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "Push rejected. Attempting pull --rebase..." -ForegroundColor Yellow
+    git pull $Remote $branch --rebase
+    git push $Remote $branch
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "Push still rejected. Forcing push (local is king) with --force-with-lease" -ForegroundColor Yellow
+      git push --force-with-lease $Remote $branch
+    }
+  }
+
+  # Push tags (best-effort)
   git push $Remote --tags
   Write-Host "Push complete for branch '$branch'" -ForegroundColor Green
 }
