@@ -1,9 +1,7 @@
+"use client";
+
 import { motion } from "framer-motion";
 import FinancialOverview from "@/components/admin/FinancialOverview";
-
-export const metadata = {
-  title: "Admin • Financials",
-};
 
 export default function AdminFinancialsPage() {
   return (

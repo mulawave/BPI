@@ -12,6 +12,7 @@ import {
   MdCampaign,
   MdBarChart,
   MdSecurity,
+  MdAttachMoney,
 } from "react-icons/md";
 
 interface QuickActionsProps {
@@ -19,6 +20,13 @@ interface QuickActionsProps {
 }
 
 const actions = [
+  {
+    name: "Financials",
+    href: "/admin/financials",
+    icon: MdAttachMoney,
+    color: "emerald",
+    description: "Inflows, outflows, exports",
+  },
   {
     name: "Review Payments",
     href: "/admin/payments",
@@ -40,6 +48,13 @@ const actions = [
     icon: MdAssessment,
     color: "purple",
     description: "Access analytics and insights",
+  },
+  {
+    name: "Financials",
+    href: "/admin/financials",
+    icon: MdBarChart,
+    color: "violet",
+    description: "Inflows, outflows, and exports",
   },
   {
     name: "Membership Packages",

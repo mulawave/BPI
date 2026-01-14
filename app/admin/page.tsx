@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
+import toast from "react-hot-toast";
 import {
   MdPeople,
   MdPayment,
@@ -29,20 +30,27 @@ export default function AdminDashboardPage() {
   const { formatAmount } = useCurrency();
 
   // Get dashboard statistics
-  const { data: stats, isLoading } = api.admin.getDashboardStats.useQuery();
+  const { data: stats, isLoading, error: statsError } = api.admin.getDashboardStats.useQuery();
 
   // Paginated recent activity
   const [activityCursor, setActivityCursor] = React.useState<string | undefined>(undefined);
-  const { data: activityPage, isFetching: isFetchingActivity } = api.admin.getRecentActivity.useQuery({
+  const { data: activityPage, isFetching: isFetchingActivity, error: activityError } = api.admin.getRecentActivity.useQuery({
     limit: 10,
     cursor: activityCursor,
   });
   const activities = activityPage?.items || [];
 
   // Get new enhanced data
-  const { data: alerts } = api.admin.getDashboardAlerts.useQuery();
-  const { data: performance } = api.admin.getPerformanceMetrics.useQuery();
-  const { data: quickStats } = api.admin.getQuickStats.useQuery();
+  const { data: alerts, error: alertsError } = api.admin.getDashboardAlerts.useQuery();
+  const { data: performance, error: perfError } = api.admin.getPerformanceMetrics.useQuery();
+  const { data: quickStats, error: quickStatsError } = api.admin.getQuickStats.useQuery();
+
+  React.useEffect(() => {
+    const err = statsError || activityError || alertsError || perfError || quickStatsError;
+    if (err) {
+      toast.error((err as any)?.message || "Failed to load some dashboard data");
+    }
+  }, [statsError, activityError, alertsError, perfError, quickStatsError]);
 
   if (isLoading) {
     return (
