@@ -26,6 +26,88 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 });
 
 export const adminRouter = createTRPCRouter({
+  // Global search across key admin entities
+  globalSearch: adminProcedure
+    .input(
+      z.object({
+        q: z.string().min(1),
+        limit: z.number().min(1).max(25).default(5),
+      })
+    )
+    .query(async ({ input }) => {
+      const term = input.q.trim();
+      if (term.length < 2) {
+        return { users: [], payments: [], packages: [] };
+      }
+
+      const take = input.limit;
+
+      const [users, payments, packages] = await Promise.all([
+        prisma.user.findMany({
+          where: {
+            OR: [
+              { name: { contains: term, mode: "insensitive" } },
+              { email: { contains: term, mode: "insensitive" } },
+              { username: { contains: term, mode: "insensitive" } },
+            ],
+          },
+          take,
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            username: true,
+            role: true,
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.transaction.findMany({
+          where: {
+            OR: [
+              { reference: { contains: term, mode: "insensitive" } },
+              { description: { contains: term, mode: "insensitive" } },
+              { transactionType: { contains: term, mode: "insensitive" } },
+              { User: { name: { contains: term, mode: "insensitive" } } },
+              { User: { email: { contains: term, mode: "insensitive" } } },
+            ],
+          },
+          take,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            reference: true,
+            description: true,
+            amount: true,
+            status: true,
+            transactionType: true,
+            createdAt: true,
+            User: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        }),
+        prisma.membershipPackage.findMany({
+          where: {
+            name: { contains: term, mode: "insensitive" },
+          },
+          take,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            vat: true,
+            isActive: true,
+          },
+        }),
+      ]);
+
+      return { users, payments, packages };
+    }),
   // User Management
   getUsers: adminProcedure
     .input(
@@ -1191,6 +1273,7 @@ export const adminRouter = createTRPCRouter({
     .input(
       z.object({
         period: z.enum(["7d", "30d", "90d", "1y"]).default("30d"),
+        granularity: z.enum(["day", "week", "month"]).default("day"),
       })
     )
     .query(async ({ input }) => {
@@ -1212,7 +1295,7 @@ export const adminRouter = createTRPCRouter({
           break;
       }
 
-      // Get payments by day - from Transaction ledger
+      // Get payments from Transaction ledger
       const payments = await prisma.transaction.findMany({
         where: {
           status: "completed",
@@ -1227,17 +1310,30 @@ export const adminRouter = createTRPCRouter({
         orderBy: { createdAt: "asc" },
       });
 
-      // Group by date
-      const revenueByDate: Record<string, number> = {};
+      const formatBucket = (d: Date) => {
+        const yyyy = d.getUTCFullYear();
+        const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const dd = String(d.getUTCDate()).padStart(2, "0");
+        if (input.granularity === "day") return `${yyyy}-${mm}-${dd}`;
+        if (input.granularity === "month") return `${yyyy}-${mm}`;
+        // week: ISO-ish year-week
+        const temp = new Date(Date.UTC(yyyy, d.getUTCMonth(), d.getUTCDate()));
+        const dayNum = temp.getUTCDay() || 7;
+        temp.setUTCDate(temp.getUTCDate() + (4 - dayNum));
+        const isoYear = temp.getUTCFullYear();
+        const isoWeek = Math.ceil((((temp.getTime() - Date.UTC(isoYear, 0, 1)) / 86400000) + 1) / 7);
+        return `${isoYear}-W${String(isoWeek).padStart(2, "0")}`;
+      };
+
+      const revenueByBucket: Record<string, number> = {};
       payments.forEach((payment: any) => {
-        const dateKey = payment.createdAt.toISOString().split("T")[0];
-        revenueByDate[dateKey] = (revenueByDate[dateKey] || 0) + payment.amount;
+        const bucket = formatBucket(payment.createdAt);
+        revenueByBucket[bucket] = (revenueByBucket[bucket] || 0) + payment.amount;
       });
 
-      const chartData = Object.entries(revenueByDate).map(([date, amount]) => ({
-        date,
-        amount,
-      }));
+      const chartData = Object.entries(revenueByBucket)
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+        .map(([date, amount]) => ({ date, amount }));
 
       const totalRevenue = payments.reduce((sum: number, p: any) => sum + p.amount, 0);
       const averagePerDay = chartData.length > 0 ? totalRevenue / chartData.length : 0;
@@ -1247,6 +1343,7 @@ export const adminRouter = createTRPCRouter({
         totalRevenue,
         averagePerDay,
         transactionCount: payments.length,
+        granularity: input.granularity,
       };
     }),
 
@@ -1254,6 +1351,7 @@ export const adminRouter = createTRPCRouter({
     .input(
       z.object({
         period: z.enum(["7d", "30d", "90d", "1y"]).default("30d"),
+        granularity: z.enum(["day", "week", "month"]).default("day"),
       })
     )
     .query(async ({ input }) => {
@@ -1275,7 +1373,7 @@ export const adminRouter = createTRPCRouter({
           break;
       }
 
-      // Get users by day
+      // Get users
       const users = await prisma.user.findMany({
         where: {
           createdAt: { gte: startDate },
@@ -1287,33 +1385,51 @@ export const adminRouter = createTRPCRouter({
         orderBy: { createdAt: "asc" },
       });
 
-      // Group by date
-      const usersByDate: Record<string, { registrations: number; activations: number }> = {};
+      const formatBucket = (d: Date) => {
+        const yyyy = d.getUTCFullYear();
+        const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const dd = String(d.getUTCDate()).padStart(2, "0");
+        if (input.granularity === "day") return `${yyyy}-${mm}-${dd}`;
+        if (input.granularity === "month") return `${yyyy}-${mm}`;
+        // week bucket
+        const temp = new Date(Date.UTC(yyyy, d.getUTCMonth(), d.getUTCDate()));
+        const dayNum = temp.getUTCDay() || 7;
+        temp.setUTCDate(temp.getUTCDate() + (4 - dayNum));
+        const isoYear = temp.getUTCFullYear();
+        const isoWeek = Math.ceil((((temp.getTime() - Date.UTC(isoYear, 0, 1)) / 86400000) + 1) / 7);
+        return `${isoYear}-W${String(isoWeek).padStart(2, "0")}`;
+      };
+
+      const usersByBucket: Record<string, { registrations: number; activations: number }> = {};
       users.forEach((user) => {
-        const dateKey = user.createdAt.toISOString().split("T")[0];
-        if (!usersByDate[dateKey]) {
-          usersByDate[dateKey] = { registrations: 0, activations: 0 };
+        const regBucket = formatBucket(user.createdAt);
+        if (!usersByBucket[regBucket]) {
+          usersByBucket[regBucket] = { registrations: 0, activations: 0 };
         }
-        usersByDate[dateKey].registrations++;
+        usersByBucket[regBucket].registrations++;
+
         if (user.membershipActivatedAt && user.membershipActivatedAt >= startDate) {
-          const activationKey = user.membershipActivatedAt.toISOString().split("T")[0];
-          if (!usersByDate[activationKey]) {
-            usersByDate[activationKey] = { registrations: 0, activations: 0 };
+          const actBucket = formatBucket(user.membershipActivatedAt);
+          if (!usersByBucket[actBucket]) {
+            usersByBucket[actBucket] = { registrations: 0, activations: 0 };
           }
-          usersByDate[activationKey].activations++;
+          usersByBucket[actBucket].activations++;
         }
       });
 
-      const chartData = Object.entries(usersByDate).map(([date, counts]) => ({
-        date,
-        registrations: counts.registrations,
-        activations: counts.activations,
-      }));
+      const chartData = Object.entries(usersByBucket)
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+        .map(([date, counts]) => ({
+          date,
+          registrations: counts.registrations,
+          activations: counts.activations,
+        }));
 
       return {
         chartData,
         totalRegistrations: users.length,
         totalActivations: users.filter((u) => u.membershipActivatedAt).length,
+        granularity: input.granularity,
       };
     }),
 
@@ -1423,6 +1539,87 @@ export const adminRouter = createTRPCRouter({
         page,
         limit,
         totalPages: Math.ceil(total / limit),
+      };
+    }),
+
+  getCommunityUpdateDetails: adminProcedure
+    .input(z.object({ updateId: z.string() }))
+    .query(async ({ input }) => {
+      const update = await prisma.communityUpdate.findUnique({
+        where: { id: input.updateId },
+        include: {
+          User: {
+            select: { name: true, email: true },
+          },
+          UpdateRead: {
+            select: {
+              id: true,
+              readAt: true,
+              User: { select: { name: true, email: true } },
+            },
+            orderBy: { readAt: "desc" },
+            take: 50,
+          },
+        },
+      });
+
+      if (!update) return null;
+
+      const [audit, readCount] = await Promise.all([
+        prisma.auditLog.findMany({
+          where: { entity: "CommunityUpdate", entityId: input.updateId },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+          include: {
+            User: { select: { name: true, email: true } },
+          },
+        }),
+        prisma.updateRead.count({ where: { updateId: input.updateId } }),
+      ]);
+
+      const readsByDay = (update.UpdateRead || []).reduce((acc: Record<string, number>, read: any) => {
+        const day = new Date(read.readAt).toISOString().slice(0, 10);
+        acc[day] = (acc[day] || 0) + 1;
+        return acc;
+      }, {});
+
+      const audience = {
+        packages: update.targetPackages || null,
+        ranks: update.targetRanks || null,
+        regions: update.targetRegions || null,
+      };
+
+      const attachments = update.imageUrl
+        ? [{ id: `${update.id}-image`, type: "image", url: update.imageUrl, label: "Hero image" }]
+        : [];
+
+      const metadata = {
+        category: update.category,
+        priority: update.priority,
+        publishedAt: update.publishedAt,
+        expiresAt: update.expiresAt,
+        createdAt: update.createdAt,
+        updatedAt: update.updatedAt,
+      };
+
+      return {
+        ...update,
+        audience,
+        attachments,
+        metadata,
+        readCount,
+        readDistribution: Object.entries(readsByDay).map(([day, count]) => ({ day, count })),
+        audit,
+        lastActor: audit[0]?.User || null,
+        statusHistory: audit.map((log: any) => ({
+          id: log.id,
+          action: log.action,
+          status: log.status,
+          actor: log.User,
+          metadata: log.metadata,
+          changes: log.changes,
+          createdAt: log.createdAt,
+        })),
       };
     }),
 
@@ -1597,6 +1794,105 @@ export const adminRouter = createTRPCRouter({
       };
     }),
 
+  getBestDealDetails: adminProcedure
+    .input(z.object({ dealId: z.string() }))
+    .query(async ({ input }) => {
+      const deal = await prisma.bestDeal.findUnique({
+        where: { id: input.dealId },
+        include: {
+          User: {
+            select: { name: true, email: true },
+          },
+        },
+      });
+
+      if (!deal) return null;
+
+      const [claims, audit] = await Promise.all([
+        prisma.dealClaim.findMany({
+          where: { dealId: input.dealId },
+          include: {
+            User: { select: { name: true, email: true } },
+          },
+          orderBy: { claimedAt: "desc" },
+          take: 100,
+        }),
+        prisma.auditLog.findMany({
+          where: { entity: "BestDeal", entityId: input.dealId },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+          include: {
+            User: { select: { name: true, email: true } },
+          },
+        }),
+      ]);
+
+      const claimsByDay = claims.reduce((acc: Record<string, number>, claim: any) => {
+        const day = new Date(claim.claimedAt).toISOString().slice(0, 10);
+        acc[day] = (acc[day] || 0) + 1;
+        return acc;
+      }, {});
+
+      const usageRate = deal.usageLimit ? Math.min(100, ((deal.currentUsage || 0) / deal.usageLimit) * 100) : null;
+
+      const audience = {
+        packages: deal.eligiblePackages || null,
+        ranks: deal.eligibleRanks || null,
+        minPurchaseAmount: deal.minPurchaseAmount || null,
+      };
+
+      const attachments = deal.imageUrl
+        ? [{ id: `${deal.id}-image`, type: "image", url: deal.imageUrl, label: "Hero image" }]
+        : [];
+
+      const metadata = {
+        createdAt: deal.createdAt,
+        updatedAt: deal.updatedAt,
+        startDate: deal.startDate,
+        endDate: deal.endDate,
+        usageLimit: deal.usageLimit,
+        usagePerUser: deal.usagePerUser,
+        isFeatured: deal.isFeatured,
+      };
+
+      const statusHistory = audit.map((log: any) => ({
+        id: log.id,
+        action: log.action,
+        status: log.status,
+        actor: log.User,
+        metadata: log.metadata,
+        changes: log.changes,
+        createdAt: log.createdAt,
+      }));
+
+      const deactivationReason = (() => {
+        for (const log of audit) {
+          const meta = log.metadata;
+          if (meta && typeof meta === "object" && !Array.isArray(meta) && "deactivationReason" in meta) {
+            const value = (meta as Record<string, unknown>).deactivationReason;
+            if (typeof value === "string") return value;
+          }
+        }
+        return null;
+      })();
+
+      return {
+        ...deal,
+        claims,
+        claimCount: claims.length,
+        remainingClaims: deal.usageLimit ? Math.max(0, deal.usageLimit - (deal.currentUsage || 0)) : null,
+        claimDistribution: Object.entries(claimsByDay).map(([day, count]) => ({ day, count })),
+        audit,
+        usageRate,
+        lastActor: audit[0]?.User || null,
+        audience,
+        attachments,
+        metadata,
+        statusHistory,
+        deactivationReason,
+      };
+    }),
+
   createBestDeal: adminProcedure
     .input(
       z.object({
@@ -1659,16 +1955,18 @@ export const adminRouter = createTRPCRouter({
           isFeatured: z.boolean().optional(),
           discountValue: z.number().optional(),
           usageLimit: z.number().optional(),
+          deactivationReason: z.string().max(500).optional(),
         }),
       })
     )
     .mutation(async ({ input, ctx }) => {
       const { dealId, data } = input;
+      const { deactivationReason, ...updateData } = data;
 
       const updated = await prisma.bestDeal.update({
         where: { id: dealId },
         data: {
-          ...data,
+          ...updateData,
           updatedAt: new Date(),
         },
       });
@@ -1680,7 +1978,8 @@ export const adminRouter = createTRPCRouter({
           action: "UPDATE_DEAL",
           entity: "BestDeal",
           entityId: dealId,
-          changes: JSON.stringify(data),
+          changes: JSON.stringify({ ...updateData, deactivationReason }),
+          metadata: deactivationReason ? { deactivationReason } : undefined,
           status: "success",
           createdAt: new Date(),
         },
@@ -3060,6 +3359,137 @@ export const adminRouter = createTRPCRouter({
       redemptionRate: totalClaims > 0 ? (redeemedClaims / totalClaims) * 100 : 0,
       byType: dealsByType,
       topDeals,
+    };
+  }),
+
+  getAdminWiringStatus: adminProcedure.query(async () => {
+    const backupSummaryPromise = (async () => {
+      try {
+        const backupDir = path.join(process.cwd(), "public", "uploads", "backups");
+        await fs.promises.mkdir(backupDir, { recursive: true });
+        const files = await fs.promises.readdir(backupDir);
+        const backupFiles = files.filter((f) => f.endsWith(".json"));
+        let latestBackup: string | null = null;
+        let latestTime = 0;
+
+        for (const f of backupFiles) {
+          const stats = await fs.promises.stat(path.join(backupDir, f));
+          if (stats.mtimeMs > latestTime) {
+            latestTime = stats.mtimeMs;
+            latestBackup = stats.mtime.toISOString();
+          }
+        }
+
+        return { count: backupFiles.length, latest: latestBackup };
+      } catch {
+        return { count: 0, latest: null };
+      }
+    })();
+
+    const [
+      updatesCount,
+      dealsCount,
+      auditCount,
+      backupSummary,
+      gatewayCount,
+      usersCount,
+      paymentsCount,
+      totalClaims,
+      latestUpdate,
+      latestDeal,
+      latestAudit,
+    ] = await Promise.all([
+      prisma.communityUpdate.count(),
+      prisma.bestDeal.count(),
+      prisma.auditLog.count(),
+      backupSummaryPromise,
+      prisma.paymentGatewayConfig.count(),
+      prisma.user.count(),
+      prisma.pendingPayment.count(),
+      prisma.dealClaim.count(),
+      prisma.communityUpdate.findFirst({ orderBy: { updatedAt: "desc" }, select: { updatedAt: true, id: true } }),
+      prisma.bestDeal.findFirst({ orderBy: { updatedAt: "desc" }, select: { updatedAt: true, id: true, isActive: true } }),
+      prisma.auditLog.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true, action: true } }),
+    ]);
+
+    const generatedAt = new Date().toISOString();
+
+    const features = [
+      {
+        key: "community-details",
+        title: "Community Details Modals",
+        status: updatesCount > 0 ? "wired" : "partial",
+        stats: { updates: updatesCount, lastUpdated: latestUpdate?.updatedAt },
+        route: "/admin/community",
+        component: "CommunityUpdateModal",
+        procedures: ["admin.getCommunityUpdateDetails", "admin.updateCommunityUpdate", "admin.deleteCommunityUpdate", "admin.getCommunityUpdates"],
+        routerPath: "server/trpc/router/admin.ts",
+      },
+      {
+        key: "deal-details",
+        title: "Deal Details Modals",
+        status: dealsCount > 0 ? "wired" : "partial",
+        stats: { deals: dealsCount, claims: totalClaims, lastUpdated: latestDeal?.updatedAt },
+        route: "/admin/community",
+        component: "BestDealModal",
+        procedures: ["admin.getBestDealDetails", "admin.updateBestDeal", "admin.deleteDeal", "admin.getBestDeals"],
+        routerPath: "server/trpc/router/admin.ts",
+      },
+      {
+        key: "help-page",
+        title: "Help Wiring Status",
+        status: auditCount > 0 ? "wired" : "partial",
+        stats: { auditLogs: auditCount, lastUpdated: latestAudit?.createdAt },
+        route: "/admin/help",
+        component: "AdminHelpPage",
+        procedures: ["admin.getAdminWiringStatus"],
+        routerPath: "server/trpc/router/admin.ts",
+      },
+      {
+        key: "backups",
+        title: "Backups & Restore",
+        status: backupSummary.count > 0 ? "wired" : "partial",
+        stats: { backups: backupSummary.count, lastBackup: backupSummary.latest },
+        route: "/admin/settings?tab=backups",
+        component: "BackupsPanel",
+        procedures: ["admin.listBackups", "admin.createBackup", "admin.deleteBackup"],
+        routerPath: "server/trpc/router/admin.ts",
+      },
+      {
+        key: "gateways",
+        title: "Payment Gateways",
+        status: gatewayCount > 0 ? "wired" : "partial",
+        stats: { gateways: gatewayCount },
+        route: "/admin/payments",
+        component: "PaymentGatewaySettings",
+        procedures: ["admin.getPaymentGateways", "admin.updatePaymentGateway"],
+        routerPath: "server/trpc/router/admin.ts",
+      },
+      {
+        key: "users",
+        title: "Users Module",
+        status: usersCount > 0 ? "wired" : "partial",
+        stats: { users: usersCount },
+        route: "/admin/users",
+        component: "AdminUsersTable",
+        procedures: ["admin.getUsers", "admin.bulkUpdateUserRoles"],
+        routerPath: "server/trpc/router/admin.ts",
+      },
+      {
+        key: "payments",
+        title: "Payments Review",
+        status: paymentsCount > 0 ? "wired" : "partial",
+        stats: { pendingPayments: paymentsCount },
+        route: "/admin/payments",
+        component: "PaymentsReview",
+        procedures: ["admin.getPendingPayments", "admin.reviewPayment"],
+        routerPath: "server/trpc/router/admin.ts",
+      },
+    ];
+
+    return {
+      generatedAt,
+      features,
     };
   }),
 

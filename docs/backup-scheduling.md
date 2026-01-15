@@ -1,4 +1,4 @@
-# BPI Git Auto Backup Scheduling (Windows)
+add granularity selector ui # BPI Git Auto Backup Scheduling (Windows)
 
 This guide sets up a scheduled task that regularly backs up your local repo to the remote, keeping the local repo as the source of truth.
 

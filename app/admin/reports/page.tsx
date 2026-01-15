@@ -14,22 +14,166 @@ import {
 } from "react-icons/md";
 
 type Period = "7d" | "30d" | "90d" | "1y";
+type Granularity = "day" | "week" | "month";
+
+const formatDateLabel = (label: string) => {
+  const d = new Date(label);
+  if (Number.isNaN(d.getTime())) return label;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
+const getBucketTooltip = (label: string, granularity: Granularity) => {
+  const start = new Date(label);
+  if (Number.isNaN(start.getTime()) || granularity === "day") return formatDateLabel(label);
+  const end = new Date(start);
+  if (granularity === "week") {
+    end.setDate(start.getDate() + 6);
+  }
+  if (granularity === "month") {
+    end.setMonth(start.getMonth() + 1);
+    end.setDate(end.getDate() - 1);
+  }
+  const startLabel = start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const endLabel = end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return `${startLabel} – ${endLabel}`;
+};
+
+const buildCSV = (rows: (string | number)[][]) =>
+  rows
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+
+const downloadBlob = (data: string, filename: string, type: string) => {
+  const blob = new Blob([data], { type });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
 
 export default function ReportsPage() {
   const [revenuePeriod, setRevenuePeriod] = useState<Period>("30d");
   const [userPeriod, setUserPeriod] = useState<Period>("30d");
+  const [revenueGranularity, setRevenueGranularity] = useState<Granularity>("day");
+  const [userGranularity, setUserGranularity] = useState<Granularity>("day");
 
   const { data: revenueData, isLoading: revenueLoading } =
-    api.admin.getRevenueAnalytics.useQuery({ period: revenuePeriod });
+    api.admin.getRevenueAnalytics.useQuery({ period: revenuePeriod, granularity: revenueGranularity });
 
   const { data: userData, isLoading: userLoading } =
-    api.admin.getUserGrowthAnalytics.useQuery({ period: userPeriod });
+    api.admin.getUserGrowthAnalytics.useQuery({ period: userPeriod, granularity: userGranularity });
 
   const periodLabels = {
     "7d": "Last 7 Days",
     "30d": "Last 30 Days",
     "90d": "Last 90 Days",
     "1y": "Last Year",
+  };
+
+  const granularityLabels: Record<Granularity, string> = {
+    day: "Day",
+    week: "Week",
+    month: "Month",
+  };
+
+  const exportRevenue = (format: "csv" | "json") => {
+    if (!revenueData || !revenueData.chartData?.length) {
+      toast.error("No revenue data to export");
+      return;
+    }
+
+    if (format === "json") {
+      const payload = {
+        generatedAt: new Date().toISOString(),
+        period: revenuePeriod,
+        granularity: revenueGranularity,
+        totals: {
+          totalRevenue: revenueData.totalRevenue,
+          transactionCount: revenueData.transactionCount,
+          averagePerBucket: revenueData.averagePerDay,
+        },
+        chart: revenueData.chartData,
+      };
+      downloadBlob(
+        JSON.stringify(payload, null, 2),
+        `revenue_${revenuePeriod}_${revenueGranularity}.json`,
+        "application/json",
+      );
+      toast.success("Revenue JSON ready");
+      return;
+    }
+
+    const rows: (string | number)[][] = [
+      ["Period", periodLabels[revenuePeriod]],
+      ["Granularity", granularityLabels[revenueGranularity]],
+      [],
+      ...(() => {
+        const includeTransactions = revenueData.chartData.some(
+          (entry) => (entry as any).transactionCount !== undefined,
+        );
+        const header = includeTransactions
+          ? ["Date", "Amount", "Transactions"]
+          : ["Date", "Amount"];
+
+        const body = revenueData.chartData.map((item) => {
+          const row: (string | number)[] = [formatDateLabel(item.date), item.amount];
+          if (includeTransactions) {
+            row.push((item as any).transactionCount ?? 0);
+          }
+          return row;
+        });
+
+        return [header, ...body];
+      })(),
+    ];
+    downloadBlob(buildCSV(rows), `revenue_${revenuePeriod}_${revenueGranularity}.csv`, "text/csv;charset=utf-8;");
+    toast.success("Revenue CSV ready");
+  };
+
+  const exportUsers = (format: "csv" | "json") => {
+    if (!userData || !userData.chartData?.length) {
+      toast.error("No user data to export");
+      return;
+    }
+
+    if (format === "json") {
+      const payload = {
+        generatedAt: new Date().toISOString(),
+        period: userPeriod,
+        granularity: userGranularity,
+        totals: {
+          totalRegistrations: userData.totalRegistrations,
+          totalActivations: userData.totalActivations,
+        },
+        chart: userData.chartData,
+      };
+      downloadBlob(
+        JSON.stringify(payload, null, 2),
+        `users_${userPeriod}_${userGranularity}.json`,
+        "application/json",
+      );
+      toast.success("User JSON ready");
+      return;
+    }
+
+    const rows: (string | number)[][] = [
+      ["Period", periodLabels[userPeriod]],
+      ["Granularity", granularityLabels[userGranularity]],
+      [],
+      ["Date", "Registrations", "Activations"],
+      ...userData.chartData.map((item) => [
+        formatDateLabel(item.date),
+        item.registrations,
+        item.activations,
+      ]),
+    ];
+    downloadBlob(buildCSV(rows), `users_${userPeriod}_${userGranularity}.csv`, "text/csv;charset=utf-8;");
+    toast.success("User CSV ready");
   };
 
   return (
@@ -110,19 +254,50 @@ export default function ReportsPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {(["7d", "30d", "90d", "1y"] as Period[]).map((period) => (
+              <div className="flex items-center gap-2">
                 <button
-                  key={period}
-                  onClick={() => setRevenuePeriod(period)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    revenuePeriod === period
-                      ? "bg-[hsl(var(--primary))] text-white"
-                      : "bg-background/60 border border-border text-foreground/80 hover:bg-background"
-                  }`}
+                  onClick={() => exportRevenue("csv")}
+                  className="premium-button flex items-center gap-2 px-3 py-2 text-white rounded-xl shadow-md text-sm"
                 >
-                  {periodLabels[period]}
+                  <MdFileDownload size={18} />
+                  <span>Export CSV</span>
                 </button>
-              ))}
+                <button
+                  onClick={() => exportRevenue("json")}
+                  className="premium-button flex items-center gap-2 px-3 py-2 text-white rounded-xl shadow-md text-sm"
+                >
+                  <MdFileDownload size={18} />
+                  <span>Export JSON</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-1">
+                {(["7d", "30d", "90d", "1y"] as Period[]).map((period) => (
+                  <button
+                    key={period}
+                    onClick={() => setRevenuePeriod(period)}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      revenuePeriod === period
+                        ? "bg-[hsl(var(--primary))] text-white"
+                        : "bg-background/60 border border-border text-foreground/80 hover:bg-background"
+                    }`}
+                  >
+                    {periodLabels[period]}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1 rounded-lg border border-border bg-background/60 px-1 py-1 text-xs">
+                {( ["day", "week", "month"] as Granularity[] ).map((g) => (
+                  <button
+                    key={g}
+                    onClick={() => setRevenueGranularity(g)}
+                    className={`px-2 py-1 rounded-md ${
+                      revenueGranularity === g ? "bg-[hsl(var(--muted))] font-semibold" : "hover:bg-muted"
+                    }`}
+                  >
+                    {granularityLabels[g]}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -149,7 +324,7 @@ export default function ReportsPage() {
                   <div className="flex items-center gap-2 mb-2">
                     <MdShowChart className="text-blue-600 dark:text-blue-400" size={20} />
                     <span className="text-sm text-gray-600 dark:text-gray-400">
-                      Avg per Day
+                      Avg per {granularityLabels[revenueData?.granularity || "day"]}
                     </span>
                   </div>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -172,14 +347,13 @@ export default function ReportsPage() {
               {/* Chart */}
               <div className="space-y-2">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
-                  Daily Revenue ({periodLabels[revenuePeriod]})
+                  Revenue ({periodLabels[revenuePeriod]}) · {granularityLabels[revenueData?.granularity || "day"]}
                 </h3>
                 {revenueData?.chartData && revenueData.chartData.length > 0 ? (
                   <div className="space-y-1">
                     {revenueData.chartData.slice(-30).map((item, idx) => {
                       const maxAmount = Math.max(...revenueData.chartData.map((d) => d.amount));
                       const percentage = (item.amount / maxAmount) * 100;
-                      const date = new Date(item.date);
 
                       return (
                         <motion.div
@@ -189,11 +363,11 @@ export default function ReportsPage() {
                           transition={{ delay: idx * 0.02 }}
                           className="flex items-center gap-3"
                         >
-                          <div className="w-24 text-xs text-gray-600 dark:text-gray-400">
-                            {date.toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                            })}
+                          <div
+                            className="w-24 text-xs text-gray-600 dark:text-gray-400"
+                            title={getBucketTooltip(item.date, revenueData?.granularity || "day")}
+                          >
+                            {item.date}
                           </div>
                           <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full h-8 overflow-hidden relative">
                             <motion.div
@@ -250,19 +424,50 @@ export default function ReportsPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {(["7d", "30d", "90d", "1y"] as Period[]).map((period) => (
+              <div className="flex items-center gap-2">
                 <button
-                  key={period}
-                  onClick={() => setUserPeriod(period)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    userPeriod === period
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-                  }`}
+                  onClick={() => exportUsers("csv")}
+                  className="premium-button flex items-center gap-2 px-3 py-2 text-white rounded-xl shadow-md text-sm"
                 >
-                  {periodLabels[period]}
+                  <MdFileDownload size={18} />
+                  <span>Export CSV</span>
                 </button>
-              ))}
+                <button
+                  onClick={() => exportUsers("json")}
+                  className="premium-button flex items-center gap-2 px-3 py-2 text-white rounded-xl shadow-md text-sm"
+                >
+                  <MdFileDownload size={18} />
+                  <span>Export JSON</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-1">
+                {(["7d", "30d", "90d", "1y"] as Period[]).map((period) => (
+                  <button
+                    key={period}
+                    onClick={() => setUserPeriod(period)}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      userPeriod === period
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    {periodLabels[period]}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1 rounded-lg border border-border bg-background/60 px-1 py-1 text-xs">
+                {( ["day", "week", "month"] as Granularity[] ).map((g) => (
+                  <button
+                    key={g}
+                    onClick={() => setUserGranularity(g)}
+                    className={`px-2 py-1 rounded-md ${
+                      userGranularity === g ? "bg-muted font-semibold" : "hover:bg-muted"
+                    }`}
+                  >
+                    {granularityLabels[g]}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -307,7 +512,7 @@ export default function ReportsPage() {
               {/* Chart */}
               <div className="space-y-2">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
-                  Daily Activity ({periodLabels[userPeriod]})
+                  Activity ({periodLabels[userPeriod]}) · {granularityLabels[userData?.granularity || "day"]}
                 </h3>
                 {userData?.chartData && userData.chartData.length > 0 ? (
                   <div className="space-y-2">
@@ -317,7 +522,6 @@ export default function ReportsPage() {
                       );
                       const regPercentage = (item.registrations / maxCount) * 100;
                       const actPercentage = (item.activations / maxCount) * 100;
-                      const date = new Date(item.date);
 
                       return (
                         <motion.div
@@ -328,11 +532,11 @@ export default function ReportsPage() {
                           className="space-y-1"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-24 text-xs text-gray-600 dark:text-gray-400">
-                              {date.toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                              })}
+                            <div
+                              className="w-24 text-xs text-gray-600 dark:text-gray-400"
+                              title={getBucketTooltip(item.date, userData?.granularity || "day")}
+                            >
+                              {item.date}
                             </div>
                             <div className="flex-1 space-y-1">
                               {/* Registrations */}

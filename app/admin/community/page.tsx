@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../../client/trpc";
 import { motion, AnimatePresence } from "framer-motion";
 import CommunityUpdateModal from "../../../components/admin/CommunityUpdateModal";
 import BestDealModal from "../../../components/admin/BestDealModal";
 import NotificationBroadcastModal from "../../../components/admin/NotificationBroadcastModal";
-import { 
-  HiPlus, 
-  HiRefresh, 
+import {
+  HiPlus,
+  HiRefresh,
   HiSearch,
   HiX,
   HiEye,
@@ -22,6 +22,10 @@ import {
   HiClock,
   HiExclamation,
   HiSpeakerphone,
+  HiLink,
+  HiInformationCircle,
+  HiDocumentText,
+  HiUser,
 } from "react-icons/hi";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
@@ -29,33 +33,43 @@ import StatsCard from "@/components/admin/StatsCard";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 type TabType = "updates" | "deals";
+type TrendPoint = { label: string; value: number };
+type ReadDistribution = { day: string; count: number };
+type ClaimDistribution = { day: string; count: number };
+type AuditEntry = {
+  id: string;
+  action: string;
+  status?: string;
+  User?: { name?: string | null; email?: string | null };
+  userId?: string;
+  createdAt: string | Date;
+};
 
 export default function CommunityManagementPage() {
   const [activeTab, setActiveTab] = useState<TabType>("updates");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
-  const [selectedPriority, setSelectedPriority] = useState<string>("");
   const [showActiveOnly, setShowActiveOnly] = useState(false);
 
-  // Update Modal States
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [selectedUpdate, setSelectedUpdate] = useState<any>(null);
   const [showUpdateDetails, setShowUpdateDetails] = useState(false);
+  const [confirmDeleteUpdateId, setConfirmDeleteUpdateId] = useState<string | null>(null);
 
-  // Notification Modal State
   const [showNotificationModal, setShowNotificationModal] = useState(false);
 
-  // Deal Modal States
   const [showDealModal, setShowDealModal] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState<any>(null);
   const [showDealDetails, setShowDealDetails] = useState(false);
-  const [confirmDeleteUpdateId, setConfirmDeleteUpdateId] = useState<string | null>(null);
+  const [confirmDeleteDealId, setConfirmDeleteDealId] = useState<string | null>(null);
+  const [dealDeactivationReason, setDealDeactivationReason] = useState("");
 
-  // Pagination
+  const updateModalRef = useRef<HTMLDivElement | null>(null);
+  const [updateStatusAnnouncement, setUpdateStatusAnnouncement] = useState("");
+
   const [updatesPage, setUpdatesPage] = useState(1);
   const [dealsPage, setDealsPage] = useState(1);
 
-  // API Queries
   const { data: updatesData, refetch: refetchUpdates } = api.admin.getCommunityUpdates.useQuery({
     page: updatesPage,
     limit: 20,
@@ -71,19 +85,59 @@ export default function CommunityManagementPage() {
     search: searchQuery || undefined,
   });
 
+  const { data: updateDetails, isFetching: updateDetailsLoading, refetch: refetchUpdateDetails } =
+    api.admin.getCommunityUpdateDetails.useQuery(
+      { updateId: selectedUpdate?.id || "" },
+      { enabled: !!selectedUpdate?.id && showUpdateDetails }
+    );
+
+  const { data: dealDetails, isFetching: dealDetailsLoading, refetch: refetchDealDetails } =
+    api.admin.getBestDealDetails.useQuery(
+      { dealId: selectedDeal?.id || "" },
+      { enabled: !!selectedDeal?.id && showDealDetails }
+    );
+
   const deleteUpdateMutation = api.admin.deleteCommunityUpdate.useMutation({
     onSuccess: () => {
       toast.success("Update deleted successfully");
       refetchUpdates();
+      setShowUpdateDetails(false);
+      setSelectedUpdate(null);
     },
-    onError: (error: any) => {
-      toast.error(`Failed to delete update: ${error.message}`);
-    },
+    onError: (error: any) => toast.error(`Failed to delete update: ${error.message}`),
   });
 
-  const handleDeleteUpdate = (updateId: string) => {
-    setConfirmDeleteUpdateId(updateId);
-  };
+  const toggleUpdateMutation = api.admin.updateCommunityUpdate.useMutation({
+    onSuccess: (data) => {
+      toast.success("Update status changed");
+      setUpdateStatusAnnouncement(data?.isActive ? "Update activated" : "Update deactivated");
+      refetchUpdates();
+      refetchUpdateDetails();
+    },
+    onError: (error: any) => toast.error(error.message || "Failed to update status"),
+  });
+
+  const toggleDealMutation = api.admin.updateBestDeal.useMutation({
+    onSuccess: () => {
+      toast.success("Deal status updated");
+      refetchDeals();
+      refetchDealDetails();
+      setDealDeactivationReason("");
+    },
+    onError: (error: any) => toast.error(error.message || "Failed to update deal"),
+  });
+
+  const deleteDealMutation = api.admin.deleteDeal.useMutation({
+    onSuccess: () => {
+      toast.success("Deal deleted");
+      refetchDeals();
+      setShowDealDetails(false);
+      setSelectedDeal(null);
+    },
+    onError: (error: any) => toast.error(error.message || "Failed to delete deal"),
+  });
+
+  const handleDeleteUpdate = (updateId: string) => setConfirmDeleteUpdateId(updateId);
 
   const handleViewUpdate = (update: any) => {
     setSelectedUpdate(update);
@@ -94,6 +148,28 @@ export default function CommunityManagementPage() {
     setSelectedDeal(deal);
     setShowDealDetails(true);
   };
+
+  const updateReadTrend: TrendPoint[] = useMemo(() => {
+    const source: ReadDistribution[] = updateDetails?.readDistribution || [];
+    return Array.from({ length: 7 }).map((_, idx) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - idx));
+      const key = date.toISOString().slice(0, 10);
+      const match = source.find((d) => d.day === key);
+      return { label: format(date, "MMM dd"), value: match?.count || 0 };
+    });
+  }, [updateDetails]);
+
+  const claimTrend: TrendPoint[] = useMemo(() => {
+    const source: ClaimDistribution[] = dealDetails?.claimDistribution || [];
+    return Array.from({ length: 7 }).map((_, idx) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - idx));
+      const key = date.toISOString().slice(0, 10);
+      const match = source.find((d) => d.day === key);
+      return { label: format(date, "MMM dd"), value: match?.count || 0 };
+    });
+  }, [dealDetails]);
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
@@ -115,6 +191,69 @@ export default function CommunityManagementPage() {
     }
   };
 
+  const updateAttachments = useMemo(() => {
+    if (updateDetails?.attachments?.length) return updateDetails.attachments;
+    if (updateDetails?.imageUrl) {
+      return [{ id: `${updateDetails.id}-image`, type: "image", url: updateDetails.imageUrl, label: "Hero image" }];
+    }
+    if (selectedUpdate?.imageUrl) {
+      return [{ id: `${selectedUpdate.id}-image`, type: "image", url: selectedUpdate.imageUrl, label: "Hero image" }];
+    }
+    return [];
+  }, [selectedUpdate, updateDetails]);
+
+  const dealAttachments = useMemo(() => {
+    if (dealDetails?.attachments?.length) return dealDetails.attachments;
+    if (dealDetails?.imageUrl) {
+      return [{ id: `${dealDetails.id}-image`, type: "image", url: dealDetails.imageUrl, label: "Hero image" }];
+    }
+    if (selectedDeal?.imageUrl) {
+      return [{ id: `${selectedDeal.id}-image`, type: "image", url: selectedDeal.imageUrl, label: "Hero image" }];
+    }
+    return [];
+  }, [selectedDeal, dealDetails]);
+
+  useEffect(() => {
+    if (updateDetails) {
+      setUpdateStatusAnnouncement(updateDetails.isActive ? "Update is active" : "Update is inactive");
+    }
+  }, [updateDetails?.id, updateDetails?.isActive]);
+
+  useEffect(() => {
+    if (!dealDetails) return;
+    if (dealDetails.deactivationReason) {
+      setDealDeactivationReason(dealDetails.deactivationReason);
+    } else if (!toggleDealMutation.isPending) {
+      setDealDeactivationReason("");
+    }
+  }, [dealDetails?.id, dealDetails?.deactivationReason, toggleDealMutation.isPending]);
+
+  useEffect(() => {
+    if (!showUpdateDetails || !updateModalRef.current) return;
+    const modal = updateModalRef.current;
+    const focusable = modal.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])");
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey) {
+        if (document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        }
+        return;
+      }
+      if (document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+
+    focusable[0]?.focus();
+    modal.addEventListener("keydown", handleKeyDown);
+    return () => modal.removeEventListener("keydown", handleKeyDown);
+  }, [showUpdateDetails, updateDetailsLoading]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-green-50/30 dark:from-gray-900 dark:via-gray-800 dark:to-green-900/10 p-6">
       <ConfirmDialog
@@ -130,8 +269,21 @@ export default function CommunityManagementPage() {
           setConfirmDeleteUpdateId(null);
         }}
       />
+      <ConfirmDialog
+        isOpen={!!confirmDeleteDealId}
+        title="Delete this deal?"
+        description="This will permanently remove the deal and its claims."
+        confirmText={deleteDealMutation.isPending ? "Deleting..." : "Yes, delete"}
+        cancelText="Cancel"
+        onClose={() => setConfirmDeleteDealId(null)}
+        onConfirm={() => {
+          if (!confirmDeleteDealId) return;
+          deleteDealMutation.mutate({ dealId: confirmDeleteDealId });
+          setConfirmDeleteDealId(null);
+        }}
+      />
+
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="premium-gradient-text text-4xl font-bold mb-2">Community Management</h1>
@@ -156,35 +308,18 @@ export default function CommunityManagementPage() {
           </div>
         </div>
 
-        {/* Summary Cards */}
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-          <StatsCard
-            title="Updates"
-            value={updatesData?.total || 0}
-            icon={HiBell}
-            color="green"
-          />
-          <StatsCard
-            title="Deals"
-            value={dealsData?.total || 0}
-            icon={HiTag}
-            color="orange"
-          />
-          <StatsCard
-            title="Active Only"
-            value={showActiveOnly ? "Yes" : "No"}
-            icon={HiCheckCircle}
-            color="blue"
-          />
+          <StatsCard title="Updates" value={updatesData?.total || 0} icon={HiBell} color="green" />
+          <StatsCard title="Deals" value={dealsData?.total || 0} icon={HiTag} color="orange" />
+          <StatsCard title="Active Only" value={showActiveOnly ? "Yes" : "No"} icon={HiCheckCircle} color="blue" />
           <StatsCard
             title="Filters"
-            value={(searchQuery ? 1 : 0) + (selectedCategory ? 1 : 0) + (selectedPriority ? 1 : 0) + (showActiveOnly ? 1 : 0)}
+            value={(searchQuery ? 1 : 0) + (selectedCategory ? 1 : 0) + (showActiveOnly ? 1 : 0)}
             icon={HiSearch}
             color="purple"
           />
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-4 mb-6">
           <button
             onClick={() => setActiveTab("updates")}
@@ -224,7 +359,6 @@ export default function CommunityManagementPage() {
           </button>
         </div>
 
-        {/* Filters & Search */}
         <div className="bg-card/75 border border-border rounded-2xl p-6 mb-6 shadow-lg shadow-black/5 backdrop-blur-xl dark:shadow-black/20">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="md:col-span-2">
@@ -267,7 +401,6 @@ export default function CommunityManagementPage() {
           </div>
         </div>
 
-        {/* Create Button */}
         <button
           onClick={() => activeTab === "updates" ? setShowUpdateModal(true) : setShowDealModal(true)}
           className="mb-6 premium-button flex items-center gap-2 px-6 py-3 text-white rounded-xl shadow-lg font-semibold"
@@ -276,7 +409,6 @@ export default function CommunityManagementPage() {
           Create {activeTab === "updates" ? "Update" : "Deal"}
         </button>
 
-        {/* Content */}
         <AnimatePresence mode="wait">
           {activeTab === "updates" && updatesData && (
             <motion.div
@@ -374,7 +506,6 @@ export default function CommunityManagementPage() {
                 </div>
               )}
 
-              {/* Pagination */}
               {updatesData.totalPages > 1 && (
                 <div className="flex items-center justify-center gap-2 mt-6">
                   <button
@@ -518,7 +649,6 @@ export default function CommunityManagementPage() {
                 </div>
               )}
 
-              {/* Pagination */}
               {dealsData.totalPages > 1 && (
                 <div className="col-span-2 flex items-center justify-center gap-2 mt-6">
                   <button
@@ -557,85 +687,688 @@ export default function CommunityManagementPage() {
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
 
-        {/* Update Details Modal - Placeholder */}
-        {showUpdateDetails && selectedUpdate && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-            >
-              <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+      {showUpdateDetails && selectedUpdate && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Update details modal"
+          onKeyDown={(e) => { if (e.key === "Escape") setShowUpdateDetails(false); }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            ref={updateModalRef}
+            tabIndex={-1}
+            className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] overflow-y-auto"
+          >
+            <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+              <div>
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Update Details</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Live data from database</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (!updateDetails) return;
+                    setShowUpdateDetails(false);
+                    setSelectedUpdate(updateDetails);
+                    setShowUpdateModal(true);
+                  }}
+                  disabled={!updateDetails}
+                  className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => {
+                    if (!updateDetails) return;
+                    toggleUpdateMutation.mutate({
+                      updateId: updateDetails.id,
+                      data: { isActive: !updateDetails.isActive },
+                    });
+                  }}
+                  disabled={!updateDetails || toggleUpdateMutation.isPending}
+                  className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  {updateDetails?.isActive ? "Deactivate" : "Activate"}
+                </button>
+                <button
+                  onClick={() => {
+                    if (!updateDetails) return;
+                    setShowUpdateDetails(false);
+                    setConfirmDeleteUpdateId(updateDetails.id);
+                  }}
+                  disabled={!updateDetails}
+                  className="rounded-lg border border-red-500 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                >
+                  Delete
+                </button>
                 <button
                   onClick={() => setShowUpdateDetails(false)}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
                 >
-                  <HiX className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                  <HiX className="w-5 h-5 text-gray-500 dark:text-gray-300" />
                 </button>
               </div>
-              <div className="p-6">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">{selectedUpdate.title}</h3>
-                <p className="text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{selectedUpdate.content}</p>
-              </div>
-            </motion.div>
-          </div>
-        )}
+            </div>
 
-        {/* Deal Details Modal - Placeholder */}
-        {showDealDetails && selectedDeal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-            >
-              <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div className="sr-only" aria-live="polite">{updateStatusAnnouncement}</div>
+
+            <div className="p-6 space-y-6">
+              {updateDetailsLoading && (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-10 h-10 border-4 border-[hsl(var(--primary))] border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+
+              {!updateDetails && !updateDetailsLoading && (
+                <div className="rounded-xl border border-border bg-card/70 p-6 text-center text-sm text-muted-foreground">
+                  <p className="mb-3">Unable to load the update. Please refresh and retry.</p>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => refetchUpdateDetails()}
+                      className="rounded-lg border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted"
+                    >
+                      Retry
+                    </button>
+                    <button
+                      onClick={() => setShowUpdateDetails(false)}
+                      className="rounded-lg border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {updateDetails && (
+                <>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                      {updateDetails.category}
+                    </span>
+                    <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                      Priority: {updateDetails.priority}
+                    </span>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      updateDetails.isActive
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                    }`}>
+                      {updateDetails.isActive ? "Active" : "Inactive"}
+                    </span>
+                    {updateDetails.lastActor?.name && (
+                      <span className="flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
+                        <HiUser className="w-4 h-4" /> Last actor: {updateDetails.lastActor.name}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">{updateDetails.title}</h3>
+                    <p className="text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{updateDetails.content}</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="rounded-lg border border-border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Views</p>
+                      <p className="text-lg font-semibold">{updateDetails.viewCount ?? 0}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Clicks</p>
+                      <p className="text-lg font-semibold">{updateDetails.clickCount ?? 0}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Reads</p>
+                      <p className="text-lg font-semibold">{updateDetails.readCount ?? 0}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Published</p>
+                      <p className="text-sm font-semibold">{updateDetails.publishedAt ? new Date(updateDetails.publishedAt).toLocaleString() : "-"}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="rounded-lg border border-border p-4">
+                      <p className="text-xs text-muted-foreground mb-1">CTA</p>
+                      <p className="text-sm font-semibold">{updateDetails.ctaText || "No CTA"}</p>
+                      <div className="flex items-center gap-1 text-xs">
+                        <HiLink className="w-4 h-4" />
+                        {updateDetails.ctaLink ? (
+                          <a
+                            href={updateDetails.ctaLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-blue-600 underline decoration-dotted underline-offset-2 dark:text-blue-300 break-all"
+                          >
+                            {updateDetails.ctaLink}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">No link</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-border p-4">
+                      <p className="text-xs text-muted-foreground mb-1">Audience</p>
+                      <p className="text-sm font-semibold">Packages: {updateDetails.audience?.packages || updateDetails.targetPackages || "All"}</p>
+                      <p className="text-sm font-semibold">Ranks: {updateDetails.audience?.ranks || updateDetails.targetRanks || "All"}</p>
+                      <p className="text-sm font-semibold">Regions: {updateDetails.audience?.regions || updateDetails.targetRegions || "All"}</p>
+                    </div>
+                    <div className="rounded-lg border border-border p-4">
+                      <p className="text-xs text-muted-foreground mb-1">Timestamps</p>
+                      <p className="text-sm font-semibold">Created: {new Date(updateDetails.metadata?.createdAt || updateDetails.createdAt).toLocaleString()}</p>
+                      <p className="text-sm font-semibold">Updated: {new Date(updateDetails.metadata?.updatedAt || updateDetails.updatedAt).toLocaleString()}</p>
+                      <p className="text-sm font-semibold">Expires: {updateDetails.metadata?.expiresAt || updateDetails.expiresAt ? new Date(updateDetails.metadata?.expiresAt || updateDetails.expiresAt as string | number | Date).toLocaleString() : "-"}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold">Attachments</p>
+                      <span className="text-xs text-muted-foreground">Full record assets</span>
+                    </div>
+                    {updateAttachments.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {updateAttachments.map((asset: any) => (
+                          <div key={asset.id} className="rounded-lg border border-border bg-background/70 p-3">
+                            <p className="text-xs text-muted-foreground mb-2">{asset.label || asset.type || "Attachment"}</p>
+                            {asset.type === "image" ? (
+                              <img
+                                src={asset.url}
+                                alt={asset.label || "Attachment"}
+                                className="h-32 w-full rounded-lg object-cover"
+                              />
+                            ) : (
+                              <a
+                                href={asset.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-sm font-semibold text-blue-600 underline decoration-dotted underline-offset-2 dark:text-blue-300 break-all"
+                              >
+                                {asset.url}
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No attachments on this update.</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold">Status timeline</p>
+                      <button
+                        onClick={() => refetchUpdateDetails()}
+                        className="rounded-lg border px-3 py-1 text-xs font-semibold text-foreground hover:bg-muted"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                    {updateDetails.statusHistory?.length ? (
+                      <div className="space-y-3">
+                        {updateDetails.statusHistory.map((entry: any) => (
+                          <div key={entry.id} className="flex items-start gap-3 border-l-2 border-dashed border-border pl-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background/70">
+                              <HiInformationCircle className="w-5 h-5 text-foreground" />
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <p className="text-sm font-semibold text-foreground">{entry.action}</p>
+                              <p className="text-xs text-muted-foreground">Status: {entry.status || "unknown"}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {entry.actor?.name || entry.actor?.email || "System"} - {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ""}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No status changes recorded yet.</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold">Read activity (last 7 days)</p>
+                      <span className="text-xs text-muted-foreground">Live counts</span>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      {updateReadTrend.map((point) => (
+                        <div key={point.label} className="flex flex-col items-center gap-1">
+                          <div className="w-10 rounded-full bg-gradient-to-t from-blue-500/30 to-blue-500" style={{ height: `${8 + point.value * 6}px` }} />
+                          <span className="text-[10px] text-muted-foreground">{point.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {updateDetails.UpdateRead && updateDetails.UpdateRead.length > 0 && (
+                    <div className="rounded-xl border border-border bg-card/70 p-4">
+                      <p className="text-sm font-semibold mb-3">Recent Reads</p>
+                      <div className="space-y-2 text-sm text-muted-foreground">
+                        {updateDetails.UpdateRead.map((read: any) => (
+                          <div key={read.id} className="flex items-center justify-between border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                            <div className="flex items-center gap-2">
+                              <HiDocumentText className="w-4 h-4 text-foreground" />
+                              <span className="font-medium text-foreground">{read.User?.name || read.User?.email || "Reader"}
+                              </span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">{new Date(read.readAt).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {updateDetails.audit && updateDetails.audit.length > 0 && (
+                    <div className="rounded-xl border border-border bg-card/70 p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-semibold">Audit Trail</p>
+                        <span className="text-xs text-muted-foreground">Most recent {updateDetails.audit.length}</span>
+                      </div>
+                      <div className="space-y-2">
+                        {updateDetails.audit.map((log: AuditEntry) => (
+                          <div key={log.id} className="flex items-center justify-between text-sm border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-foreground">{log.action}</span>
+                              <span className="text-xs text-muted-foreground">{log.User?.name || log.userId}</span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {showDealDetails && selectedDeal && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Deal details modal"
+          onKeyDown={(e) => { if (e.key === "Escape") setShowDealDetails(false); }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] overflow-y-auto"
+          >
+            <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+              <div>
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Deal Details</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Live deal data from database</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (!dealDetails) return;
+                    setShowDealDetails(false);
+                    setSelectedDeal(dealDetails);
+                    setShowDealModal(true);
+                  }}
+                  disabled={!dealDetails}
+                  className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => {
+                    if (!dealDetails) return;
+                    const nextActive = !dealDetails.isActive;
+                    if (!nextActive && !dealDeactivationReason.trim()) {
+                      toast.error("Add a deactivation reason before disabling");
+                      return;
+                    }
+                    toggleDealMutation.mutate({
+                      dealId: dealDetails.id,
+                      data: {
+                        isActive: nextActive,
+                        deactivationReason: nextActive ? undefined : dealDeactivationReason.trim(),
+                      },
+                    });
+                  }}
+                  disabled={!dealDetails || toggleDealMutation.isPending}
+                  className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  {dealDetails?.isActive ? "Deactivate" : "Activate"}
+                </button>
+                <button
+                  onClick={() => {
+                    if (!dealDetails) return;
+                    setShowDealDetails(false);
+                    setConfirmDeleteDealId(dealDetails.id);
+                  }}
+                  disabled={!dealDetails}
+                  className="rounded-lg border border-red-500 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                >
+                  Delete
+                </button>
                 <button
                   onClick={() => setShowDealDetails(false)}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
                 >
-                  <HiX className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                  <HiX className="w-5 h-5 text-gray-500 dark:text-gray-300" />
                 </button>
               </div>
-              <div className="p-6">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">{selectedDeal.title}</h3>
-                <p className="text-gray-600 dark:text-gray-400">{selectedDeal.description}</p>
-              </div>
-            </motion.div>
-          </div>
-        )}
+            </div>
 
-        {/* Community Update Modal */}
-        <CommunityUpdateModal
-          isOpen={showUpdateModal}
-          onClose={() => {
-            setShowUpdateModal(false);
-            setSelectedUpdate(null);
-          }}
-          update={selectedUpdate}
-          onSuccess={refetchUpdates}
-        />
+            <div className="p-6 space-y-6">
+              {dealDetailsLoading && (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-10 h-10 border-4 border-[hsl(var(--primary))] border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
 
-        {/* Best Deal Modal */}
-        <BestDealModal
-          isOpen={showDealModal}
-          onClose={() => {
-            setShowDealModal(false);
-            setSelectedDeal(null);
-          }}
-          deal={selectedDeal}
-          onSuccess={refetchDeals}
-        />
+              {!dealDetails && !dealDetailsLoading && (
+                <div className="rounded-xl border border-border bg-card/70 p-6 text-center text-sm text-muted-foreground">
+                  <p className="mb-3">Unable to load live deal details. Please retry or refresh the list.</p>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => refetchDealDetails()}
+                      className="rounded-lg border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted"
+                    >
+                      Retry
+                    </button>
+                    <button
+                      onClick={() => setShowDealDetails(false)}
+                      className="rounded-lg border px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
 
-        {/* Notification Broadcast Modal */}
-        <NotificationBroadcastModal
-          isOpen={showNotificationModal}
-          onClose={() => setShowNotificationModal(false)}
-        />
-      </div>
+              {dealDetails && (
+                <>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                      {(dealDetails.dealType || selectedDeal.dealType || "deal").toString()}
+                    </span>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      dealDetails.isActive
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                    }`}>
+                      {dealDetails.isActive ? "Active" : "Inactive"}
+                    </span>
+                    {dealDetails.isFeatured && (
+                      <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-200">
+                        Featured
+                      </span>
+                    )}
+                    {dealDetails.lastActor?.name && (
+                      <span className="flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
+                        <HiUser className="w-4 h-4" /> Last actor: {dealDetails.lastActor.name}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">{dealDetails.title}</h3>
+                    <p className="text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{dealDetails.description}</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="rounded-lg border border-border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Discount</p>
+                      <p className="text-lg font-semibold">{dealDetails.discountValue}% {dealDetails.discountType}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Usage</p>
+                      <p className="text-lg font-semibold">{dealDetails.currentUsage ?? 0} / {dealDetails.usageLimit ?? "∞"}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Remaining</p>
+                      <p className="text-lg font-semibold">{dealDetails.remainingClaims ?? "∞"}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">Validity</p>
+                      <p className="text-sm font-semibold">
+                        {new Date(dealDetails.startDate).toLocaleDateString()} - {new Date(dealDetails.endDate).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="rounded-lg border border-border p-4">
+                      <p className="text-xs text-muted-foreground mb-1">Pricing</p>
+                      <p className="text-sm font-semibold">Original: ₦{(dealDetails.originalPrice || 0).toLocaleString()}</p>
+                      <p className="text-sm font-semibold">Discounted: ₦{(dealDetails.discountedPrice || 0).toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-lg border border-border p-4">
+                      <p className="text-xs text-muted-foreground mb-1">Eligibility</p>
+                      <p className="text-sm font-semibold">Packages: {dealDetails.audience?.packages || dealDetails.eligiblePackages || "All"}</p>
+                      <p className="text-sm font-semibold">Ranks: {dealDetails.audience?.ranks || dealDetails.eligibleRanks || "All"}</p>
+                      <p className="text-sm font-semibold">Min purchase: {dealDetails.audience?.minPurchaseAmount || dealDetails.minPurchaseAmount ? `₦${Number(dealDetails.audience?.minPurchaseAmount || dealDetails.minPurchaseAmount).toLocaleString()}` : "None"}</p>
+                    </div>
+                    <div className="rounded-lg border border-border p-4">
+                      <p className="text-xs text-muted-foreground mb-1">CTA</p>
+                      <p className="text-sm font-semibold">{dealDetails.ctaText || "No CTA"}</p>
+                      <p className="text-xs text-muted-foreground break-all">Hero image: {dealDetails.imageUrl || "None"}</p>
+                      {dealDetails.metadata?.updatedAt && (
+                        <p className="text-xs text-muted-foreground">Updated: {new Date(dealDetails.metadata.updatedAt).toLocaleString()}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold">Attachments</p>
+                      <span className="text-xs text-muted-foreground">Full record assets</span>
+                    </div>
+                    {dealAttachments.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {dealAttachments.map((asset: any) => (
+                          <div key={asset.id} className="rounded-lg border border-border bg-background/70 p-3">
+                            <p className="text-xs text-muted-foreground mb-2">{asset.label || asset.type || "Attachment"}</p>
+                            {asset.type === "image" ? (
+                              <img
+                                src={asset.url}
+                                alt={asset.label || "Attachment"}
+                                className="h-32 w-full rounded-lg object-cover"
+                              />
+                            ) : (
+                              <a
+                                href={asset.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-sm font-semibold text-blue-600 underline decoration-dotted underline-offset-2 dark:text-blue-300 break-all"
+                              >
+                                {asset.url}
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No attachments on this deal.</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold">Status timeline</p>
+                      <button
+                        onClick={() => refetchDealDetails()}
+                        className="rounded-lg border px-3 py-1 text-xs font-semibold text-foreground hover:bg-muted"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                    {dealDetails.statusHistory?.length ? (
+                      <div className="space-y-3">
+                        {dealDetails.statusHistory.map((entry: any) => (
+                          <div key={entry.id} className="flex items-start gap-3 border-l-2 border-dashed border-border pl-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background/70">
+                              <HiInformationCircle className="w-5 h-5 text-foreground" />
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <p className="text-sm font-semibold text-foreground">{entry.action}</p>
+                              <p className="text-xs text-muted-foreground">Status: {entry.status || "unknown"}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {entry.actor?.name || entry.actor?.email || "System"} - {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ""}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No status changes recorded yet.</p>
+                    )}
+                  </div>
+
+                  {dealDetails.deactivationReason && (
+                    <div className="rounded-xl border border-border bg-card/70 p-4">
+                      <p className="text-sm font-semibold mb-2">Latest deactivation reason</p>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{dealDetails.deactivationReason}</p>
+                    </div>
+                  )}
+
+                  <div className="rounded-xl border border-border bg-card/70 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <HiInformationCircle className="w-4 h-4" />
+                        Deactivation reason (required when turning off)
+                      </div>
+                      <span className="text-xs text-muted-foreground">Stored in audit metadata</span>
+                    </div>
+                    <textarea
+                      value={dealDeactivationReason}
+                      onChange={(e) => setDealDeactivationReason(e.target.value)}
+                      placeholder="Explain why this deal is being paused"
+                      className="w-full rounded-lg border border-border bg-background/70 p-3 text-sm focus:border-[hsl(var(--primary))] focus:ring-4 focus:ring-[hsl(var(--secondary))]/20"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-card/70 p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-foreground">Performance</p>
+                      <p className="text-xs text-muted-foreground">Usage rate {dealDetails.usageRate ? `${dealDetails.usageRate.toFixed(1)}%` : "n/a"}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                        <p className="text-xs text-muted-foreground">Claims</p>
+                        <p className="text-lg font-semibold">{dealDetails.claimCount}</p>
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                        <p className="text-xs text-muted-foreground">Remaining</p>
+                        <p className="text-lg font-semibold">{dealDetails.remainingClaims ?? "∞"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                        <p className="text-xs text-muted-foreground">Usage/Limit</p>
+                        <p className="text-lg font-semibold">{dealDetails.currentUsage ?? 0} / {dealDetails.usageLimit ?? "∞"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                        <p className="text-xs text-muted-foreground">Latest claim</p>
+                        <p className="text-xs font-semibold text-foreground">{dealDetails.claims[0]?.claimedAt ? new Date(dealDetails.claims[0].claimedAt).toLocaleString() : "-"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      {claimTrend.map((point) => (
+                        <div key={point.label} className="flex flex-col items-center gap-1">
+                          <div className="w-10 rounded-full bg-gradient-to-t from-emerald-500/40 to-emerald-500" style={{ height: `${8 + point.value * 6}px` }} />
+                          <span className="text-[10px] text-muted-foreground">{point.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {dealDetails.claims && dealDetails.claims.length > 0 && (
+                    <div className="rounded-xl border border-border bg-card/70 p-4">
+                      <p className="text-sm font-semibold mb-3">Recent Claims</p>
+                      <div className="space-y-2 text-sm text-muted-foreground">
+                        {dealDetails.claims.map((claim: any) => (
+                          <div key={claim.id} className="flex items-center justify-between border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                            <div>
+                              <p className="font-medium text-foreground">{claim.User?.name || claim.User?.email || "User"}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{claim.discountAmount ? `Discount ₦${claim.discountAmount}` : "Claimed"}
+                              </p>
+                            </div>
+                            <span className="text-xs text-muted-foreground">{claim.claimedAt ? new Date(claim.claimedAt).toLocaleString() : ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {dealDetails.audit && dealDetails.audit.length > 0 && (
+                    <div className="rounded-xl border border-border bg-card/70 p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-semibold">Audit Trail</p>
+                        <span className="text-xs text-muted-foreground">Most recent {dealDetails.audit.length}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {dealDetails.audit.map((log: AuditEntry) => (
+                          <div key={log.id} className="flex items-center justify-between text-sm border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-foreground">{log.action}</span>
+                              <span className="text-xs text-muted-foreground">{log.User?.name || log.userId}
+                              </span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      <CommunityUpdateModal
+        isOpen={showUpdateModal}
+        onClose={() => {
+          setShowUpdateModal(false);
+          setSelectedUpdate(null);
+        }}
+        update={selectedUpdate}
+        onSuccess={() => {
+          refetchUpdates();
+          refetchUpdateDetails();
+        }}
+      />
+
+      <BestDealModal
+        isOpen={showDealModal}
+        onClose={() => {
+          setShowDealModal(false);
+          setSelectedDeal(null);
+        }}
+        deal={selectedDeal}
+        onSuccess={() => {
+          refetchDeals();
+          refetchDealDetails();
+        }}
+      />
+
+      <NotificationBroadcastModal
+        isOpen={showNotificationModal}
+        onClose={() => setShowNotificationModal(false)}
+      />
     </div>
   );
 }

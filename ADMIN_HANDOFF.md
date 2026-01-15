@@ -1,4 +1,4 @@
-# Admin Panel Go‑Live Handoff (Jan 12, 2026)
+# Admin Panel Go‑Live Handoff (Jan 14, 2026)
 
 This document is a handoff snapshot of the current Admin Panel: what is **truly wired to backend control** (tRPC/Prisma), what is **read‑only**, and what is **still front‑end UI only** (not controlling production behavior).
 
@@ -72,10 +72,20 @@ This section tracks the current Admin frontend implementation status (UI/UX + wi
   - Page: [app/admin/reports/page.tsx](app/admin/reports/page.tsx)
   - Procedures: `admin.exportUsersToCSV`, `admin.exportPaymentsToCSV`, `admin.exportPackagesToCSV` in [server/trpc/router/admin.ts](server/trpc/router/admin.ts)
 
-### ⚠️ Frontend present but not controlling production behavior
+- **Reports scoped exports + tooltips (latest)**
+  - CSV/JSON exports now respect current period + granularity; bucket labels include range tooltips.
+  - Page: [app/admin/reports/page.tsx](app/admin/reports/page.tsx)
 
-- **Community Details modals labeled placeholder**
-  - Inline details modals exist but are explicitly marked as placeholder blocks: [app/admin/community/page.tsx](app/admin/community/page.tsx)
+- **Global Search (latest)**
+  - Debounced backend search plus keyboard navigation (↑/↓/Enter) with active highlighting.
+  - Component: [components/admin/GlobalSearch.tsx](components/admin/GlobalSearch.tsx)
+
+### ⚠️ Frontend present but not fully featured
+
+- **Community Details modals remain placeholder**
+  - Update and Deal details overlays render but are placeholder-only; no embedded actions/audit/state: [app/admin/community/page.tsx](app/admin/community/page.tsx#L520-L606)
+- **Admin Help page is static**
+  - Wiring matrix is hardcoded and drifts from reality; not data-driven: [app/admin/help/page.tsx](app/admin/help/page.tsx)
 
 ### ✅ Wired (real DB + real actions)
 
@@ -88,23 +98,14 @@ This section tracks the current Admin frontend implementation status (UI/UX + wi
   - System settings query + update mutations are wired.
   - Payment gateways list + update mutations are wired.
   - Notification settings query + update mutations are wired.
+  - Backup/restore fully wired with list/delete/retention and schedule persistence.
 - **Audit Logs**: wired read + filtering.
 - **Exports**: CSV export endpoints exist and are used by export UI.
-  - “Export All” button on Reports triggers consolidated downloads.
+  - “Export All” on Reports triggers consolidated downloads; scoped CSV/JSON export respects filters.
 
 ### ⚠️ Read‑only (wired to real data but no control actions exposed)
 
-- None outstanding for Payments/Backup/Reports.
-
-### ❌ Not in control (front‑end only / placeholder)
-
-- **Backup & Restore (Settings → Backup tab)**
-  - Backup/restore actions are simulated (`setTimeout`) and do **not** call any backend endpoint.
-  - “Automated Backups” selector is UI only (no persistence).
-- **Reports page “Export All” button**
-  - Button exists visually but has no wired action.
-- **Community “Details” modals**
-  - Inline “placeholder” details modals exist (they render), but the code itself labels them placeholder; not a full-featured control surface.
+- None for Payments/Backup/Reports; read-only surfaces are analytics-only by design.
 
 ---
 
