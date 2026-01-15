@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { randomUUID } from "crypto";
 
 export const prisma = new PrismaClient();
 
@@ -6,6 +7,28 @@ export async function getUserIdByEmail(email: string): Promise<string> {
   const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   if (!user) throw new Error(`User not found for email: ${email}`);
   return user.id;
+}
+
+export async function ensureUserExists(args: {
+  email: string;
+  firstname?: string;
+  lastname?: string;
+}): Promise<{ id: string; email: string | null }> {
+  const { email, firstname = "QA", lastname = "Owner" } = args;
+
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true } });
+  if (existing) return existing;
+
+  return prisma.user.create({
+    data: {
+      id: randomUUID(),
+      email,
+      firstname,
+      lastname,
+      role: "user",
+    },
+    select: { id: true, email: true },
+  });
 }
 
 export async function getUserByEmail(email: string): Promise<{
@@ -94,6 +117,90 @@ export async function getCheapestMembershipPackage(): Promise<{
     price: pkg.price ?? 0,
     vat: pkg.vat ?? 0,
   };
+}
+
+export async function ensureQaYoutubePlan(): Promise<{
+  id: string;
+  name: string;
+  amount: number;
+  vat: number;
+  totalSub: number;
+}> {
+  const QA_PLAN_NAME = "QA Starter";
+  const amount = 1000;
+  const vat = Number((amount * 0.075).toFixed(2));
+  const totalSub = 5;
+
+  const existing = await prisma.youtubePlan.findUnique({
+    where: { name: QA_PLAN_NAME },
+    select: { id: true, name: true, amount: true, vat: true, totalSub: true },
+  });
+
+  if (existing) {
+    return {
+      id: existing.id,
+      name: existing.name,
+      amount: Number(existing.amount),
+      vat: Number(existing.vat),
+      totalSub: existing.totalSub,
+    };
+  }
+
+  const created = await prisma.youtubePlan.create({
+    data: {
+      id: randomUUID(),
+      name: QA_PLAN_NAME,
+      amount: String(amount.toFixed(2)),
+      vat: String(vat.toFixed(2)),
+      totalSub,
+      isActive: true,
+      description: "Deterministic plan for Playwright DB audits",
+      updatedAt: new Date(),
+    },
+    select: { id: true, name: true, amount: true, vat: true, totalSub: true },
+  });
+
+  return {
+    id: created.id,
+    name: created.name,
+    amount: Number(created.amount),
+    vat: Number(created.vat),
+    totalSub: created.totalSub,
+  };
+}
+
+export async function ensureVerifiedYoutubeChannelForOwner(args: {
+  ownerEmail: string;
+  channelName?: string;
+}): Promise<{ channelId: string; ownerId: string; channelName: string }> {
+  const { ownerEmail, channelName = "QA Verified Channel" } = args;
+
+  const owner = await ensureUserExists({ email: ownerEmail, firstname: "QA", lastname: "ChannelOwner" });
+
+  const existing = await prisma.youtubeChannel.findFirst({
+    where: { userId: owner.id, isVerified: true, status: "VERIFIED", channelName },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, userId: true, channelName: true },
+  });
+  if (existing && existing.channelName) {
+    return { channelId: existing.id, ownerId: existing.userId, channelName: existing.channelName };
+  }
+
+  const created = await prisma.youtubeChannel.create({
+    data: {
+      id: randomUUID(),
+      userId: owner.id,
+      channelName,
+      channelUrl: "https://youtube.com/@qa-verified-channel",
+      channelLink: "https://youtube.com/@qa-verified-channel",
+      status: "VERIFIED",
+      isVerified: true,
+      updatedAt: new Date(),
+    },
+    select: { id: true, userId: true, channelName: true },
+  });
+
+  return { channelId: created.id, ownerId: created.userId, channelName: created.channelName ?? channelName };
 }
 
 const ONE_BY_ONE_PNG_DATA_URL =
@@ -214,6 +321,33 @@ export async function ensureUserReadyForMembershipUpgrade(args: {
       image: ONE_BY_ONE_PNG_DATA_URL,
 
       wallet: targetWallet,
+    },
+  });
+}
+
+export async function ensureUserReadyForYouTubePlanPurchase(args: {
+  email: string;
+  walletMinimum: number;
+}) {
+  const { email, walletMinimum } = args;
+
+  await ensureUserReadyForDashboard(email);
+
+  const user = await prisma.user.findUnique({ where: { email }, select: { id: true, wallet: true } });
+  if (!user) throw new Error(`User not found for email: ${email}`);
+
+  // Clean any prior YouTube state to keep the flow deterministic.
+  await prisma.channelSubscription.deleteMany({ where: { subscriberId: user.id } });
+  await prisma.userEarning.deleteMany({ where: { userId: user.id } });
+  await prisma.youtubeProvider.deleteMany({ where: { userId: user.id } });
+  await prisma.youtubeChannel.deleteMany({ where: { userId: user.id } });
+
+  const targetWallet = Math.max(user.wallet ?? 0, walletMinimum);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      wallet: targetWallet,
+      spendable: 0,
     },
   });
 }

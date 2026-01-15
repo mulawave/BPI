@@ -190,7 +190,7 @@ export default function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsM
                             {channel.channelName}
                           </h3>
                           <p className="text-xs text-muted-foreground truncate">
-                            by {`${channel.user.firstname ?? ""} ${channel.user.lastname ?? ""}`.trim() || "Anonymous"}
+                            by {`${channel.User.firstname ?? ""} ${channel.User.lastname ?? ""}`.trim() || "Anonymous"}
                           </p>
                         </div>
                       </div>
