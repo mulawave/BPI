@@ -8,6 +8,23 @@ export async function getUserIdByEmail(email: string): Promise<string> {
   return user.id;
 }
 
+export async function getUserByEmail(email: string): Promise<{
+  id: string;
+  email: string | null;
+  name: string | null;
+  passwordHash: string | null;
+} | null> {
+  return prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, name: true, passwordHash: true },
+  });
+}
+
+export async function getUserPasswordHashByEmail(email: string): Promise<string | null> {
+  const user = await prisma.user.findUnique({ where: { email }, select: { passwordHash: true } });
+  return user?.passwordHash ?? null;
+}
+
 export async function getUserWalletByEmail(email: string): Promise<number> {
   const user = await prisma.user.findUnique({ where: { email }, select: { wallet: true } });
   if (!user) throw new Error(`User not found for email: ${email}`);
@@ -37,6 +54,27 @@ export async function getRecentTransactionsForUser(args: {
       createdAt: true,
     },
   });
+}
+
+export async function getLatestPasswordResetForUserSince(args: { userId: string; since: Date }) {
+  const { userId, since } = args;
+  return prisma.passwordReset.findFirst({
+    where: { userId, createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      token: true,
+      used: true,
+      expires: true,
+      createdAt: true,
+    },
+  });
+}
+
+export async function deleteUserByEmail(email: string) {
+  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (!user) return;
+  await prisma.user.delete({ where: { id: user.id } });
 }
 
 export async function getCheapestMembershipPackage(): Promise<{
@@ -128,6 +166,53 @@ export async function ensureUserReadyForMembershipActivation(args: {
       image: ONE_BY_ONE_PNG_DATA_URL,
 
       // Ensure wallet can cover activation
+      wallet: targetWallet,
+    },
+  });
+}
+
+export async function ensureUserReadyForMembershipUpgrade(args: {
+  email: string;
+  currentPackageId: string;
+  walletMinimum: number;
+}) {
+  const { email, currentPackageId, walletMinimum } = args;
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, wallet: true },
+  });
+  if (!user) throw new Error(`User not found for email: ${email}`);
+
+  const now = new Date();
+  const expiresAt = new Date(now);
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+  const targetWallet = Math.max(user.wallet ?? 0, walletMinimum);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      activeMembershipPackageId: currentPackageId,
+      membershipActivatedAt: now,
+      membershipExpiresAt: expiresAt,
+      activated: true,
+
+      // Some upgrades require palliative selection (high-tier packages).
+      // The upgrade UI doesn't always collect this, so pre-mark as activated.
+      palliativeActivated: true,
+      selectedPalliative: "car",
+
+      // Avoid UI gating
+      firstname: "QA",
+      lastname: "User",
+      mobile: "+2348000000000",
+      address: "QA Address",
+      city: "Lagos",
+      state: "Lagos",
+      country: "Nigeria",
+      gender: "Prefer not to say",
+      image: ONE_BY_ONE_PNG_DATA_URL,
+
       wallet: targetWallet,
     },
   });
