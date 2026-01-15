@@ -31,6 +31,43 @@ export async function ensureUserExists(args: {
   });
 }
 
+export async function ensureReferral(args: {
+  referrerId: string;
+  referredId: string;
+  status?: string;
+}) {
+  const { referrerId, referredId, status = "pending" } = args;
+
+  const existing = await prisma.referral.findFirst({
+    where: { referrerId, referredId },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await prisma.referral.update({
+      where: { id: existing.id },
+      data: { status, updatedAt: new Date() },
+    });
+    return;
+  }
+
+  await prisma.referral.create({
+    data: {
+      id: randomUUID(),
+      referrerId,
+      referredId,
+      status,
+      rewardPaid: false,
+      updatedAt: new Date(),
+    },
+  });
+}
+
+export async function clearReferral(args: { referredId: string }) {
+  const { referredId } = args;
+  await prisma.referral.deleteMany({ where: { referredId } });
+}
+
 export async function getUserByEmail(email: string): Promise<{
   id: string;
   email: string | null;
@@ -201,6 +238,89 @@ export async function ensureVerifiedYoutubeChannelForOwner(args: {
   });
 
   return { channelId: created.id, ownerId: created.userId, channelName: created.channelName ?? channelName };
+}
+
+export async function ensureYoutubeProviderForOwner(args: {
+  ownerId: string;
+  planId: string;
+  balance?: number;
+}) {
+  const { ownerId, planId, balance = 10 } = args;
+
+  const existing = await prisma.youtubeProvider.findUnique({ where: { userId: ownerId } });
+  if (existing) {
+    await prisma.youtubeProvider.update({ where: { userId: ownerId }, data: { balance } });
+    return;
+  }
+
+  await prisma.youtubeProvider.create({
+    data: {
+      id: randomUUID(),
+      userId: ownerId,
+      youtubePlanId: planId,
+      balance,
+      updatedAt: new Date(),
+    },
+  });
+}
+
+export async function resetYoutubeSubscriptionState(args: {
+  subscriberId: string;
+  channelId: string;
+}) {
+  const { subscriberId, channelId } = args;
+  await prisma.userEarning.deleteMany({ where: { userId: subscriberId, channelId } });
+  await prisma.transaction.deleteMany({
+    where: {
+      userId: subscriberId,
+      description: { contains: "Youtube Subscription", mode: "insensitive" },
+    },
+  });
+  await prisma.channelSubscription.deleteMany({ where: { subscriberId, channelId } });
+}
+
+export async function ensurePendingYoutubeSubscription(args: {
+  subscriberId: string;
+  channelId: string;
+}) {
+  const { subscriberId, channelId } = args;
+
+  const existing = await prisma.channelSubscription.findUnique({
+    where: {
+      subscriberId_channelId: {
+        subscriberId,
+        channelId,
+      },
+    },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await prisma.channelSubscription.update({
+      where: { id: existing.id },
+      data: {
+        status: "pending",
+        verifiedAt: null,
+        paidAt: null,
+        updatedAt: new Date(),
+      },
+    });
+    return existing.id;
+  }
+
+  const created = await prisma.channelSubscription.create({
+    data: {
+      id: randomUUID(),
+      subscriberId,
+      channelId,
+      status: "pending",
+      subscriptionDate: new Date(),
+      updatedAt: new Date(),
+    },
+    select: { id: true },
+  });
+
+  return created.id;
 }
 
 const ONE_BY_ONE_PNG_DATA_URL =

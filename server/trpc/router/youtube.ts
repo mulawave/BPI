@@ -628,8 +628,169 @@ export const youtubeRouter = createTRPCRouter({
       if (!ctx.session?.user?.id) throw new Error("Unauthorized");
       const userId = ctx.session.user.id;
       const { channelId } = input;
-      // TODO: Implement earnings claim logic (if manual claiming is needed)
-      return { success: true, message: "Earnings are auto-credited. Check your wallet.", amount: 0 };
+
+      const subscription = await prisma.channelSubscription.findUnique({
+        where: {
+          subscriberId_channelId: {
+            subscriberId: userId,
+            channelId,
+          },
+        },
+        include: {
+          YoutubeChannel: {
+            select: { userId: true },
+          },
+        },
+      });
+
+      if (!subscription) {
+        throw new Error("Subscription not found");
+      }
+
+      if (subscription.status === "paid") {
+        return { success: true, message: "Earnings already claimed", amount: 0 };
+      }
+
+      const existingPaidEarning = await prisma.userEarning.findFirst({
+        where: {
+          userId,
+          channelId,
+          type: "subscription",
+          isPaid: true,
+        },
+        select: { id: true },
+      });
+
+      if (existingPaidEarning) {
+        return { success: true, message: "Earnings already claimed", amount: 0 };
+      }
+
+      const provider = await prisma.youtubeProvider.findUnique({
+        where: { userId: subscription.YoutubeChannel.userId },
+        select: { id: true, balance: true },
+      });
+
+      if (!provider) {
+        throw new Error("Channel provider not found");
+      }
+
+      if (provider.balance <= 0) {
+        throw new Error("Channel has no remaining subscription balance");
+      }
+
+      const referral = await prisma.referral.findFirst({
+        where: { referredId: subscription.subscriberId },
+        select: { referrerId: true },
+      });
+
+      const subscriberEarning = 40;
+      const referrerEarning = 10;
+
+      await prisma.$transaction(async (tx) => {
+        const sub = await tx.channelSubscription.findUnique({
+          where: { id: subscription.id },
+          select: { status: true },
+        });
+
+        if (!sub || sub.status === "paid") {
+          throw new Error("Earnings already claimed");
+        }
+
+        const providerCurrent = await tx.youtubeProvider.findUnique({
+          where: { userId: subscription.YoutubeChannel.userId },
+          select: { balance: true },
+        });
+
+        if (!providerCurrent || providerCurrent.balance <= 0) {
+          throw new Error("Channel has no remaining subscription balance");
+        }
+
+        // Credit subscriber
+        await tx.user.update({
+          where: { id: subscription.subscriberId },
+          data: {
+            wallet: { increment: subscriberEarning },
+          },
+        });
+
+        await tx.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId: subscription.subscriberId,
+            transactionType: "credit",
+            amount: subscriberEarning,
+            description: "BPI Youtube Subscription Earnings",
+            status: "completed",
+          },
+        });
+
+        await tx.userEarning.create({
+          data: {
+            id: randomUUID(),
+            userId: subscription.subscriberId,
+            channelId: subscription.channelId,
+            amount: subscriberEarning,
+            type: "subscription",
+            isPaid: true,
+          },
+        });
+
+        // Credit referrer (if any)
+        if (referral) {
+          await tx.user.update({
+            where: { id: referral.referrerId },
+            data: {
+              wallet: { increment: referrerEarning },
+            },
+          });
+
+          await tx.transaction.create({
+            data: {
+              id: randomUUID(),
+              userId: referral.referrerId,
+              transactionType: "credit",
+              amount: referrerEarning,
+              description: "BPI Youtube Subscription Referral Earnings",
+              status: "completed",
+            },
+          });
+
+          await tx.userEarning.create({
+            data: {
+              id: randomUUID(),
+              userId: referral.referrerId,
+              channelId: subscription.channelId,
+              amount: referrerEarning,
+              type: "referral",
+              isPaid: true,
+            },
+          });
+        }
+
+        // Decrement provider balance
+        await tx.youtubeProvider.update({
+          where: { userId: subscription.YoutubeChannel.userId },
+          data: {
+            balance: { decrement: 1 },
+          },
+        });
+
+        // Mark subscription paid
+        await tx.channelSubscription.update({
+          where: { id: subscription.id },
+          data: {
+            status: "paid",
+            verifiedAt: new Date(),
+            paidAt: new Date(),
+          },
+        });
+      });
+
+      return {
+        success: true,
+        message: "Earnings claimed successfully",
+        amount: subscriberEarning,
+      };
     }),
 
   // ============================================
