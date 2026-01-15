@@ -4,15 +4,6 @@ import { motion } from "framer-motion";
 import type { IconType } from "react-icons";
 import { MdTrendingUp, MdTrendingDown } from "react-icons/md";
 
-interface StatsCardProps {
-  title: string;
-  value: string | number;
-  change?: number;
-  icon: IconType;
-  color: "blue" | "green" | "orange" | "purple" | "red";
-  badge?: string;
-}
-
 const colorStyles = {
   blue: {
     bg: "from-blue-500 to-blue-600",
@@ -44,7 +35,24 @@ const colorStyles = {
     text: "text-red-600 dark:text-red-400",
     shadow: "shadow-red-500/20",
   },
+  teal: {
+    bg: "from-teal-500 to-emerald-600",
+    light: "bg-teal-50 dark:bg-teal-950/30",
+    text: "text-teal-600 dark:text-emerald-400",
+    shadow: "shadow-emerald-500/20",
+  },
 };
+
+type ColorKey = keyof typeof colorStyles;
+
+interface StatsCardProps {
+  title: string;
+  value: string | number;
+  change?: number;
+  icon: IconType;
+  color: ColorKey;
+  badge?: string;
+}
 
 export default function StatsCard({
   title,

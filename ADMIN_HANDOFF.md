@@ -1,4 +1,4 @@
-# Admin Panel Go‑Live Handoff (Jan 14, 2026)
+# Admin Panel Go‑Live Handoff (Jan 15, 2026)
 
 This document is a handoff snapshot of the current Admin Panel: what is **truly wired to backend control** (tRPC/Prisma), what is **read‑only**, and what is **still front‑end UI only** (not controlling production behavior).
 
@@ -46,6 +46,11 @@ This section tracks the current Admin frontend implementation status (UI/UX + wi
 - **Users**: list/search/filter + edit + bulk actions UI wired: [app/admin/users/page.tsx](app/admin/users/page.tsx), [components/admin/UserEditModal.tsx](components/admin/UserEditModal.tsx)
 - **Packages**: list + create/edit + toggle/bulk UI wired: [app/admin/packages/page.tsx](app/admin/packages/page.tsx), [components/admin/PackageCreateModal.tsx](components/admin/PackageCreateModal.tsx), [components/admin/PackageEditModal.tsx](components/admin/PackageEditModal.tsx)
 - **Settings**: system settings + gateway config + notification settings UI wired: [app/admin/settings/page.tsx](app/admin/settings/page.tsx)
+- **Integrations (Firebase Web Config)**
+  - Admin-managed Firebase client config (apiKey/authDomain/projectId/storageBucket/messagingSenderId/appId/measurementId optional) stored in AdminSettings and surfaced via tRPC config endpoint.
+  - UI: Integrations tab in [app/admin/settings/page.tsx](app/admin/settings/page.tsx)
+  - API: [server/trpc/router/config.ts](server/trpc/router/config.ts) merges DB values with env fallbacks; measurementId treated as optional; exposes source/missing metadata.
+  - Client usage: Hero ticker now initializes Firestore from tRPC-provided config with missing-key guard: [components/HeroTicker.tsx](components/HeroTicker.tsx), helper in [lib/firebase.ts](lib/firebase.ts).
 - **Community**: create/update/delete updates + create/update deals are wired (broadcast modal wired too):
   - Page: [app/admin/community/page.tsx](app/admin/community/page.tsx)
   - Modals: [components/admin/CommunityUpdateModal.tsx](components/admin/CommunityUpdateModal.tsx), [components/admin/BestDealModal.tsx](components/admin/BestDealModal.tsx), [components/admin/NotificationBroadcastModal.tsx](components/admin/NotificationBroadcastModal.tsx)
@@ -109,11 +114,12 @@ This section tracks the current Admin frontend implementation status (UI/UX + wi
 
 ---
 
-## Resolved Gaps (Jan 12, 2026)
+## Resolved Gaps (Jan 15, 2026)
 
 - Payments review controls are now exposed on the Payments page, with single and bulk actions wired to real mutations and audit logging.
 - Backup/Restore is fully implemented with create/restore/list/delete and retention policy; schedule and retention are persisted in Admin Settings.
 - Reports “Export All” now wires to CSV endpoints and downloads consolidated files.
+- Firebase client config is now admin-manageable (no redeploy needed); tRPC public config endpoint merges AdminSettings with env, and frontend reads from it (Hero ticker).
 
 ---
 
