@@ -34,6 +34,7 @@ import { taxesRouter } from "./taxes";
 import { palliativeRouter } from "./palliative";
 import { walletRouter } from "./wallet";
 import { communityRouter } from "./community";
+import { configRouter } from "./config";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -70,6 +71,7 @@ export const appRouter = createTRPCRouter({
   palliative: palliativeRouter,
   wallet: walletRouter,
   community: communityRouter,
+  config: configRouter,
 
   // Legacy router, to be deprecated
 });

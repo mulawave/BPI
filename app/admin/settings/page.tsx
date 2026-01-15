@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../../client/trpc";
 import { motion } from "framer-motion";
 import {
@@ -13,12 +13,16 @@ import {
   HiDatabase,
   HiCheckCircle,
   HiXCircle,
+  HiCloud,
+  HiKey,
+  HiEye,
+  HiEyeOff,
 } from "react-icons/hi";
 import toast from "react-hot-toast";
 import BackupRestorePanel from "@/components/admin/BackupRestorePanel";
 import StatsCard from "@/components/admin/StatsCard";
 
-type TabType = "general" | "payments" | "notifications" | "security" | "backup";
+type TabType = "general" | "payments" | "notifications" | "security" | "integrations" | "backup";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("general");
@@ -37,6 +41,7 @@ export default function SettingsPage() {
   const { data: systemSettings, refetch: refetchSettings } = api.admin.getSystemSettings.useQuery();
   const { data: paymentGateways, refetch: refetchGateways } = api.admin.getPaymentGateways.useQuery();
   const { data: notificationSettings, refetch: refetchNotifications } = api.admin.getNotificationSettings.useQuery();
+  const { data: firebaseConfigStatus, isLoading: firebaseConfigLoading } = api.config.getFirebaseConfig.useQuery();
   const { data: currencies = [] } = api.currency.getAll.useQuery();
   const { data: defaultCurrency } = api.currency.getDefault.useQuery();
 
@@ -277,10 +282,10 @@ export default function SettingsPage() {
             color="blue"
           />
           <StatsCard
-            title="Active Tab"
-            value={activeTab}
-            icon={HiShieldCheck as any}
-            color="purple"
+            title="Firebase Config"
+            value={firebaseConfigLoading ? "Loading" : firebaseConfigStatus?.missing?.length ? "Needs setup" : "Ready"}
+            icon={HiCloud as any}
+            color="teal"
           />
         </motion.div>
 
@@ -342,6 +347,19 @@ export default function SettingsPage() {
           >
             <HiShieldCheck className="w-5 h-5" />
             Security
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setActiveTab("integrations")}
+            className={`flex items-center gap-2 px-6 py-3.5 rounded-xl font-semibold transition-all whitespace-nowrap shadow-lg ${
+              activeTab === "integrations"
+                ? "bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-emerald-500/30"
+                : "bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-gray-800 border border-gray-200/50 dark:border-gray-700/50"
+            }`}
+          >
+            <HiCloud className="w-5 h-5" />
+            Integrations
           </motion.button>
           <motion.button
             whileHover={{ scale: 1.02 }}
@@ -1015,6 +1033,122 @@ export default function SettingsPage() {
           </motion.div>
         )}
 
+        {activeTab === "integrations" && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-lg">
+                    <HiKey className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                      Firebase Credentials
+                    </h2>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Store and manage client-safe Firebase config without redeploys.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+                  <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 font-medium ${
+                    firebaseConfigStatus?.missing?.length
+                      ? "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-200"
+                      : "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-200"
+                  }`}>
+                    <HiCloud className="w-4 h-4" />
+                    {firebaseConfigLoading
+                      ? "Checking..."
+                      : firebaseConfigStatus?.missing?.length
+                        ? `${firebaseConfigStatus.missing.length} missing`
+                        : "Ready"}
+                  </span>
+                  {firebaseConfigStatus?.source && (
+                    <span className="rounded-full bg-gray-100 dark:bg-gray-900/60 px-3 py-1">
+                      Source: {firebaseConfigStatus.source}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Project</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {firebaseConfigStatus?.config?.projectId || "Not set"}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Used by live ticker & Firestore listeners.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Keys saved (incl. optional)</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {firebaseConfigStatus?.config
+                      ? Object.values(firebaseConfigStatus.config).filter(Boolean).length
+                      : 0} / 7
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Persists in AdminSettings; falls back to env if missing.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Missing</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {firebaseConfigLoading
+                      ? "Loading..."
+                      : firebaseConfigStatus?.missing?.length
+                        ? firebaseConfigStatus.missing.join(", ")
+                        : "None"}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Six keys required for Firestore; measurementId is optional (analytics).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 shadow-sm space-y-6">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Firebase Web Config</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Updates take effect immediately for Hero Ticker and other Firestore clients.
+                  </p>
+                </div>
+                <span className="text-xs rounded-full bg-gray-100 dark:bg-gray-900/60 px-3 py-1 text-gray-600 dark:text-gray-300">
+                  Stored in AdminSettings
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[
+                  { label: "API Key", key: "firebase_api_key", placeholder: "AIza..." },
+                  { label: "Auth Domain", key: "firebase_auth_domain", placeholder: "your-app.firebaseapp.com" },
+                  { label: "Project ID", key: "firebase_project_id", placeholder: "your-app" },
+                  { label: "Storage Bucket", key: "firebase_storage_bucket", placeholder: "your-app.appspot.com" },
+                  { label: "Messaging Sender ID", key: "firebase_messaging_sender_id", placeholder: "1234567890" },
+                  { label: "App ID", key: "firebase_app_id", placeholder: "1:1234567890:web:abcdef" },
+                  { label: "Measurement ID", key: "firebase_measurement_id", placeholder: "G-XXXXXXX" },
+                ].map((field) => (
+                  <SecretSettingField
+                    key={field.key}
+                    label={field.label}
+                    settingKey={field.key}
+                    placeholder={field.placeholder}
+                    currentValue={systemSettings?.[field.key as keyof typeof systemSettings]?.value || ""}
+                    onSave={handleSaveGeneralSetting}
+                  />
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {activeTab === "backup" && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -1046,6 +1180,16 @@ function SettingField({
 }) {
   const [value, setValue] = useState(currentValue);
   const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    setValue(currentValue);
+    setIsEditing(false);
+  }, [currentValue]);
+
+  useEffect(() => {
+    setValue(currentValue);
+    setIsEditing(false);
+  }, [currentValue]);
 
   const handleSave = () => {
     onSave(settingKey, value, description);
@@ -1134,6 +1278,70 @@ function CurrencySettingField({
           <button
             onClick={handleSave}
             className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <HiSave className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Masked setting field for secrets that should remain client-safe
+function SecretSettingField({
+  label,
+  settingKey,
+  currentValue,
+  placeholder,
+  onSave,
+}: {
+  label: string;
+  settingKey: string;
+  currentValue: string;
+  placeholder?: string;
+  onSave: (key: string, value: string, description?: string) => void;
+}) {
+  const [value, setValue] = useState(currentValue);
+  const [isEditing, setIsEditing] = useState(false);
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    setValue(currentValue);
+    setIsEditing(false);
+  }, [currentValue]);
+
+  const handleSave = () => {
+    onSave(settingKey, value);
+    setIsEditing(false);
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+        {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          type={show ? "text" : "password"}
+          value={isEditing ? value : currentValue}
+          placeholder={placeholder}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setIsEditing(true);
+          }}
+          className="flex-1 px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 text-gray-900 dark:text-white"
+        />
+        <button
+          type="button"
+          onClick={() => setShow((prev) => !prev)}
+          className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          {show ? <HiEyeOff className="w-5 h-5" /> : <HiEye className="w-5 h-5" />}
+        </button>
+        {isEditing && (
+          <button
+            onClick={handleSave}
+            className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
           >
             <HiSave className="w-5 h-5" />
           </button>

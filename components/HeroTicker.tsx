@@ -9,7 +9,8 @@ import {
   type Timestamp,
 } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
-import { db } from '@/lib/firebase'; // adjust if needed
+import { getFirebaseDb } from '@/lib/firebase';
+import { api } from '@/client/trpc';
 
 type LiveWireTopic = {
   text?: string;
@@ -22,16 +23,56 @@ export default function HeroTicker() {
   const [items, setItems] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [db, setDb] = useState<ReturnType<typeof getFirebaseDb> | null>(null);
+
+  const {
+    data: firebaseConfig,
+    isLoading: configLoading,
+    error: configError,
+  } = api.config.getFirebaseConfig.useQuery(undefined, {
+    retry: 1,
+  });
 
   // Helpful: verify the project you're connected to
   useEffect(() => {
-    const app = getApp();
-    console.log('[HeroTicker] projectId:', app.options.projectId);
-    // @ts-ignore – internal at runtime
-    console.log('[HeroTicker] databaseId:', db._databaseId?.database || '(default)');
+    try {
+      const app = getApp();
+      console.log('[HeroTicker] projectId:', app.options.projectId);
+    } catch (e) {
+      console.warn('[HeroTicker] Firebase app not initialized yet', e);
+    }
   }, []);
 
+  // Initialize Firebase once config is available
   useEffect(() => {
+    if (configError) {
+      setErr(configError.message || 'Failed to load Firebase config');
+      setLoading(false);
+      return;
+    }
+
+    if (!firebaseConfig) return;
+
+    if (firebaseConfig.missing?.length) {
+      setErr(`Firebase config incomplete: ${firebaseConfig.missing.join(', ')}`);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const firestore = getFirebaseDb(firebaseConfig.config as any);
+      setDb(firestore);
+      setErr(null);
+    } catch (e: any) {
+      console.error('[HeroTicker] Firebase init error:', e);
+      setErr(e?.message || 'Failed to initialize Firebase');
+      setLoading(false);
+    }
+  }, [firebaseConfig, configError]);
+
+  useEffect(() => {
+    if (!db) return;
+
     const colRef = collection(db, 'live_wire_topics');
 
     // No orderBy/where => no composite index needed
@@ -78,14 +119,14 @@ export default function HeroTicker() {
     );
 
     return () => unsub();
-  }, []);
+  }, [db]);
 
   const feed = useMemo(() => {
     if (err) return ['⚠️ ' + err];
-    if (loading) return ['loading…'];
+    if (loading || configLoading || !db) return ['loading…'];
     if (items.length === 0) return ['No topics yet'];
     return items;
-  }, [items, err, loading]);
+  }, [items, err, loading, configLoading, db]);
 
   return (
     <div className="absolute top-0 inset-x-0 z-30">
