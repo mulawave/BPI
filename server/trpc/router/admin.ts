@@ -2669,38 +2669,46 @@ export const adminRouter = createTRPCRouter({
         throw new Error(`Confirmation phrase mismatch. Type "${requiredPhrase}" to proceed.`);
       }
 
-      const keepTables = new Set<string>([
-        "_prisma_migrations",
-        "AdminSettings",
-        "AdminNotificationSettings",
-        "PaymentGatewayConfig",
-        "MembershipPackage",
-        "SystemWallet",
-        "BptConversionRate",
-        "YoutubePlan",
-        "ThirdPartyPlatform",
-        "PalliativeOption",
-        "CommunityFeature",
-        "LeadershipPool",
-        "InvestorsPool",
-        "CommunityStats",
-      ]);
+      const keepTables = new Set(
+        [
+          "_prisma_migrations",
+          "adminsettings",
+          "adminnotificationsettings",
+          "paymentgatewayconfig",
+          "membershippackage",
+          "systemwallet",
+          "bptconversionrate",
+          "youtubeplan",
+          "thirdpartyplatform",
+          "palliativeoption",
+          "communityfeature",
+          "leadershippool",
+          "investorspool",
+          "communitystats",
+        ].map((n) => n.toLowerCase())
+      );
 
-      const tables = (await prisma.$queryRaw<Array<{ tablename: string }>>`
-        SELECT tablename FROM pg_tables WHERE schemaname = 'public'
-      `).map((t) => t.tablename);
+      const tables = await prisma.$queryRaw<
+        Array<{ tablename: string; schemaname: string; quoted_name: string }>
+      >`
+        SELECT tablename, schemaname, quote_ident(tablename) as quoted_name
+        FROM pg_tables
+        WHERE schemaname = 'public'
+      `;
 
-      const toTruncate = tables.filter((name) => !keepTables.has(name));
+      const toTruncate = tables.filter(
+        (t) => !keepTables.has(t.tablename.toLowerCase()) && t.tablename !== "_prisma_migrations"
+      );
       const now = new Date();
 
       const passwordHash = await hash(input.superAdminPassword, 10);
 
       const result = await prisma.$transaction(async (tx) => {
         if (toTruncate.length) {
-          const quoted = toTruncate.map((t) => `"${t}"`).join(", ");
-          await tx.$executeRawUnsafe(
-            `TRUNCATE TABLE ${quoted} RESTART IDENTITY CASCADE;`
-          );
+          const quoted = toTruncate
+            .map((t) => `"${t.schemaname}".${t.quoted_name}`)
+            .join(", ");
+          await tx.$executeRawUnsafe(`TRUNCATE TABLE ${quoted} RESTART IDENTITY CASCADE;`);
         }
 
         const superAdmin = await tx.user.upsert({
@@ -2746,11 +2754,24 @@ export const adminRouter = createTRPCRouter({
         return { superAdmin };
       });
 
+      const [userCount, transactionCount, referralCount, notificationCount] = await Promise.all([
+        prisma.user.count(),
+        prisma.transaction.count(),
+        prisma.referral.count(),
+        prisma.notification.count(),
+      ]);
+
       return {
-        truncatedTables: toTruncate,
+        truncatedTables: toTruncate.map((t) => t.tablename),
         keptTables: Array.from(keepTables),
         superAdminEmail: result.superAdmin.email,
         confirmationPhrase: requiredPhrase,
+        counts: {
+          users: userCount,
+          transactions: transactionCount,
+          referrals: referralCount,
+          notifications: notificationCount,
+        },
       };
     }),
 
