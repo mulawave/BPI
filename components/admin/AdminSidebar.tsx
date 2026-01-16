@@ -19,6 +19,7 @@ import {
   Loader2,
   Banknote,
   Database,
+  Globe,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -91,6 +92,18 @@ const navigation = [
     description: "Activity history"
   },
   { 
+    name: "Localization", 
+    href: "/admin/localization/countries", 
+    icon: Globe,
+    description: "Countries, states & cities",
+    submenu: [
+      { name: "Countries", href: "/admin/localization/countries" },
+      { name: "States", href: "/admin/localization/states" },
+      { name: "Cities", href: "/admin/localization/cities" },
+      { name: "Banks", href: "/admin/localization/banks" },
+    ]
+  },
+  { 
     name: "Settings", 
     href: "/admin/settings", 
     icon: Settings,
@@ -106,6 +119,7 @@ export default function AdminSidebar({ pendingCount = 0 }: AdminSidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Localization']); // Auto-expand Localization
 
   useEffect(() => {
     setPendingHref(null);
@@ -155,65 +169,104 @@ export default function AdminSidebar({ pendingCount = 0 }: AdminSidebarProps) {
             aria-busy={pendingHref ? true : undefined}
           >
             {navigation.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = pathname === item.href || item.submenu?.some(sub => pathname === sub.href);
               const Icon = item.icon;
               const showBadge = item.badge === "pending" && pendingCount > 0;
               const isPending = pendingHref === item.href;
+              const isExpanded = expandedMenus.includes(item.name);
+              const hasSubmenu = !!item.submenu;
 
               return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  onClick={() => {
-                    if (item.href === pathname) return;
-                    setPendingHref(item.href);
-                  }}
-                  className={`
-                    group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all
-                    ${
-                      isActive
-                        ? "bg-gradient-to-r from-[hsl(var(--primary))] to-[hsl(var(--secondary))] text-white shadow-md"
-                        : "text-foreground/75 hover:bg-background/60 hover:text-foreground"
-                    }
-                  `}
-                >
-                  <div className="relative flex-shrink-0">
-                    <Icon className="h-5 w-5" />
-                    {isPending && (
-                      <Loader2 className="absolute -right-2 -top-2 h-4 w-4 animate-spin text-[hsl(var(--secondary))]" />
-                    )}
-                  </div>
-                  {!collapsed && (
-                    <>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <span>{item.name}</span>
-                          {isPending && (
-                            <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[hsl(var(--secondary))]/15 px-2 py-0.5 text-xs font-semibold text-[hsl(var(--secondary))]">
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              Loading
-                            </span>
-                          )}
-                          {showBadge && (
-                            <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white">
-                              {pendingCount}
+                <div key={item.name}>
+                  <Link
+                    href={item.href}
+                    onClick={(e) => {
+                      if (hasSubmenu && !collapsed) {
+                        e.preventDefault();
+                        setExpandedMenus(prev => 
+                          prev.includes(item.name) 
+                            ? prev.filter(n => n !== item.name)
+                            : [...prev, item.name]
+                        );
+                      } else if (item.href !== pathname) {
+                        setPendingHref(item.href);
+                      }
+                    }}
+                    className={`
+                      group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all
+                      ${
+                        isActive
+                          ? "bg-gradient-to-r from-[hsl(var(--primary))] to-[hsl(var(--secondary))] text-white shadow-md"
+                          : "text-foreground/75 hover:bg-background/60 hover:text-foreground"
+                      }
+                    `}
+                  >
+                    <div className="relative flex-shrink-0">
+                      <Icon className="h-5 w-5" />
+                      {isPending && (
+                        <Loader2 className="absolute -right-2 -top-2 h-4 w-4 animate-spin text-[hsl(var(--secondary))]" />
+                      )}
+                    </div>
+                    {!collapsed && (
+                      <>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <span>{item.name}</span>
+                            {isPending && (
+                              <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[hsl(var(--secondary))]/15 px-2 py-0.5 text-xs font-semibold text-[hsl(var(--secondary))]">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Loading
+                              </span>
+                            )}
+                            {showBadge && (
+                              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white">
+                                {pendingCount}
+                              </span>
+                            )}
+                            {hasSubmenu && (
+                              <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                            )}
+                          </div>
+                          {!isActive && (
+                            <span className="text-xs text-muted-foreground">
+                              {item.description}
                             </span>
                           )}
                         </div>
-                        {!isActive && (
-                          <span className="text-xs text-muted-foreground">
-                            {item.description}
-                          </span>
-                        )}
-                      </div>
-                    </>
+                      </>
+                    )}
+                    {collapsed && showBadge && (
+                      <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                        {pendingCount > 9 ? "9+" : pendingCount}
+                      </span>
+                    )}
+                  </Link>
+                  
+                  {/* Submenu */}
+                  {hasSubmenu && isExpanded && !collapsed && (
+                    <div className="ml-8 mt-1 space-y-1">
+                      {item.submenu.map((subItem) => {
+                        const isSubActive = pathname === subItem.href;
+                        return (
+                          <Link
+                            key={subItem.href}
+                            href={subItem.href}
+                            className={`
+                              block rounded-lg px-3 py-1.5 text-sm transition-all
+                              ${
+                                isSubActive
+                                  ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] font-medium"
+                                  : "text-foreground/60 hover:bg-background/60 hover:text-foreground"
+                              }
+                            `}
+                          >
+                            {subItem.name}
+                          </Link>
+                        );
+                      })}
+                    </div>
                   )}
-                  {collapsed && showBadge && (
-                    <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                      {pendingCount > 9 ? "9+" : pendingCount}
-                    </span>
-                  )}
-                </Link>
+                </div>
               );
             })}
           </nav>

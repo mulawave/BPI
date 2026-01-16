@@ -35,6 +35,10 @@ import { palliativeRouter } from "./palliative";
 import { walletRouter } from "./wallet";
 import { communityRouter } from "./community";
 import { configRouter } from "./config";
+import { locationRouter } from "./location";
+import { adminLocationRouter } from "./adminLocation";
+import { bankRouter } from "./bank";
+import { adminBankRouter } from "./adminBank";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -72,6 +76,10 @@ export const appRouter = createTRPCRouter({
   wallet: walletRouter,
   community: communityRouter,
   config: configRouter,
+  location: locationRouter,
+  adminLocation: adminLocationRouter,
+  bank: bankRouter,
+  adminBank: adminBankRouter,
 
   // Legacy router, to be deprecated
 });

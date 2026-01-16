@@ -56,6 +56,8 @@ import WithdrawalModal from "./wallet/WithdrawalModal";
 import TransferModal from "./wallet/TransferModal";
 import WalletTimelineModal from "./wallet/WalletTimelineModal";
 import BptTimelineModal from "./wallet/BptTimelineModal";
+import { LocationCascadeField } from "./profile/LocationCascadeField";
+import { BankDetailsField } from "./profile/BankDetailsField";
 
 interface DashboardContentProps {
   session: Session;
@@ -1534,35 +1536,16 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                     onUpdateStatus={handleUpdateStatus}
                   />
                   
-                  {/* City */}
-                  <ProfileField
-                    label="City"
-                    value={userProfile?.city || ''}
-                    fieldKey="city"
-                    icon={Home}
-                    isEditable={true}
+                  {/* Location (Country, State, City) - Cascade Dropdown */}
+                  <LocationCascadeField
+                    countryValue={userProfile?.country || null}
+                    stateValue={userProfile?.state || null}
+                    cityValue={userProfile?.city || null}
                     onUpdateStatus={handleUpdateStatus}
                   />
                   
-                  {/* State */}
-                  <ProfileField
-                    label="State"
-                    value={userProfile?.state || ''}
-                    fieldKey="state"
-                    icon={MapPin}
-                    isEditable={true}
-                    onUpdateStatus={handleUpdateStatus}
-                  />
-                  
-                  {/* Country */}
-                  <ProfileField
-                    label="Country"
-                    value={userProfile?.country || ''}
-                    fieldKey="country"
-                    icon={Globe}
-                    isEditable={true}
-                    onUpdateStatus={handleUpdateStatus}
-                  />
+                  {/* Bank Details (Withdrawal) */}
+                  <BankDetailsField userId={session.user?.id || ''} />
                   
                   {/* Gender */}
                   <ProfileField

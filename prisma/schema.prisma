@@ -1347,6 +1347,7 @@ model User {
   cityRelation                                                         City?                        @relation(fields: [cityId], references: [id], onDelete: SetNull)
   stateRelation                                                        State?                       @relation(fields: [stateId], references: [id], onDelete: SetNull)
   countryRelation                                                      Country?                     @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  bankRecords                                                          UserBankRecord[]
 
   @@index([cityId])
   @@index([stateId])
@@ -1623,4 +1624,33 @@ model City {
 
   @@index([stateId])
   @@map("cities")
+}
+
+model Bank {
+  id              Int               @id @default(autoincrement())
+  bankName        String            @map("bank_name")
+  bankCode        String            @map("bank_code")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  userBankRecords UserBankRecord[]
+
+  @@map("nigerian_banks")
+}
+
+model UserBankRecord {
+  id            Int      @id @default(autoincrement())
+  userId        String   @map("user_id")
+  bankId        Int?     @map("bank_id")
+  bankName      String?  @map("bank_name")
+  accountName   String   @map("account_name")
+  accountNumber String   @map("account_number")
+  bvn           String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bank          Bank?    @relation(fields: [bankId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([bankId])
+  @@map("bank_records")
 }
