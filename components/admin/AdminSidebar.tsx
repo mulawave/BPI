@@ -35,6 +35,12 @@ const navigation = [
     description: "User management"
   },
   { 
+    name: "DB Audit Coverage", 
+    href: "/admin/help/db-audit", 
+    icon: FileText, 
+    description: "User flow coverage map"
+  },
+  { 
     name: "Payments", 
     href: "/admin/payments", 
     icon: CreditCard,

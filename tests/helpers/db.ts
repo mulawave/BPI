@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "crypto";
+import { hash } from "bcryptjs";
 
 export const prisma = new PrismaClient();
 
@@ -26,6 +27,37 @@ export async function ensureUserExists(args: {
       firstname,
       lastname,
       role: "user",
+    },
+    select: { id: true, email: true },
+  });
+}
+
+export async function ensureAdminUserExists(args: {
+  email: string;
+  password: string;
+  name?: string;
+  username?: string;
+  role?: "admin" | "super_admin";
+}): Promise<{ id: string; email: string | null }> {
+  const { email, password, name = "QA Admin", username = "qaadmin", role = "admin" } = args;
+
+  const passwordHash = await hash(password, 10);
+
+  return prisma.user.upsert({
+    where: { email },
+    update: {
+      name,
+      username,
+      passwordHash,
+      role,
+    },
+    create: {
+      id: randomUUID(),
+      email,
+      name,
+      username,
+      passwordHash,
+      role,
     },
     select: { id: true, email: true },
   });

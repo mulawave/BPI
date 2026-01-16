@@ -12,6 +12,7 @@ async function main() {
       username: "qauser1",
       wallet: 50000,
       spendable: 50000,
+      role: "user" as const,
     },
     {
       email: "qa.user2@example.com",
@@ -19,6 +20,15 @@ async function main() {
       username: "qauser2",
       wallet: 30000,
       spendable: 30000,
+      role: "user" as const,
+    },
+    {
+      email: "qa.admin@example.com",
+      name: "QA Admin",
+      username: "qaadmin",
+      wallet: 0,
+      spendable: 0,
+      role: "admin" as const,
     },
   ];
 
@@ -33,7 +43,7 @@ async function main() {
         passwordHash,
         wallet: userData.wallet,
         spendable: userData.spendable,
-        role: "user",
+        role: userData.role,
       },
       create: {
         id: randomUUID(),
@@ -43,7 +53,7 @@ async function main() {
         passwordHash,
         wallet: userData.wallet,
         spendable: userData.spendable,
-        role: "user",
+        role: userData.role,
       },
     });
 
@@ -62,7 +72,7 @@ async function main() {
       },
     });
 
-    console.log(`Seeded ${user.email} / ${password}`);
+    console.log(`Seeded ${user.email} (${userData.role}) / ${password}`);
   }
 }
 

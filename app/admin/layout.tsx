@@ -177,7 +177,7 @@ export default function AdminLayout({
     <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--muted))] via-[hsl(var(--background))] to-[hsl(var(--accent))] dark:from-[hsl(var(--background))] dark:via-[hsl(var(--card))] dark:to-[hsl(var(--background))]">
       <AdminSidebar pendingCount={dashboardStats?.pendingPayments || 0} />
       
-      <div className="lg:pl-0">
+      <div className="lg:pl-[280px]">
         <AdminHeader
           admin={{
             name: session?.user?.name,

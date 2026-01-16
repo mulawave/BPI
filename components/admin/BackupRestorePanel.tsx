@@ -8,6 +8,10 @@ import {
   HiDatabase,
   HiCheckCircle,
   HiExclamationCircle,
+  HiShieldCheck,
+  HiTrash,
+  HiLockClosed,
+  HiUser,
 } from "react-icons/hi";
 import toast from "react-hot-toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -20,6 +24,12 @@ export default function BackupRestorePanel() {
   const [lastBackup, setLastBackup] = useState<Date | null>(null);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [confirmRestoreOpen, setConfirmRestoreOpen] = useState(false);
+  const [confirmWipeOpen, setConfirmWipeOpen] = useState(false);
+  const [superAdminEmail, setSuperAdminEmail] = useState("");
+  const [superAdminPassword, setSuperAdminPassword] = useState("");
+  const [superAdminName, setSuperAdminName] = useState("Super Admin");
+  const [confirmPhrase, setConfirmPhrase] = useState("");
+  const resetKeyword = "WIPE";
 
   const systemSettingsQuery = api.admin.getSystemSettings.useQuery(undefined, {
     refetchOnWindowFocus: false,
@@ -66,6 +76,23 @@ export default function BackupRestorePanel() {
     },
     onError: (e) => toast.error(e.message),
   });
+
+  const wipeMutation = api.admin.wipeNonEssentialData.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Data wiped. Seeded super admin at ${data.superAdminEmail}.`);
+      setConfirmPhrase("");
+      setSuperAdminPassword("");
+      setConfirmWipeOpen(false);
+      backupsQuery.refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const isWiping = wipeMutation.isLoading;
+  const canWipe =
+    confirmPhrase.trim().toLowerCase() === resetKeyword.toLowerCase() &&
+    superAdminEmail.trim().length > 0 &&
+    superAdminPassword.trim().length >= 8 &&
+    superAdminName.trim().length > 0;
 
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [toDeleteFilename, setToDeleteFilename] = useState<string | null>(null);
@@ -200,6 +227,129 @@ export default function BackupRestorePanel() {
         }}
       />
 
+      <div className="mt-6 overflow-hidden rounded-xl border border-red-200 bg-gradient-to-br from-red-50 via-white to-amber-50 p-5 shadow-inner dark:border-red-900/40 dark:from-red-950/40 dark:via-slate-950 dark:to-amber-950/30">
+        <div className="mb-4 flex flex-wrap items-start gap-3">
+          <div className="rounded-lg bg-red-100 p-2 text-red-700 shadow-sm dark:bg-red-900/50 dark:text-red-100">
+            <HiShieldCheck className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-[240px] space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-red-700 dark:bg-red-900/60 dark:text-red-100">
+                Danger Zone
+              </span>
+              <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs text-slate-700 dark:bg-white/5 dark:text-slate-200">
+                Super admin only
+              </span>
+            </div>
+            <h4 className="text-lg font-bold text-red-800 dark:text-red-100">
+              Wipe non-essential data and reseed super admin
+            </h4>
+            <p className="text-sm text-red-700/90 dark:text-red-200/80">
+              Removes users, wallets, transactions, referrals, notifications, audit logs, sessions, and other user data. Keeps system configuration (packages, settings, wallets, rates, platforms, palliative options) intact.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+              <HiUser className="h-4 w-4" />
+              Seed super admin account
+            </div>
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={superAdminName}
+                onChange={(e) => setSuperAdminName(e.target.value)}
+                placeholder="Full name"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              />
+              <input
+                type="email"
+                value={superAdminEmail}
+                onChange={(e) => setSuperAdminEmail(e.target.value)}
+                placeholder="super.admin@example.com"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              />
+              <div className="relative">
+                <HiLockClosed className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="password"
+                  value={superAdminPassword}
+                  onChange={(e) => setSuperAdminPassword(e.target.value)}
+                  placeholder="New super admin password (min 8 chars)"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pl-9 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                />
+              </div>
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-100">
+                Use a strong password and store it securely. Existing sessions will be invalidated after the wipe.
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                <HiExclamationCircle className="h-4 w-4 text-red-600" />
+                Type "{resetKeyword}" to confirm
+              </div>
+              <input
+                type="text"
+                value={confirmPhrase}
+                onChange={(e) => setConfirmPhrase(e.target.value)}
+                placeholder="Type WIPE to enable the button"
+                className="w-full rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-red-900 shadow-sm outline-none transition focus:border-red-600 focus:ring-2 focus:ring-red-600/20 dark:border-red-800 dark:bg-red-950/40 dark:text-red-50"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-3 rounded-lg border border-slate-200 bg-white/60 p-4 text-sm text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-800 dark:bg-emerald-900/30">
+              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800 dark:text-emerald-100">
+                <HiShieldCheck className="h-4 w-4" />
+                Kept (system configuration)
+              </div>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-emerald-900 dark:text-emerald-100">
+                <li>Admin settings, notification settings, payment gateways</li>
+                <li>Membership packages, system wallets, BPT conversion rates</li>
+                <li>YouTube plans, third-party platforms, palliative options</li>
+                <li>Community features, leadership pools, investor pools</li>
+              </ul>
+            </div>
+            <div className="rounded-lg border border-red-200 bg-red-50/70 p-3 dark:border-red-800 dark:bg-red-950/30">
+              <div className="flex items-center gap-2 text-sm font-semibold text-red-800 dark:text-red-100">
+                <HiTrash className="h-4 w-4" />
+                Wiped (non-essential)
+              </div>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-red-900 dark:text-red-100">
+                <li>Users, credentials, sessions, passwords, referrals</li>
+                <li>Wallet balances, transactions, payments, orders</li>
+                <li>Notifications, audit logs, tickets, community posts</li>
+                <li>Backups list reload recommended after wipe</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            This operation cannot be undone. The database will be cleaned and a fresh super admin account will be created with the credentials above.
+          </p>
+          <motion.button
+            whileHover={{ scale: canWipe && !isWiping ? 1.02 : 1 }}
+            whileTap={{ scale: canWipe && !isWiping ? 0.98 : 1 }}
+            onClick={() => setConfirmWipeOpen(true)}
+            disabled={!canWipe || isWiping}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-red-500/50 disabled:cursor-not-allowed disabled:opacity-60 ${
+              canWipe && !isWiping
+                ? "bg-gradient-to-r from-red-600 to-amber-600 text-white hover:shadow-lg"
+                : "bg-red-200 text-red-800"
+            }`}
+          >
+            <HiTrash className={`h-4 w-4 ${isWiping ? "animate-pulse" : ""}`} />
+            {isWiping ? "Wiping..." : "Wipe non-essential data"}
+          </motion.button>
+        </div>
+      </div>
+
       {/* Automated Backups */}
       <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900">
         <h4 className="mb-2 font-medium text-slate-900 dark:text-white">
@@ -301,6 +451,31 @@ export default function BackupRestorePanel() {
           <div className="py-6 text-sm text-slate-600 dark:text-slate-300">No backups found</div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={confirmWipeOpen}
+        title="Wipe non-essential data?"
+        description={
+          <div className="space-y-2 text-sm">
+            <p>Users, credentials, sessions, referrals, wallets, payments, tickets, community posts, and audit logs will be deleted.</p>
+            <p className="text-xs text-muted-foreground">
+              System configuration (packages, settings, wallets, rates, platforms, palliative options) stays intact. A fresh super admin will be seeded after the wipe.
+            </p>
+          </div>
+        }
+        confirmText={isWiping ? "Wiping..." : "Yes, wipe and reseed"}
+        cancelText="Cancel"
+        onClose={() => setConfirmWipeOpen(false)}
+        onConfirm={() => {
+          if (!canWipe || isWiping) return;
+          wipeMutation.mutate({
+            confirmPhrase,
+            superAdminEmail,
+            superAdminPassword,
+            superAdminName,
+          });
+        }}
+      />
 
       <ConfirmDialog
         isOpen={confirmDeleteOpen}

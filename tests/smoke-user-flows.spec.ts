@@ -28,7 +28,7 @@ test.describe('User smoke: login → dashboard → deposit/withdraw → membersh
     await dismissEmailVerificationIfPresent(page);
 
     // Dashboard loads (cold-start can be slow)
-    await expect(page.getByText(/member dashboard/i)).toBeVisible({ timeout: 60_000 });
+    await expect(page).toHaveURL(/\/dashboard(?:\?|$)/i, { timeout: 60_000 });
     await expect(page.getByRole('button', { name: /^deposit$/i }).first()).toBeVisible({ timeout: 60_000 });
 
     // Deposit modal (happy path)

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
+import { hash } from "bcryptjs";
 import {
   activateMembershipAfterExternalPayment,
   upgradeMembershipAfterExternalPayment,
@@ -2646,6 +2647,111 @@ export const adminRouter = createTRPCRouter({
       });
 
       return { deleted: true };
+    }),
+
+  wipeNonEssentialData: adminProcedure
+    .input(
+      z.object({
+        confirmPhrase: z.string().min(1, "Confirmation phrase is required"),
+        superAdminEmail: z.string().email(),
+        superAdminPassword: z.string().min(8, "Password must be at least 8 characters"),
+        superAdminName: z.string().min(1).max(120).default("Super Admin"),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const role = (ctx.session?.user as any)?.role;
+      if (role !== "super_admin") {
+        throw new Error("Super admin privileges required for data wipes");
+      }
+
+      const requiredPhrase = (process.env.ADMIN_RESET_CONFIRM_PHRASE || "WIPE").toLowerCase();
+      if (input.confirmPhrase.trim().toLowerCase() !== requiredPhrase) {
+        throw new Error(`Confirmation phrase mismatch. Type "${requiredPhrase}" to proceed.`);
+      }
+
+      const keepTables = new Set<string>([
+        "_prisma_migrations",
+        "AdminSettings",
+        "AdminNotificationSettings",
+        "PaymentGatewayConfig",
+        "MembershipPackage",
+        "SystemWallet",
+        "BptConversionRate",
+        "YoutubePlan",
+        "ThirdPartyPlatform",
+        "PalliativeOption",
+        "CommunityFeature",
+        "LeadershipPool",
+        "InvestorsPool",
+        "CommunityStats",
+      ]);
+
+      const tables = (await prisma.$queryRaw<Array<{ tablename: string }>>`
+        SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+      `).map((t) => t.tablename);
+
+      const toTruncate = tables.filter((name) => !keepTables.has(name));
+      const now = new Date();
+
+      const passwordHash = await hash(input.superAdminPassword, 10);
+
+      const result = await prisma.$transaction(async (tx) => {
+        if (toTruncate.length) {
+          const quoted = toTruncate.map((t) => `"${t}"`).join(", ");
+          await tx.$executeRawUnsafe(
+            `TRUNCATE TABLE ${quoted} RESTART IDENTITY CASCADE;`
+          );
+        }
+
+        const superAdmin = await tx.user.upsert({
+          where: { email: input.superAdminEmail },
+          update: {
+            name: input.superAdminName,
+            passwordHash,
+            role: "super_admin",
+            activated: true,
+            verified: true,
+            emailVerified: now,
+            updatedAt: now,
+          },
+          create: {
+            id: randomUUID(),
+            email: input.superAdminEmail,
+            name: input.superAdminName,
+            passwordHash,
+            role: "super_admin",
+            activated: true,
+            verified: true,
+            emailVerified: now,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+
+        try {
+          await tx.auditLog.create({
+            data: {
+              id: randomUUID(),
+              userId: (ctx.session?.user as any)?.id || "system",
+              action: "WIPE_NON_ESSENTIAL_DATA",
+              entity: "Database",
+              entityId: "wipe",
+              changes: JSON.stringify({ truncated: toTruncate }),
+              status: "success",
+              createdAt: now,
+            },
+          });
+        } catch (_) {}
+
+        return { superAdmin };
+      });
+
+      return {
+        truncatedTables: toTruncate,
+        keptTables: Array.from(keepTables),
+        superAdminEmail: result.superAdmin.email,
+        confirmationPhrase: requiredPhrase,
+      };
     }),
 
   getPendingEmpowermentPackages: adminProcedure.query(async () => {
