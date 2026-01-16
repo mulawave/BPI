@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Loader2,
   Banknote,
+  Database,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -64,6 +65,12 @@ const navigation = [
     href: "/admin/financials", 
     icon: Banknote,
     description: "Inflows & outflows"
+  },
+  { 
+    name: "DB Maintenance", 
+    href: "/admin/database", 
+    icon: Database,
+    description: "Truncate & reset tables"
   },
   { 
     name: "Reports", 

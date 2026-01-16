@@ -46,7 +46,7 @@ export default function AdminLayout({
 
     if (adminAccess && !adminAccess.isAdmin) {
       toast.error("Access denied. Admin privileges required.");
-      router.push("/dashboard");
+      router.push("/admin/login");
     }
   }, [status, adminAccess, isLoading, router]);
 
@@ -139,10 +139,10 @@ export default function AdminLayout({
             </button>
             <button
               type="button"
-              onClick={() => router.push("/dashboard")}
+              onClick={() => router.push("/admin/login")}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50 dark:border-gray-600 dark:text-white dark:hover:bg-gray-700"
             >
-              Back to dashboard
+              Go to admin login
             </button>
           </div>
         </div>

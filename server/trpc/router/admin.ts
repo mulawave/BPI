@@ -26,6 +26,17 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next();
 });
 
+const superAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  if (!ctx.session?.user) {
+    throw new Error("UNAUTHORIZED: You must be logged in to perform this action.");
+  }
+  const userRole = (ctx.session.user as any).role;
+  if (userRole !== "super_admin") {
+    throw new Error("UNAUTHORIZED: You must be a super admin to perform this action.");
+  }
+  return next();
+});
+
 export const adminRouter = createTRPCRouter({
   // Global search across key admin entities
   globalSearch: adminProcedure
@@ -2773,6 +2784,79 @@ export const adminRouter = createTRPCRouter({
           notifications: notificationCount,
         },
       };
+    }),
+
+  listDatabaseTables: superAdminProcedure.query(async () => {
+    const tables = await prisma.$queryRaw<
+      Array<{
+        schemaname: string;
+        tablename: string;
+        quoted_name: string;
+        row_estimate: number | null;
+        total_bytes: bigint | number | string | null;
+      }>
+    >`
+      SELECT
+        t.schemaname,
+        t.tablename,
+        quote_ident(t.tablename) AS quoted_name,
+        COALESCE(ps.reltuples::bigint, 0) AS row_estimate,
+        pg_total_relation_size(('"' || t.schemaname || '"."' || t.tablename || '"')::regclass) AS total_bytes
+      FROM pg_catalog.pg_tables t
+      LEFT JOIN pg_stat_all_tables ps
+        ON ps.schemaname = t.schemaname AND ps.relname = t.tablename
+      WHERE t.schemaname = 'public'
+      ORDER BY t.tablename;
+    `;
+
+    return tables.map((table) => ({
+      schema: table.schemaname,
+      name: table.tablename,
+      quotedName: table.quoted_name,
+      rowEstimate: Number(table.row_estimate ?? 0),
+      totalBytes: Number((table.total_bytes as any) ?? 0),
+    }));
+  }),
+
+  truncateTable: superAdminProcedure
+    .input(z.object({ tableName: z.string().min(1, "Table name is required") }))
+    .mutation(async ({ input, ctx }) => {
+      const now = new Date();
+
+      const records = await prisma.$queryRaw<
+        Array<{ schemaname: string; tablename: string; quoted_name: string }>
+      >`
+        SELECT schemaname, tablename, quote_ident(tablename) as quoted_name
+        FROM pg_tables
+        WHERE schemaname = 'public' AND tablename = ${input.tableName}
+      `;
+
+      const target = records[0];
+      if (!target) {
+        throw new Error("Table not found in public schema");
+      }
+
+      const fullyQualified = `"${target.schemaname}".${target.quoted_name}`;
+      await prisma.$executeRawUnsafe(
+        `TRUNCATE TABLE ${fullyQualified} RESTART IDENTITY CASCADE;`
+      );
+
+      try {
+        await prisma.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: (ctx.session?.user as any)?.id || "system",
+            action: "TRUNCATE_TABLE",
+            entity: "DatabaseTable",
+            entityId: target.tablename,
+            status: "success",
+            changes: JSON.stringify({ table: target.tablename }),
+            createdAt: now,
+          },
+        });
+      } catch (_) {}
+
+      return { truncated: target.tablename };
     }),
 
   getPendingEmpowermentPackages: adminProcedure.query(async () => {
