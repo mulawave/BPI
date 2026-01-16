@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FiX, FiCheck, FiAlertCircle } from "react-icons/fi";
-import { Wallet, CreditCard, Bitcoin, CheckCircle, Loader2, AlertTriangle, Building, BadgeCheck } from "lucide-react";
+import { Wallet, CreditCard, Bitcoin, CheckCircle, Loader2, AlertTriangle, Building, BadgeCheck, Lock } from "lucide-react";
 import { api } from "@/client/trpc";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { Button } from "../ui/button";
@@ -26,31 +26,22 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
   const [amount, setAmount] = useState<string>('');
   // Note: Withdrawals only come from Main Wallet (user.wallet field)
   
-  /**
-   * FUTURE IMPLEMENTATION: Flutterwave Bank Verification API
-   * 
-   * Bank Selection Flow:
-   * 1. Fetch bank list from Flutterwave API endpoint
-   *    - Endpoint: GET https://api.flutterwave.com/v3/banks/NG
-   *    - Returns: { id, code, name } for all Nigerian banks
-   *    - Display banks in dropdown for user selection
-   * 
-   * 2. User selects bank and enters account number (10 digits)
-   * 
-   * 3. Query Flutterwave Account Verification API
-   *    - Endpoint: POST https://api.flutterwave.com/v3/accounts/resolve
-   *    - Payload: { account_number, account_bank (bank_code) }
-   *    - Returns: { account_number, account_name, bank_code }
-   *    - Auto-populate account_name field with verified name
-   * 
-   * 4. User confirms withdrawal with verified details
-   * 
-   * Current Implementation: Mock test using manual bank entry for validation
-   */
-  const [bankName, setBankName] = useState<string>(''); // Will become bank_code from Flutterwave
-  const [accountNumber, setAccountNumber] = useState<string>('');
-  const [accountName, setAccountName] = useState<string>(''); // Will be auto-filled from verification
+  // Bank account selection
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
   const [bnbWallet, setBnbWallet] = useState<string>('');
+  const [pin, setPin] = useState<string>('');
+  const [twoFactorCode, setTwoFactorCode] = useState<string>('');
+
+  // Fetch user's bank accounts
+  const { data: bankAccounts } = api.bank.getUserBankRecords.useQuery();
+  const defaultAccount = bankAccounts?.find((acc: any) => acc.isDefault);
+  
+  // Set default account on load
+  if (defaultAccount && !selectedBankAccountId) {
+    setSelectedBankAccountId(defaultAccount.id);
+  }
+
+  const selectedBankAccount = bankAccounts?.find((acc: any) => acc.id === selectedBankAccountId);
 
   
   const [error, setError] = useState<string>('');
@@ -92,13 +83,14 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
       return;
     }
 
+    if (totalDebit > mainWalletBalance) {
+      setError('Insufficient balance (including fee)');
+      return;
+    }
+
     if (withdrawalType === 'cash') {
-      if (!bankName || !accountNumber || !accountName) {
-        setError('Please fill in all bank details');
-        return;
-      }
-      if (accountNumber.length < 10) {
-        setError('Account number must be at least 10 digits');
+      if (!selectedBankAccountId || !selectedBankAccount) {
+        setError('Please select a bank account');
         return;
       }
     } else {
@@ -110,6 +102,16 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
         setError('BNB wallet address must start with 0x');
         return;
       }
+    }
+
+    if (!pin || pin.length !== 4) {
+      setError('Please enter your 4-digit PIN');
+      return;
+    }
+
+    if (!twoFactorCode || twoFactorCode.length !== 6) {
+      setError('Please enter your 6-digit 2FA code');
+      return;
     }
 
     setError('');
@@ -124,15 +126,19 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
           withdrawalType: 'cash' as const,
           amount: numAmount,
           sourceWallet: 'wallet' as const,
-          bankName,
-          accountNumber,
-          accountName
+          bankCode: selectedBankAccount?.bank?.bankCode || '',
+          accountNumber: selectedBankAccount?.accountNumber || '',
+          accountName: selectedBankAccount?.accountName || '',
+          pin,
+          twoFactorCode,
         }
       : {
           withdrawalType: 'bpt' as const,
           amount: numAmount,
           sourceWallet: 'wallet' as const,
-          bnbWalletAddress: bnbWallet
+          bnbWalletAddress: bnbWallet,
+          pin,
+          twoFactorCode,
         };
 
     withdrawalMutation.mutate(payload);
@@ -141,6 +147,10 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
   const handleReset = () => {
     setCurrentStep('type');
     setAmount('');
+    setSelectedBankAccountId(null);
+    setBnbWallet('');
+    setPin('');
+    setTwoFactorCode('');
     setError('');
     setSuccessData(null);
   };
@@ -304,39 +314,51 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
                 <div className="space-y-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
                   <h3 className="font-semibold text-foreground flex items-center gap-2">
                     <Building className="w-5 h-5" />
-                    Bank Account Details
+                    Select Bank Account
                   </h3>
                   
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">Bank Name</label>
-                    <Input
-                      type="text"
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
-                      placeholder="e.g. First Bank"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">Account Number</label>
-                    <Input
-                      type="text"
-                      value={accountNumber}
-                      onChange={(e) => setAccountNumber(e.target.value)}
-                      placeholder="0123456789"
-                      maxLength={10}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">Account Name</label>
-                    <Input
-                      type="text"
-                      value={accountName}
-                      onChange={(e) => setAccountName(e.target.value)}
-                      placeholder="Full name as per bank"
-                    />
-                  </div>
+                  {bankAccounts && bankAccounts.length > 0 ? (
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">
+                        Withdrawal Account
+                      </label>
+                      <select
+                        value={selectedBankAccountId || ''}
+                        onChange={(e) => setSelectedBankAccountId(Number(e.target.value))}
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="">Select an account</option>
+                        {bankAccounts.map((account: any) => (
+                          <option key={account.id} value={account.id}>
+                            {account.bank?.bankName || 'Unknown Bank'} --- {account.accountNumber.slice(-4)}
+                            {account.isDefault && ' (Default)'}
+                          </option>
+                        ))}
+                      </select>
+                      
+                      {selectedBankAccount && (
+                        <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                          <div className="flex items-center gap-2 mb-2">
+                            <BadgeCheck className="w-4 h-4 text-green-600" />
+                            <span className="text-sm font-medium text-green-900 dark:text-green-200">
+                              Account Details
+                            </span>
+                          </div>
+                          <div className="text-sm space-y-1 text-green-800 dark:text-green-300">
+                            <div><strong>Bank:</strong> {selectedBankAccount.bank?.bankName}</div>
+                            <div><strong>Account Name:</strong> {selectedBankAccount.accountName}</div>
+                            <div><strong>Account Number:</strong> {selectedBankAccount.accountNumber}</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
+                      <p className="text-sm text-orange-800 dark:text-orange-200">
+                        No bank accounts found. Please add a bank account in your profile settings first.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -363,6 +385,41 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
                   </div>
                 </div>
               )}
+
+              {/* Security Verification Fields */}
+              <div className="space-y-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                <h3 className="font-semibold text-foreground flex items-center gap-2">
+                  <Lock className="w-5 h-5" />
+                  Security Verification Required
+                </h3>
+                
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Profile PIN</label>
+                  <Input
+                    type="password"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder="Enter 4-digit PIN"
+                    maxLength={4}
+                    className="font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">2FA Code</label>
+                  <Input
+                    type="text"
+                    value={twoFactorCode}
+                    onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Enter 6-digit code"
+                    maxLength={6}
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Enter the code from your authenticator app
+                  </p>
+                </div>
+              </div>
 
               {/* Fee Display */}
               {numAmount > 0 && (
@@ -464,15 +521,15 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Bank:</span>
-                      <span className="font-semibold">{bankName}</span>
+                      <span className="font-semibold">{selectedBankAccount?.bank?.bankName}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Account:</span>
-                      <span className="font-mono font-semibold">{accountNumber}</span>
+                      <span className="font-mono font-semibold">{selectedBankAccount?.accountNumber}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Name:</span>
-                      <span className="font-semibold">{accountName}</span>
+                      <span className="font-semibold">{selectedBankAccount?.accountName}</span>
                     </div>
                   </div>
                 ) : (

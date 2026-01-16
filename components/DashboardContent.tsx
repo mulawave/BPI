@@ -57,7 +57,7 @@ import TransferModal from "./wallet/TransferModal";
 import WalletTimelineModal from "./wallet/WalletTimelineModal";
 import BptTimelineModal from "./wallet/BptTimelineModal";
 import { LocationCascadeField } from "./profile/LocationCascadeField";
-import { BankDetailsField } from "./profile/BankDetailsField";
+import { BankDetailsField } from "./profile/BankDetailsFieldEnhanced";
 
 interface DashboardContentProps {
   session: Session;
