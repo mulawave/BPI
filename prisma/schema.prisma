@@ -1265,7 +1265,7 @@ model User {
   createdAt                                                            DateTime                     @default(now())
   updatedAt                                                            DateTime                     @updatedAt
   lastLogin                                                            DateTime                     @default(now())
-  legacyId                                                             Int?                         @unique
+  legacyId                                                             String?                      @unique
   referredBy                                                           String?
   activeMembershipPackageId                                            String?
   bpiTokenWallet                                                       Float                        @default(0)
