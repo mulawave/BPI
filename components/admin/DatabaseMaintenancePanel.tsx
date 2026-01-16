@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/Modal";
 
 interface TableInfo {
   schema: string;
@@ -23,6 +24,13 @@ interface TableInfo {
   quotedName: string;
   rowEstimate: number;
   totalBytes: number;
+}
+
+interface WipeEligibilityInfo {
+  schema: string;
+  name: string;
+  rowCount: number;
+  eligible: boolean;
 }
 
 function formatBytes(bytes: number): string {
@@ -37,23 +45,85 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat().format(value || 0);
 }
 
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch (_) {
+      return "[object]";
+    }
+  }
+  return String(value);
+}
+
 export default function DatabaseMaintenancePanel() {
   const { data, isLoading, error, refetch, isRefetching } = api.admin.listDatabaseTables.useQuery(
     undefined,
     { refetchOnWindowFocus: false }
   );
   const truncateMutation = api.admin.truncateTable.useMutation();
+  const [previewTable, setPreviewTable] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const previewQuery = api.admin.previewTable.useQuery(
+    { tableName: previewTable || "", limit: 20 },
+    { enabled: Boolean(previewTable), staleTime: 30000, refetchOnWindowFocus: false }
+  );
+  const {
+    data: eligibilityData,
+    isLoading: isLoadingEligibility,
+    error: eligibilityError,
+    refetch: refetchEligibility,
+    isRefetching: isRefetchingEligibility,
+  } = api.admin.getWipeEligibility.useQuery(undefined, { refetchOnWindowFocus: false });
+  const wipeMutation = api.admin.wipeEligibleTables.useMutation();
+
+  const handlePreview = (tableName: string) => {
+    if (previewTable === tableName) {
+      setPreviewOpen(true);
+      previewQuery.refetch();
+      return;
+    }
+    setPreviewTable(tableName);
+    setPreviewOpen(true);
+  };
 
   const [search, setSearch] = useState("");
   const [confirmTable, setConfirmTable] = useState<string | null>(null);
   const [processingTable, setProcessingTable] = useState<string | null>(null);
   const confirmTargetRef = useRef<string | null>(null);
+  const [confirmWipe, setConfirmWipe] = useState(false);
 
   useEffect(() => {
     if (error) {
       toast.error(error.message || "Failed to load tables");
     }
   }, [error]);
+
+  useEffect(() => {
+    if (eligibilityError) {
+      toast.error(eligibilityError.message || "Failed to load wipe eligibility");
+    }
+  }, [eligibilityError]);
+
+  useEffect(() => {
+    if (previewQuery.error) {
+      toast.error(previewQuery.error.message || "Failed to load preview");
+    }
+  }, [previewQuery.error]);
+
+  useEffect(() => {
+    if (previewQuery.data && previewTable && previewOpen) {
+      const count = previewQuery.data.rows?.length || 0;
+      toast.success(`Loaded ${count} row${count === 1 ? "" : "s"} from ${previewTable}`);
+    }
+  }, [previewQuery.data, previewTable, previewOpen]);
+
+  useEffect(() => {
+    if (previewTable && previewOpen) {
+      previewQuery.refetch();
+    }
+  }, [previewTable, previewOpen]);
 
   const tables: TableInfo[] = useMemo(() => {
     if (!data) return [];
@@ -78,6 +148,10 @@ export default function DatabaseMaintenancePanel() {
     return tables.reduce((prev, curr) => (curr.totalBytes > prev.totalBytes ? curr : prev));
   }, [tables]);
 
+  const eligibility = (eligibilityData || []) as WipeEligibilityInfo[];
+  const eligibleTables = eligibility.filter((t) => t.eligible);
+  const blockedTables = eligibility.filter((t) => !t.eligible);
+
   const handleTruncate = async () => {
     const target = confirmTargetRef.current;
     if (!target) return;
@@ -95,6 +169,20 @@ export default function DatabaseMaintenancePanel() {
       setConfirmTable(null);
       confirmTargetRef.current = null;
       setProcessingTable(null);
+    }
+  };
+
+  const handleWipeEligible = async () => {
+    const toastId = toast.loading("Wiping eligible tables...");
+    try {
+      const result = await wipeMutation.mutateAsync();
+      toast.success(`Wiped ${result.eligibleTables.length} empty table(s).`);
+      await Promise.all([refetch(), refetchEligibility()]);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to wipe eligible tables");
+    } finally {
+      toast.dismiss(toastId);
+      setConfirmWipe(false);
     }
   };
 
@@ -262,7 +350,8 @@ export default function DatabaseMaintenancePanel() {
             ) : (
               <div className="space-y-3">
                 {tables.map((table) => {
-                  const busy = processingTable === table.name || truncateMutation.isLoading;
+                  const busy = processingTable === table.name || truncateMutation.isPending;
+                  const previewing = previewTable === table.name && previewQuery.isFetching;
                   return (
                     <motion.div
                       key={table.name}
@@ -295,6 +384,21 @@ export default function DatabaseMaintenancePanel() {
 
                       <div className="flex items-center gap-3">
                         <Button
+                          variant="ghost"
+                          className="flex items-center gap-2"
+                          onClick={() => handlePreview(table.name)}
+                          disabled={busy || previewing}
+                        >
+                          {previewing ? (
+                            <span className="inline-flex items-center gap-2">
+                              <MdRefresh className="h-4 w-4 animate-spin" />
+                              Previewing...
+                            </span>
+                          ) : (
+                            <span>Preview</span>
+                          )}
+                        </Button>
+                        <Button
                           variant="outline"
                           className="flex items-center gap-2 border-red-200 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-200 dark:hover:bg-red-950"
                           onClick={() => {
@@ -316,6 +420,88 @@ export default function DatabaseMaintenancePanel() {
         </Card>
       </div>
 
+      <Card className="border-border/70 bg-card/80 backdrop-blur">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="text-xl">Database reset / nuke</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Empty tables are eligible for wipe. Non-empty tables are protected and skipped.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              disabled={isLoadingEligibility || isRefetchingEligibility}
+              onClick={() => refetchEligibility()}
+            >
+              <MdRefresh className={`mr-2 h-4 w-4 ${isRefetchingEligibility ? "animate-spin" : ""}`} />
+              Refresh eligibility
+            </Button>
+            <Button
+              variant="outline"
+              className="border-red-200 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-200 dark:hover:bg-red-950"
+              disabled={wipeMutation.isPending || isLoadingEligibility}
+              onClick={() => setConfirmWipe(true)}
+            >
+              {wipeMutation.isPending ? "Working..." : "Wipe eligible tables"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoadingEligibility ? (
+            <div className="h-20 animate-pulse rounded-lg border border-border/60 bg-muted/30" />
+          ) : eligibilityError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700 shadow-sm dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
+              {eligibilityError.message}
+            </div>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/70 p-4 dark:border-emerald-900/40 dark:bg-emerald-900/20">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-100">Eligible (empty)</h3>
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-200">
+                    {eligibleTables.length}
+                  </span>
+                </div>
+                <div className="mt-3 max-h-48 space-y-2 overflow-auto pr-2 text-sm">
+                  {eligibleTables.length === 0 ? (
+                    <div className="text-xs text-emerald-700/80 dark:text-emerald-100/70">No empty tables found.</div>
+                  ) : (
+                    eligibleTables.map((t) => (
+                      <div key={t.name} className="flex items-center justify-between rounded-lg bg-white/70 px-3 py-2 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-100">
+                        <span>{t.name}</span>
+                        <span className="text-xs text-emerald-700/70 dark:text-emerald-100/60">rows: {formatNumber(t.rowCount)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4 dark:border-slate-800/50 dark:bg-slate-900/30">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-100">Protected (non-empty)</h3>
+                  <span className="rounded-full bg-slate-500/15 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    {blockedTables.length}
+                  </span>
+                </div>
+                <div className="mt-3 max-h-48 space-y-2 overflow-auto pr-2 text-sm">
+                  {blockedTables.length === 0 ? (
+                    <div className="text-xs text-slate-600/80 dark:text-slate-200/70">No non-empty tables.</div>
+                  ) : (
+                    blockedTables.map((t) => (
+                      <div key={t.name} className="flex items-center justify-between rounded-lg bg-white/70 px-3 py-2 text-slate-700 dark:bg-slate-900/40 dark:text-slate-100">
+                        <span>{t.name}</span>
+                        <span className="text-xs text-slate-600/70 dark:text-slate-200/60">rows: {formatNumber(t.rowCount)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <ConfirmDialog
         isOpen={Boolean(confirmTable)}
         title="Confirm truncate"
@@ -328,7 +514,7 @@ export default function DatabaseMaintenancePanel() {
             <p>All rows will be removed and sequences reset. This cannot be undone.</p>
           </div>
         }
-        confirmText={processingTable ? "Working..." : "Yes, truncate it"}
+        confirmText={processingTable || truncateMutation.isPending ? "Working..." : "Yes, truncate it"}
         cancelText="Cancel"
         onConfirm={handleTruncate}
         onClose={() => {
@@ -336,6 +522,107 @@ export default function DatabaseMaintenancePanel() {
           setConfirmTable(null);
         }}
       />
+
+      <ConfirmDialog
+        isOpen={confirmWipe}
+        title="Confirm database reset"
+        description={
+          <div className="space-y-2 text-sm text-foreground/90">
+            <p>
+              This will truncate <strong>only empty tables</strong> and reset their identities.
+            </p>
+            <p>Non-empty tables will be skipped. This cannot be undone.</p>
+          </div>
+        }
+        confirmText={wipeMutation.isPending ? "Working..." : "Yes, wipe eligible tables"}
+        cancelText="Cancel"
+        onConfirm={handleWipeEligible}
+        onClose={() => {
+          if (wipeMutation.isPending) return;
+          setConfirmWipe(false);
+        }}
+      />
+
+      <Modal
+        isOpen={previewOpen}
+        onClose={() => {
+          setPreviewOpen(false);
+        }}
+        title={previewTable ? `Preview: ${previewTable}` : "Preview"}
+        maxWidth="screen"
+      >
+        <div className="flex h-[80vh] w-full flex-col gap-4 overflow-auto pr-1">
+          <div className="flex flex-wrap items-center gap-3 justify-between">
+            <div className="text-sm text-muted-foreground">
+              Showing first 20 rows ordered by first column.
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                disabled={!previewTable || previewQuery.isFetching}
+                onClick={() => previewTable && previewQuery.refetch()}
+              >
+                <MdRefresh className={`mr-2 h-4 w-4 ${previewQuery.isFetching ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={previewQuery.isFetching}
+                onClick={() => {
+                  setPreviewOpen(false);
+                  setPreviewTable(null);
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+
+          {!previewTable ? (
+            <div className="rounded-lg border border-border/70 bg-muted/30 px-4 py-6 text-sm text-muted-foreground">
+              Choose a table to preview its contents.
+            </div>
+          ) : previewQuery.isFetching ? (
+            <div className="h-20 animate-pulse rounded-lg border border-border/60 bg-muted/30" />
+          ) : previewQuery.error ? (
+            <div className="flex flex-col gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700 shadow-sm dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
+              <div className="font-semibold">Failed to load preview.</div>
+              <div className="text-xs text-red-600/80 dark:text-red-100/80">{previewQuery.error.message}</div>
+            </div>
+          ) : previewQuery.data?.rows && previewQuery.data.rows.length > 0 ? (
+            <div className="max-h-[70vh] overflow-auto rounded-lg border border-border/70">
+              <table className="w-full min-w-max text-sm">
+                <thead className="border-b border-border/70 bg-muted/40">
+                  <tr>
+                    {previewQuery.data.columns.map((col) => (
+                      <th key={col.column_name} className="px-3 py-2 text-left font-semibold text-foreground">
+                        {col.column_name}
+                        <span className="ml-2 text-xs text-muted-foreground">{col.data_type}
+                        </span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {previewQuery.data.rows.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-muted/40">
+                      {previewQuery.data.columns.map((col) => (
+                        <td key={col.column_name} className="px-3 py-2 align-top text-sm text-foreground">
+                          {formatCell(row[col.column_name])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border/70 bg-muted/30 px-4 py-6 text-sm text-muted-foreground">
+              No rows found.
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

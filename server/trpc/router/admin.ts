@@ -2800,11 +2800,11 @@ export const adminRouter = createTRPCRouter({
         t.schemaname,
         t.tablename,
         quote_ident(t.tablename) AS quoted_name,
-        COALESCE(ps.reltuples::bigint, 0) AS row_estimate,
+        COALESCE(pgc.reltuples::bigint, 0) AS row_estimate,
         pg_total_relation_size(('"' || t.schemaname || '"."' || t.tablename || '"')::regclass) AS total_bytes
       FROM pg_catalog.pg_tables t
-      LEFT JOIN pg_stat_all_tables ps
-        ON ps.schemaname = t.schemaname AND ps.relname = t.tablename
+      LEFT JOIN pg_class pgc
+        ON pgc.oid = format('"%s"."%s"', t.schemaname, t.tablename)::regclass
       WHERE t.schemaname = 'public'
       ORDER BY t.tablename;
     `;
@@ -2858,6 +2858,135 @@ export const adminRouter = createTRPCRouter({
 
       return { truncated: target.tablename };
     }),
+
+  previewTable: superAdminProcedure
+    .input(
+      z.object({
+        tableName: z.string().min(1, "Table name is required"),
+        limit: z.number().min(1).max(100).default(20),
+      })
+    )
+    .query(async ({ input }) => {
+      const exists = await prisma.$queryRaw<
+        Array<{ schemaname: string; tablename: string; quoted_name: string }>
+      >`
+        SELECT schemaname, tablename, quote_ident(tablename) as quoted_name
+        FROM pg_tables
+        WHERE schemaname = 'public' AND tablename = ${input.tableName}
+      `;
+
+      const target = exists[0];
+      if (!target) {
+        throw new Error("Table not found in public schema");
+      }
+
+      const tableIdent = `"${target.schemaname}".${target.quoted_name}`;
+
+      const columns = await prisma.$queryRaw<
+        Array<{ column_name: string; data_type: string }>
+      >`
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema = ${target.schemaname} AND table_name = ${target.tablename}
+        ORDER BY ordinal_position
+      `;
+
+      const rows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT * FROM ${tableIdent} ORDER BY 1 LIMIT ${input.limit};`
+      );
+
+      return {
+        columns,
+        rows,
+        table: target.tablename,
+        schema: target.schemaname,
+        limit: input.limit,
+      };
+    }),
+
+  getWipeEligibility: superAdminProcedure.query(async () => {
+    const tables = await prisma.$queryRaw<
+      Array<{ schemaname: string; tablename: string; quoted_name: string }>
+    >`
+      SELECT schemaname, tablename, quote_ident(tablename) as quoted_name
+      FROM pg_tables
+      WHERE schemaname = 'public'
+      ORDER BY tablename
+    `;
+
+    const withCounts = await Promise.all(
+      tables.map(async (t) => {
+        const tableIdent = `"${t.schemaname}".${t.quoted_name}`;
+        const result = await prisma.$queryRawUnsafe<
+          Array<{ row_count: bigint | number | string }>
+        >(`SELECT COUNT(*)::bigint AS row_count FROM ${tableIdent};`);
+        const rowCount = Number(result?.[0]?.row_count ?? 0);
+        return {
+          schema: t.schemaname,
+          name: t.tablename,
+          rowCount,
+          eligible: rowCount === 0,
+        };
+      })
+    );
+
+    return withCounts;
+  }),
+
+  wipeEligibleTables: superAdminProcedure.mutation(async ({ ctx }) => {
+    const now = new Date();
+    const tables = await prisma.$queryRaw<
+      Array<{ schemaname: string; tablename: string; quoted_name: string }>
+    >`
+      SELECT schemaname, tablename, quote_ident(tablename) as quoted_name
+      FROM pg_tables
+      WHERE schemaname = 'public'
+      ORDER BY tablename
+    `;
+
+    const withCounts = await Promise.all(
+      tables.map(async (t) => {
+        const tableIdent = `"${t.schemaname}".${t.quoted_name}`;
+        const result = await prisma.$queryRawUnsafe<
+          Array<{ row_count: bigint | number | string }>
+        >(`SELECT COUNT(*)::bigint AS row_count FROM ${tableIdent};`);
+        const rowCount = Number(result?.[0]?.row_count ?? 0);
+        return { ...t, rowCount };
+      })
+    );
+
+    const eligible = withCounts.filter((t) => t.rowCount === 0);
+    if (eligible.length) {
+      const quoted = eligible
+        .map((t) => `"${t.schemaname}".${t.quoted_name}`)
+        .join(", ");
+      await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${quoted} RESTART IDENTITY CASCADE;`);
+    }
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: (ctx.session?.user as any)?.id || "system",
+          action: "WIPE_ELIGIBLE_TABLES",
+          entity: "Database",
+          entityId: "wipe-eligible",
+          status: "success",
+          changes: JSON.stringify({
+            eligible: eligible.map((t) => t.tablename),
+            skipped: withCounts.filter((t) => t.rowCount > 0).map((t) => t.tablename),
+          }),
+          createdAt: now,
+        },
+      });
+    } catch (_) {}
+
+    return {
+      eligibleTables: eligible.map((t) => t.tablename),
+      skippedTables: withCounts.filter((t) => t.rowCount > 0).map((t) => t.tablename),
+      totalTables: withCounts.length,
+    };
+  }),
 
   getPendingEmpowermentPackages: adminProcedure.query(async () => {
     return await prisma.empowermentPackage.findMany({
