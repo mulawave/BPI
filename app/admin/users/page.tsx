@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/client/trpc";
 import {
@@ -65,7 +65,7 @@ export default function UsersPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
 
-  const { data, isLoading, refetch } = api.admin.getUsers.useQuery({
+  const { data, isLoading, refetch, isFetching } = api.admin.getUsers.useQuery({
     page,
     pageSize,
     search: search || undefined,
@@ -73,7 +73,25 @@ export default function UsersPage() {
     activated: activatedFilter,
     sortBy: "createdAt",
     sortOrder: "desc",
+  }, {
+    keepPreviousData: true,
+    refetchOnWindowFocus: false,
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    cacheTime: 300000, // Keep in cache for 5 minutes
   });
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [search, roleFilter, activatedFilter]);
+
+  // Memoize row selection to prevent infinite re-renders
+  const rowSelection = useMemo(() => {
+    if (!data?.users) return {};
+    return Object.fromEntries(
+      data.users.map((user, idx) => [idx, selectedUsers.has(user.id)])
+    );
+  }, [data?.users, selectedUsers]);
 
   const activeFiltersCount =
     (search ? 1 : 0) + (roleFilter ? 1 : 0) + (activatedFilter !== undefined ? 1 : 0);
@@ -204,27 +222,23 @@ export default function UsersPage() {
     data: data?.users || [],
     columns,
     getCoreRowModel: getCoreRowModel(),
+    manualPagination: true,
+    enableRowSelection: true,
     onRowSelectionChange: (updater) => {
+      const currentSelection = rowSelection;
       const newSelection =
-        typeof updater === "function"
-          ? updater(
-              Object.fromEntries(
-                Array.from(selectedUsers).map((id, idx) => [idx, true])
-              )
-            )
-          : updater;
+        typeof updater === "function" ? updater(currentSelection) : updater;
+      
       const selectedIds = new Set(
         Object.keys(newSelection)
           .filter((key) => newSelection[key])
           .map((idx) => data?.users[Number(idx)]?.id)
-          .filter(Boolean) as string[]
+          .filter((id): id is string => Boolean(id))
       );
       setSelectedUsers(selectedIds);
     },
     state: {
-      rowSelection: Object.fromEntries(
-        data?.users.map((user, idx) => [idx, selectedUsers.has(user.id)]) || []
-      ),
+      rowSelection,
     },
   });
 
@@ -523,7 +537,7 @@ export default function UsersPage() {
                 ))}
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {isLoading ? (
+                {isLoading || isFetching ? (
                   <tr>
                     <td colSpan={columns.length} className="px-6 py-16 text-center">
                       <div className="flex flex-col items-center gap-4">
@@ -531,7 +545,9 @@ export default function UsersPage() {
                           <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 opacity-20 blur-xl animate-pulse" />
                           <div className="relative w-12 h-12 border-4 border-blue-200 dark:border-blue-900 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin" />
                         </div>
-                        <p className="text-gray-500 dark:text-gray-400 font-medium">Loading users...</p>
+                        <p className="text-gray-500 dark:text-gray-400 font-medium">
+                          {isLoading ? "Loading users..." : "Switching page..."}
+                        </p>
                       </div>
                     </td>
                   </tr>
@@ -579,25 +595,29 @@ export default function UsersPage() {
                 Showing <span className="font-bold text-blue-600 dark:text-blue-400">{(page - 1) * pageSize + 1}</span> to{" "}
                 <span className="font-bold text-blue-600 dark:text-blue-400">{Math.min(page * pageSize, data.total)}</span> of{" "}
                 <span className="font-bold text-blue-600 dark:text-blue-400">{data.total}</span> users
+                {isFetching && <span className="ml-2 text-blue-500 animate-pulse">Loading...</span>}
               </div>
               <div className="flex gap-2">
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setPage(page - 1)}
-                  disabled={page === 1}
+                  disabled={page === 1 || isFetching}
                   className="px-5 py-2.5 border-2 border-gray-200 dark:border-gray-700 rounded-xl hover:bg-white dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition-all shadow-sm"
                 >
-                  Previous
+                  {isFetching ? "..." : "Previous"}
                 </motion.button>
+                <div className="flex items-center px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                  Page {page} of {data.pages}
+                </div>
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setPage(page + 1)}
-                  disabled={page >= data.pages}
+                  disabled={page >= data.pages || isFetching}
                   className="px-5 py-2.5 border-2 border-gray-200 dark:border-gray-700 rounded-xl hover:bg-white dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition-all shadow-sm"
                 >
-                  Next
+                  {isFetching ? "..." : "Next"}
                 </motion.button>
               </div>
             </div>

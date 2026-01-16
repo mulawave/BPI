@@ -150,7 +150,8 @@ export const adminRouter = createTRPCRouter({
       if (role) where.role = role;
       if (activated !== undefined) where.activated = activated;
 
-      const [users, total] = await Promise.all([
+      // Use transaction for consistent count and data
+      const [users, total] = await prisma.$transaction([
         prisma.user.findMany({
           where,
           skip,
@@ -169,9 +170,6 @@ export const adminRouter = createTRPCRouter({
             wallet: true,
             spendable: true,
             bpiTokenWallet: true,
-            activeMembershipPackageId: true,
-            membershipActivatedAt: true,
-            membershipExpiresAt: true,
             level1Count: true,
             level2Count: true,
             level3Count: true,
