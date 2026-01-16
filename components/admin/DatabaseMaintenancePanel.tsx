@@ -76,7 +76,15 @@ export default function DatabaseMaintenancePanel() {
     refetch: refetchEligibility,
     isRefetching: isRefetchingEligibility,
   } = api.admin.getWipeEligibility.useQuery(undefined, { refetchOnWindowFocus: false });
-  const wipeMutation = api.admin.wipeEligibleTables.useMutation();
+  const {
+    data: wipeProfile,
+    isLoading: isLoadingWipeProfile,
+    error: wipeProfileError,
+    refetch: refetchWipeProfile,
+    isRefetching: isRefetchingWipeProfile,
+  } = api.admin.getWipeProfile.useQuery(undefined, { refetchOnWindowFocus: false });
+  const captureWipeProfileMutation = api.admin.captureWipeProfile.useMutation();
+  const wipeMutation = api.admin.wipeStoredTables.useMutation();
 
   const handlePreview = (tableName: string) => {
     if (previewTable === tableName) {
@@ -105,6 +113,12 @@ export default function DatabaseMaintenancePanel() {
       toast.error(eligibilityError.message || "Failed to load wipe eligibility");
     }
   }, [eligibilityError]);
+
+  useEffect(() => {
+    if (wipeProfileError) {
+      toast.error(wipeProfileError.message || "Failed to load wipe profile");
+    }
+  }, [wipeProfileError]);
 
   useEffect(() => {
     if (previewQuery.error) {
@@ -172,14 +186,27 @@ export default function DatabaseMaintenancePanel() {
     }
   };
 
+  const handleCaptureWipeProfile = async () => {
+    const toastId = toast.loading("Capturing wipeable table list...");
+    try {
+      const result = await captureWipeProfileMutation.mutateAsync();
+      toast.success(`Captured ${result.wipeableTables.length} wipeable table(s).`);
+      await Promise.all([refetchEligibility(), refetchWipeProfile()]);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to capture wipe profile");
+    } finally {
+      toast.dismiss(toastId);
+    }
+  };
+
   const handleWipeEligible = async () => {
-    const toastId = toast.loading("Wiping eligible tables...");
+    const toastId = toast.loading("Resetting database using stored table list...");
     try {
       const result = await wipeMutation.mutateAsync();
-      toast.success(`Wiped ${result.eligibleTables.length} empty table(s).`);
-      await Promise.all([refetch(), refetchEligibility()]);
+      toast.success(`Wiped ${result.wipedTables.length} table(s).`);
+      await Promise.all([refetch(), refetchEligibility(), refetchWipeProfile()]);
     } catch (err: any) {
-      toast.error(err?.message || "Failed to wipe eligible tables");
+      toast.error(err?.message || "Failed to reset database");
     } finally {
       toast.dismiss(toastId);
       setConfirmWipe(false);
@@ -425,7 +452,7 @@ export default function DatabaseMaintenancePanel() {
           <div>
             <CardTitle className="text-xl">Database reset / nuke</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Empty tables are eligible for wipe. Non-empty tables are protected and skipped.
+              Capture wipeable table names once (from currently empty tables), then reset using that stored list.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -439,11 +466,18 @@ export default function DatabaseMaintenancePanel() {
             </Button>
             <Button
               variant="outline"
+              disabled={captureWipeProfileMutation.isPending || isLoadingEligibility}
+              onClick={handleCaptureWipeProfile}
+            >
+              {captureWipeProfileMutation.isPending ? "Capturing..." : "Capture wipeable list"}
+            </Button>
+            <Button
+              variant="outline"
               className="border-red-200 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-200 dark:hover:bg-red-950"
-              disabled={wipeMutation.isPending || isLoadingEligibility}
+              disabled={wipeMutation.isPending || isLoadingWipeProfile || !wipeProfile?.wipeableTables?.length}
               onClick={() => setConfirmWipe(true)}
             >
-              {wipeMutation.isPending ? "Working..." : "Wipe eligible tables"}
+              {wipeMutation.isPending ? "Working..." : "Reset using stored list"}
             </Button>
           </div>
         </CardHeader>
@@ -458,7 +492,7 @@ export default function DatabaseMaintenancePanel() {
             <div className="grid gap-6 lg:grid-cols-2">
               <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/70 p-4 dark:border-emerald-900/40 dark:bg-emerald-900/20">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-100">Eligible (empty)</h3>
+                  <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-100">Wipeable (empty tables)</h3>
                   <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-200">
                     {eligibleTables.length}
                   </span>
@@ -479,7 +513,7 @@ export default function DatabaseMaintenancePanel() {
 
               <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4 dark:border-slate-800/50 dark:bg-slate-900/30">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-100">Protected (non-empty)</h3>
+                  <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-100">Protected (non-empty tables)</h3>
                   <span className="rounded-full bg-slate-500/15 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
                     {blockedTables.length}
                   </span>
@@ -499,6 +533,66 @@ export default function DatabaseMaintenancePanel() {
               </div>
             </div>
           )}
+          <div className="mt-6 rounded-xl border border-border/70 bg-muted/20 p-4 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold text-foreground">Stored wipe profile</p>
+                <p className="text-xs text-muted-foreground">
+                  {wipeProfile?.capturedAt
+                    ? `Captured at ${new Date(wipeProfile.capturedAt).toLocaleString()}`
+                    : "Not captured yet"}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                disabled={isLoadingWipeProfile || isRefetchingWipeProfile}
+                onClick={() => refetchWipeProfile()}
+              >
+                <MdRefresh className={`mr-2 h-4 w-4 ${isRefetchingWipeProfile ? "animate-spin" : ""}`} />
+                Refresh profile
+              </Button>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-emerald-200/70 bg-emerald-50/60 p-3 text-xs text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-100">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">Stored wipeable tables</span>
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold">
+                    {wipeProfile?.wipeableTables?.length || 0}
+                  </span>
+                </div>
+                <div className="mt-2 max-h-28 space-y-1 overflow-auto pr-2">
+                  {(wipeProfile?.wipeableTables || []).length === 0 ? (
+                    <div className="text-[11px] text-emerald-700/70 dark:text-emerald-100/70">No stored list yet.</div>
+                  ) : (
+                    (wipeProfile?.wipeableTables || []).map((name) => (
+                      <div key={name} className="rounded bg-white/70 px-2 py-1 dark:bg-emerald-900/30">
+                        {name}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="rounded-lg border border-slate-200/70 bg-slate-50/60 p-3 text-xs text-slate-800 dark:border-slate-800/50 dark:bg-slate-900/20 dark:text-slate-100">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">Stored protected tables</span>
+                  <span className="rounded-full bg-slate-500/15 px-2 py-0.5 text-[10px] font-semibold">
+                    {wipeProfile?.protectedTables?.length || 0}
+                  </span>
+                </div>
+                <div className="mt-2 max-h-28 space-y-1 overflow-auto pr-2">
+                  {(wipeProfile?.protectedTables || []).length === 0 ? (
+                    <div className="text-[11px] text-slate-600/70 dark:text-slate-200/70">No stored list yet.</div>
+                  ) : (
+                    (wipeProfile?.protectedTables || []).map((name) => (
+                      <div key={name} className="rounded bg-white/70 px-2 py-1 dark:bg-slate-900/30">
+                        {name}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -529,12 +623,12 @@ export default function DatabaseMaintenancePanel() {
         description={
           <div className="space-y-2 text-sm text-foreground/90">
             <p>
-              This will truncate <strong>only empty tables</strong> and reset their identities.
+              This will truncate <strong>only the stored wipeable tables</strong> and reset their identities.
             </p>
-            <p>Non-empty tables will be skipped. This cannot be undone.</p>
+            <p>Protected tables will be skipped. This cannot be undone.</p>
           </div>
         }
-        confirmText={wipeMutation.isPending ? "Working..." : "Yes, wipe eligible tables"}
+        confirmText={wipeMutation.isPending ? "Working..." : "Yes, reset using stored list"}
         cancelText="Cancel"
         onConfirm={handleWipeEligible}
         onClose={() => {

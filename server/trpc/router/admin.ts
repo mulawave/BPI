@@ -2933,8 +2933,40 @@ export const adminRouter = createTRPCRouter({
     return withCounts;
   }),
 
-  wipeEligibleTables: superAdminProcedure.mutation(async ({ ctx }) => {
-    const now = new Date();
+  getWipeProfile: superAdminProcedure.query(async () => {
+    const setting = await prisma.adminSettings.findUnique({
+      where: { settingKey: "db_wipe_profile" },
+    });
+
+    if (!setting) {
+      return {
+        wipeableTables: [],
+        protectedTables: [],
+        capturedAt: null as string | null,
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(setting.settingValue || "{}") as {
+        wipeableTables?: string[];
+        protectedTables?: string[];
+        capturedAt?: string;
+      };
+      return {
+        wipeableTables: parsed.wipeableTables || [],
+        protectedTables: parsed.protectedTables || [],
+        capturedAt: parsed.capturedAt || null,
+      };
+    } catch (_) {
+      return {
+        wipeableTables: [],
+        protectedTables: [],
+        capturedAt: null as string | null,
+      };
+    }
+  }),
+
+  captureWipeProfile: superAdminProcedure.mutation(async ({ ctx }) => {
     const tables = await prisma.$queryRaw<
       Array<{ schemaname: string; tablename: string; quoted_name: string }>
     >`
@@ -2955,9 +2987,83 @@ export const adminRouter = createTRPCRouter({
       })
     );
 
-    const eligible = withCounts.filter((t) => t.rowCount === 0);
-    if (eligible.length) {
-      const quoted = eligible
+    const wipeableTables = withCounts.filter((t) => t.rowCount === 0).map((t) => t.tablename);
+    const protectedTables = withCounts.filter((t) => t.rowCount > 0).map((t) => t.tablename);
+    const capturedAt = new Date().toISOString();
+
+    await prisma.adminSettings.upsert({
+      where: { settingKey: "db_wipe_profile" },
+      update: {
+        settingValue: JSON.stringify({ wipeableTables, protectedTables, capturedAt }),
+        description: "Captured wipeable/protected table lists for database reset",
+        updatedAt: new Date(),
+      },
+      create: {
+        id: randomUUID(),
+        settingKey: "db_wipe_profile",
+        settingValue: JSON.stringify({ wipeableTables, protectedTables, capturedAt }),
+        description: "Captured wipeable/protected table lists for database reset",
+        updatedAt: new Date(),
+      },
+    });
+
+    try {
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: (ctx.session?.user as any)?.id || "system",
+          action: "CAPTURE_WIPE_PROFILE",
+          entity: "Database",
+          entityId: "wipe-profile",
+          status: "success",
+          changes: JSON.stringify({ wipeableTables, protectedTables }),
+          createdAt: new Date(),
+        },
+      });
+    } catch (_) {}
+
+    return { wipeableTables, protectedTables, capturedAt };
+  }),
+
+  wipeStoredTables: superAdminProcedure.mutation(async ({ ctx }) => {
+    const now = new Date();
+    const setting = await prisma.adminSettings.findUnique({
+      where: { settingKey: "db_wipe_profile" },
+    });
+
+    if (!setting) {
+      throw new Error("No wipe profile captured yet");
+    }
+
+    let wipeableTables: string[] = [];
+    try {
+      const parsed = JSON.parse(setting.settingValue || "{}") as { wipeableTables?: string[] };
+      wipeableTables = parsed.wipeableTables || [];
+    } catch (_) {
+      wipeableTables = [];
+    }
+
+    if (!wipeableTables.length) {
+      throw new Error("No wipeable tables stored in wipe profile");
+    }
+
+    const tables = await prisma.$queryRaw<
+      Array<{ schemaname: string; tablename: string; quoted_name: string }>
+    >`
+      SELECT schemaname, tablename, quote_ident(tablename) as quoted_name
+      FROM pg_tables
+      WHERE schemaname = 'public'
+      ORDER BY tablename
+    `;
+
+    const requested = new Set(wipeableTables.map((t) => t.toLowerCase()));
+    const candidates = tables.filter((t) => requested.has(t.tablename.toLowerCase()));
+    const missing = wipeableTables.filter(
+      (t) => !candidates.some((c) => c.tablename.toLowerCase() === t.toLowerCase())
+    );
+
+    if (candidates.length) {
+      const quoted = candidates
         .map((t) => `"${t.schemaname}".${t.quoted_name}`)
         .join(", ");
       await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${quoted} RESTART IDENTITY CASCADE;`);
@@ -2968,23 +3074,20 @@ export const adminRouter = createTRPCRouter({
         data: {
           id: randomUUID(),
           userId: (ctx.session?.user as any)?.id || "system",
-          action: "WIPE_ELIGIBLE_TABLES",
+          action: "WIPE_STORED_TABLES",
           entity: "Database",
-          entityId: "wipe-eligible",
+          entityId: "wipe-stored",
           status: "success",
-          changes: JSON.stringify({
-            eligible: eligible.map((t) => t.tablename),
-            skipped: withCounts.filter((t) => t.rowCount > 0).map((t) => t.tablename),
-          }),
+          changes: JSON.stringify({ wiped: candidates.map((t) => t.tablename), missing }),
           createdAt: now,
         },
       });
     } catch (_) {}
 
     return {
-      eligibleTables: eligible.map((t) => t.tablename),
-      skippedTables: withCounts.filter((t) => t.rowCount > 0).map((t) => t.tablename),
-      totalTables: withCounts.length,
+      wipedTables: candidates.map((t) => t.tablename),
+      missingTables: missing,
+      totalRequested: wipeableTables.length,
     };
   }),
 

@@ -43,6 +43,44 @@ async function main() {
     }
   }
 
+  const superAdminEmail = process.env.SEED_SUPER_ADMIN_EMAIL;
+  const superAdminPassword = process.env.SEED_SUPER_ADMIN_PASSWORD;
+  const superAdminName = process.env.SEED_SUPER_ADMIN_NAME || "Super Admin";
+
+  if (superAdminEmail && superAdminPassword) {
+    const passwordHash = await hash(superAdminPassword, 10);
+    const now = new Date();
+
+    const superAdmin = await prisma.user.upsert({
+      where: { email: superAdminEmail },
+      update: {
+        name: superAdminName,
+        passwordHash,
+        role: "super_admin",
+        activated: true,
+        verified: true,
+        emailVerified: now,
+        updatedAt: now,
+      },
+      create: {
+        id: randomUUID(),
+        email: superAdminEmail,
+        name: superAdminName,
+        passwordHash,
+        role: "super_admin",
+        activated: true,
+        verified: true,
+        emailVerified: now,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
+    console.log("Seed: ensured super admin:", superAdmin.email);
+  } else {
+    console.log("Seed: skipped super admin (set SEED_SUPER_ADMIN_EMAIL and SEED_SUPER_ADMIN_PASSWORD)");
+  }
+
   // Seed membership packages (system data)
   for (const pkgData of membershipPackagesSeedData) {
     await prisma.membershipPackage.upsert({
