@@ -54,7 +54,7 @@ type User = {
 
 export default function UsersPage() {
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
+  const [pageSize] = useState(50);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"user" | "admin" | "super_admin" | undefined>();
   const [activatedFilter, setActivatedFilter] = useState<boolean | undefined>();

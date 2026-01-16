@@ -125,7 +125,7 @@ export const adminRouter = createTRPCRouter({
     .input(
       z.object({
         page: z.number().default(1),
-        pageSize: z.number().default(10),
+        pageSize: z.number().default(50),
         search: z.string().optional(),
         role: z.enum(["user", "admin", "super_admin"]).optional(),
         activated: z.boolean().optional(),
