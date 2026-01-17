@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, X, Edit, Building2, Trash2, Plus } from "lucide-react";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
+import Link from "next/link";
 
 interface BankDetailsFieldProps {
   userId: string;
@@ -12,6 +13,7 @@ interface BankDetailsFieldProps {
 export function BankDetailsField({ userId }: BankDetailsFieldProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     bankId: "",
     accountName: "",
@@ -55,10 +57,12 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
   const deleteMutation = api.bank.deleteBankAccount.useMutation({
     onSuccess: () => {
       toast.success("Bank account deleted successfully");
+      setDeletingId(null);
       utils.bank.getUserBankRecords.invalidate();
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to delete bank account");
+      setDeletingId(null);
     },
   });
 
@@ -149,6 +153,7 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
           <button
             onClick={() => {
               toast.dismiss(t.id);
+              setDeletingId(id);
               deleteMutation.mutate({ id });
             }}
             className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
@@ -257,9 +262,13 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
                     <button
                       onClick={handleSave}
                       disabled={isPending}
-                      className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors disabled:opacity-50"
+                      className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors disabled:opacity-50 flex items-center gap-1"
                     >
-                      <Check className="w-3 h-3" />
+                      {isPending ? (
+                        <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Check className="w-3 h-3" />
+                      )}
                     </button>
                     <button
                       onClick={handleCancel}
@@ -286,15 +295,21 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
                   <div className="flex items-center gap-0.5">
                     <button
                       onClick={() => handleEdit(record)}
-                      className="p-0.5 text-bpi-primary hover:bg-bpi-primary/10 rounded transition-colors"
+                      disabled={isPending || deletingId === record.id}
+                      className="p-0.5 text-bpi-primary hover:bg-bpi-primary/10 rounded transition-colors disabled:opacity-50"
                     >
                       <Edit className="w-3 h-3" />
                     </button>
                     <button
                       onClick={() => handleDelete(record.id)}
-                      className="p-0.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                      disabled={deletingId === record.id}
+                      className="p-0.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors disabled:opacity-50"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      {deletingId === record.id ? (
+                        <div className="w-3 h-3 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3 h-3" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -384,10 +399,9 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
           {(securityReqs?.needsPinSetup || securityReqs?.needs2FASetup) && (
             <div className="text-[10px] text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 p-1.5 rounded">
               ⚠️ Please set up your security features in{' '}
-              <a href="/settings" className="underline font-medium">Account Settings</a> first
+              <Link href="/settings" className="underline font-medium">Account Settings</Link> first
             </div>
           )}
-          </div>
 
           <div>
             <label className="text-[10px] text-muted-foreground">BVN (Optional)</label>
@@ -406,9 +420,13 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
             <button
               onClick={handleSave}
               disabled={isPending}
-              className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors disabled:opacity-50"
+              className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors disabled:opacity-50 flex items-center gap-1"
             >
-              <Check className="w-3 h-3" />
+              {isPending ? (
+                <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Check className="w-3 h-3" />
+              )}
             </button>
             <button
               onClick={handleCancel}

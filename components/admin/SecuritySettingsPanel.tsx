@@ -80,13 +80,17 @@ export default function SecuritySettingsPanel() {
               <button
                 onClick={() => handleToggleSetting('pin_enabled', systemSettings?.pin_enabled?.value || 'false')}
                 disabled={updateSettingMutation.isPending}
-                className={`px-4 py-2 rounded-lg transition-colors disabled:opacity-50 ${
+                className={`px-4 py-2 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2 min-w-[100px] justify-center ${
                   pinEnabled
                     ? 'bg-red-500 hover:bg-red-600 text-white'
                     : 'bg-green-500 hover:bg-green-600 text-white'
                 }`}
               >
-                {pinEnabled ? 'Disable' : 'Enable'}
+                {updateSettingMutation.isPending ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  pinEnabled ? 'Disable' : 'Enable'
+                )}
               </button>
             </div>
           </div>
@@ -119,13 +123,17 @@ export default function SecuritySettingsPanel() {
               <button
                 onClick={() => handleToggleSetting('two_factor_enabled', systemSettings?.two_factor_enabled?.value || 'false')}
                 disabled={updateSettingMutation.isPending}
-                className={`px-4 py-2 rounded-lg transition-colors disabled:opacity-50 ${
+                className={`px-4 py-2 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2 min-w-[100px] justify-center ${
                   twoFAEnabled
                     ? 'bg-red-500 hover:bg-red-600 text-white'
                     : 'bg-green-500 hover:bg-green-600 text-white'
                 }`}
               >
-                {twoFAEnabled ? 'Disable' : 'Enable'}
+                {updateSettingMutation.isPending ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  twoFAEnabled ? 'Disable' : 'Enable'
+                )}
               </button>
             </div>
           </div>

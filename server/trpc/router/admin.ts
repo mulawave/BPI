@@ -5148,4 +5148,161 @@ export const adminRouter = createTRPCRouter({
         count: logs.length,
       };
     }),
+
+  // Third Party Platforms Management
+  getAllThirdPartyPlatforms: adminProcedure.query(async ({ ctx }) => {
+    return await ctx.prisma.thirdPartyPlatform.findMany({
+      orderBy: { displayOrder: 'asc' },
+      include: {
+        _count: {
+          select: {
+            UserThirdPartyLink: true,
+            ThirdPartyRegistration: true,
+          },
+        },
+      },
+    });
+  }),
+
+  createThirdPartyPlatform: adminProcedure
+    .input(
+      z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+        registrationUrl: z.string().optional(),
+        adminDefaultLink: z.string().optional(),
+        category: z.string().optional(),
+        logo: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Get the highest display order
+      const lastPlatform = await ctx.prisma.thirdPartyPlatform.findFirst({
+        orderBy: { displayOrder: 'desc' },
+        select: { displayOrder: true },
+      });
+
+      const nextOrder = (lastPlatform?.displayOrder ?? 0) + 1;
+
+      return await ctx.prisma.thirdPartyPlatform.create({
+        data: {
+          id: randomUUID(),
+          name: input.name,
+          description: input.description,
+          registrationUrl: input.registrationUrl,
+          adminDefaultLink: input.adminDefaultLink,
+          category: input.category,
+          logo: input.logo,
+          displayOrder: nextOrder,
+          isActive: true,
+          updatedAt: new Date(),
+        },
+      });
+    }),
+
+  updateThirdPartyPlatform: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string().min(1),
+        description: z.string().optional(),
+        registrationUrl: z.string().optional(),
+        adminDefaultLink: z.string().optional(),
+        category: z.string().optional(),
+        logo: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+      return await ctx.prisma.thirdPartyPlatform.update({
+        where: { id },
+        data: {
+          ...data,
+          updatedAt: new Date(),
+        },
+      });
+    }),
+
+  deleteThirdPartyPlatform: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return await ctx.prisma.thirdPartyPlatform.delete({
+        where: { id: input.id },
+      });
+    }),
+
+  toggleThirdPartyPlatformStatus: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        isActive: z.boolean(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return await ctx.prisma.thirdPartyPlatform.update({
+        where: { id: input.id },
+        data: {
+          isActive: input.isActive,
+          updatedAt: new Date(),
+        },
+      });
+    }),
+
+  reorderThirdPartyPlatform: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        direction: z.enum(['up', 'down']),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const platform = await ctx.prisma.thirdPartyPlatform.findUnique({
+        where: { id: input.id },
+        select: { displayOrder: true },
+      });
+
+      if (!platform) throw new Error("Platform not found");
+
+      if (input.direction === 'up') {
+        // Find the platform with the next lower order
+        const swapPlatform = await ctx.prisma.thirdPartyPlatform.findFirst({
+          where: { displayOrder: { lt: platform.displayOrder } },
+          orderBy: { displayOrder: 'desc' },
+        });
+
+        if (swapPlatform) {
+          await ctx.prisma.$transaction([
+            ctx.prisma.thirdPartyPlatform.update({
+              where: { id: input.id },
+              data: { displayOrder: swapPlatform.displayOrder, updatedAt: new Date() },
+            }),
+            ctx.prisma.thirdPartyPlatform.update({
+              where: { id: swapPlatform.id },
+              data: { displayOrder: platform.displayOrder, updatedAt: new Date() },
+            }),
+          ]);
+        }
+      } else {
+        // Find the platform with the next higher order
+        const swapPlatform = await ctx.prisma.thirdPartyPlatform.findFirst({
+          where: { displayOrder: { gt: platform.displayOrder } },
+          orderBy: { displayOrder: 'asc' },
+        });
+
+        if (swapPlatform) {
+          await ctx.prisma.$transaction([
+            ctx.prisma.thirdPartyPlatform.update({
+              where: { id: input.id },
+              data: { displayOrder: swapPlatform.displayOrder, updatedAt: new Date() },
+            }),
+            ctx.prisma.thirdPartyPlatform.update({
+              where: { id: swapPlatform.id },
+              data: { displayOrder: platform.displayOrder, updatedAt: new Date() },
+            }),
+          ]);
+        }
+      }
+
+      return { success: true };
+    }),
 });

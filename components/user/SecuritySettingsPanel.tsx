@@ -273,16 +273,24 @@ export default function UserSecuritySettingsPanel() {
                     <button
                       onClick={handleSetupPin}
                       disabled={setupPinMutation.isPending}
-                      className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50"
+                      className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                     >
-                      {setupPinMutation.isPending ? 'Saving...' : 'Save PIN'}
+                      {setupPinMutation.isPending ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        'Save PIN'
+                      )}
                     </button>
                     <button
                       onClick={() => {
                         setShowPinSetup(false);
                         setPinData({ currentPin: '', newPin: '', confirmPin: '' });
                       }}
-                      className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                      disabled={setupPinMutation.isPending}
+                      className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
                     >
                       Cancel
                     </button>
@@ -374,16 +382,24 @@ export default function UserSecuritySettingsPanel() {
                       <button
                         onClick={handleDisable2FA}
                         disabled={disable2FAMutation.isPending}
-                        className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50"
+                        className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                       >
-                        {disable2FAMutation.isPending ? 'Disabling...' : 'Disable 2FA'}
+                        {disable2FAMutation.isPending ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Disabling...
+                          </>
+                        ) : (
+                          'Disable 2FA'
+                        )}
                       </button>
                       <button
                         onClick={() => {
                           setShowDisable2FA(false);
                           setDisable2FAData({ pin: '', code: '' });
                         }}
-                        className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                        disabled={disable2FAMutation.isPending}
+                        className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
                       >
                         Cancel
                       </button>
@@ -397,9 +413,17 @@ export default function UserSecuritySettingsPanel() {
                       setShow2FASetup(true);
                       handleSetup2FA();
                     }}
-                    className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    disabled={setup2FAMutation.isPending}
+                    className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    Enable 2FA
+                    {setup2FAMutation.isPending ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Setting up...
+                      </>
+                    ) : (
+                      'Enable 2FA'
+                    )}
                   </button>
                 ) : (
                   <motion.div
@@ -459,9 +483,16 @@ export default function UserSecuritySettingsPanel() {
                           <button
                             onClick={handleVerify2FA}
                             disabled={verify2FAMutation.isPending}
-                            className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
+                            className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                           >
-                            {verify2FAMutation.isPending ? 'Verifying...' : 'Verify & Enable'}
+                            {verify2FAMutation.isPending ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                Verifying...
+                              </>
+                            ) : (
+                              'Verify & Enable'
+                            )}
                           </button>
                           <button
                             onClick={() => {
@@ -470,7 +501,8 @@ export default function UserSecuritySettingsPanel() {
                               setSecret(null);
                               setTwoFAData({ verificationCode: '' });
                             }}
-                            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                            disabled={verify2FAMutation.isPending}
+                            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
                           >
                             Cancel
                           </button>

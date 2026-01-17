@@ -138,9 +138,28 @@ export default function CountriesPage() {
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm(`Delete ${country.name}?`)) {
-                          deleteMutation.mutate({ id: country.id });
-                        }
+                        toast.custom((t) => (
+                          <div className="w-full max-w-sm rounded-lg border border-bpi-border bg-white p-3 shadow-lg dark:border-bpi-dark-accent dark:bg-bpi-dark-card">
+                            <div className="text-sm text-foreground">Delete {country.name}?</div>
+                            <div className="mt-2 flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => toast.dismiss(t.id)}
+                                className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-gray-50 dark:hover:bg-bpi-dark-accent/30"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => {
+                                  toast.dismiss(t.id);
+                                  deleteMutation.mutate({ id: country.id });
+                                }}
+                                className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ));
                       }}
                       className="text-red-600 hover:text-red-800"
                     >
