@@ -20,6 +20,7 @@ import {
   Banknote,
   Database,
   Globe,
+  BookOpen,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -35,6 +36,12 @@ const navigation = [
     href: "/admin/users", 
     icon: Users,
     description: "User management"
+  },
+  { 
+    name: "Documentation", 
+    href: "/admin/documentation", 
+    icon: BookOpen,
+    description: "Project documentation"
   },
   { 
     name: "DB Audit Coverage", 

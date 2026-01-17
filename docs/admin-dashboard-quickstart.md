@@ -1,6 +1,6 @@
 # Admin Dashboard Quick Start Checklist
 
-> **Last Updated**: January 1, 2026  
+> **Last Updated**: January 1, 2026
 > **Purpose**: Immediate implementation checklist before launching real payment gateways
 
 ---
@@ -23,7 +23,7 @@
 
 #### Environment Variable Management
 - [ ] Add to `.env.local`:
-  ```
+  ```env
   PAYSTACK_PUBLIC_KEY=pk_test_xxx
   PAYSTACK_SECRET_KEY=sk_test_xxx
   FLUTTERWAVE_PUBLIC_KEY=FLWPUBK_TEST-xxx

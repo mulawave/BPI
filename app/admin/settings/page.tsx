@@ -20,6 +20,7 @@ import {
 } from "react-icons/hi";
 import toast from "react-hot-toast";
 import BackupRestorePanel from "@/components/admin/BackupRestorePanel";
+import SecuritySettingsPanel from "@/components/admin/SecuritySettingsPanel";
 import StatsCard from "@/components/admin/StatsCard";
 
 type TabType = "general" | "payments" | "notifications" | "security" | "integrations" | "backup";
@@ -954,9 +955,11 @@ export default function SettingsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
+            <SecuritySettingsPanel />
+
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
-                Security & Access Control
+                System Security Settings
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <SettingField

@@ -1288,6 +1288,9 @@ model User {
   palliativeTier                                                       String?
   selectedPalliative                                                   String?
   socialMedia                                                          Float                        @default(0)
+  userProfilePin                                                       String?
+  twoFactorEnabled                                                     Boolean                      @default(false)
+  twoFactorSecret                                                      String?
   Account                                                              Account[]
   ActiveShelter                                                        ActiveShelter[]
   BPICalculation                                                       BPICalculation[]

@@ -39,6 +39,8 @@ import { locationRouter } from "./location";
 import { adminLocationRouter } from "./adminLocation";
 import { bankRouter } from "./bank";
 import { adminBankRouter } from "./adminBank";
+import { documentationRouter } from "./documentation";
+import { securityRouter } from "./security";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -80,6 +82,8 @@ export const appRouter = createTRPCRouter({
   adminLocation: adminLocationRouter,
   bank: bankRouter,
   adminBank: adminBankRouter,
+  documentation: documentationRouter,
+  security: securityRouter,
 
   // Legacy router, to be deprecated
 });

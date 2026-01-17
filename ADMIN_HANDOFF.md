@@ -1,6 +1,6 @@
-# Admin Panel Go‑Live Handoff (Jan 15, 2026)
+# Admin Panel Go-Live Handoff (Jan 15, 2026)
 
-This document is a handoff snapshot of the current Admin Panel: what is **truly wired to backend control** (tRPC/Prisma), what is **read‑only**, and what is **still front‑end UI only** (not controlling production behavior).
+This document is a handoff snapshot of the current Admin Panel: what is **truly wired to backend control** (tRPC/Prisma), what is **read-only**, and what is **still front-end UI only** (not controlling production behavior).
 
 ## What you meant by “in control of the front end” (confirmed)
 
