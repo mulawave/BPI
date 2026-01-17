@@ -17,6 +17,8 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
     accountName: "",
     accountNumber: "",
     bvn: "",
+    pin: "",
+    twoFactorCode: "",
   });
 
   const utils = api.useUtils();
@@ -24,6 +26,7 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
   // Fetch user's bank records
   const { data: bankRecords, isLoading } = api.bank.getUserBankRecords.useQuery();
   const { data: banks } = api.bank.getBanks.useQuery();
+  const { data: securityReqs } = api.bank.checkSecurityRequirements.useQuery();
 
   const addMutation = api.bank.addBankAccount.useMutation({
     onSuccess: () => {
@@ -65,6 +68,8 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
       accountName: "",
       accountNumber: "",
       bvn: "",
+      pin: "",
+      twoFactorCode: "",
     });
   };
 
@@ -75,28 +80,50 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
       accountName: record.accountName,
       accountNumber: record.accountNumber,
       bvn: record.bvn || "",
+      pin: "",
+      twoFactorCode: "",
     });
   };
 
   const handleSave = () => {
+    if (!formData.bankId) {
+      toast.error("Please select a bank");
+      return;
+    }
+
     if (!formData.accountName || !formData.accountNumber) {
       toast.error("Account name and number are required");
       return;
     }
 
-    if (editingId) {
+    const bankId = Number(formData.bankId);
+
+    if (editingId !== null) {
       updateMutation.mutate({
         id: editingId,
-        bankId: formData.bankId ? parseInt(formData.bankId) : undefined,
+        bankId,
         accountName: formData.accountName,
         accountNumber: formData.accountNumber,
         bvn: formData.bvn || undefined,
       });
     } else {
+      // Check security requirements before adding
+      if (securityReqs?.pinRequired && !formData.pin) {
+        toast.error("PIN is required");
+        return;
+      }
+
+      if (securityReqs?.twoFARequired && !formData.twoFactorCode) {
+        toast.error("Two-factor code is required");
+        return;
+      }
+
       addMutation.mutate({
-        bankId: formData.bankId ? parseInt(formData.bankId) : undefined,
+        bankId,
         accountName: formData.accountName,
         accountNumber: formData.accountNumber,
+        pin: securityReqs?.pinRequired ? formData.pin : undefined,
+        twoFactorCode: securityReqs?.twoFARequired ? formData.twoFactorCode : undefined,
         bvn: formData.bvn || undefined,
       });
     }
@@ -109,9 +136,28 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
   };
 
   const handleDelete = (id: number) => {
-    if (confirm("Are you sure you want to delete this bank account?")) {
-      deleteMutation.mutate({ id });
-    }
+    toast.custom((t) => (
+      <div className="w-full max-w-sm rounded-lg border border-bpi-border bg-white p-3 shadow-lg dark:border-bpi-dark-accent dark:bg-bpi-dark-card">
+        <div className="text-sm text-foreground">Delete this bank account?</div>
+        <div className="mt-2 flex items-center justify-end gap-2">
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-gray-50 dark:hover:bg-bpi-dark-accent/30"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              toast.dismiss(t.id);
+              deleteMutation.mutate({ id });
+            }}
+            className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    ));
   };
 
   const isPending = addMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
@@ -301,6 +347,46 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
               className="w-full text-xs text-foreground bg-white dark:bg-bpi-dark-card border border-bpi-border dark:border-bpi-dark-accent rounded px-2 py-1 focus:border-bpi-primary focus:outline-none"
               placeholder="10-digit account number"
             />
+          </div>
+
+          {securityReqs?.pinRequired && (
+            <div>
+              <label className="text-[10px] text-muted-foreground">
+                PIN {!securityReqs.hasPin && <span className="text-red-500">(Setup required)</span>}
+              </label>
+              <input
+                type="password"
+                value={formData.pin}
+                onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
+                disabled={isPending}
+                className="w-full text-xs text-foreground bg-white dark:bg-bpi-dark-card border border-bpi-border dark:border-bpi-dark-accent rounded px-2 py-1 focus:border-bpi-primary focus:outline-none"
+                placeholder="Enter your PIN"
+              />
+            </div>
+          )}
+
+          {securityReqs?.twoFARequired && (
+            <div>
+              <label className="text-[10px] text-muted-foreground">
+                Two-Factor Code {!securityReqs.has2FA && <span className="text-red-500">(Setup required)</span>}
+              </label>
+              <input
+                type="text"
+                value={formData.twoFactorCode}
+                onChange={(e) => setFormData({ ...formData, twoFactorCode: e.target.value })}
+                disabled={isPending}
+                className="w-full text-xs text-foreground bg-white dark:bg-bpi-dark-card border border-bpi-border dark:border-bpi-dark-accent rounded px-2 py-1 focus:border-bpi-primary focus:outline-none"
+                placeholder="Enter your 2FA code"
+              />
+            </div>
+          )}
+
+          {(securityReqs?.needsPinSetup || securityReqs?.needs2FASetup) && (
+            <div className="text-[10px] text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 p-1.5 rounded">
+              ⚠️ Please set up your security features in{' '}
+              <a href="/settings" className="underline font-medium">Account Settings</a> first
+            </div>
+          )}
           </div>
 
           <div>

@@ -1131,12 +1131,21 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                 <ChevronDown className="w-4 h-4 text-muted-foreground" />
               </div>
 
-              <Link href="/api/auth/signout">
-                <Button variant="outline" size="sm" className="gap-2">
-                  <LogOut className="w-4 h-4" />
-                  Sign Out
-                </Button>
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link href="/settings">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Settings className="w-4 h-4" />
+                    <span className="hidden md:inline">Settings</span>
+                  </Button>
+                </Link>
+                
+                <Link href="/api/auth/signout">
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <LogOut className="w-4 h-4" />
+                    <span className="hidden md:inline">Sign Out</span>
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         </div>

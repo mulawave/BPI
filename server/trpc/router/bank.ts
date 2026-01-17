@@ -10,6 +10,16 @@ export const bankRouter = createTRPCRouter({
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }
 
+    // Check system-wide settings
+    const [pinSetting, twoFASetting] = await Promise.all([
+      ctx.prisma.adminSettings.findUnique({ where: { settingKey: 'pin_enabled' } }),
+      ctx.prisma.adminSettings.findUnique({ where: { settingKey: 'two_factor_enabled' } }),
+    ]);
+
+    const pinRequired = pinSetting?.settingValue === 'true';
+    const twoFARequired = twoFASetting?.settingValue === 'true';
+
+    // Check user's setup status
     const user = await ctx.prisma.user.findUnique({
       where: { id: ctx.session.user.id },
       select: {
@@ -18,10 +28,22 @@ export const bankRouter = createTRPCRouter({
       },
     });
 
+    const hasPin = !!user?.userProfilePin;
+    const has2FA = !!user?.twoFactorEnabled;
+
+    // User is complete if they have all required security features
+    const isComplete = 
+      (!pinRequired || hasPin) && 
+      (!twoFARequired || has2FA);
+
     return {
-      hasPin: !!user?.userProfilePin,
-      has2FA: !!user?.twoFactorEnabled,
-      isComplete: !!(user?.userProfilePin && user?.twoFactorEnabled),
+      pinRequired,
+      twoFARequired,
+      hasPin,
+      has2FA,
+      isComplete,
+      needsPinSetup: pinRequired && !hasPin,
+      needs2FASetup: twoFARequired && !has2FA,
     };
   }),
 
@@ -137,8 +159,8 @@ export const bankRouter = createTRPCRouter({
         accountNumber: z.string().length(10, "Account number must be 10 digits"),
         bvn: z.string().optional(),
         isDefault: z.boolean().optional(),
-        pin: z.string().min(4, "PIN is required"),
-        twoFactorCode: z.string().length(6, "2FA code must be 6 digits"),
+        pin: z.string().optional(),
+        twoFactorCode: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -146,7 +168,16 @@ export const bankRouter = createTRPCRouter({
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
-      // Security gating: Check PIN and 2FA
+      // Check system-wide settings
+      const [pinSetting, twoFASetting] = await Promise.all([
+        ctx.prisma.adminSettings.findUnique({ where: { settingKey: 'pin_enabled' } }),
+        ctx.prisma.adminSettings.findUnique({ where: { settingKey: 'two_factor_enabled' } }),
+      ]);
+
+      const pinRequired = pinSetting?.settingValue === 'true';
+      const twoFARequired = twoFASetting?.settingValue === 'true';
+
+      // Security gating: Check PIN and 2FA if required
       const user = await ctx.prisma.user.findUnique({
         where: { id: ctx.session.user.id },
         select: {
@@ -156,44 +187,62 @@ export const bankRouter = createTRPCRouter({
         },
       });
 
-      if (!user?.userProfilePin) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You must set up a profile PIN before adding bank accounts",
-        });
+      if (pinRequired) {
+        if (!user?.userProfilePin) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You must set up a profile PIN before adding bank accounts. Go to Settings to set it up.",
+          });
+        }
+
+        if (!input.pin) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "PIN is required",
+          });
+        }
+
+        // Verify PIN
+        const bcrypt = require('bcryptjs');
+        const isPinValid = await bcrypt.compare(input.pin, user.userProfilePin);
+        
+        if (!isPinValid) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Invalid PIN",
+          });
+        }
       }
 
-      if (!user?.twoFactorEnabled || !user?.twoFactorSecret) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You must enable 2FA before adding bank accounts",
-        });
-      }
+      if (twoFARequired) {
+        if (!user?.twoFactorEnabled || !user?.twoFactorSecret) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You must enable 2FA before adding bank accounts. Go to Settings to set it up.",
+          });
+        }
 
-      // Verify PIN (assuming it's hashed)
-      const bcrypt = require('bcryptjs');
-      const isPinValid = await bcrypt.compare(input.pin, user.userProfilePin);
-      
-      if (!isPinValid) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Invalid PIN",
-        });
-      }
+        if (!input.twoFactorCode) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Two-factor authentication code is required",
+          });
+        }
 
-      // Verify 2FA code
-      const speakeasy = require('speakeasy');
-      const is2FAValid = speakeasy.totp.verify({
-        secret: user.twoFactorSecret,
-        encoding: 'base32',
-        token: input.twoFactorCode,
-      });
-
-      if (!is2FAValid) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Invalid 2FA code",
+        // Verify 2FA code
+        const speakeasy = require('speakeasy');
+        const is2FAValid = speakeasy.totp.verify({
+          secret: user.twoFactorSecret,
+          encoding: 'base32',
+          token: input.twoFactorCode,
         });
+
+        if (!is2FAValid) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Invalid 2FA code",
+          });
+        }
       }
 
       // If setting as default, unset previous default

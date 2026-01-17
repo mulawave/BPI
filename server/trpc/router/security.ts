@@ -41,6 +41,18 @@ export const securityRouter = createTRPCRouter({
         throw new TRPCError({ code: "UNAUTHORIZED" });
       }
 
+      // Check if PIN feature is enabled system-wide
+      const pinSetting = await ctx.prisma.adminSettings.findUnique({
+        where: { settingKey: 'pin_enabled' },
+      });
+
+      if (pinSetting?.settingValue !== 'true') {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "PIN feature is not enabled by administrator",
+        });
+      }
+
       const user = await ctx.prisma.user.findUnique({
         where: { id: ctx.session.user.id },
         select: {
@@ -86,7 +98,17 @@ export const securityRouter = createTRPCRouter({
     if (!ctx.session?.user?.id) {
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }
+    // Check if 2FA feature is enabled system-wide
+    const twoFASetting = await ctx.prisma.adminSettings.findUnique({
+      where: { settingKey: 'two_factor_enabled' },
+    });
 
+    if (twoFASetting?.settingValue !== 'true') {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Two-factor authentication is not enabled by administrator",
+      });
+    }
     const user = await ctx.prisma.user.findUnique({
       where: { id: ctx.session.user.id },
       select: {
