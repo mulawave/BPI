@@ -122,7 +122,7 @@ export const walletRouter = createTRPCRouter({
     .input(z.object({
       amount: z.number().positive("Amount must be greater than 0"),
       withdrawalType: z.enum(['cash', 'bpt']),
-      sourceWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'car', 'business']),
+      sourceWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business']),
       // Bank details (required for cash withdrawal)
       bankName: z.string().optional(),
       accountNumber: z.string().optional(),
@@ -145,6 +145,29 @@ export const walletRouter = createTRPCRouter({
       if (!user) throw new Error("User not found");
       if (user.withdrawBan === 1) throw new Error("Your account is banned from withdrawals. Contact support.");
 
+      // EMPOWERMENT GATE: Block education & empowermentSponsorReward withdrawals until final admin confirmation
+      if (sourceWallet === 'education' || sourceWallet === 'empowermentSponsorReward') {
+        // Check if user has an empowerment package with released funds
+        const empowermentPackage = await prisma.empowermentPackage.findFirst({
+          where: {
+            OR: [
+              { beneficiaryId: userId },
+              { sponsorId: userId }
+            ],
+            status: "Empowerment Released (Tax At Withdrawal)"
+          },
+          orderBy: { releasedAt: 'desc' }
+        });
+
+        if (!empowermentPackage) {
+          throw new Error(
+            sourceWallet === 'education'
+              ? "Education funds are not available for withdrawal. Awaiting final admin confirmation."
+              : "Empowerment sponsor reward is not available for withdrawal. Awaiting final admin confirmation."
+          );
+        }
+      }
+
       // Check balance
       const currentBalance = (user as any)[sourceWallet] || 0;
       
@@ -153,10 +176,18 @@ export const walletRouter = createTRPCRouter({
         ? await getAdminSetting('CASH_WITHDRAWAL_FEE', DEFAULT_CASH_WITHDRAWAL_FEE)
         : await getAdminSetting('BPT_WITHDRAWAL_FEE', DEFAULT_BPT_WITHDRAWAL_FEE);
 
-      const totalDeduction = amount + withdrawalFee;
+      // Apply tax for empowerment-related wallets (education, empowermentSponsorReward)
+      const taxRate = 0.075; // 7.5%
+      const isEmpowermentWallet = sourceWallet === 'education' || sourceWallet === 'empowermentSponsorReward';
+      const taxAmount = isEmpowermentWallet ? Math.round(amount * taxRate * 100) / 100 : 0;
+      
+      const totalDeduction = amount + withdrawalFee + taxAmount;
 
       if (currentBalance < totalDeduction) {
-        throw new Error(`Insufficient balance. You need ₦${totalDeduction.toLocaleString()} (₦${amount.toLocaleString()} + ₦${withdrawalFee.toLocaleString()} fee)`);
+        const breakdown = isEmpowermentWallet
+          ? `₦${amount.toLocaleString()} + ₦${withdrawalFee.toLocaleString()} fee + ₦${taxAmount.toLocaleString()} tax`
+          : `₦${amount.toLocaleString()} + ₦${withdrawalFee.toLocaleString()} fee`;
+        throw new Error(`Insufficient balance. You need ₦${totalDeduction.toLocaleString()} (${breakdown})`);
       }
 
       // Validate withdrawal details
@@ -213,6 +244,22 @@ export const walletRouter = createTRPCRouter({
           });
         }
 
+        // Create tax transaction for empowerment wallets
+        if (taxAmount > 0) {
+          await prisma.transaction.create({
+            data: {
+              id: randomUUID(),
+              userId,
+              transactionType: "TAX_PAYMENT",
+              amount: -taxAmount,
+              description: `Tax on ${sourceWallet} wallet withdrawal (7.5%)`,
+              status: "completed",
+              reference: `TAX-WD-${Date.now()}`,
+              walletType: sourceWallet
+            }
+          });
+        }
+
         // Create withdrawal history record
         await prisma.withdrawalHistory.create({
           data: {
@@ -257,13 +304,18 @@ export const walletRouter = createTRPCRouter({
           }, 3000); // 3 seconds processing time
         }
 
+        const messageBreakdown = taxAmount > 0
+          ? `₦${amount.toLocaleString()} + ₦${withdrawalFee} fee + ₦${taxAmount} tax`
+          : `₦${amount.toLocaleString()} + ₦${withdrawalFee} fee`;
+
         return {
           success: true,
           message: requiresApproval 
-            ? `Withdrawal request submitted for admin approval (₦${amount.toLocaleString()} + ₦${withdrawalFee} fee)`
-            : `Withdrawal is being processed (₦${amount.toLocaleString()} + ₦${withdrawalFee} fee)`,
+            ? `Withdrawal request submitted for admin approval (${messageBreakdown})`
+            : `Withdrawal is being processed (${messageBreakdown})`,
           amount,
           fee: withdrawalFee,
+          tax: taxAmount,
           totalDeducted: totalDeduction,
           requiresApproval,
           status,
@@ -282,8 +334,8 @@ export const walletRouter = createTRPCRouter({
   transferInterWallet: protectedProcedure
     .input(z.object({
       amount: z.number().positive("Amount must be greater than 0"),
-      fromWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'car', 'business']),
-      toWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'car', 'business'])
+      fromWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business']),
+      toWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business'])
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = (ctx.session?.user as any)?.id;
@@ -293,6 +345,28 @@ export const walletRouter = createTRPCRouter({
 
       if (fromWallet === toWallet) {
         throw new Error("Cannot transfer to the same wallet");
+      }
+
+      // EMPOWERMENT GATE: Block transfers from education & empowermentSponsorReward until final admin confirmation
+      if (fromWallet === 'education' || fromWallet === 'empowermentSponsorReward') {
+        const empowermentPackage = await prisma.empowermentPackage.findFirst({
+          where: {
+            OR: [
+              { beneficiaryId: userId },
+              { sponsorId: userId }
+            ],
+            status: "Empowerment Released (Tax At Withdrawal)"
+          },
+          orderBy: { releasedAt: 'desc' }
+        });
+
+        if (!empowermentPackage) {
+          throw new Error(
+            fromWallet === 'education'
+              ? "Education funds are locked. Awaiting final admin confirmation before any transfers are allowed."
+              : "Empowerment sponsor reward is locked. Awaiting final admin confirmation before any transfers are allowed."
+          );
+        }
       }
 
       // Get max transfer limit
@@ -357,7 +431,7 @@ export const walletRouter = createTRPCRouter({
     .input(z.object({
       amount: z.number().positive("Amount must be greater than 0"),
       recipientIdentifier: z.string().min(1, "Recipient username or email is required"),
-      sourceWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'car', 'business']),
+      sourceWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business']),
       note: z.string().optional()
     }))
     .mutation(async ({ ctx, input }) => {
@@ -365,6 +439,28 @@ export const walletRouter = createTRPCRouter({
       if (!userId) throw new Error("UNAUTHORIZED");
 
       const { amount, recipientIdentifier, sourceWallet, note } = input;
+
+      // EMPOWERMENT GATE: Block transfers from education & empowermentSponsorReward until final admin confirmation
+      if (sourceWallet === 'education' || sourceWallet === 'empowermentSponsorReward') {
+        const empowermentPackage = await prisma.empowermentPackage.findFirst({
+          where: {
+            OR: [
+              { beneficiaryId: userId },
+              { sponsorId: userId }
+            ],
+            status: "Empowerment Released (Tax At Withdrawal)"
+          },
+          orderBy: { releasedAt: 'desc' }
+        });
+
+        if (!empowermentPackage) {
+          throw new Error(
+            sourceWallet === 'education'
+              ? "Education funds are locked. Awaiting final admin confirmation before any transfers are allowed."
+              : "Empowerment sponsor reward is locked. Awaiting final admin confirmation before any transfers are allowed."
+          );
+        }
+      }
 
       // Get max transfer limit
       const maxTransferAmount = await getAdminSetting('MAX_TRANSFER_AMOUNT', DEFAULT_MAX_TRANSFER_AMOUNT);
