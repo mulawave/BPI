@@ -61,6 +61,8 @@ export default function UsersPage() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [showActivateAllModal, setShowActivateAllModal] = useState(false);
+  const [selectAllMode, setSelectAllMode] = useState<'page' | 'all' | 'none'>('none');
 
   const { data, isLoading, refetch, isFetching } = api.admin.getUsers.useQuery({
     page,
@@ -96,6 +98,20 @@ export default function UsersPage() {
     onSuccess: () => {
       toast.success("Users updated successfully");
       setSelectedUsers(new Set());
+      setSelectAllMode('none');
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const activateAllMutation = api.admin.activateAllUsers.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Successfully activated ${data.count} users (${data.previousInactiveCount} were inactive)`);
+      setShowActivateAllModal(false);
+      setSelectedUsers(new Set());
+      setSelectAllMode('none');
       refetch();
     },
     onError: (error) => {
@@ -248,6 +264,29 @@ export default function UsersPage() {
       userIds: Array.from(selectedUsers),
       action,
     });
+  };
+
+  const handleSelectAll = () => {
+    if (selectAllMode === 'all' || selectAllMode === 'page') {
+      // Deselect all
+      setSelectedUsers(new Set());
+      setSelectAllMode('none');
+    } else {
+      // Select all on current page
+      const currentPageIds = new Set(data?.users.map(u => u.id) || []);
+      setSelectedUsers(currentPageIds);
+      setSelectAllMode('page');
+    }
+  };
+
+  const handleSelectAllAcrossPages = () => {
+    // This would select all user IDs across all pages
+    // For now, we'll use the activate all functionality
+    setShowActivateAllModal(true);
+  };
+
+  const handleActivateAll = () => {
+    activateAllMutation.mutate({ confirmed: true });
   };
 
   return (
@@ -457,6 +496,39 @@ export default function UsersPage() {
           )}
         </motion.div>
 
+        {/* Global Actions Bar */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative overflow-hidden rounded-2xl border border-border bg-card/75 backdrop-blur-xl shadow-lg shadow-black/5 dark:shadow-black/20 p-5 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleSelectAll}
+              className="px-4 py-2.5 border-2 border-border rounded-xl hover:bg-background/60 transition-all font-semibold flex items-center gap-2"
+            >
+              <MdCheckCircle size={18} />
+              {selectAllMode === 'none' ? 'Select All on Page' : 'Deselect All'}
+            </motion.button>
+            <span className="text-muted-foreground text-sm">
+              {selectedUsers.size > 0 && `${selectedUsers.size} selected`}
+            </span>
+          </div>
+          <div className="flex gap-3">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowActivateAllModal(true)}
+              className="px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 shadow-lg shadow-green-500/30 font-semibold transition-all flex items-center gap-2"
+            >
+              <MdCheckCircle size={18} />
+              Activate All Users
+            </motion.button>
+          </div>
+        </motion.div>
+
         {/* Bulk Actions */}
         {selectedUsers.size > 0 && (
           <motion.div
@@ -480,7 +552,7 @@ export default function UsersPage() {
                 onClick={() => handleBulkAction("activate")}
                 className="px-5 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700 shadow-lg shadow-green-500/30 font-semibold transition-all"
               >
-                Activate
+                Activate Selected
               </motion.button>
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -652,10 +724,102 @@ export default function UsersPage() {
           </>
         )}
 
+        {/* Activate All Confirmation Modal */}
+        {showActivateAllModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md mx-4"
+            >
+              <div className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+                <div className="absolute -top-20 -right-20 h-40 w-40 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 opacity-10 blur-3xl" />
+                
+                <div className="relative p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-green-600 to-emerald-600 text-white shadow-lg">
+                      <MdCheckCircle size={28} />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-bold text-foreground">Activate All Users</h3>
+                      <p className="text-sm text-muted-foreground">Global activation action</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 mb-6">
+                    <div className="rounded-xl bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-900/50 p-4">
+                      <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
+                        ⚠️ Warning: This is a global action
+                      </p>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                        This will activate ALL inactive users in the entire database, regardless of filters or pagination.
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900/50 p-4">
+                      <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                        This action will:
+                      </p>
+                      <ul className="mt-2 space-y-1 text-xs text-green-700 dark:text-green-300">
+                        <li className="flex items-center gap-2">
+                          <MdCheckCircle className="text-green-600" />
+                          Activate all currently inactive users
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <MdCheckCircle className="text-green-600" />
+                          Log the action in audit trail
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <MdCheckCircle className="text-green-600" />
+                          Cannot be undone (requires manual deactivation)
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setShowActivateAllModal(false)}
+                      className="flex-1 px-4 py-3 border-2 border-border rounded-xl hover:bg-muted font-semibold transition-all"
+                    >
+                      Cancel
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleActivateAll}
+                      disabled={activateAllMutation.isPending}
+                      className="flex-1 px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 shadow-lg shadow-green-500/30 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {activateAllMutation.isPending ? (
+                        <>
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          Activating...
+                        </>
+                      ) : (
+                        <>
+                          <MdCheckCircle size={18} />
+                          Confirm & Activate All
+                        </>
+                      )}
+                    </motion.button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {/* Bulk Actions Bar */}
         <BulkActionsBar
           selectedCount={selectedUsers.size}
-          onClear={() => setSelectedUsers(new Set())}
+          onClear={() => {
+            setSelectedUsers(new Set());
+            setSelectAllMode('none');
+          }}
           actions={[
             {
               label: "Activate",

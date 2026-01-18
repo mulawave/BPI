@@ -228,53 +228,150 @@ export const adminReferralsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ input }) => {
-      if (input.userId === input.sponsorId) {
-        throw new Error("A user cannot be their own sponsor.");
-      }
-
-      const [user, sponsor] = await Promise.all([
-        prisma.user.findUnique({ where: { id: input.userId } }),
-        prisma.user.findUnique({ where: { id: input.sponsorId } }),
-      ]);
-
-      if (!user) throw new Error("User not found");
-      if (!sponsor) throw new Error("Sponsor not found");
-
-      const descendants = await collectDescendants(input.userId, 2000);
-      if (descendants.has(input.sponsorId)) {
-        throw new Error("Cannot assign sponsor from the user's downline.");
-      }
-
-      await prisma.$transaction([
-        prisma.referral.deleteMany({ where: { referredId: input.userId } }),
-        prisma.referral.create({
-          data: {
-            id: randomUUID(),
-            referrerId: input.sponsorId,
-            referredId: input.userId,
-            status: "completed",
-            rewardPaid: false,
-            updatedAt: new Date(),
-          },
-        }),
-        prisma.user.update({ where: { id: input.userId }, data: { sponsorId: input.sponsorId } }),
-        prisma.auditLog.create({
-          data: {
-            id: randomUUID(),
-            userId: input.userId,
-            action: "RESOLVE_MISSING_REFERRAL",
-            entity: "Referral",
-            entityId: input.userId,
-            changes: JSON.stringify({ sponsorId: input.sponsorId }),
-            status: "success",
-            createdAt: new Date(),
-          },
-        }),
-      ]);
+      await attachSponsorToUser({
+        userId: input.userId,
+        sponsorId: input.sponsorId,
+        auditAction: "RESOLVE_MISSING_REFERRAL",
+        auditChanges: { sponsorId: input.sponsorId },
+      });
 
       return { ok: true };
     }),
+
+  resolveMissingReferralByEmail: adminReferralProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        sponsorEmail: z.string().email(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const sponsor = await prisma.user.findFirst({
+        where: {
+          email: {
+            equals: input.sponsorEmail.trim(),
+            mode: "insensitive",
+          },
+        },
+        select: { id: true, email: true },
+      });
+
+      if (!sponsor) {
+        throw new Error("Sponsor not found for that email.");
+      }
+
+      await attachSponsorToUser({
+        userId: input.userId,
+        sponsorId: sponsor.id,
+        auditAction: "RESOLVE_MISSING_REFERRAL_BY_EMAIL",
+        auditChanges: { sponsorId: sponsor.id, sponsorEmail: sponsor.email },
+      });
+
+      return { ok: true, sponsorId: sponsor.id };
+    }),
+
+  getReferralEdges: adminReferralProcedure
+    .input(
+      z.object({
+        page: z.number().min(1).default(1),
+        pageSize: z.number().min(10).max(200).default(50),
+      })
+    )
+    .query(async ({ input }) => {
+      const skip = (input.page - 1) * input.pageSize;
+      const [rows, total] = await prisma.$transaction([
+        prisma.referral.findMany({
+          skip,
+          take: input.pageSize,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            createdAt: true,
+            updatedAt: true,
+            status: true,
+            rewardPaid: true,
+            referrerId: true,
+            referredId: true,
+            User_Referral_referrerIdToUser: {
+              select: { id: true, email: true, name: true, legacyId: true },
+            },
+            User_Referral_referredIdToUser: {
+              select: { id: true, email: true, name: true, legacyId: true },
+            },
+          },
+        }),
+        prisma.referral.count(),
+      ]);
+
+      return {
+        rows: rows.map((r) => ({
+          id: r.id,
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt,
+          status: r.status,
+          rewardPaid: r.rewardPaid,
+          referrerId: r.referrerId,
+          referredId: r.referredId,
+          referrer: r.User_Referral_referrerIdToUser,
+          referred: r.User_Referral_referredIdToUser,
+        })),
+        total,
+        pages: Math.ceil(total / input.pageSize),
+        page: input.page,
+      };
+    }),
 });
+
+async function attachSponsorToUser(params: {
+  userId: string;
+  sponsorId: string;
+  auditAction: string;
+  auditChanges: Record<string, unknown>;
+}) {
+  if (params.userId === params.sponsorId) {
+    throw new Error("A user cannot be their own sponsor.");
+  }
+
+  const [user, sponsor] = await Promise.all([
+    prisma.user.findUnique({ where: { id: params.userId }, select: { id: true } }),
+    prisma.user.findUnique({ where: { id: params.sponsorId }, select: { id: true } }),
+  ]);
+
+  if (!user) throw new Error("User not found");
+  if (!sponsor) throw new Error("Sponsor not found");
+
+  const descendants = await collectDescendants(params.userId, 2000);
+  if (descendants.has(params.sponsorId)) {
+    throw new Error("Cannot assign sponsor from the user's downline.");
+  }
+
+  await prisma.$transaction([
+    prisma.referral.deleteMany({ where: { referredId: params.userId } }),
+    prisma.referral.create({
+      data: {
+        id: randomUUID(),
+        referrerId: params.sponsorId,
+        referredId: params.userId,
+        status: "completed",
+        rewardPaid: false,
+        updatedAt: new Date(),
+      },
+    }),
+    prisma.user.update({ where: { id: params.userId }, data: { sponsorId: params.sponsorId } }),
+    prisma.auditLog.create({
+      data: {
+        id: randomUUID(),
+        userId: params.userId,
+        action: params.auditAction,
+        entity: "Referral",
+        entityId: params.userId,
+        changes: JSON.stringify(params.auditChanges),
+        status: "success",
+        createdAt: new Date(),
+      },
+    }),
+  ]);
+}
 
 async function resolveRootUser({ rootUserId, email }: { rootUserId?: string; email?: string }) {
   if (rootUserId) {
@@ -307,14 +404,23 @@ async function buildReferralLevels(params: {
   for (let level = 1; level <= params.depth; level++) {
     if (frontier.length === 0) break;
 
-    const referralRows = await prisma.referral.findMany({
-      where: { referrerId: { in: frontier } },
-      select: { referrerId: true, referredId: true, createdAt: true },
-    });
+    const [referralRows, sponsorChildren] = await Promise.all([
+      prisma.referral.findMany({
+        where: { referrerId: { in: frontier } },
+        select: { referrerId: true, referredId: true, createdAt: true },
+      }),
+      prisma.user.findMany({
+        where: { sponsorId: { in: frontier } },
+        select: { id: true, sponsorId: true },
+      }),
+    ]);
 
-    const referredIds = Array.from(new Set(referralRows.map((r) => r.referredId))).filter(
-      (id) => !visited.has(id)
-    );
+    const candidateIds = new Set<string>([
+      ...referralRows.map((r) => r.referredId),
+      ...sponsorChildren.map((u) => u.id),
+    ]);
+
+    const referredIds = Array.from(candidateIds).filter((id) => !visited.has(id));
 
     if (referredIds.length === 0) {
       frontier = [];
@@ -349,19 +455,21 @@ async function buildReferralLevels(params: {
     const eligibleIds = new Set(users.map((u) => u.id));
     const filteredRows = referralRows.filter((r) => eligibleIds.has(r.referredId));
 
-    const childCounts = await prisma.referral.groupBy({
-      by: ["referrerId"],
-      where: { referrerId: { in: users.map((u) => u.id) } },
+    const childCounts = await prisma.user.groupBy({
+      by: ["sponsorId"],
+      where: {
+        sponsorId: { in: users.map((u) => u.id) },
+      },
       _count: { _all: true },
     });
-    const childCountMap = new Map(childCounts.map((c) => [c.referrerId, c._count._all]));
+    const childCountMap = new Map(childCounts.map((c) => [c.sponsorId as string, c._count._all]));
 
     const nodes = users.map((u) => {
       const referralMeta = filteredRows.find((r) => r.referredId === u.id);
       const shaped = shapeUser(u, params.packageMap, level, childCountMap.get(u.id) || 0);
       return {
         ...shaped,
-        referrerId: referralMeta?.referrerId ?? null,
+        referrerId: u.sponsorId ?? referralMeta?.referrerId ?? null,
         referredAt: referralMeta?.createdAt ?? u.createdAt,
       };
     });

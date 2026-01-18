@@ -64,13 +64,22 @@ export const adminLocationRouter = createTRPCRouter({
       dialCode: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      return await ctx.prisma.country.create({
-        data: {
-          name: input.name,
-          code: input.code,
-          dialCode: input.dialCode,
-          createdDatetime: new Date(),
-        },
+      return await ctx.prisma.$transaction(async (tx) => {
+        const max = await tx.country.aggregate({
+          _max: { id: true },
+        });
+
+        const nextId = (max._max.id ?? 0) + 1;
+
+        return await tx.country.create({
+          data: {
+            id: nextId,
+            name: input.name,
+            code: input.code,
+            dialCode: input.dialCode,
+            createdDatetime: new Date(),
+          },
+        });
       });
     }),
 
@@ -159,13 +168,22 @@ export const adminLocationRouter = createTRPCRouter({
       countryId: z.number(),
     }))
     .mutation(async ({ ctx, input }) => {
-      return await ctx.prisma.state.create({
-        data: {
-          name: input.name,
-          countryId: input.countryId,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
+      return await ctx.prisma.$transaction(async (tx) => {
+        const max = await tx.state.aggregate({
+          _max: { id: true },
+        });
+
+        const nextId = (max._max.id ?? 0) + 1;
+
+        return await tx.state.create({
+          data: {
+            id: nextId,
+            name: input.name,
+            countryId: input.countryId,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
       });
     }),
 
@@ -261,11 +279,20 @@ export const adminLocationRouter = createTRPCRouter({
       stateId: z.number(),
     }))
     .mutation(async ({ ctx, input }) => {
-      return await ctx.prisma.city.create({
-        data: {
-          name: input.name,
-          stateId: input.stateId,
-        },
+      return await ctx.prisma.$transaction(async (tx) => {
+        const max = await tx.city.aggregate({
+          _max: { id: true },
+        });
+
+        const nextId = (max._max.id ?? 0) + 1;
+
+        return await tx.city.create({
+          data: {
+            id: nextId,
+            name: input.name,
+            stateId: input.stateId,
+          },
+        });
       });
     }),
 

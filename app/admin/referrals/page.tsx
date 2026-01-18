@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
@@ -43,6 +43,16 @@ export default function AdminReferralsPage() {
   const [rootQuery, setRootQuery] = useState("");
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const [pendingSponsor, setPendingSponsor] = useState<{ userId: string; sponsorId: string } | null>(null);
+  const [missingSponsorEmail, setMissingSponsorEmail] = useState<Record<string, string>>({});
+  const [edgesPage, setEdgesPage] = useState(1);
+  const [edgesPageSize] = useState(50);
+
+  const [expandedLevels, setExpandedLevels] = useState<Record<number, boolean>>({});
+  const [levelPage, setLevelPage] = useState<Record<number, number>>({});
+  const [levelPageSize, setLevelPageSize] = useState<Record<number, number>>({});
+
+  const [flatPage, setFlatPage] = useState(1);
+  const [flatPageSize, setFlatPageSize] = useState(25);
 
   const networkQuery = api.adminReferrals.getReferralNetwork.useQuery(
     {
@@ -71,6 +81,11 @@ export default function AdminReferralsPage() {
     }
   );
 
+  const edgesQuery = api.adminReferrals.getReferralEdges.useQuery({
+    page: edgesPage,
+    pageSize: edgesPageSize,
+  });
+
   const searchUsersQuery = api.adminReferrals.searchReferralUsers.useQuery(
     { query: rootQuery || "seed", limit: 6 },
     { enabled: rootQuery.length > 2 }
@@ -78,12 +93,14 @@ export default function AdminReferralsPage() {
 
   const reassignSponsor = api.adminReferrals.reassignSponsor.useMutation();
   const resolveMissing = api.adminReferrals.resolveMissingReferral.useMutation();
+  const resolveMissingByEmail = api.adminReferrals.resolveMissingReferralByEmail.useMutation();
 
   const isBusy =
     networkQuery.isLoading ||
     networkQuery.isRefetching ||
     reassignSponsor.isPending ||
-    resolveMissing.isPending;
+    resolveMissing.isPending ||
+    resolveMissingByEmail.isPending;
 
   const packageOptions = useMemo(() => packages.map((p) => ({ value: p.id, label: `${p.name} • ${p.packageType}` })), [packages]);
 
@@ -133,7 +150,76 @@ export default function AdminReferralsPage() {
     }
   };
 
-  const LevelCard = ({ level }: { level: any }) => (
+  const handleResolveMissingByEmail = async (userId: string) => {
+    const sponsorEmail = (missingSponsorEmail[userId] || "").trim();
+    if (!sponsorEmail) {
+      toast.error("Enter a sponsor email.");
+      return;
+    }
+
+    setPendingSponsor({ userId, sponsorId: sponsorEmail });
+    const toastId = toast.loading("Attaching sponsor by email...");
+    try {
+      await resolveMissingByEmail.mutateAsync({ userId, sponsorEmail });
+      await Promise.all([networkQuery.refetch(), missingQuery.refetch()]);
+      toast.success("Sponsor attached", { id: toastId });
+      setMissingSponsorEmail((prev) => ({ ...prev, [userId]: "" }));
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to attach sponsor", { id: toastId });
+    } finally {
+      setPendingSponsor(null);
+    }
+  };
+
+  const flattenedNetwork = useMemo(() => {
+    if (!networkQuery.data) return [] as any[];
+    const rows: any[] = [{
+      ...networkQuery.data.root,
+      level: 0,
+      referrerId: null,
+      referredAt: networkQuery.data.root.createdAt,
+    }];
+    for (const level of networkQuery.data.levels) {
+      for (const node of level.nodes) {
+        rows.push({ ...node, level: level.level });
+      }
+    }
+    return rows;
+  }, [networkQuery.data]);
+
+  const flatTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(flattenedNetwork.length / Math.max(1, flatPageSize))),
+    [flattenedNetwork.length, flatPageSize]
+  );
+  const flatRows = useMemo(() => {
+    const start = (flatPage - 1) * flatPageSize;
+    return flattenedNetwork.slice(start, start + flatPageSize);
+  }, [flattenedNetwork, flatPage, flatPageSize]);
+
+  useEffect(() => {
+    setFlatPage(1);
+  }, [filters.rootUserId, filters.email, filters.depth, filters.packageIds, filters.registrationFrom, filters.registrationTo, filters.sortBy, filters.sortOrder]);
+
+  useEffect(() => {
+    setFlatPage((p) => Math.min(Math.max(1, p), flatTotalPages));
+  }, [flatTotalPages]);
+
+  const LevelCard = ({ level }: { level: any }) => {
+    const isExpanded = expandedLevels[level.level] ?? true;
+    const perPage = levelPageSize[level.level] ?? 20;
+    const currentPage = levelPage[level.level] ?? 1;
+    const totalPages = Math.max(1, Math.ceil(level.nodes.length / Math.max(1, perPage)));
+    const safePage = Math.min(Math.max(1, currentPage), totalPages);
+    const pagedNodes = level.nodes.slice((safePage - 1) * perPage, (safePage - 1) * perPage + perPage);
+
+    useEffect(() => {
+      if (safePage !== currentPage) {
+        setLevelPage((prev) => ({ ...prev, [level.level]: safePage }));
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [totalPages]);
+
+    return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
@@ -151,13 +237,63 @@ export default function AdminReferralsPage() {
             <p className="text-lg font-semibold">{level.nodes.length} accounts</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Clock className="h-4 w-4" />
-          {filters.sortBy === "registration" ? "Sorted by registration date" : "Sorted by package"}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Clock className="h-4 w-4" />
+            {filters.sortBy === "registration" ? "Sorted by registration date" : "Sorted by package"}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-muted-foreground">Per page</label>
+            <select
+              value={perPage}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setLevelPageSize((prev) => ({ ...prev, [level.level]: next }));
+                setLevelPage((prev) => ({ ...prev, [level.level]: 1 }));
+              }}
+              className="h-8 rounded-lg border border-border bg-background px-2 text-xs font-semibold"
+              disabled={!isExpanded}
+            >
+              {[20, 50, 100, 200].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setLevelPage((prev) => ({ ...prev, [level.level]: Math.max(1, safePage - 1) }))}
+              disabled={!isExpanded || safePage <= 1}
+              className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Prev
+            </button>
+            <div className="text-xs font-semibold text-muted-foreground">
+              {safePage}/{totalPages}
+            </div>
+            <button
+              onClick={() => setLevelPage((prev) => ({ ...prev, [level.level]: Math.min(totalPages, safePage + 1) }))}
+              disabled={!isExpanded || safePage >= totalPages}
+              className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Next
+            </button>
+          </div>
+
+          <button
+            onClick={() => setExpandedLevels((prev) => ({ ...prev, [level.level]: !(prev[level.level] ?? true) }))}
+            className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold transition hover:bg-muted"
+          >
+            {isExpanded ? "Collapse" : "Expand"}
+          </button>
         </div>
       </div>
+      {isExpanded ? (
       <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-3">
-        {level.nodes.map((node: any) => {
+        {pagedNodes.map((node: any) => {
           const isLinking = linkingId === node.id;
           const isChanging = pendingSponsor?.userId === node.id;
           return (
@@ -225,8 +361,16 @@ export default function AdminReferralsPage() {
           );
         })}
       </div>
+      ) : (
+        <div className="px-4 pb-4">
+          <div className="rounded-xl border border-border bg-background/60 p-4 text-sm text-muted-foreground">
+            Collapsed.
+          </div>
+        </div>
+      )}
     </motion.div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-8 pb-16">
@@ -441,12 +585,232 @@ export default function AdminReferralsPage() {
               </div>
             )}
           </div>
+
+          {/* B) Flattened tree table */}
+          <div className="rounded-2xl border border-border bg-card/75 p-6 shadow-xl backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--secondary))] text-white shadow-md">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Structured table</p>
+                  <p className="text-lg font-semibold">Flattened referral tree (root + levels)</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-semibold text-muted-foreground">Rows</label>
+                  <select
+                    value={flatPageSize}
+                    onChange={(e) => {
+                      setFlatPageSize(Number(e.target.value));
+                      setFlatPage(1);
+                    }}
+                    className="h-8 rounded-lg border border-border bg-background px-2 text-xs font-semibold"
+                  >
+                    {[25, 50, 100, 200].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setFlatPage((p) => Math.max(1, p - 1))}
+                    disabled={flatPage <= 1}
+                    className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Prev
+                  </button>
+                  <div className="text-xs font-semibold text-muted-foreground">
+                    {flatPage}/{flatTotalPages}
+                  </div>
+                  <button
+                    onClick={() => setFlatPage((p) => Math.min(flatTotalPages, p + 1))}
+                    disabled={flatPage >= flatTotalPages}
+                    className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Next
+                  </button>
+                </div>
+
+                <button
+                  onClick={handleRefresh}
+                  disabled={isBusy}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-busy={isBusy}
+                >
+                  {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  <span>Refresh</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 overflow-x-auto rounded-xl border border-border bg-background/60">
+              <table className="min-w-full text-sm">
+                <thead className="border-b border-border bg-background/80">
+                  <tr className="text-left text-xs font-semibold text-muted-foreground">
+                    <th className="px-4 py-3">Level</th>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Email</th>
+                    <th className="px-4 py-3">Package</th>
+                    <th className="px-4 py-3">Joined</th>
+                    <th className="px-4 py-3">Sponsor</th>
+                    <th className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {flatRows.map((row) => (
+                    <tr key={row.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center rounded-full border border-border bg-background px-2.5 py-1 text-xs font-semibold">
+                          L{row.level}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold">{row.name || "—"}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{row.email || "—"}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{row.package?.name || "No package"}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {row.sponsorId || row.referrerId || "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Link
+                            href={`/admin/users?userId=${row.id}`}
+                            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold transition hover:bg-muted"
+                            aria-busy={linkingId === row.id}
+                            onClick={() => {
+                              setLinkingId(row.id);
+                              setTimeout(() => setLinkingId(null), 600);
+                            }}
+                          >
+                            {linkingId === row.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                            <span>Open</span>
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card/70 p-6 text-center text-sm text-muted-foreground">
           Unable to load referral data.
         </div>
       )}
+
+      {/* A) Raw referral table */}
+      <div className="rounded-2xl border border-border bg-card/75 p-6 shadow-xl backdrop-blur">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[hsl(var(--secondary))] to-[hsl(var(--primary))] text-white shadow-md">
+              <Share2 className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Database</p>
+              <p className="text-lg font-semibold">Referral table (raw edges)</p>
+            </div>
+          </div>
+          <button
+            onClick={() => edgesQuery.refetch()}
+            disabled={edgesQuery.isRefetching}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-60"
+            aria-busy={edgesQuery.isRefetching}
+          >
+            {edgesQuery.isRefetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            <span>Reload</span>
+          </button>
+        </div>
+
+        {edgesQuery.isLoading ? (
+          <div className={`mt-4 rounded-xl border border-border bg-background/70 p-6 text-center ${shimmer}`}>
+            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-border border-t-[hsl(var(--primary))]" />
+            <p className="mt-2 text-sm text-muted-foreground">Loading referral edges...</p>
+          </div>
+        ) : edgesQuery.data ? (
+          <>
+            <div className="mt-4 overflow-x-auto rounded-xl border border-border bg-background/60">
+              <table className="min-w-full text-sm">
+                <thead className="border-b border-border bg-background/80">
+                  <tr className="text-left text-xs font-semibold text-muted-foreground">
+                    <th className="px-4 py-3">Created</th>
+                    <th className="px-4 py-3">Referrer</th>
+                    <th className="px-4 py-3">Referred</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Reward</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {edgesQuery.data.rows.map((r) => (
+                    <tr key={r.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {r.createdAt ? new Date(r.createdAt).toLocaleString() : "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="space-y-0.5">
+                          <div className="font-semibold">{r.referrer?.name || "—"}</div>
+                          <div className="text-xs text-muted-foreground">{r.referrer?.email || r.referrerId}</div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="space-y-0.5">
+                          <div className="font-semibold">{r.referred?.name || "—"}</div>
+                          <div className="text-xs text-muted-foreground">{r.referred?.email || r.referredId}</div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center rounded-full border border-border bg-background px-2.5 py-1 text-xs font-semibold">
+                          {r.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {r.rewardPaid ? "Paid" : "Unpaid"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+              <div>
+                Page <span className="font-semibold text-foreground">{edgesQuery.data.page}</span> of{" "}
+                <span className="font-semibold text-foreground">{edgesQuery.data.pages || 1}</span> •{" "}
+                <span className="font-semibold text-foreground">{edgesQuery.data.total}</span> rows
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEdgesPage((p) => Math.max(1, p - 1))}
+                  disabled={edgesPage <= 1 || edgesQuery.isRefetching}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Prev
+                </button>
+                <button
+                  onClick={() => setEdgesPage((p) => p + 1)}
+                  disabled={edgesPage >= (edgesQuery.data.pages || 1) || edgesQuery.isRefetching}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="mt-4 rounded-xl border border-border bg-background/70 p-6 text-center text-sm text-muted-foreground">
+            Unable to load referral edges.
+          </div>
+        )}
+      </div>
 
       <div className="rounded-2xl border border-border bg-card/75 p-6 shadow-xl backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -498,6 +862,35 @@ export default function AdminReferralsPage() {
                     <span>{u.package?.name || "No package"}</span>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="w-full">
+                      <label className="mb-1 block text-[11px] font-semibold text-muted-foreground">
+                        Attach sponsor by email
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={missingSponsorEmail[u.id] || ""}
+                          onChange={(e) =>
+                            setMissingSponsorEmail((prev) => ({
+                              ...prev,
+                              [u.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="sponsor@email.com"
+                          className="h-9 flex-1 rounded-lg border border-border bg-background px-3 text-xs focus:border-[hsl(var(--secondary))] focus:outline-none"
+                          disabled={resolving}
+                        />
+                        <button
+                          onClick={() => handleResolveMissingByEmail(u.id)}
+                          disabled={resolving || !(missingSponsorEmail[u.id] || "").trim()}
+                          className="inline-flex h-9 items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-3 text-xs font-semibold text-white shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-busy={resolving}
+                        >
+                          {resolving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                          Attach
+                        </button>
+                      </div>
+                    </div>
+
                     <button
                       onClick={() =>
                         handleResolveMissing(

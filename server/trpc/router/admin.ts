@@ -421,6 +421,48 @@ export const adminRouter = createTRPCRouter({
       return result;
     }),
 
+  activateAllUsers: adminProcedure
+    .input(
+      z.object({
+        confirmed: z.boolean(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (!input.confirmed) {
+        throw new Error("Confirmation required to activate all users");
+      }
+
+      // Get count of inactive users before activation
+      const inactiveCount = await prisma.user.count({
+        where: { activated: false },
+      });
+
+      // Activate all users
+      const result = await prisma.user.updateMany({
+        where: { activated: false },
+        data: { activated: true },
+      });
+
+      // Log the global activation
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: (ctx.session?.user as any)?.id || "system",
+          action: "ACTIVATE_ALL_USERS",
+          entity: "User",
+          entityId: "*",
+          changes: JSON.stringify({ 
+            inactiveCount,
+            activatedCount: result.count 
+          }),
+          status: "success",
+          createdAt: new Date(),
+        },
+      });
+
+      return { count: result.count, previousInactiveCount: inactiveCount };
+    }),
+
   bulkEmailUsers: adminProcedure
     .input(
       z.object({
