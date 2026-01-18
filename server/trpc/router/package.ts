@@ -15,6 +15,10 @@ import {
   notifyAdminEmpowermentPending,
   notifyReferralReward,
 } from "@/server/services/notification.service";
+import { 
+  isCompositePackage, 
+  processCompositePackagePurchase 
+} from "@/server/services/compositePackages.service";
 
 export const packageRouter = createTRPCRouter({
   getPackages: publicProcedure.query(async () => {
@@ -260,6 +264,41 @@ export const packageRouter = createTRPCRouter({
       const includesMyngul = myngulPackages.includes(membershipPackage.name);
       const MYNGUL_CREDIT = 11000;
       let activationPin = null;
+
+      // Check if this is a composite package
+      if (isCompositePackage(membershipPackage.name)) {
+        // Process composite package (Regular Plus + specialized wallet + Myngul)
+        const compositeResult = await processCompositePackagePurchase({
+          prisma,
+          userId,
+          packageName: membershipPackage.name,
+          packageId,
+          totalPaid: totalCost,
+          referralDistributions: distributions,
+          paymentReference: `COMPOSITE-${packageId}-${Date.now()}`,
+        });
+
+        // Send activation notification
+        await notifyMembershipActivation(userId, membershipPackage.name, compositeResult.expiresAt);
+
+        // Return composite package success response
+        return {
+          success: true,
+          message: `${membershipPackage.name} package activated successfully! MYNGUL Activation PIN: ${compositeResult.myngulPin}`,
+          expiresAt: compositeResult.expiresAt,
+          distributions,
+          totalDistributed: distributions.reduce((sum, d) => sum + d.cash + d.palliative + d.bpt + d.cashback, 0),
+          myngulActivated: true,
+          myngulPin: compositeResult.myngulPin,
+          myngulCredit: MYNGUL_CREDIT,
+          compositePackage: {
+            membershipActivated: compositeResult.membershipPackageActivated,
+            specializedWallet: compositeResult.specializedWalletCredited,
+          }
+        };
+      }
+
+      // Standard package processing continues below...
 
       // Generate activation PIN and credit social media wallet for MYNGUL packages
       if (includesMyngul) {

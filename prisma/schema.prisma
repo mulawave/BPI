@@ -139,25 +139,24 @@ model Blog {
 }
 
 model BpiMember {
-  id                String             @id
-  userId            String             @unique
-  membershipType    String             @default("regular")
-  isVip             Boolean            @default(false)
-  isActivated       Boolean            @default(false)
-  pendingActivation Boolean            @default(false)
-  isShelter         Boolean            @default(false)
-  shelterWallet     Boolean            @default(false)
-  shelterPending    Boolean            @default(false)
-  wallet            Float              @default(0)
-  spendable         Float              @default(0)
-  cashback          Float              @default(0)
-  defaultCurrency   String             @default("NGN")
+  id                String   @id
+  userId            String   @unique
+  membershipType    String   @default("regular")
+  isVip             Boolean  @default(false)
+  isActivated       Boolean  @default(false)
+  pendingActivation Boolean  @default(false)
+  isShelter         Boolean  @default(false)
+  shelterWallet     Boolean  @default(false)
+  shelterPending    Boolean  @default(false)
+  wallet            Float    @default(0)
+  spendable         Float    @default(0)
+  cashback          Float    @default(0)
+  defaultCurrency   String   @default("NGN")
   referralLink      String?
   profilePic        String?
-  createdAt         DateTime           @default(now())
+  createdAt         DateTime @default(now())
   updatedAt         DateTime
-  User              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  PalliativeTicket  PalliativeTicket[]
+  User              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model BptConversionRate {
@@ -600,13 +599,13 @@ model LeadershipPoolQualification {
   firstGenRegularPlus   Int       @default(0)
   secondGenRegularPlus  Int       @default(0)
   isQualified           Boolean   @default(false)
-  sponsorshipClass      Boolean   @default(false)
   qualifiedAt           DateTime?
   currentTier           String?
   poolSharePercentage   Float     @default(0)
   lastEvaluatedAt       DateTime  @default(now())
   createdAt             DateTime  @default(now())
   updatedAt             DateTime
+  sponsorshipClass      Boolean   @default(false)
   User                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([isQualified])
@@ -777,10 +776,9 @@ model PalliativeTicket {
   createdAt                             DateTime       @default(now())
   TicketCategory                        TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   User_PalliativeTicket_createdByToUser User           @relation("PalliativeTicket_createdByToUser", fields: [createdBy], references: [id], onDelete: Cascade)
-  BpiMember                             BpiMember      @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "PalliativeTicket_member_fkey")
+  User_PalliativeTicket_userIdToUser    User           @relation("PalliativeTicket_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
   PartnerOffer                          PartnerOffer   @relation(fields: [offerId], references: [id], onDelete: Cascade)
   Partner                               Partner        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  User_PalliativeTicket_userIdToUser    User           @relation("PalliativeTicket_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model PalliativeWalletActivation {
@@ -1220,9 +1218,6 @@ model User {
   state                                                                String?
   zip                                                                  String?
   country                                                              String?
-  cityId                                                               Int?                         @map("city_id")
-  stateId                                                              Int?                         @map("state_id")
-  countryId                                                            Int?                         @map("country_id")
   profilePic                                                           String?
   secondaryEmail                                                       String?
   username                                                             String?                      @unique
@@ -1289,11 +1284,18 @@ model User {
   palliativeTier                                                       String?
   selectedPalliative                                                   String?
   socialMedia                                                          Float                        @default(0)
-  userProfilePin                                                       String?
+  cityId                                                               Int?                         @map("city_id")
+  countryId                                                            Int?                         @map("country_id")
+  stateId                                                              Int?                         @map("state_id")
   twoFactorEnabled                                                     Boolean                      @default(false)
   twoFactorSecret                                                      String?
+  userProfilePin                                                       String?
+  empowermentSponsorReward                                             Float                        @default(0)
+  retirement                                                           Float                        @default(0)
+  travelTour                                                           Float                        @default(0)
   Account                                                              Account[]
   ActiveShelter                                                        ActiveShelter[]
+  AuditLog                                                             AuditLog[]
   BPICalculation                                                       BPICalculation[]
   BestDeal                                                             BestDeal[]
   Blog                                                                 Blog[]
@@ -1320,6 +1322,8 @@ model User {
   PalliativeTicket_PalliativeTicket_userIdToUser                       PalliativeTicket[]           @relation("PalliativeTicket_userIdToUser")
   PalliativeWalletActivation                                           PalliativeWalletActivation[]
   PasswordReset                                                        PasswordReset[]
+  ReviewedPayments                                                     PendingPayment[]             @relation("PaymentReviewer")
+  PendingPayment                                                       PendingPayment[]
   PromotionalMaterial                                                  PromotionalMaterial[]
   Referral_Referral_referredIdToUser                                   Referral[]                   @relation("Referral_referredIdToUser")
   Referral_Referral_referrerIdToUser                                   Referral[]                   @relation("Referral_referrerIdToUser")
@@ -1345,9 +1349,6 @@ model User {
   WithdrawalHistory                                                    WithdrawalHistory[]
   YoutubeChannel                                                       YoutubeChannel[]
   YoutubeProvider                                                      YoutubeProvider?
-  AuditLog                                                             AuditLog[]
-  PendingPayment                                                       PendingPayment[]
-  ReviewedPayments                                                     PendingPayment[]             @relation("PaymentReviewer")
   cityRelation                                                         City?                        @relation(fields: [cityId], references: [id], onDelete: SetNull)
   stateRelation                                                        State?                       @relation(fields: [stateId], references: [id], onDelete: SetNull)
   countryRelation                                                      Country?                     @relation(fields: [countryId], references: [id], onDelete: SetNull)
@@ -1484,69 +1485,58 @@ model YoutubeProvider {
   @@index([youtubePlanId])
 }
 
-// Admin Panel Models
-
 model PaymentGatewayConfig {
-  id               String   @id
-  gatewayName      String   @unique
-  displayName      String
-  provider         String
-  isActive         Boolean  @default(false)
-  
-  // Paystack & Flutterwave fields
-  publicKey        String?
-  secretKey        String?
-  merchantId       String?
-  webhookUrl       String?
-  callbackUrl      String?
-  
-  // Crypto fields
-  apiProvider      String?
-  merchantKey      String?
-  cryptoPublicKey  String?
-  cryptoSecretKey  String?
-  
-  // Bank Transfer fields
-  bankName         String?
-  bankAccount      String?
-  bankAccountName  String?
-  
-  // Utility Token fields
-  tokenName            String?
-  tokenSymbol          String?
-  tokenContractAddress String?
-  tokenomicsUrl        String?
-  homePageUrl          String?
+  id                   String   @id
+  gatewayName          String   @unique
+  displayName          String
+  provider             String
+  isActive             Boolean  @default(false)
+  publicKey            String?
+  secretKey            String?
+  merchantId           String?
+  webhookUrl           String?
+  callbackUrl          String?
+  supportedMethods     String[] @default([])
+  currency             String   @default("NGN")
+  fees                 Json?
+  limits               Json?
+  logo                 String?
+  description          String?
+  displayOrder         Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime
+  apiProvider          String?
+  bankAccount          String?
+  bankAccountName      String?
+  bankName             String?
+  cryptoPublicKey      String?
+  cryptoSecretKey      String?
   currentPriceNgn      Float?
   currentPriceUsd      Float?
-  
-  supportedMethods String[] @default([])
-  currency         String   @default("NGN")
-  fees             Json?
-  limits           Json?
-  logo             String?
-  description      String?
-  displayOrder     Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime
+  homePageUrl          String?
+  merchantKey          String?
+  tokenContractAddress String?
+  tokenName            String?
+  tokenSymbol          String?
+  tokenomicsUrl        String?
 
   @@index([isActive, displayOrder])
 }
 
 model AuditLog {
-  id          String   @id
-  userId      String
-  action      String
-  entity      String
-  entityId    String?
-  changes     Json?
-  metadata    Json?
-  ipAddress   String?
-  userAgent   String?
-  status      String   @default("success")
+  id           String   @id
+  userId       String
+  action       String
+  entity       String
+  entityId     String?
+  changes      Json?
+  metadata     Json?
+  ipAddress    String?
+  userAgent    String?
+  status       String   @default("success")
   errorMessage String?
-  createdAt   DateTime @default(now())
-  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([action])
@@ -1555,24 +1545,24 @@ model AuditLog {
 }
 
 model PendingPayment {
-  id              String   @id
-  userId          String
-  transactionType String
-  amount          Float
-  currency        String   @default("NGN")
-  paymentMethod   String
+  id               String    @id
+  userId           String
+  transactionType  String
+  amount           Float
+  currency         String    @default("NGN")
+  paymentMethod    String
   gatewayReference String?
-  status          String   @default("pending")
-  metadata        Json?
-  proofOfPayment  String?
-  reviewedBy      String?
-  reviewedAt      DateTime?
-  reviewNotes     String?
-  expiresAt       DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime
-  User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  Reviewer        User?    @relation("PaymentReviewer", fields: [reviewedBy], references: [id])
+  status           String    @default("pending")
+  metadata         Json?
+  proofOfPayment   String?
+  reviewedBy       String?
+  reviewedAt       DateTime?
+  reviewNotes      String?
+  expiresAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime
+  Reviewer         User?     @relation("PaymentReviewer", fields: [reviewedBy], references: [id])
+  User             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([status])
@@ -1580,17 +1570,17 @@ model PendingPayment {
 }
 
 model AdminNotificationSettings {
-  id              String   @id
-  notificationType String  @unique
-  enabled         Boolean  @default(true)
-  emailEnabled    Boolean  @default(true)
-  smsEnabled      Boolean  @default(false)
-  pushEnabled     Boolean  @default(true)
-  recipients      String[] @default([])
-  template        String?
-  thresholds      Json?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime
+  id               String   @id
+  notificationType String   @unique
+  enabled          Boolean  @default(true)
+  emailEnabled     Boolean  @default(true)
+  smsEnabled       Boolean  @default(false)
+  pushEnabled      Boolean  @default(true)
+  recipients       String[] @default([])
+  template         String?
+  thresholds       Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
 }
 
 model Country {
@@ -1599,8 +1589,8 @@ model Country {
   dialCode        Int?      @map("dial_code")
   code            String?
   createdDatetime DateTime? @map("created_datetime")
-  states          State[]
   users           User[]
+  states          State[]
 
   @@map("countries")
 }
@@ -1611,9 +1601,9 @@ model State {
   name      String
   createdAt DateTime? @default(now()) @map("created_at")
   updatedAt DateTime? @default(now()) @map("updated_at")
-  country   Country   @relation(fields: [countryId], references: [id], onDelete: Cascade)
-  cities    City[]
   users     User[]
+  cities    City[]
+  country   Country   @relation(fields: [countryId], references: [id], onDelete: Cascade)
 
   @@index([countryId])
   @@map("states")
@@ -1623,19 +1613,19 @@ model City {
   id      Int    @id
   name    String
   stateId Int    @map("state_id")
-  state   State  @relation(fields: [stateId], references: [id], onDelete: Cascade)
   users   User[]
+  state   State  @relation(fields: [stateId], references: [id], onDelete: Cascade)
 
   @@index([stateId])
   @@map("cities")
 }
 
 model Bank {
-  id              Int               @id @default(autoincrement())
-  bankName        String            @map("bank_name")
-  bankCode        String            @map("bank_code")
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
+  id              Int              @id @default(autoincrement())
+  bankName        String           @map("bank_name")
+  bankCode        String           @map("bank_code")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
   userBankRecords UserBankRecord[]
 
   @@map("nigerian_banks")
@@ -1649,15 +1639,14 @@ model UserBankRecord {
   accountName   String   @map("account_name")
   accountNumber String   @map("account_number")
   bvn           String?
-  isDefault     Boolean  @default(false) @map("is_default")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
+  isDefault     Boolean  @default(false) @map("is_default")
+  bank          Bank?    @relation(fields: [bankId], references: [id])
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bank          Bank?    @relation(fields: [bankId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([bankId])
   @@index([userId, isDefault])
   @@map("bank_records")
 }
-

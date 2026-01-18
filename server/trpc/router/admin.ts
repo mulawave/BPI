@@ -204,8 +204,16 @@ export const adminRouter = createTRPCRouter({
 
       if (!user) throw new Error("User not found");
 
-      const [level1Referrals, directReferralRows, referredByUser, sponsorUser] =
-        await Promise.all([
+      const [
+        level1Referrals,
+        directReferralRows,
+        referredByUser,
+        sponsorUser,
+        membershipPackage,
+        city,
+        state,
+        country,
+      ] = await Promise.all([
           prisma.referral.findMany({
             where: { referrerId: input.userId },
             select: { referredId: true },
@@ -275,6 +283,35 @@ export const adminRouter = createTRPCRouter({
                 },
               })
             : Promise.resolve(null),
+          user.activeMembershipPackageId
+            ? prisma.membershipPackage.findUnique({
+                where: { id: user.activeMembershipPackageId },
+                select: {
+                  id: true,
+                  name: true,
+                  description: true,
+                  price: true,
+                },
+              })
+            : Promise.resolve(null),
+          user.cityId
+            ? prisma.city.findUnique({
+                where: { id: user.cityId },
+                select: { id: true, name: true },
+              })
+            : Promise.resolve(null),
+          user.stateId
+            ? prisma.state.findUnique({
+                where: { id: user.stateId },
+                select: { id: true, name: true },
+              })
+            : Promise.resolve(null),
+          user.countryId
+            ? prisma.country.findUnique({
+                where: { id: user.countryId },
+                select: { id: true, name: true },
+              })
+            : Promise.resolve(null),
         ]);
 
       const level1Ids = level1Referrals.map((r) => r.referredId);
@@ -333,6 +370,10 @@ export const adminRouter = createTRPCRouter({
         ReferredUsers: referrals,
         ReferredByUser: referredByUser,
         SponsorUser: sponsorUser,
+        MembershipPackage: membershipPackage,
+        cityRelation: city,
+        stateRelation: state,
+        countryRelation: country,
         networkStats,
       };
     }),

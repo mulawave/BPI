@@ -231,8 +231,14 @@ export default function UserDetailsModal({
                                 icon={MdLocationOn}
                                 label="Location"
                                 value={
-                                  user.city && user.state
-                                    ? `${user.city}, ${user.state}`
+                                  user.cityRelation?.name || user.stateRelation?.name || user.countryRelation?.name
+                                    ? [
+                                        user.cityRelation?.name,
+                                        user.stateRelation?.name,
+                                        user.countryRelation?.name,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(", ")
                                     : "N/A"
                                 }
                               />
@@ -292,31 +298,40 @@ export default function UserDetailsModal({
                               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                                 Membership
                               </h3>
-                              <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-4">
                                 <InfoItem
-                                  icon={MdEvent}
-                                  label="Activated"
+                                  icon={MdCardMembership}
+                                  label="Plan"
                                   value={
-                                    user.membershipActivatedAt
-                                      ? format(
-                                          new Date(user.membershipActivatedAt),
-                                          "MMM d, yyyy"
-                                        )
-                                      : "N/A"
+                                    (user as any).MembershipPackage?.name || "Unknown Package"
                                   }
                                 />
-                                <InfoItem
-                                  icon={MdEvent}
-                                  label="Expires"
-                                  value={
-                                    user.membershipExpiresAt
-                                      ? format(
-                                          new Date(user.membershipExpiresAt),
-                                          "MMM d, yyyy"
-                                        )
-                                      : "N/A"
-                                  }
-                                />
+                                <div className="grid grid-cols-2 gap-4">
+                                  <InfoItem
+                                    icon={MdEvent}
+                                    label="Activated"
+                                    value={
+                                      user.membershipActivatedAt
+                                        ? format(
+                                            new Date(user.membershipActivatedAt),
+                                            "MMM d, yyyy"
+                                          )
+                                        : "N/A"
+                                    }
+                                  />
+                                  <InfoItem
+                                    icon={MdEvent}
+                                    label="Expires"
+                                    value={
+                                      user.membershipExpiresAt
+                                        ? format(
+                                            new Date(user.membershipExpiresAt),
+                                            "MMM d, yyyy"
+                                          )
+                                        : "N/A"
+                                    }
+                                  />
+                                </div>
                               </div>
                             </div>
                           )}
