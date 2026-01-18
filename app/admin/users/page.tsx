@@ -14,6 +14,7 @@ import {
   MdCancel,
   MdMoreVert,
   MdPeople,
+  MdSync,
 } from "react-icons/md";
 import {
   useReactTable,
@@ -62,6 +63,7 @@ export default function UsersPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [showActivateAllModal, setShowActivateAllModal] = useState(false);
+  const [showSyncReferralModal, setShowSyncReferralModal] = useState(false);
   const [selectAllMode, setSelectAllMode] = useState<'page' | 'all' | 'none'>('none');
 
   const { data, isLoading, refetch, isFetching } = api.admin.getUsers.useQuery({
@@ -113,6 +115,16 @@ export default function UsersPage() {
       setSelectedUsers(new Set());
       setSelectAllMode('none');
       refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const syncReferralMutation = api.admin.syncReferralData.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Synced ${data.created} referrals (${data.existingCount} existing, ${data.skipped} skipped)${data.errorCount > 0 ? `, ${data.errorCount} errors` : ''}`);
+      setShowSyncReferralModal(false);
     },
     onError: (error) => {
       toast.error(error.message);
@@ -526,6 +538,15 @@ export default function UsersPage() {
               <MdCheckCircle size={18} />
               Activate All Users
             </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowSyncReferralModal(true)}
+              className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/30 font-semibold transition-all flex items-center gap-2"
+            >
+              <MdSync size={18} />
+              Sync Referral Data
+            </motion.button>
           </div>
         </motion.div>
 
@@ -803,6 +824,99 @@ export default function UsersPage() {
                         <>
                           <MdCheckCircle size={18} />
                           Confirm & Activate All
+                        </>
+                      )}
+                    </motion.button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Sync Referral Data Modal */}
+        {showSyncReferralModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md mx-4"
+            >
+              <div className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+                <div className="absolute -top-20 -right-20 h-40 w-40 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 opacity-10 blur-3xl" />
+                
+                <div className="relative p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg">
+                      <MdSync size={28} />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-bold text-foreground">Sync Referral Data</h3>
+                      <p className="text-sm text-muted-foreground">Rebuild referral records</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 mb-6">
+                    <div className="rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 p-4">
+                      <p className="text-sm font-semibold text-red-800 dark:text-red-200 mb-2">
+                        ⚠️ Warning: Data will be rebuilt
+                      </p>
+                      <p className="text-xs text-red-700 dark:text-red-300">
+                        This will truncate and rebuild the entire Referral table based on User.sponsorId relationships.
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 p-4">
+                      <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                        This action will:
+                      </p>
+                      <ul className="mt-2 space-y-1 text-xs text-blue-700 dark:text-blue-300">
+                        <li className="flex items-center gap-2">
+                          <MdSync className="text-blue-600" />
+                          Delete all existing referral records
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <MdSync className="text-blue-600" />
+                          Recreate records from sponsorId data
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <MdSync className="text-blue-600" />
+                          Sync admin panel with user dashboard
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <MdSync className="text-blue-600" />
+                          Log the action in audit trail
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setShowSyncReferralModal(false)}
+                      className="flex-1 px-4 py-3 border-2 border-border rounded-xl hover:bg-muted font-semibold transition-all"
+                    >
+                      Cancel
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => syncReferralMutation.mutate({ confirmed: true })}
+                      disabled={syncReferralMutation.isPending}
+                      className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/30 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {syncReferralMutation.isPending ? (
+                        <>
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          Syncing...
+                        </>
+                      ) : (
+                        <>
+                          <MdSync size={18} />
+                          Confirm & Sync
                         </>
                       )}
                     </motion.button>

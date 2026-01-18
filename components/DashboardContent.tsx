@@ -498,6 +498,9 @@ export default function DashboardContent({ session }: DashboardContentProps) {
   // Get Leadership Pool progress
   const { data: leadershipProgress } = api.leadership.getMyProgress.useQuery();
   
+  // Get Leadership Pool admin settings
+  const { data: leadershipPoolSettings } = api.leadershipPool.getPoolSettings.useQuery();
+  
   // Portfolio 24h tracking
   const [portfolio24hChange, setPortfolio24hChange] = useState({ change: 0, percentage: 0 });
 
@@ -2612,7 +2615,7 @@ export default function DashboardContent({ session }: DashboardContentProps) {
 
             if (isBelowRegularPlus) {
               bgColor = "bg-gradient-to-r from-red-500 to-rose-600";
-              message = "Upgrade to Regular Plus to unlock more rewards and participate in leaderboards!";
+              message = "Upgrade to Regular Plus or higher to unlock more rewards and participate in the Leadership Pool!";
               buttonText = "Upgrade Membership Plan";
             } else if (isRegularPlus) {
               bgColor = "bg-gradient-to-r from-yellow-500 to-amber-600";
@@ -2710,25 +2713,27 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                 onClick={() => setIsCalculatorModalOpen(true)}
               />
 
-              {/* Leadership Pool Card */}
-              <CommunityCard
-                title="Leadership Pool"
-                description="Join our elite program"
-                icon={Award}
-                state={leadershipProgress?.isQualified ? "active" : (leadershipProgress?.currentProgress.isRegularPlus ? "in-progress" : "locked")}
-                progress={Math.max(
-                  leadershipProgress?.currentProgress.option1.percentage || 0,
-                  leadershipProgress?.currentProgress.option2.percentage || 0
-                )}
-                badge={leadershipProgress?.isQualified 
-                  ? "Qualified" 
-                  : `${Math.max(
-                      leadershipProgress?.currentProgress.option1.percentage || 0,
-                      leadershipProgress?.currentProgress.option2.percentage || 0
-                    ).toFixed(0)}% Complete`
-                }
-                onClick={() => setIsLeadershipPoolModalOpen(true)}
-              />
+              {/* Leadership Pool Card - Only show if enabled by admin */}
+              {leadershipPoolSettings?.enabled && (
+                <CommunityCard
+                  title="Leadership Pool"
+                  description="Join our elite program"
+                  icon={Award}
+                  state={leadershipProgress?.isQualified ? "active" : (leadershipProgress?.currentProgress.isRegularPlus ? "in-progress" : "locked")}
+                  progress={Math.max(
+                    leadershipProgress?.currentProgress.option1.percentage || 0,
+                    leadershipProgress?.currentProgress.option2.percentage || 0
+                  )}
+                  badge={leadershipProgress?.isQualified 
+                    ? "Qualified" 
+                    : `${Math.max(
+                        leadershipProgress?.currentProgress.option1.percentage || 0,
+                        leadershipProgress?.currentProgress.option2.percentage || 0
+                      ).toFixed(0)}% Complete`
+                  }
+                    onClick={() => setIsLeadershipPoolModalOpen(true)}
+                />
+              )}
 
               {/* EPC & EPP Card - Admin Controlled */}
               {adminSettings?.enableEpcEpp === true && (

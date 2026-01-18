@@ -600,6 +600,7 @@ model LeadershipPoolQualification {
   firstGenRegularPlus   Int       @default(0)
   secondGenRegularPlus  Int       @default(0)
   isQualified           Boolean   @default(false)
+  sponsorshipClass      Boolean   @default(false)
   qualifiedAt           DateTime?
   currentTier           String?
   poolSharePercentage   Float     @default(0)
@@ -1659,3 +1660,4 @@ model UserBankRecord {
   @@index([userId, isDefault])
   @@map("bank_records")
 }
+

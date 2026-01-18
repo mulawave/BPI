@@ -463,6 +463,115 @@ export const adminRouter = createTRPCRouter({
       return { count: result.count, previousInactiveCount: inactiveCount };
     }),
 
+  syncReferralData: adminProcedure
+    .input(
+      z.object({
+        confirmed: z.boolean(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (!input.confirmed) {
+        throw new Error("Confirmation required to sync referral data");
+      }
+
+      // Step 1: Count existing referral records
+      const existingCount = await prisma.referral.count();
+
+      // Step 2: Truncate the Referral table
+      await prisma.referral.deleteMany({});
+
+      // Step 3: Get all users with sponsors
+      const usersWithSponsors = await prisma.user.findMany({
+        where: {
+          sponsorId: {
+            not: null,
+          },
+        },
+        select: {
+          id: true,
+          sponsorId: true,
+          createdAt: true,
+          activated: true,
+        },
+      });
+
+      // Step 4: Create referral records
+      let created = 0;
+      let skipped = 0;
+      const errors: string[] = [];
+
+      for (const user of usersWithSponsors) {
+        if (!user.sponsorId) {
+          skipped++;
+          continue;
+        }
+
+        try {
+          // Verify sponsor exists
+          const sponsorExists = await prisma.user.findUnique({
+            where: { id: user.sponsorId },
+            select: { id: true },
+          });
+
+          if (!sponsorExists) {
+            errors.push(`User ${user.id} has invalid sponsorId: ${user.sponsorId}`);
+            skipped++;
+            continue;
+          }
+
+          // Create referral record
+          await prisma.referral.create({
+            data: {
+              id: randomUUID(),
+              referrerId: user.sponsorId,
+              referredId: user.id,
+              status: user.activated ? "active" : "pending",
+              rewardPaid: false,
+              createdAt: user.createdAt,
+              updatedAt: new Date(),
+            },
+          });
+
+          created++;
+        } catch (error: any) {
+          if (error.code === 'P2002') {
+            // Duplicate entry, skip
+            skipped++;
+          } else {
+            errors.push(`Failed to create referral for user ${user.id}: ${error.message}`);
+            skipped++;
+          }
+        }
+      }
+
+      // Log the sync action
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: (ctx.session?.user as any)?.id || "system",
+          action: "SYNC_REFERRAL_DATA",
+          entity: "Referral",
+          entityId: "*",
+          changes: JSON.stringify({
+            existingCount,
+            created,
+            skipped,
+            errorCount: errors.length,
+          }),
+          status: "success",
+          createdAt: new Date(),
+        },
+      });
+
+      return {
+        existingCount,
+        created,
+        skipped,
+        errorCount: errors.length,
+        errors: errors.slice(0, 10), // Return first 10 errors
+      };
+    }),
+
   bulkEmailUsers: adminProcedure
     .input(
       z.object({
@@ -5347,4 +5456,360 @@ export const adminRouter = createTRPCRouter({
 
       return { success: true };
     }),
+
+  // ===========================
+  // Leadership Pool Admin
+  // ===========================
+
+  getLeadershipPoolSettings: adminProcedure.query(async () => {
+    const settings = await prisma.adminSettings.findMany({
+      where: {
+        settingKey: {
+          in: ['leadershipPoolAmount', 'leadershipPoolEnabled', 'leadershipPoolMaxParticipants'],
+        },
+      },
+    });
+
+    return {
+      amount: parseInt(settings.find(s => s.settingKey === 'leadershipPoolAmount')?.settingValue || '50000000'),
+      enabled: settings.find(s => s.settingKey === 'leadershipPoolEnabled')?.settingValue === 'true',
+      maxParticipants: parseInt(settings.find(s => s.settingKey === 'leadershipPoolMaxParticipants')?.settingValue || '100'),
+    };
+  }),
+
+  updateLeadershipPoolSettings: adminProcedure
+    .input(
+      z.object({
+        amount: z.number().min(0).optional(),
+        enabled: z.boolean().optional(),
+        maxParticipants: z.number().min(1).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const updates: Array<{
+        settingKey: string;
+        settingValue: string;
+        description: string;
+      }> = [];
+
+      if (input.amount !== undefined) {
+        updates.push({
+          settingKey: 'leadershipPoolAmount',
+          settingValue: input.amount.toString(),
+          description: 'Total amount to distribute in Leadership Pool',
+        });
+      }
+      if (input.enabled !== undefined) {
+        updates.push({
+          settingKey: 'leadershipPoolEnabled',
+          settingValue: input.enabled.toString(),
+          description: 'Enable or disable Leadership Pool Challenge',
+        });
+      }
+      if (input.maxParticipants !== undefined) {
+        updates.push({
+          settingKey: 'leadershipPoolMaxParticipants',
+          settingValue: input.maxParticipants.toString(),
+          description: 'Maximum number of participants in Leadership Pool',
+        });
+      }
+
+      await Promise.all(
+        updates.map(update =>
+          prisma.adminSettings.upsert({
+            where: { settingKey: update.settingKey },
+            update: {
+              settingValue: update.settingValue,
+              updatedAt: new Date(),
+            },
+            create: {
+              id: randomUUID(),
+              settingKey: update.settingKey,
+              settingValue: update.settingValue,
+              description: update.description,
+              updatedAt: new Date(),
+            },
+          })
+        )
+      );
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: ctx.session!.user.id,
+          action: 'UPDATE_LEADERSHIP_POOL_SETTINGS',
+          entity: 'LEADERSHIP_POOL',
+          entityId: 'settings',
+          changes: input,
+          ipAddress: '',
+          userAgent: '',
+        },
+      });
+
+      return { success: true };
+    }),
+
+  getLeadershipPoolParticipants: adminProcedure
+    .input(
+      z.object({
+        page: z.number().min(1).default(1),
+        pageSize: z.number().min(1).max(100).default(20),
+        filter: z.enum(['all', 'earned', 'sponsored']).default('all'),
+        search: z.string().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const { page, pageSize, filter, search } = input;
+      const skip = (page - 1) * pageSize;
+
+      const where: any = {
+        isQualified: true,
+      };
+
+      if (filter === 'earned') {
+        where.sponsorshipClass = false;
+      } else if (filter === 'sponsored') {
+        where.sponsorshipClass = true;
+      }
+
+      if (search) {
+        where.User = {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+          ],
+        };
+      }
+
+      const [participants, total] = await Promise.all([
+        prisma.leadershipPoolQualification.findMany({
+          where,
+          include: {
+            User: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                activeMembershipPackageId: true,
+              },
+            },
+          },
+          orderBy: { qualifiedAt: 'desc' },
+          skip,
+          take: pageSize,
+        }),
+        prisma.leadershipPoolQualification.count({ where }),
+      ]);
+
+      const packageIds = Array.from(
+        new Set(
+          participants
+            .map(p => p.User.activeMembershipPackageId)
+            .filter((id): id is string => Boolean(id))
+        )
+      );
+
+      const membershipPackages = packageIds.length
+        ? await prisma.membershipPackage.findMany({
+            where: { id: { in: packageIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const packageNameById = new Map(membershipPackages.map(p => [p.id, p.name] as const));
+
+      return {
+        participants: participants.map(p => ({
+          id: p.id,
+          userId: p.userId,
+          userName: p.User.name,
+          userEmail: p.User.email,
+          membershipPackage: p.User.activeMembershipPackageId
+            ? packageNameById.get(p.User.activeMembershipPackageId) ?? null
+            : null,
+          qualificationOption: p.qualificationOption,
+          sponsorshipClass: p.sponsorshipClass,
+          qualifiedAt: p.qualifiedAt,
+          poolSharePercentage: p.poolSharePercentage,
+        })),
+        pagination: {
+          total,
+          page,
+          pageSize,
+          totalPages: Math.ceil(total / pageSize),
+        },
+      };
+    }),
+
+  addSponsorshipClassParticipant: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { id: true, name: true, email: true, activeMembershipPackageId: true },
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const membershipPackage = user.activeMembershipPackageId
+        ? await prisma.membershipPackage.findUnique({
+            where: { id: user.activeMembershipPackageId },
+            select: { name: true },
+          })
+        : null;
+
+      const membershipPackageName = membershipPackage?.name ?? null;
+
+      // Create or update qualification record
+      await prisma.leadershipPoolQualification.upsert({
+        where: { userId: input.userId },
+        update: {
+          sponsorshipClass: true,
+          isQualified: true,
+          qualifiedAt: new Date(),
+          updatedAt: new Date(),
+        },
+        create: {
+          id: randomUUID(),
+          userId: input.userId,
+          sponsorshipClass: true,
+          isQualified: true,
+          qualifiedAt: new Date(),
+          hasRegularPlusPackage:
+            membershipPackageName !== null &&
+            ['Regular Plus', 'Gold Plus', 'Platinum Plus'].includes(membershipPackageName),
+          updatedAt: new Date(),
+        },
+      });
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: ctx.session!.user.id,
+          action: 'ADD_SPONSORSHIP_CLASS_PARTICIPANT',
+          entity: 'LEADERSHIP_POOL',
+          entityId: input.userId,
+          metadata: { userName: user.name, userEmail: user.email },
+          ipAddress: '',
+          userAgent: '',
+        },
+      });
+
+      return { success: true, user: { ...user, membershipPackageName } };
+    }),
+
+  removeSponsorshipClassParticipant: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const qualification = await prisma.leadershipPoolQualification.findUnique({
+        where: { userId: input.userId },
+        include: {
+          User: {
+            select: { name: true, email: true },
+          },
+        },
+      });
+
+      if (!qualification) {
+        throw new Error('Qualification record not found');
+      }
+
+      // Remove sponsorship class flag (they may still be qualified through normal means)
+      await prisma.leadershipPoolQualification.update({
+        where: { userId: input.userId },
+        data: {
+          sponsorshipClass: false,
+          updatedAt: new Date(),
+        },
+      });
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: ctx.session!.user.id,
+          action: 'REMOVE_SPONSORSHIP_CLASS_PARTICIPANT',
+          entity: 'LEADERSHIP_POOL',
+          entityId: input.userId,
+          metadata: { userName: qualification.User.name, userEmail: qualification.User.email },
+          ipAddress: '',
+          userAgent: '',
+        },
+      });
+
+      return { success: true };
+    }),
+
+  disqualifyParticipant: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const qualification = await prisma.leadershipPoolQualification.findUnique({
+        where: { userId: input.userId },
+        include: {
+          User: {
+            select: { name: true, email: true },
+          },
+        },
+      });
+
+      if (!qualification) {
+        throw new Error('Qualification record not found');
+      }
+
+      // Completely disqualify the user
+      await prisma.leadershipPoolQualification.update({
+        where: { userId: input.userId },
+        data: {
+          isQualified: false,
+          sponsorshipClass: false,
+          qualifiedAt: null,
+          updatedAt: new Date(),
+        },
+      });
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: ctx.session!.user.id,
+          action: 'DISQUALIFY_LEADERSHIP_POOL_PARTICIPANT',
+          entity: 'LEADERSHIP_POOL',
+          entityId: input.userId,
+          metadata: { userName: qualification.User.name, userEmail: qualification.User.email },
+          ipAddress: '',
+          userAgent: '',
+        },
+      });
+
+      return { success: true };
+    }),
+
+  getLeadershipPoolStats: adminProcedure.query(async () => {
+    const [total, earned, sponsored] = await Promise.all([
+      prisma.leadershipPoolQualification.count({ where: { isQualified: true } }),
+      prisma.leadershipPoolQualification.count({ where: { isQualified: true, sponsorshipClass: false } }),
+      prisma.leadershipPoolQualification.count({ where: { isQualified: true, sponsorshipClass: true } }),
+    ]);
+
+    return {
+      totalQualified: total,
+      earnedQualifications: earned,
+      sponsoredQualifications: sponsored,
+    };
+  }),
 });

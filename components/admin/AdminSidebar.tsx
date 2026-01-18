@@ -23,6 +23,7 @@ import {
   BookOpen,
   ExternalLink,
   Share2,
+  Award,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -99,6 +100,12 @@ const navigation = [
     href: "/admin/community", 
     icon: Bell,
     description: "Updates & deals"
+  },
+  { 
+    name: "Leadership Pool", 
+    href: "/admin/leadership-pool", 
+    icon: Award,
+    description: "Manage pool & participants"
   },
   { 
     name: "Third-Party Platforms", 

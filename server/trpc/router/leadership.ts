@@ -158,6 +158,7 @@ export const leadershipRouter = createTRPCRouter({
     const secondGenCount = secondGenRegularPlus.length;
 
     // Check if user has Regular Plus or higher by looking up their package
+    // Qualifying tiers: Regular Plus, Gold Plus, Platinum Plus
     const userPackage = qualification.User.activeMembershipPackageId
       ? await prisma.membershipPackage.findUnique({
           where: { id: qualification.User.activeMembershipPackageId },
@@ -166,7 +167,7 @@ export const leadershipRouter = createTRPCRouter({
       : null;
 
     const isRegularPlus = userPackage?.name && 
-      ['Regular Plus', 'Premium', 'Gold', 'Platinum', 'Diamond'].includes(userPackage.name);
+      ['Regular Plus', 'Gold Plus', 'Platinum Plus'].includes(userPackage.name);
 
     // Calculate progress
     const option1Progress = Math.min((directSponsors / 70) * 100, 100);
@@ -182,16 +183,16 @@ export const leadershipRouter = createTRPCRouter({
     if (!isRegularPlus) {
       nextSteps.push({
         step: 1,
-        title: "Upgrade to Regular Plus",
-        description: "Activate or upgrade your membership to Regular Plus",
+        title: "Upgrade to Regular Plus or Higher",
+        description: "Activate or upgrade your membership to a qualifying tier (Regular Plus, Gold Plus, or Platinum Plus)",
         completed: false,
         action: "upgrade",
       });
     } else {
       nextSteps.push({
         step: 1,
-        title: "Upgrade to Regular Plus",
-        description: "Membership status verified",
+        title: "Upgrade to Regular Plus or Higher",
+        description: "Membership status verified - You have a qualifying package",
         completed: true,
       });
 
@@ -199,8 +200,8 @@ export const leadershipRouter = createTRPCRouter({
         const remaining = 70 - directSponsors;
         nextSteps.push({
           step: 2,
-          title: `Sponsor ${remaining} more Regular Plus members`,
-          description: `Option 1: You have ${directSponsors}/70 sponsors (${option1Progress.toFixed(1)}% complete)`,
+          title: `Sponsor ${remaining} more members with Regular Plus and Above`,
+          description: `Option 1: You have ${directSponsors}/70 sponsors with qualifying packages (${option1Progress.toFixed(1)}% complete)`,
           completed: false,
           action: "invite",
         });
@@ -247,6 +248,56 @@ export const leadershipRouter = createTRPCRouter({
       firstGenUserIds.length,
       secondGenCount
     );
+
+    // If user is sponsorship class, auto-qualify them
+    if (qualification.sponsorshipClass) {
+      // Update the qualification record with latest counts
+      await prisma.leadershipPoolQualification.update({
+        where: { userId },
+        data: {
+          hasRegularPlusPackage: isRegularPlus || false,
+          sponsoredRegularPlus: directSponsors,
+          firstGenRegularPlus: firstGenUserIds.length,
+          secondGenRegularPlus: secondGenCount,
+          isQualified: true,
+          qualifiedAt: qualification.qualifiedAt || new Date(),
+          updatedAt: new Date(),
+        },
+      });
+
+      return {
+        qualification: { ...qualification, isQualified: true },
+        currentProgress: {
+          isRegularPlus: true,
+          sponsorshipClass: true,
+          option1: {
+            directCount: directSponsors,
+            required: 70,
+            percentage: 100, // Auto-pass
+            qualified: true,
+          },
+          option2: {
+            firstGenCount: firstGenUserIds.length,
+            secondGenCount,
+            firstGenRequired: 50,
+            secondGenRequired: 50,
+            percentage: 100, // Auto-pass
+            qualified: true,
+          },
+        },
+        nextSteps: [{
+          step: 1,
+          title: "Sponsorship Class Member",
+          description: "You have been granted automatic qualification by an administrator",
+          completed: true,
+        }],
+        nextMilestone: null,
+        spotsRemaining,
+        totalQualified,
+        isQualified: true,
+        qualificationRank: null,
+      };
+    }
 
     // Update the qualification record with latest counts
     await prisma.leadershipPoolQualification.update({
@@ -348,13 +399,15 @@ export const leadershipRouter = createTRPCRouter({
           })
         : null;
 
+      // Check if user has any qualifying package tier
+      // Qualifying tiers: Regular Plus, Gold Plus, Platinum Plus
       const isRegularPlus = userPackage?.name && 
-        ['Regular Plus', 'Premium', 'Gold', 'Platinum', 'Diamond'].includes(userPackage.name);
+        ['Regular Plus', 'Gold Plus', 'Platinum Plus'].includes(userPackage.name);
 
       // Get eligible package IDs
       const eligiblePackages = await prisma.membershipPackage.findMany({
         where: {
-          name: { in: ['Regular Plus', 'Premium', 'Gold', 'Platinum', 'Diamond'] },
+          name: { in: ['Regular Plus', 'Gold Plus', 'Platinum Plus'] },
         },
         select: { id: true },
       });

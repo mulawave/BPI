@@ -217,4 +217,21 @@ export const leadershipPoolRouter = createTRPCRouter({
       percentage: totalPool > 0 ? (source.amount / totalPool) * 100 : 0,
     }));
   }),
+
+  getPoolSettings: protectedProcedure.query(async () => {
+    // Get Leadership Pool admin settings
+    const settings = await prisma.adminSettings.findMany({
+      where: {
+        settingKey: {
+          in: ['leadershipPoolAmount', 'leadershipPoolEnabled', 'leadershipPoolMaxParticipants'],
+        },
+      },
+    });
+
+    return {
+      amount: parseInt(settings.find(s => s.settingKey === 'leadershipPoolAmount')?.settingValue || '50000000'),
+      enabled: settings.find(s => s.settingKey === 'leadershipPoolEnabled')?.settingValue === 'true',
+      maxParticipants: parseInt(settings.find(s => s.settingKey === 'leadershipPoolMaxParticipants')?.settingValue || '100'),
+    };
+  }),
 });
