@@ -5812,4 +5812,301 @@ export const adminRouter = createTRPCRouter({
       sponsoredQualifications: sponsored,
     };
   }),
+
+  // User email search with autocomplete
+  searchUsersByEmail: adminProcedure
+    .input(
+      z.object({
+        query: z.string().min(1),
+        limit: z.number().min(1).max(50).default(10),
+      })
+    )
+    .query(async ({ input }) => {
+      const users = await prisma.user.findMany({
+        where: {
+          email: {
+            contains: input.query,
+            mode: "insensitive",
+          },
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          activated: true,
+          activeMembershipPackageId: true,
+        },
+        take: input.limit,
+        orderBy: { email: "asc" },
+      });
+
+      return users;
+    }),
+
+  // Assign membership package to single user
+  assignMembershipPackage: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        packageId: z.string(),
+        processPayout: z.boolean(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [user, membershipPackage] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: input.userId },
+          include: {
+            Referral_Referral_referredIdToUser: {
+              include: {
+                User_Referral_referrerIdToUser: true,
+              },
+            },
+          },
+        }),
+        prisma.membershipPackage.findUnique({
+          where: { id: input.packageId },
+        }),
+      ]);
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      if (!membershipPackage) {
+        throw new Error("Membership package not found");
+      }
+
+      const now = new Date();
+      const expiresAt = new Date(now);
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+      // Update user membership
+      await prisma.user.update({
+        where: { id: input.userId },
+        data: {
+          activeMembershipPackageId: input.packageId,
+          activated: true,
+          membershipActivatedAt: now,
+          updatedAt: now,
+        },
+      });
+
+      // Process payout if requested (execute full referral flow)
+      if (input.processPayout) {
+        await activateMembershipAfterExternalPayment(
+          input.userId,
+          input.packageId,
+          membershipPackage.price
+        );
+      }
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: ctx.session!.user.id,
+          action: "ASSIGN_MEMBERSHIP_PACKAGE",
+          entity: "USER",
+          entityId: input.userId,
+          metadata: {
+            packageId: input.packageId,
+            packageName: membershipPackage.name,
+            packagePrice: membershipPackage.price,
+            processPayout: input.processPayout,
+            userEmail: user.email,
+            userName: user.name,
+          },
+          ipAddress: "",
+          userAgent: "",
+        },
+      });
+
+      return {
+        success: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        },
+        package: {
+          id: membershipPackage.id,
+          name: membershipPackage.name,
+        },
+      };
+    }),
+
+  // Bulk assign membership package
+  bulkAssignMembershipPackage: adminProcedure
+    .input(
+      z.object({
+        emails: z.array(z.string().email()),
+        packageId: z.string(),
+        processPayout: z.boolean(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const membershipPackage = await prisma.membershipPackage.findUnique({
+        where: { id: input.packageId },
+      });
+
+      if (!membershipPackage) {
+        throw new Error("Membership package not found");
+      }
+
+      const users = await prisma.user.findMany({
+        where: {
+          email: { in: input.emails },
+        },
+        include: {
+          Referral_Referral_referredIdToUser: {
+            include: {
+              User_Referral_referrerIdToUser: true,
+            },
+          },
+        },
+      });
+
+      if (users.length === 0) {
+        throw new Error("No users found with provided emails");
+      }
+
+      const now = new Date();
+      const results = {
+        success: 0,
+        failed: 0,
+        errors: [] as Array<{ email: string; error: string }>,
+      };
+
+      for (const user of users) {
+        try {
+          // Update user membership
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              activeMembershipPackageId: input.packageId,
+              activated: true,
+              membershipActivatedAt: now,
+              updatedAt: now,
+            },
+          });
+
+          // Process payout if requested
+          if (input.processPayout) {
+            await activateMembershipAfterExternalPayment(
+              user.id,
+              input.packageId,
+              membershipPackage.price
+            );
+          }
+
+          results.success++;
+
+          // Audit log for each user
+          await prisma.auditLog.create({
+            data: {
+              id: randomUUID(),
+              userId: ctx.session!.user.id,
+              action: "BULK_ASSIGN_MEMBERSHIP_PACKAGE",
+              entity: "USER",
+              entityId: user.id,
+              metadata: {
+                packageId: input.packageId,
+                packageName: membershipPackage.name,
+                packagePrice: membershipPackage.price,
+                processPayout: input.processPayout,
+                userEmail: user.email,
+                userName: user.name,
+                bulkOperation: true,
+              },
+              ipAddress: "",
+              userAgent: "",
+            },
+          });
+        } catch (error: any) {
+          results.failed++;
+          results.errors.push({
+            email: user.email || "Unknown",
+            error: error.message,
+          });
+        }
+      }
+
+      return {
+        success: true,
+        results,
+        package: {
+          id: membershipPackage.id,
+          name: membershipPackage.name,
+        },
+      };
+    }),
+
+  // Extend membership expiration
+  extendMembershipExpiration: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        months: z.number().min(1).max(36),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await prisma.user.findUnique({
+        where: { id: input.userId },
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      if (!user.activeMembershipPackageId) {
+        throw new Error("User does not have an active membership");
+      }
+
+      const now = new Date();
+      const currentActivatedAt = user.membershipActivatedAt || now;
+      
+      // Calculate new start date (move forward by months)
+      const newStartDate = new Date(currentActivatedAt);
+      
+      // Calculate new expiration (current start + 1 year + extension months)
+      const newExpiresAt = new Date(currentActivatedAt);
+      newExpiresAt.setFullYear(newExpiresAt.getFullYear() + 1);
+      newExpiresAt.setMonth(newExpiresAt.getMonth() + input.months);
+
+      await prisma.user.update({
+        where: { id: input.userId },
+        data: {
+          membershipActivatedAt: newStartDate,
+          updatedAt: now,
+        },
+      });
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: ctx.session!.user.id,
+          action: "EXTEND_MEMBERSHIP_EXPIRATION",
+          entity: "USER",
+          entityId: input.userId,
+          metadata: {
+            userEmail: user.email,
+            userName: user.name,
+            extensionMonths: input.months,
+            previousActivatedAt: currentActivatedAt.toISOString(),
+            newActivatedAt: newStartDate.toISOString(),
+            newExpiresAt: newExpiresAt.toISOString(),
+          },
+          ipAddress: "",
+          userAgent: "",
+        },
+      });
+
+      return {
+        success: true,
+        newStartDate,
+        newExpiresAt,
+      };
+    }),
 });

@@ -122,8 +122,11 @@ function mapAmountToPackageName(amount: number): string | null {
   // These are the actual payment amounts, not package IDs
   
   const packageMap: Record<number, string> = {
-    // Regular tier (₦10,000)
+    // Regular tier (₦10,000 and legacy variations)
     10000: "Regular",
+    20000: "Regular",  // Legacy Regular Pro amount
+    21000: "Regular",  // Legacy variation
+    23000: "Regular",  // Legacy Regular Pro amount
     
     // Regular Plus tier (₦40,000 or ₦50,000 variations)
     40000: "Regular Plus",
@@ -136,9 +139,6 @@ function mapAmountToPackageName(amount: number): string | null {
     
     // Platinum/higher tiers
     310000: "Platinum Plus",
-    
-    // Unknown/special amounts - need clarification
-    23000: "Regular", // Unknown tier - defaulting to Regular
   };
   
   return packageMap[amount] || null;

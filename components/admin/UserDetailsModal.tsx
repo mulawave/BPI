@@ -18,10 +18,14 @@ import {
   MdHistory,
   MdTrendingUp,
   MdLink,
+  MdCardMembership,
+  MdCalendarToday,
 } from "react-icons/md";
 import { format } from "date-fns";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import AssignMembershipModal from "./AssignMembershipModal";
+import ExtendMembershipModal from "./ExtendMembershipModal";
 
 interface UserDetailsModalProps {
   userId: string;
@@ -40,12 +44,14 @@ export default function UserDetailsModal({
   const [activeTab, setActiveTab] = useState<"overview" | "activity" | "network">(
     "overview"
   );
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showExtendModal, setShowExtendModal] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const { data: user, isLoading } = api.admin.getUserById.useQuery(
+  const { data: user, isLoading, refetch } = api.admin.getUserById.useQuery(
     { userId },
     { enabled: isOpen && !!userId }
   );
@@ -120,6 +126,24 @@ export default function UserDetailsModal({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowAssignModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white hover:bg-green-600 rounded-lg transition-colors font-medium"
+                    title="Assign Membership Package"
+                  >
+                    <MdCardMembership size={20} />
+                    <span>Assign Package</span>
+                  </button>
+                  {user?.activeMembershipPackageId && (
+                    <button
+                      onClick={() => setShowExtendModal(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white hover:bg-purple-600 rounded-lg transition-colors font-medium"
+                      title="Extend Membership Expiration"
+                    >
+                      <MdCalendarToday size={20} />
+                      <span>Extend</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => onEdit(userId)}
                     className="p-2 text-gray-600 hover:text-green-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-green-400 dark:hover:bg-gray-700 rounded-lg transition-colors"
@@ -535,6 +559,34 @@ export default function UserDetailsModal({
               </div>
             </div>
           </motion.div>
+
+          {/* Assignment Modal */}
+          <AssignMembershipModal
+            isOpen={showAssignModal}
+            onClose={() => setShowAssignModal(false)}
+            onSuccess={() => {
+              refetch();
+              setShowAssignModal(false);
+            }}
+            mode="single"
+            preSelectedUserId={userId}
+          />
+
+          {/* Extend Modal */}
+          {user && (
+            <ExtendMembershipModal
+              isOpen={showExtendModal}
+              onClose={() => setShowExtendModal(false)}
+              onSuccess={() => {
+                refetch();
+                setShowExtendModal(false);
+              }}
+              userId={userId}
+              currentExpiration={user.membershipExpiresAt ? new Date(user.membershipExpiresAt) : null}
+              userName={displayName}
+              userEmail={user.email || ""}
+            />
+          )}
         </>
       )}
     </AnimatePresence>,

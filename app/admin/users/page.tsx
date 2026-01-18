@@ -15,6 +15,7 @@ import {
   MdMoreVert,
   MdPeople,
   MdSync,
+  MdCardMembership,
 } from "react-icons/md";
 import {
   useReactTable,
@@ -26,6 +27,7 @@ import toast from "react-hot-toast";
 import { format } from "date-fns";
 import UserDetailsModal from "@/components/admin/UserDetailsModal";
 import UserEditModal from "@/components/admin/UserEditModal";
+import AssignMembershipModal from "@/components/admin/AssignMembershipModal";
 import ExportButton from "@/components/admin/ExportButton";
 import BulkActionsBar from "@/components/admin/BulkActionsBar";
 import StatsCard from "@/components/admin/StatsCard";
@@ -64,6 +66,7 @@ export default function UsersPage() {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [showActivateAllModal, setShowActivateAllModal] = useState(false);
   const [showSyncReferralModal, setShowSyncReferralModal] = useState(false);
+  const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
   const [selectAllMode, setSelectAllMode] = useState<'page' | 'all' | 'none'>('none');
 
   const { data, isLoading, refetch, isFetching } = api.admin.getUsers.useQuery({
@@ -350,6 +353,15 @@ export default function UsersPage() {
                   status: activatedFilter !== undefined ? (activatedFilter ? "active" : "inactive") : undefined,
                 }}
               />
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowBulkAssignModal(true)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl shadow-lg font-semibold hover:from-purple-600 hover:to-pink-600 transition-all"
+              >
+                <MdCardMembership size={20} />
+                <span>Bulk Assign</span>
+              </motion.button>
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -926,6 +938,17 @@ export default function UsersPage() {
             </motion.div>
           </div>
         )}
+
+        {/* Bulk Assignment Modal */}
+        <AssignMembershipModal
+          isOpen={showBulkAssignModal}
+          onClose={() => setShowBulkAssignModal(false)}
+          onSuccess={() => {
+            refetch();
+            setShowBulkAssignModal(false);
+          }}
+          mode="bulk"
+        />
 
         {/* Bulk Actions Bar */}
         <BulkActionsBar
