@@ -20,12 +20,14 @@ import {
   MdLink,
   MdCardMembership,
   MdCalendarToday,
+  MdSwapHoriz,
 } from "react-icons/md";
 import { format } from "date-fns";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import AssignMembershipModal from "./AssignMembershipModal";
 import ExtendMembershipModal from "./ExtendMembershipModal";
+import SwapSponsorModal from "./SwapSponsorModal";
 
 interface UserDetailsModalProps {
   userId: string;
@@ -46,6 +48,7 @@ export default function UserDetailsModal({
   );
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
+  const [showSwapSponsorModal, setShowSwapSponsorModal] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -423,50 +426,59 @@ export default function UserDetailsModal({
 
                     {activeTab === "network" && user && (
                       <div className="space-y-4">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                          Referrals
-                        </h3>
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            Referrals
+                          </h3>
+                          <button
+                            onClick={() => setShowSwapSponsorModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white hover:bg-orange-600 rounded-lg transition-colors font-medium"
+                          >
+                            <MdSwapHoriz size={20} />
+                            <span>Swap Sponsor</span>
+                          </button>
+                        </div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                           <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-xl">
                             <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                              Referred By
+                              Referred By (Sponsor)
                             </p>
                             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                              {(user as any).ReferredByUser
+                              {(user as any).SponsorUser || (user as any).ReferredByUser
                                 ? ([
                                     [
-                                      (user as any).ReferredByUser.firstname,
-                                      (user as any).ReferredByUser.lastname,
+                                      ((user as any).SponsorUser || (user as any).ReferredByUser).firstname,
+                                      ((user as any).SponsorUser || (user as any).ReferredByUser).lastname,
                                     ]
                                       .filter(Boolean)
                                       .join(" "),
-                                    (user as any).ReferredByUser.name,
-                                    (user as any).ReferredByUser.username,
-                                    (user as any).ReferredByUser.email,
+                                    ((user as any).SponsorUser || (user as any).ReferredByUser).name,
+                                    ((user as any).SponsorUser || (user as any).ReferredByUser).username,
+                                    ((user as any).SponsorUser || (user as any).ReferredByUser).email,
                                   ].filter(Boolean)[0] as string)
-                                : user.referredBy
+                                : user.sponsorId || user.referredBy
                                   ? "Linked (details unavailable)"
                                   : "None"}
                             </p>
                           </div>
                           <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-xl">
                             <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                              Sponsor
+                              Sponsor (Same as Referred By)
                             </p>
                             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                              {(user as any).SponsorUser
+                              {(user as any).SponsorUser || (user as any).ReferredByUser
                                 ? ([
                                     [
-                                      (user as any).SponsorUser.firstname,
-                                      (user as any).SponsorUser.lastname,
+                                      ((user as any).SponsorUser || (user as any).ReferredByUser).firstname,
+                                      ((user as any).SponsorUser || (user as any).ReferredByUser).lastname,
                                     ]
                                       .filter(Boolean)
                                       .join(" "),
-                                    (user as any).SponsorUser.name,
-                                    (user as any).SponsorUser.username,
-                                    (user as any).SponsorUser.email,
+                                    ((user as any).SponsorUser || (user as any).ReferredByUser).name,
+                                    ((user as any).SponsorUser || (user as any).ReferredByUser).username,
+                                    ((user as any).SponsorUser || (user as any).ReferredByUser).email,
                                   ].filter(Boolean)[0] as string)
-                                : user.sponsorId
+                                : user.sponsorId || user.referredBy
                                   ? "Linked (details unavailable)"
                                   : "None"}
                             </p>
@@ -585,6 +597,26 @@ export default function UserDetailsModal({
               currentExpiration={user.membershipExpiresAt ? new Date(user.membershipExpiresAt) : null}
               userName={displayName}
               userEmail={user.email || ""}
+            />
+          )}
+
+          {/* Swap Sponsor Modal */}
+          {user && (
+            <SwapSponsorModal
+              isOpen={showSwapSponsorModal}
+              onClose={() => setShowSwapSponsorModal(false)}
+              onSuccess={() => {
+                refetch();
+                setShowSwapSponsorModal(false);
+              }}
+              userId={userId}
+              userName={displayName}
+              userEmail={user.email || ""}
+              currentSponsor={{
+                id: (user as any).SponsorUser?.id || user.sponsorId || null,
+                name: (user as any).SponsorUser?.name || null,
+                email: (user as any).SponsorUser?.email || null,
+              }}
             />
           )}
         </>

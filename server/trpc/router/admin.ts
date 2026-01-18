@@ -6066,13 +6066,18 @@ export const adminRouter = createTRPCRouter({
       const now = new Date();
       const currentActivatedAt = user.membershipActivatedAt || now;
       
-      // Calculate new start date (move forward by months)
-      const newStartDate = new Date(currentActivatedAt);
+      // Calculate new expiration: add extension months to the current expiration
+      // Current expiration is activatedAt + 1 year
+      const currentExpiresAt = new Date(currentActivatedAt);
+      currentExpiresAt.setFullYear(currentExpiresAt.getFullYear() + 1);
       
-      // Calculate new expiration (current start + 1 year + extension months)
-      const newExpiresAt = new Date(currentActivatedAt);
-      newExpiresAt.setFullYear(newExpiresAt.getFullYear() + 1);
+      // New expiration = current expiration + extension months
+      const newExpiresAt = new Date(currentExpiresAt);
       newExpiresAt.setMonth(newExpiresAt.getMonth() + input.months);
+      
+      // Calculate new start date by subtracting 1 year from new expiration
+      const newStartDate = new Date(newExpiresAt);
+      newStartDate.setFullYear(newStartDate.getFullYear() - 1);
 
       await prisma.user.update({
         where: { id: input.userId },
@@ -6107,6 +6112,147 @@ export const adminRouter = createTRPCRouter({
         success: true,
         newStartDate,
         newExpiresAt,
+      };
+    }),
+
+  // Swap user sponsor/referrer
+  swapSponsor: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        newSponsorEmail: z.string().email(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [user, newSponsor] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: input.userId },
+          include: {
+            User_User_referredByToUser: {
+              select: { id: true, email: true, name: true },
+            },
+            User_User_sponsorIdToUser: {
+              select: { id: true, email: true, name: true },
+            },
+          },
+        }),
+        prisma.user.findUnique({
+          where: { email: input.newSponsorEmail },
+          select: { id: true, email: true, name: true },
+        }),
+      ]);
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      if (!newSponsor) {
+        throw new Error("New sponsor not found with that email");
+      }
+
+      if (newSponsor.id === input.userId) {
+        throw new Error("User cannot be their own sponsor");
+      }
+
+      // Check for circular referrals (prevent sponsor loops)
+      const checkCircular = async (checkId: string, targetId: string, depth = 0): Promise<boolean> => {
+        if (depth > 10) return false; // Max depth to prevent infinite loops
+        if (checkId === targetId) return true;
+        
+        const sponsor = await prisma.user.findUnique({
+          where: { id: checkId },
+          select: { sponsorId: true },
+        });
+        
+        if (!sponsor?.sponsorId) return false;
+        return checkCircular(sponsor.sponsorId, targetId, depth + 1);
+      };
+
+      const wouldCreateLoop = await checkCircular(newSponsor.id, input.userId);
+      if (wouldCreateLoop) {
+        throw new Error("Cannot set this sponsor - would create a circular referral loop");
+      }
+
+      const oldReferredBy = user.referredBy;
+      const oldSponsor = user.sponsorId;
+
+      // Update user's referredBy and sponsorId
+      await prisma.user.update({
+        where: { id: input.userId },
+        data: {
+          referredBy: newSponsor.id,
+          sponsorId: newSponsor.id,
+          updatedAt: new Date(),
+        },
+      });
+
+      // Update or create referral record
+      const existingReferral = await prisma.referral.findFirst({
+        where: {
+          referredId: input.userId,
+        },
+      });
+
+      if (existingReferral) {
+        // Update existing referral to point to new sponsor
+        await prisma.referral.update({
+          where: { id: existingReferral.id },
+          data: {
+            referrerId: newSponsor.id,
+            updatedAt: new Date(),
+          },
+        });
+      } else {
+        // Create new referral record
+        await prisma.referral.create({
+          data: {
+            id: randomUUID(),
+            referrerId: newSponsor.id,
+            referredId: input.userId,
+            status: "completed",
+            rewardPaid: false,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+      }
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: ctx.session!.user.id,
+          action: "SWAP_SPONSOR",
+          entity: "USER",
+          entityId: input.userId,
+          metadata: {
+            userEmail: user.email,
+            userName: user.name,
+            oldSponsorId: oldSponsor,
+            oldSponsorEmail: user.User_User_sponsorIdToUser?.email,
+            oldSponsorName: user.User_User_sponsorIdToUser?.name,
+            newSponsorId: newSponsor.id,
+            newSponsorEmail: newSponsor.email,
+            newSponsorName: newSponsor.name,
+            oldReferredById: oldReferredBy,
+          },
+          ipAddress: "",
+          userAgent: "",
+        },
+      });
+
+      return {
+        success: true,
+        oldSponsor: oldSponsor ? {
+          id: oldSponsor,
+          email: user.User_User_sponsorIdToUser?.email,
+          name: user.User_User_sponsorIdToUser?.name,
+        } : null,
+        newSponsor: {
+          id: newSponsor.id,
+          email: newSponsor.email,
+          name: newSponsor.name,
+        },
       };
     }),
 });

@@ -1,10 +1,13 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
+import { prisma } from "@/lib/prisma";
 
 export const membershipPackagesRouter = createTRPCRouter({
   getPackages: publicProcedure.query(async () => {
-    // Placeholder: Return empty array
-    return [];
+    const packages = await prisma.membershipPackage.findMany({
+      orderBy: { price: "asc" },
+    });
+    return packages;
   }),
 
   getPackageById: publicProcedure
