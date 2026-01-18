@@ -289,8 +289,8 @@ export const adminRouter = createTRPCRouter({
                 select: {
                   id: true,
                   name: true,
-                  description: true,
                   price: true,
+                  vat: true,
                 },
               })
             : Promise.resolve(null),
