@@ -41,6 +41,7 @@ import { bankRouter } from "./bank";
 import { adminBankRouter } from "./adminBank";
 import { documentationRouter } from "./documentation";
 import { securityRouter } from "./security";
+import { adminReferralsRouter } from "./adminReferrals";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -84,6 +85,7 @@ export const appRouter = createTRPCRouter({
   adminBank: adminBankRouter,
   documentation: documentationRouter,
   security: securityRouter,
+  adminReferrals: adminReferralsRouter,
 
   // Legacy router, to be deprecated
 });

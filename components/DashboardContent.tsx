@@ -489,6 +489,9 @@ export default function DashboardContent({ session }: DashboardContentProps) {
   // Get third-party platforms summary
   const { data: summary } = api.thirdPartyPlatforms.getSummary.useQuery();
   
+  // Get available third-party platforms (to check if there are any from upline)
+  const { data: availablePlatforms } = api.thirdPartyPlatforms.getAvailablePlatforms.useQuery();
+  
   // Get total taxes paid
   const { data: totalTaxes } = api.taxes.getTotalTaxes.useQuery();
   
@@ -3329,13 +3332,23 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                     </div>
                   )}
 
-                  <Button 
-                    onClick={() => setIsThirdPartyModalOpen(true)}
-                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
-                  >
-                    <Share2 className="w-4 h-4 mr-2" />
-                    Manage Opportunities
-                  </Button>
+                  {!availablePlatforms || availablePlatforms.length === 0 ? (
+                    <div className="text-center py-4 bg-gray-50 dark:bg-bpi-dark-accent/30 rounded-lg border border-gray-200 dark:border-bpi-dark-accent">
+                      <AlertCircle className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground mb-1">No opportunities available</p>
+                      <p className="text-xs text-muted-foreground">
+                        Your upline hasn't shared any platform links yet
+                      </p>
+                    </div>
+                  ) : (
+                    <Button 
+                      onClick={() => setIsThirdPartyModalOpen(true)}
+                      className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
+                    >
+                      <Share2 className="w-4 h-4 mr-2" />
+                      Manage Opportunities
+                    </Button>
+                  )}
                 </>
               ) : (
                 <div className="text-center py-4">

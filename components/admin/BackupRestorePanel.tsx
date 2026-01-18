@@ -87,7 +87,7 @@ export default function BackupRestorePanel() {
     },
     onError: (e) => toast.error(e.message),
   });
-  const isWiping = wipeMutation.isLoading;
+  const isWiping = wipeMutation.isPending;
   const canWipe =
     confirmPhrase.trim().toLowerCase() === resetKeyword.toLowerCase() &&
     superAdminEmail.trim().length > 0 &&

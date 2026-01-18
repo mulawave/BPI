@@ -21,6 +21,8 @@ import {
   Database,
   Globe,
   BookOpen,
+  ExternalLink,
+  Share2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -36,6 +38,12 @@ const navigation = [
     href: "/admin/users", 
     icon: Users,
     description: "User management"
+  },
+  { 
+    name: "Referrals", 
+    href: "/admin/referrals", 
+    icon: Share2,
+    description: "Network lineage & fixes"
   },
   { 
     name: "Documentation", 
@@ -91,6 +99,12 @@ const navigation = [
     href: "/admin/community", 
     icon: Bell,
     description: "Updates & deals"
+  },
+  { 
+    name: "Third-Party Platforms", 
+    href: "/admin/third-party", 
+    icon: ExternalLink,
+    description: "External opportunities"
   },
   { 
     name: "Audit Logs", 

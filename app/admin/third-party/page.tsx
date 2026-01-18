@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Edit2, Trash2, Power, PowerOff, ExternalLink, Image as ImageIcon, MoveUp, MoveDown } from "lucide-react";
+import { useState, useRef } from "react";
+import { Plus, Edit2, Trash2, Power, PowerOff, ExternalLink, Image as ImageIcon, MoveUp, MoveDown, Upload, X } from "lucide-react";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 export default function ThirdPartyPlatformsPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingPlatform, setEditingPlatform] = useState<any | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -85,6 +88,86 @@ export default function ThirdPartyPlatformsPage() {
       category: "",
       logo: "",
     });
+    setUploadProgress(0);
+    setUploadingImage(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image size must be less than 5MB");
+      return;
+    }
+
+    setUploadingImage(true);
+    setUploadProgress(0);
+
+    try {
+      // Create form data
+      const formDataObj = new FormData();
+      formDataObj.append("file", file);
+      formDataObj.append("folder", "third-party-platforms");
+
+      // Simulate progress (since we can't track actual upload progress easily)
+      const progressInterval = setInterval(() => {
+        setUploadProgress((prev) => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return 90;
+          }
+          return prev + 10;
+        });
+      }, 200);
+
+      // Upload to your server endpoint
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formDataObj,
+      });
+
+      clearInterval(progressInterval);
+
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+
+      const data = await response.json();
+      setUploadProgress(100);
+      
+      setTimeout(() => {
+        setFormData({ ...formData, logo: data.url });
+        toast.success("Image uploaded successfully");
+        setUploadingImage(false);
+        setUploadProgress(0);
+      }, 500);
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error("Failed to upload image");
+      setUploadingImage(false);
+      setUploadProgress(0);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setFormData({ ...formData, logo: "" });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleEdit = (platform: any) => {
@@ -358,14 +441,86 @@ export default function ThirdPartyPlatformsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Logo URL</label>
-                  <input
-                    type="url"
-                    value={formData.logo}
-                    onChange={(e) => setFormData({ ...formData, logo: e.target.value })}
-                    className="w-full px-3 py-2 border border-bpi-border dark:border-bpi-dark-accent rounded bg-white dark:bg-bpi-dark-card text-foreground"
-                    placeholder="https://example.com/logo.png"
-                  />
+                  <label className="block text-sm font-medium mb-1">Platform Logo</label>
+                  
+                  {/* Image Preview */}
+                  {formData.logo && (
+                    <div className="relative mb-3 inline-block">
+                      <img
+                        src={formData.logo}
+                        alt="Platform logo"
+                        className="w-32 h-32 object-cover rounded-lg border border-bpi-border dark:border-bpi-dark-accent"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRemoveImage}
+                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Upload Section */}
+                  <div className="space-y-2 mb-3">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      id="logo-upload"
+                      disabled={uploadingImage}
+                    />
+                    <label
+                      htmlFor="logo-upload"
+                      className={`flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                        uploadingImage
+                          ? "border-gray-300 bg-gray-50 dark:bg-gray-800 cursor-not-allowed"
+                          : "border-bpi-border dark:border-bpi-dark-accent hover:border-bpi-primary hover:bg-bpi-primary/5"
+                      }`}
+                    >
+                      {uploadingImage ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-bpi-primary border-t-transparent rounded-full animate-spin" />
+                          <span className="text-sm">Uploading... {uploadProgress}%</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-5 h-5 text-bpi-primary" />
+                          <span className="text-sm text-foreground">
+                            {formData.logo ? "Change Image" : "Upload Image"}
+                          </span>
+                        </>
+                      )}
+                    </label>
+
+                    {/* Upload Progress Bar */}
+                    {uploadingImage && (
+                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="bg-gradient-to-r from-orange-500 to-green-500 h-full transition-all duration-300 ease-out"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Manual URL Input */}
+                  <div>
+                    <div className="text-xs text-muted-foreground text-center my-2">or enter URL manually</div>
+                    <input
+                      type="url"
+                      value={formData.logo}
+                      onChange={(e) => setFormData({ ...formData, logo: e.target.value })}
+                      className="w-full px-3 py-2 border border-bpi-border dark:border-bpi-dark-accent rounded bg-white dark:bg-bpi-dark-card text-foreground"
+                      placeholder="https://example.com/logo.png"
+                      disabled={uploadingImage}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Maximum file size: 5MB. Supported formats: JPG, PNG, GIF, SVG
+                    </p>
+                  </div>
                 </div>
 
                 <div>

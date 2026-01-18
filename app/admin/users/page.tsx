@@ -39,13 +39,10 @@ type User = {
   activated: boolean;
   verified: boolean;
   createdAt: Date;
-  lastLogin: Date;
+  lastLogin: Date | null;
   wallet: number;
   spendable: number;
   bpiTokenWallet: number;
-  activeMembershipPackageId: string | null;
-  membershipActivatedAt: Date | null;
-  membershipExpiresAt: Date | null;
   level1Count: number;
   level2Count: number;
   level3Count: number;
@@ -74,10 +71,9 @@ export default function UsersPage() {
     sortBy: "createdAt",
     sortOrder: "desc",
   }, {
-    keepPreviousData: true,
     refetchOnWindowFocus: false,
     staleTime: 30000, // Consider data fresh for 30 seconds
-    cacheTime: 300000, // Keep in cache for 5 minutes
+    gcTime: 300000, // Keep in cache for 5 minutes
   });
 
   // Reset page to 1 when filters change
