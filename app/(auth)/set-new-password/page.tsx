@@ -85,7 +85,7 @@ export default function SetNewPasswordPage() {
           <div className="flex flex-col items-center h-full justify-center p-10">
             <div className="border border-[#a6a6a6] rounded-[2.5rem] w-full max-w-[400px] flex flex-col items-center p-10 relative bg-white/90">
               <div className="flex flex-col items-center gap-2 mb-8">
-                <Image src="/logo.png" alt="Beep Agro Africa" width={120} height={120} className="rounded-full shadow mb-2" />
+                <Image src="/img/logo.png" alt="BPI Logo" width={120} height={120} className="rounded-full shadow mb-2" />
                 <h2 className="mt-2 text-2xl font-semibold text-[#0d3b29]">Set New Password</h2>
                 <p className="text-sm text-[#0d3b29] text-center">Enter your new password below to reset your account.</p>
               </div>

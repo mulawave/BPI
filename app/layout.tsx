@@ -5,8 +5,13 @@ import { cn } from "@/styles/utils";
 import ViewportFitBanner from "@/components/ViewportFitBanner";
 
 export const metadata = {
-  title: "BPI",
-  description: "BeepAgro Progress Initiative - Empowering Agricultural Communities"
+  title: "BPI - BeepAgro Progress Initiative",
+  description: "BeepAgro Progress Initiative - Empowering Agricultural Communities",
+  icons: {
+    icon: "/img/logo.png",
+    shortcut: "/img/logo.png",
+    apple: "/img/logo.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

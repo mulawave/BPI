@@ -218,8 +218,8 @@ export default function AssignMembershipModal({
         processPayout,
       });
     } else {
-      let targetEmail = emailInput;
-      let targetUserId = selectedUserId;
+      const targetEmail = emailInput;
+      const targetUserId = selectedUserId;
 
       // For single mode with user ID
       if (mode === "single" && selectedUserId) {

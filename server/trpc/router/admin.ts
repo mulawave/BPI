@@ -374,6 +374,32 @@ export const adminRouter = createTRPCRouter({
         cityRelation: city,
         stateRelation: state,
         countryRelation: country,
+        // expose all wallet fields for UI
+        wallets: {
+          wallet: user.wallet,
+          spendable: user.spendable,
+          palliative: user.palliative,
+          cashback: user.cashback,
+          studentCashback: user.studentCashback,
+          community: user.community,
+          shareholder: user.shareholder,
+          shelter: user.shelter,
+          shelterWallet: user.shelterWallet,
+          education: user.education,
+          car: user.car,
+          business: user.business,
+          solar: user.solar ?? 0,
+          legals: user.legals ?? 0,
+          land: user.land,
+          meal: user.meal,
+          health: user.health,
+          security: user.security,
+          socialMedia: user.socialMedia,
+          empowermentSponsorReward: user.empowermentSponsorReward,
+          retirement: user.retirement,
+          travelTour: user.travelTour,
+          bpiTokenWallet: user.bpiTokenWallet,
+        },
         networkStats,
       };
     }),
@@ -4265,17 +4291,32 @@ export const adminRouter = createTRPCRouter({
       },
     });
 
-    // Convert to key-value object with boolean conversion
+    // Convert to key-value object with boolean conversion for toggles, string for others
     const settingsMap = settings.reduce((acc, setting) => {
-      acc[setting.settingKey] = setting.settingValue === 'true';
+      // Boolean settings
+      if (['enableEpcEpp', 'enableSolarAssessment', 'enableBestDeals'].includes(setting.settingKey)) {
+        acc[setting.settingKey] = setting.settingValue === 'true';
+      } else {
+        // String settings
+        acc[setting.settingKey] = setting.settingValue;
+      }
       return acc;
-    }, {} as Record<string, boolean>);
+    }, {} as Record<string, any>);
 
     // Return with defaults if settings don't exist
     return {
       enableEpcEpp: settingsMap.enableEpcEpp ?? false,
       enableSolarAssessment: settingsMap.enableSolarAssessment ?? false,
       enableBestDeals: settingsMap.enableBestDeals ?? false,
+      siteTitle: settingsMap.siteTitle ?? 'BPI - BeepAgro Progress Initiative',
+      supportEmail: settingsMap.supportEmail ?? 'support@beepagroafrica.com',
+      smtpHost: settingsMap.smtpHost ?? '',
+      smtpPort: settingsMap.smtpPort ?? '587',
+      smtpUser: settingsMap.smtpUser ?? '',
+      smtpPassword: settingsMap.smtpPassword ?? '',
+      smtpSecure: settingsMap.smtpSecure ?? 'false',
+      smtpFromEmail: settingsMap.smtpFromEmail ?? '',
+      smtpFromName: settingsMap.smtpFromName ?? 'BPI Team',
     };
   }),
 
@@ -4285,6 +4326,15 @@ export const adminRouter = createTRPCRouter({
       enableEpcEpp: z.boolean().optional(),
       enableSolarAssessment: z.boolean().optional(),
       enableBestDeals: z.boolean().optional(),
+      siteTitle: z.string().optional(),
+      supportEmail: z.string().email().optional(),
+      smtpHost: z.string().optional(),
+      smtpPort: z.string().optional(),
+      smtpUser: z.string().optional(),
+      smtpPassword: z.string().optional(),
+      smtpSecure: z.string().optional(),
+      smtpFromEmail: z.string().email().optional(),
+      smtpFromName: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const updates = [];
@@ -4340,6 +4390,178 @@ export const adminRouter = createTRPCRouter({
             },
             update: {
               settingValue: String(input.enableBestDeals),
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.siteTitle !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'siteTitle' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'siteTitle',
+              settingValue: input.siteTitle,
+              description: 'Site title displayed across the application',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: input.siteTitle,
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.supportEmail !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'supportEmail' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'supportEmail',
+              settingValue: input.supportEmail,
+              description: 'Support email address for user inquiries',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: input.supportEmail,
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      // SMTP Configuration
+      if (input.smtpHost !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'smtpHost' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'smtpHost',
+              settingValue: input.smtpHost,
+              description: 'SMTP server hostname',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: input.smtpHost,
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.smtpPort !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'smtpPort' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'smtpPort',
+              settingValue: input.smtpPort,
+              description: 'SMTP server port',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: input.smtpPort,
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.smtpUser !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'smtpUser' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'smtpUser',
+              settingValue: input.smtpUser,
+              description: 'SMTP authentication username',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: input.smtpUser,
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.smtpPassword !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'smtpPassword' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'smtpPassword',
+              settingValue: input.smtpPassword,
+              description: 'SMTP authentication password',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: input.smtpPassword,
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.smtpSecure !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'smtpSecure' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'smtpSecure',
+              settingValue: input.smtpSecure,
+              description: 'Use TLS/SSL for SMTP connection',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: input.smtpSecure,
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.smtpFromEmail !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'smtpFromEmail' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'smtpFromEmail',
+              settingValue: input.smtpFromEmail,
+              description: 'Default from email address',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: input.smtpFromEmail,
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.smtpFromName !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'smtpFromName' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'smtpFromName',
+              settingValue: input.smtpFromName,
+              description: 'Default from name for emails',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: input.smtpFromName,
               updatedAt: new Date(),
             },
           })
@@ -5935,11 +6157,15 @@ export const adminRouter = createTRPCRouter({
 
       // Process payout if requested (execute full referral flow)
       if (input.processPayout) {
-        await activateMembershipAfterExternalPayment(
-          input.userId,
-          input.packageId,
-          membershipPackage.price
-        );
+        await activateMembershipAfterExternalPayment({
+          prisma,
+          userId: input.userId,
+          packageId: input.packageId,
+          selectedPalliative: undefined,
+          paymentReference: `MANUAL-ACTIVATION-${Date.now()}`,
+          paymentMethodLabel: "Manual Admin Activation",
+          activatorName: user.name || user.email || "Manual Activation",
+        });
       }
 
       // Audit log
@@ -6034,11 +6260,15 @@ export const adminRouter = createTRPCRouter({
 
           // Process payout if requested
           if (input.processPayout) {
-            await activateMembershipAfterExternalPayment(
-              user.id,
-              input.packageId,
-              membershipPackage.price
-            );
+            await activateMembershipAfterExternalPayment({
+              prisma,
+              userId: user.id,
+              packageId: input.packageId,
+              selectedPalliative: undefined,
+              paymentReference: `BULK-ACTIVATION-${Date.now()}-${user.id}`,
+              paymentMethodLabel: "Bulk Admin Activation",
+              activatorName: user.name || user.email || "Bulk Activation",
+            });
           }
 
           results.success++;
@@ -6156,6 +6386,225 @@ export const adminRouter = createTRPCRouter({
       };
     }),
 
+  // Admin wallet adjustments (set balance) and credits for any wallet field
+  adjustUserWallet: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        walletKey: z.enum([
+          "wallet",
+          "spendable",
+          "palliative",
+          "cashback",
+          "studentCashback",
+          "community",
+          "shareholder",
+          "shelter",
+          "shelterWallet",
+          "education",
+          "car",
+          "business",
+          "solar",
+          "legals",
+          "land",
+          "meal",
+          "health",
+          "security",
+          "socialMedia",
+          "empowermentSponsorReward",
+          "retirement",
+          "travelTour",
+          "bpiTokenWallet",
+        ]),
+        newBalance: z.number(),
+        remark: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { walletKey } = input;
+      const user = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          [walletKey]: true,
+        },
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      const currentValue = (user as any)[walletKey] ?? 0;
+      const normalized = Number(input.newBalance);
+      if (!Number.isFinite(normalized)) {
+        throw new Error("Invalid amount");
+      }
+      const coercedValue = walletKey === "shelterWallet" ? Math.round(normalized) : normalized;
+      const delta = coercedValue - currentValue;
+      const now = new Date();
+
+      await prisma.user.update({
+        where: { id: input.userId },
+        data: {
+          [walletKey]: coercedValue,
+          updatedAt: now,
+        },
+      });
+
+      await prisma.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId: input.userId,
+          transactionType: delta >= 0 ? "ADMIN_WALLET_CREDIT" : "ADMIN_WALLET_DEBIT",
+          amount: delta,
+          description: `Admin set ${walletKey} from ${currentValue} to ${coercedValue}. Remark: ${
+            input.remark || "System generated asset"
+          }`,
+          status: "completed",
+          reference: `ADMIN-ADJUST-${walletKey}-${Date.now()}`,
+          walletType: walletKey,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: ctx.session!.user.id,
+          action: "ADMIN_WALLET_ADJUST",
+          entity: "USER",
+          entityId: input.userId,
+          metadata: {
+            walletKey,
+            previousValue: currentValue,
+            newValue: coercedValue,
+            delta,
+            remark: input.remark || "System generated asset",
+            userEmail: user.email,
+            userName: user.name,
+          },
+          ipAddress: "",
+          userAgent: "",
+        },
+      });
+
+      return {
+        success: true,
+        newBalance: coercedValue,
+        delta,
+      };
+    }),
+
+  addUserWallet: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        walletKey: z.enum([
+          "wallet",
+          "spendable",
+          "palliative",
+          "cashback",
+          "studentCashback",
+          "community",
+          "shareholder",
+          "shelter",
+          "shelterWallet",
+          "education",
+          "car",
+          "business",
+          "solar",
+          "legals",
+          "land",
+          "meal",
+          "health",
+          "security",
+          "socialMedia",
+          "empowermentSponsorReward",
+          "retirement",
+          "travelTour",
+          "bpiTokenWallet",
+        ]),
+        amount: z.number().positive(),
+        remark: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { walletKey } = input;
+      const user = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          [walletKey]: true,
+        },
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      const currentValue = (user as any)[walletKey] ?? 0;
+      const normalizedAmount = Number(input.amount);
+      if (!Number.isFinite(normalizedAmount)) {
+        throw new Error("Invalid amount");
+      }
+      const newBalanceRaw = currentValue + normalizedAmount;
+      const newBalance = walletKey === "shelterWallet" ? Math.round(newBalanceRaw) : newBalanceRaw;
+      const now = new Date();
+
+      await prisma.user.update({
+        where: { id: input.userId },
+        data: {
+          [walletKey]: newBalance,
+          updatedAt: now,
+        },
+      });
+
+      await prisma.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId: input.userId,
+          transactionType: "ADMIN_WALLET_ADD",
+          amount: normalizedAmount,
+          description: `Admin added ${normalizedAmount} to ${walletKey}. Remark: ${
+            input.remark || "System generated asset"
+          }`,
+          status: "completed",
+          reference: `ADMIN-ADD-${walletKey}-${Date.now()}`,
+          walletType: walletKey,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: ctx.session!.user.id,
+          action: "ADMIN_WALLET_ADD",
+          entity: "USER",
+          entityId: input.userId,
+          metadata: {
+            walletKey,
+            previousValue: currentValue,
+            newValue: newBalance,
+            delta: normalizedAmount,
+            remark: input.remark || "System generated asset",
+            userEmail: user.email,
+            userName: user.name,
+          },
+          ipAddress: "",
+          userAgent: "",
+        },
+      });
+
+      return {
+        success: true,
+        newBalance,
+        added: normalizedAmount,
+      };
+    }),
+
   // Swap user sponsor/referrer
   swapSponsor: adminProcedure
     .input(
@@ -6168,13 +6617,12 @@ export const adminRouter = createTRPCRouter({
       const [user, newSponsor] = await Promise.all([
         prisma.user.findUnique({
           where: { id: input.userId },
-          include: {
-            User_User_referredByToUser: {
-              select: { id: true, email: true, name: true },
-            },
-            User_User_sponsorIdToUser: {
-              select: { id: true, email: true, name: true },
-            },
+          select: { 
+            id: true, 
+            email: true, 
+            name: true, 
+            referredBy: true, 
+            sponsorId: true 
           },
         }),
         prisma.user.findUnique({
@@ -6186,6 +6634,22 @@ export const adminRouter = createTRPCRouter({
       if (!user) {
         throw new Error("User not found");
       }
+
+      if (!newSponsor) {
+        throw new Error("New sponsor not found with that email");
+      }
+
+      if (newSponsor.id === input.userId) {
+        throw new Error("User cannot be their own sponsor");
+      }
+
+      // Get old sponsor info if exists
+      const oldSponsorInfo = user.sponsorId 
+        ? await prisma.user.findUnique({
+            where: { id: user.sponsorId },
+            select: { id: true, email: true, name: true },
+          })
+        : null;
 
       if (!newSponsor) {
         throw new Error("New sponsor not found with that email");
@@ -6270,8 +6734,8 @@ export const adminRouter = createTRPCRouter({
             userEmail: user.email,
             userName: user.name,
             oldSponsorId: oldSponsor,
-            oldSponsorEmail: user.User_User_sponsorIdToUser?.email,
-            oldSponsorName: user.User_User_sponsorIdToUser?.name,
+            oldSponsorEmail: oldSponsorInfo?.email,
+            oldSponsorName: oldSponsorInfo?.name,
             newSponsorId: newSponsor.id,
             newSponsorEmail: newSponsor.email,
             newSponsorName: newSponsor.name,
@@ -6286,8 +6750,8 @@ export const adminRouter = createTRPCRouter({
         success: true,
         oldSponsor: oldSponsor ? {
           id: oldSponsor,
-          email: user.User_User_sponsorIdToUser?.email,
-          name: user.User_User_sponsorIdToUser?.name,
+          email: oldSponsorInfo?.email,
+          name: oldSponsorInfo?.name,
         } : null,
         newSponsor: {
           id: newSponsor.id,

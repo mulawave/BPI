@@ -1149,6 +1149,83 @@ export default function SettingsPage() {
                 ))}
               </div>
             </div>
+
+            {/* SMTP Email Configuration */}
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 text-white shadow-lg">
+                    <HiBell className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                      Email Configuration (SMTP)
+                    </h2>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Configure SMTP settings for sending system emails
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <SettingField
+                  label="SMTP Host"
+                  settingKey="smtpHost"
+                  description="SMTP server hostname (e.g., smtp.gmail.com)"
+                  currentValue={systemSettings?.smtpHost?.value || ""}
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="SMTP Port"
+                  settingKey="smtpPort"
+                  description="SMTP server port (e.g., 587 for TLS, 465 for SSL)"
+                  currentValue={systemSettings?.smtpPort?.value || "587"}
+                  type="number"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="SMTP Username"
+                  settingKey="smtpUser"
+                  description="SMTP authentication username"
+                  currentValue={systemSettings?.smtpUser?.value || ""}
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SecretSettingField
+                  label="SMTP Password"
+                  settingKey="smtpPassword"
+                  placeholder="••••••••"
+                  currentValue={systemSettings?.smtpPassword?.value || ""}
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="From Email"
+                  settingKey="smtpFromEmail"
+                  description="Default sender email address"
+                  currentValue={systemSettings?.smtpFromEmail?.value || ""}
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="From Name"
+                  settingKey="smtpFromName"
+                  description="Default sender name"
+                  currentValue={systemSettings?.smtpFromName?.value || "BPI Team"}
+                  onSave={handleSaveGeneralSetting}
+                />
+                <div className="flex items-center gap-2 p-4 bg-gray-50 dark:bg-gray-900 rounded-xl">
+                  <input
+                    type="checkbox"
+                    id="smtpSecure"
+                    checked={(systemSettings?.smtpSecure?.value || "false") === "true"}
+                    onChange={(e) => handleSaveGeneralSetting("smtpSecure", String(e.target.checked), "Use TLS/SSL")}
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <label htmlFor="smtpSecure" className="text-sm font-medium text-gray-900 dark:text-white cursor-pointer">
+                    Use TLS/SSL
+                  </label>
+                </div>
+              </div>
+            </div>
           </motion.div>
         )}
 

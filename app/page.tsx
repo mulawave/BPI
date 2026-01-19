@@ -633,7 +633,7 @@ export default function HomePage() {
 				<div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-10">
 					<div className="flex flex-col gap-4">
 						<Image
-							src="/img/white_logo.png"
+							src="/img/logo.png"
 							alt="BPI Logo"
 							width={64}
 							height={64}

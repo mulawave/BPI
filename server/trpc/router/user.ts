@@ -29,6 +29,9 @@ export const userRouter = createTRPCRouter({
           state: true,
           zip: true,
           country: true,
+          cityId: true,
+          stateId: true,
+          countryId: true,
           profilePic: true,
           secondaryEmail: true,
           username: true,
@@ -70,6 +73,15 @@ export const userRouter = createTRPCRouter({
           level2Count: true,
           level3Count: true,
           level4Count: true,
+          cityRelation: {
+            select: { id: true, name: true }
+          },
+          stateRelation: {
+            select: { id: true, name: true }
+          },
+          countryRelation: {
+            select: { id: true, name: true }
+          },
           // Wallet timeline preferences - NOT YET MIGRATED
           // walletTimelineViewMode: true,
           // walletTimelineDefaultSort: true,
@@ -199,6 +211,9 @@ export const userRouter = createTRPCRouter({
       city: z.string().optional(),
       state: z.string().optional(),
       country: z.string().optional(),
+      cityId: z.number().optional().nullable(),
+      stateId: z.number().optional().nullable(),
+      countryId: z.number().optional().nullable(),
       gender: z.string().optional(),
       image: z.string().optional(),
     }))
@@ -207,6 +222,20 @@ export const userRouter = createTRPCRouter({
       
       // Handle firstname/lastname updates to sync with name field
       const updateData: any = { ...input };
+      
+      // If location IDs are provided, use them and convert to strings for legacy fields
+      if (input.cityId !== undefined) {
+        updateData.cityId = input.cityId;
+        updateData.city = input.cityId?.toString() || null;
+      }
+      if (input.stateId !== undefined) {
+        updateData.stateId = input.stateId;
+        updateData.state = input.stateId?.toString() || null;
+      }
+      if (input.countryId !== undefined) {
+        updateData.countryId = input.countryId;
+        updateData.country = input.countryId?.toString() || null;
+      }
       
       if (input.firstname || input.lastname) {
         const currentUser = await ctx.prisma.user.findUnique({

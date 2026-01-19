@@ -21,13 +21,49 @@ import {
   MdCardMembership,
   MdCalendarToday,
   MdSwapHoriz,
+  MdArrowUpward,
+  MdArrowDownward,
+  MdAdd,
+  MdRefresh,
 } from "react-icons/md";
 import { format } from "date-fns";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import AssignMembershipModal from "./AssignMembershipModal";
 import ExtendMembershipModal from "./ExtendMembershipModal";
 import SwapSponsorModal from "./SwapSponsorModal";
+import toast from "react-hot-toast";
+
+const walletLabelMap: Record<string, string> = {
+  wallet: "Main Wallet",
+  spendable: "Spendable",
+  palliative: "Palliative",
+  cashback: "Cashback",
+  studentCashback: "Student Cashback",
+  community: "Community",
+  shareholder: "Shareholder",
+  shelter: "Shelter",
+  shelterWallet: "Shelter (Legacy)",
+  education: "Education",
+  car: "Car",
+  business: "Business",
+  solar: "Solar",
+  legals: "Legals",
+  land: "Land",
+  meal: "Meal",
+  health: "Health",
+  security: "Security",
+  socialMedia: "Social Media",
+  empowermentSponsorReward: "Empowerment Sponsor Reward",
+  retirement: "Retirement",
+  travelTour: "Travel & Tour",
+  bpiTokenWallet: "BPI Token",
+};
+
+const formatWalletValue = (key: string, value: number) =>
+  key === "bpiTokenWallet"
+    ? `${value.toLocaleString()} BPT`
+    : `₦${value.toLocaleString()}`;
 
 interface UserDetailsModalProps {
   userId: string;
@@ -49,17 +85,27 @@ export default function UserDetailsModal({
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
   const [showSwapSponsorModal, setShowSwapSponsorModal] = useState(false);
+  const [editingWallet, setEditingWallet] = useState<string | null>(null);
+  const [walletInputs, setWalletInputs] = useState<Record<string, string>>({});
+  const [walletRemarks, setWalletRemarks] = useState<Record<string, string>>({});
+  const [selectedWalletKey, setSelectedWalletKey] = useState<string>("wallet");
+  const [addAmount, setAddAmount] = useState<string>("");
+  const [addRemark, setAddRemark] = useState<string>("");
+  const [addingWallet, setAddingWallet] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const { data: user, isLoading, refetch } = api.admin.getUserById.useQuery(
+  const { data: user, isLoading, isFetching, refetch } = api.admin.getUserById.useQuery(
     { userId },
-    { enabled: isOpen && !!userId }
+    {
+      enabled: isOpen && !!userId,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      refetchInterval: isOpen ? 8000 : false,
+    }
   );
-
-  if (!isOpen || !mounted) return null;
 
   const displayName =
     user
@@ -82,6 +128,98 @@ export default function UserDetailsModal({
   const level3Network = networkStats?.level3 ?? user?.level3Count ?? 0;
   const level4Network = networkStats?.level4 ?? user?.level4Count ?? 0;
 
+  const walletEntries = useMemo(() => {
+    if (!user) return [];
+    const wallets = (user as any)?.wallets ?? {};
+
+    return Object.entries(walletLabelMap).map(([key, label]) => {
+      const rawValue = (wallets as Record<string, number>)[key] ?? (user as any)[key] ?? 0;
+      const value = Number(rawValue) || 0;
+      return { key, label, value };
+    });
+  }, [user]);
+
+  const visibleWallets = useMemo(
+    () => walletEntries.filter((wallet) => Math.abs(wallet.value) > 0),
+    [walletEntries]
+  );
+
+  const walletOptions = useMemo(
+    () => Object.entries(walletLabelMap).map(([key, label]) => ({ key, label })),
+    []
+  );
+
+  const adjustWalletMutation = api.admin.adjustUserWallet.useMutation({
+    onError: (error) => toast.error(error.message),
+  });
+
+  const addWalletMutation = api.admin.addUserWallet.useMutation({
+    onError: (error) => toast.error(error.message),
+  });
+
+  if (!mounted || !isOpen) return null;
+
+  const handleAdjust = async (
+    walletKey: string,
+    direction: "credit" | "debit",
+    remark?: string
+  ) => {
+    const amountInput = walletInputs[walletKey] ?? "";
+    const amount = Number(amountInput);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+
+    const entry = walletEntries.find((w) => w.key === walletKey);
+    if (!entry) {
+      toast.error("Wallet not found");
+      return;
+    }
+
+    const delta = direction === "credit" ? amount : -amount;
+    const newBalance = entry.value + delta;
+
+    setEditingWallet(walletKey);
+    try {
+      await adjustWalletMutation.mutateAsync({
+        userId,
+        walletKey: walletKey as any,
+        newBalance,
+        remark: remark?.trim() || undefined,
+      });
+      toast.success(delta >= 0 ? "Wallet credited" : "Wallet debited");
+      setWalletInputs((prev) => ({ ...prev, [walletKey]: "" }));
+      await refetch();
+    } finally {
+      setEditingWallet(null);
+    }
+  };
+
+  const handleAddWallet = async () => {
+    const amount = Number(addAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+
+    setAddingWallet(true);
+    try {
+      await addWalletMutation.mutateAsync({
+        userId,
+        walletKey: selectedWalletKey as any,
+        amount,
+        remark: addRemark.trim() || undefined,
+      });
+      toast.success("Wallet updated");
+      setAddAmount("");
+      setAddRemark("");
+      await refetch();
+    } finally {
+      setAddingWallet(false);
+    }
+  };
+
   return createPortal(
     <AnimatePresence>
       {isOpen && (
@@ -100,9 +238,9 @@ export default function UserDetailsModal({
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6"
           >
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl rounded-3xl shadow-2xl w-full h-[94vh] max-w-none overflow-hidden flex flex-col border border-white/20 dark:border-gray-800">
               {/* Header */}
               <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -340,22 +478,180 @@ export default function UserDetailsModal({
                         {/* Right Column - Wallets & Stats */}
                         <div className="space-y-6">
                           {/* Wallets */}
-                          <div className="bg-gradient-to-br from-green-500 to-blue-600 rounded-xl p-6 text-white">
-                            <h3 className="text-lg font-semibold mb-4">Wallets</h3>
-                            <div className="space-y-3">
-                              <WalletItem
-                                label="Main Wallet"
-                                value={user.wallet}
-                              />
-                              <WalletItem
-                                label="Spendable"
-                                value={user.spendable}
-                              />
-                              <WalletItem
-                                label="BPI Tokens"
-                                value={user.bpiTokenWallet}
-                                isBpt
-                              />
+                          <div className="bg-gradient-to-br from-green-600 via-emerald-600 to-blue-700 rounded-2xl p-6 text-white shadow-xl flex flex-col h-full">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-11 h-11 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center">
+                                  <MdAccountBalanceWallet size={22} />
+                                </div>
+                                <div>
+                                  <p className="text-xs uppercase tracking-wide text-white/70">Wallets</p>
+                                  <p className="text-2xl font-bold leading-tight">
+                                    {visibleWallets.length > 0
+                                      ? `${visibleWallets.length} active`
+                                      : "No active balances"}
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => refetch()}
+                                disabled={isFetching || isLoading}
+                                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 border border-white/20 hover:bg-white/20 transition disabled:opacity-60"
+                              >
+                                <MdRefresh
+                                  size={18}
+                                  className={isFetching ? "animate-spin" : ""}
+                                />
+                                <span className="text-sm font-semibold">Refresh</span>
+                              </button>
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto pr-1 max-h-[380px] min-h-[200px]">
+                              {visibleWallets.length > 0 ? (
+                                visibleWallets.map((wallet) => (
+                                  <div
+                                    key={wallet.key}
+                                    className="rounded-xl bg-white/10 border border-white/20 p-4 flex flex-col gap-3"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <p className="text-xs uppercase tracking-wide text-white/70">
+                                          {wallet.label}
+                                        </p>
+                                        <p className="text-xl font-bold leading-tight">
+                                          {formatWalletValue(wallet.key, wallet.value)}
+                                        </p>
+                                      </div>
+                                      <span className="px-2 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] uppercase tracking-wide text-white/80">
+                                        {wallet.key}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex flex-col gap-2">
+                                      <input
+                                        type="number"
+                                        inputMode="decimal"
+                                        className="w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/60 focus:border-white/60 focus:outline-none"
+                                        placeholder="Amount"
+                                        value={walletInputs[wallet.key] ?? ""}
+                                        onChange={(e) =>
+                                          setWalletInputs((prev) => ({
+                                            ...prev,
+                                            [wallet.key]: e.target.value,
+                                          }))
+                                        }
+                                      />
+                                      <input
+                                        type="text"
+                                        className="w-full rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/60 focus:border-white/60 focus:outline-none"
+                                        placeholder="Optional remark"
+                                        value={walletRemarks[wallet.key] ?? ""}
+                                        onChange={(e) =>
+                                          setWalletRemarks((prev) => ({
+                                            ...prev,
+                                            [wallet.key]: e.target.value,
+                                          }))
+                                        }
+                                      />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <button
+                                        onClick={() =>
+                                          handleAdjust(
+                                            wallet.key,
+                                            "credit",
+                                            walletRemarks[wallet.key]
+                                          )
+                                        }
+                                        disabled={editingWallet === wallet.key || adjustWalletMutation.isPending}
+                                        className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-white text-green-700 font-semibold hover:bg-green-50 transition disabled:opacity-60"
+                                      >
+                                        {editingWallet === wallet.key ? (
+                                          <span className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                          <MdArrowUpward size={18} />
+                                        )}
+                                        <span>Credit</span>
+                                      </button>
+                                      <button
+                                        onClick={() =>
+                                          handleAdjust(
+                                            wallet.key,
+                                            "debit",
+                                            walletRemarks[wallet.key]
+                                          )
+                                        }
+                                        disabled={editingWallet === wallet.key || adjustWalletMutation.isPending}
+                                        className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-50 text-red-700 font-semibold hover:bg-red-100 transition disabled:opacity-60"
+                                      >
+                                        {editingWallet === wallet.key ? (
+                                          <span className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                          <MdArrowDownward size={18} />
+                                        )}
+                                        <span>Debit</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="col-span-2 flex flex-col items-center justify-center gap-2 py-10 rounded-xl bg-white/5 border border-white/10 text-white/80">
+                                  <MdAccountBalanceWallet size={28} />
+                                  <p className="font-semibold">No wallet balances yet</p>
+                                  <p className="text-sm text-white/70">
+                                    Add a balance below to initialize a wallet.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="mt-4 pt-4 border-t border-white/20">
+                              <p className="text-sm font-semibold uppercase tracking-wide text-white/80 mb-3">
+                                Add Wallet Balance
+                              </p>
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                <select
+                                  value={selectedWalletKey}
+                                  onChange={(e) => setSelectedWalletKey(e.target.value)}
+                                  className="w-full sm:w-48 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white focus:border-white/60 focus:outline-none"
+                                >
+                                  {walletOptions.map((option) => (
+                                    <option key={option.key} value={option.key} className="text-gray-900">
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  placeholder="Amount"
+                                  value={addAmount}
+                                  onChange={(e) => setAddAmount(e.target.value)}
+                                  className="flex-1 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/60 focus:border-white/60 focus:outline-none"
+                                />
+                              </div>
+                              <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                                <input
+                                  type="text"
+                                  placeholder="Optional remark"
+                                  value={addRemark}
+                                  onChange={(e) => setAddRemark(e.target.value)}
+                                  className="flex-1 rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/60 focus:border-white/60 focus:outline-none"
+                                />
+                                <button
+                                  onClick={handleAddWallet}
+                                  disabled={addingWallet || addWalletMutation.isPending}
+                                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white text-emerald-700 font-semibold hover:bg-emerald-50 transition disabled:opacity-60"
+                                >
+                                  {addingWallet ? (
+                                    <span className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <MdAdd size={18} />
+                                  )}
+                                  <span>Add</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
 
@@ -690,25 +986,6 @@ function StatusBadge({
         <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
         <p className="text-sm font-medium text-gray-900 dark:text-white">{value}</p>
       </div>
-    </div>
-  );
-}
-
-function WalletItem({
-  label,
-  value,
-  isBpt = false,
-}: {
-  label: string;
-  value: number;
-  isBpt?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between p-3 bg-white/10 rounded-lg backdrop-blur-sm">
-      <span className="text-sm opacity-90">{label}</span>
-      <span className="font-semibold">
-        {isBpt ? value.toLocaleString() : `₦${value.toLocaleString()}`}
-      </span>
     </div>
   );
 }

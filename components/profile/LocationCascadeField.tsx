@@ -8,6 +8,9 @@ interface LocationCascadeFieldProps {
   countryValue: string | null;
   stateValue: string | null;
   cityValue: string | null;
+  countryName?: string | null;
+  stateName?: string | null;
+  cityName?: string | null;
   onUpdateStatus?: (status: 'loading' | 'success' | 'error', message: string) => void;
 }
 
@@ -15,6 +18,9 @@ export function LocationCascadeField({
   countryValue, 
   stateValue, 
   cityValue,
+  countryName: countryNameProp,
+  stateName: stateNameProp,
+  cityName: cityNameProp,
   onUpdateStatus 
 }: LocationCascadeFieldProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -35,10 +41,10 @@ export function LocationCascadeField({
     { enabled: !!selectedStateId }
   );
   
-  // Get display names
-  const countryName = countries?.find(c => c.id === parseInt(countryValue || '0'))?.name || countryValue;
-  const stateName = states?.find(s => s.id === parseInt(stateValue || '0'))?.name || stateValue;
-  const cityName = cities?.find(c => c.id === parseInt(cityValue || '0'))?.name || cityValue;
+  // Get display names - use props if available, otherwise lookup from API data
+  const countryName = countryNameProp || countries?.find(c => c.id === parseInt(countryValue || '0'))?.name || null;
+  const stateName = stateNameProp || states?.find(s => s.id === parseInt(stateValue || '0'))?.name || null;
+  const cityName = cityNameProp || cities?.find(c => c.id === parseInt(cityValue || '0'))?.name || null;
   
   const updateProfile = api.user.updateDetails.useMutation({
     onMutate: () => {
@@ -64,9 +70,6 @@ export function LocationCascadeField({
 
   const handleSave = () => {
     updateProfile.mutate({
-      country: selectedCountryId?.toString() || null,
-      state: selectedStateId?.toString() || null,
-      city: selectedCityId?.toString() || null,
       countryId: selectedCountryId,
       stateId: selectedStateId,
       cityId: selectedCityId,

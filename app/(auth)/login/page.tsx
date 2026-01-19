@@ -58,7 +58,7 @@ export default function LoginPage() {
           <div className="flex flex-col items-center h-full justify-center p-10">
             <div className="border border-[#a6a6a6] rounded-[2.5rem] w-full flex flex-col items-center p-10">
               <div className="flex flex-col items-center gap-2 mb-8">
-                <Image src="/logo.png" alt="Beep Agro Africa" width={154} height={154} className="rounded-full" />
+                <Image src="/img/logo.png" alt="BPI Logo" width={154} height={154} className="rounded-full" />
                 <h2 className="mt-2 text-xl font-semibold text-[#0d3b29]">Welcome Back</h2>
               </div>
               <div className="w-full flex justify-center">

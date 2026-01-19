@@ -1059,8 +1059,8 @@ export default function DashboardContent({ session }: DashboardContentProps) {
           <div className="flex items-center justify-between">
             {/* Logo & Brand - Aligned with container left */}
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-to-r from-bpi-primary to-bpi-secondary rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-lg">B</span>
+              <div className="w-12 h-12 rounded-xl overflow-hidden">
+                <img src="/img/logo.png" alt="BPI Logo" className="w-full h-full object-cover" />
               </div>
               <div>
                 <h1 className="text-xl font-bold bg-gradient-to-r from-bpi-primary to-bpi-secondary bg-clip-text text-transparent">
@@ -1215,131 +1215,80 @@ export default function DashboardContent({ session }: DashboardContentProps) {
             </>
           )}
           
-          {/* Vertical Navigation Sidebar */}
+          {/* Vertical Navigation Sidebar - Admin Panel Style */}
           <div className="col-span-12 lg:col-span-1">
-            <div className="rounded-2xl">
-              <div className="space-y-2">
-              {/* Admin Section (conditional) - temporarily disabled until role checking is implemented */}
-              {false && (
-                <div className="relative group">
-                  <Card className="p-4 bg-gradient-to-br from-red-500 to-pink-500 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer">
-                    <div className="flex flex-col items-center">
-                      <Cpu className="w-6 h-6 mb-2" />
-                      <span className="text-xs font-medium">Intel</span>
+            <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-4 shadow-lg dark:shadow-none">
+              <nav className="space-y-1">
+                {/* Dashboard */}
+                <div className="group">
+                  <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-gradient-to-r from-bpi-primary to-bpi-secondary text-white cursor-pointer">
+                    <Home className="w-5 h-5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold">Dashboard</div>
                     </div>
-                  </Card>
-                  {/* Tooltip */}
-                  <div className="absolute left-full ml-2 top-0 bg-gray-900 text-white px-2 py-1 rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                    Intelligence Center
                   </div>
                 </div>
-              )}
 
-              {/* Dashboard Section (Active) */}
-              <div className="bg-white dark:bg-bpi-dark-card rounded-xl p-2 mb-4 shadow-lg">
-                <div className="relative group">
-                  <Card className="p-4 bg-gradient-to-br from-bpi-primary to-bpi-secondary text-white border-0 shadow-xl ring-2 ring-bpi-primary/30">
-                    <div className="flex flex-col items-center">
-                      <Home className="w-6 h-6 mb-2" />
-                      <span className="text-xs font-medium">Dashboard</span>
+                {/* Support */}
+                <div className="group">
+                  <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer">
+                    <HeadphonesIcon className="w-5 h-5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">Support</div>
                     </div>
-                  </Card>
-                  <div className="absolute left-full ml-2 top-0 bg-bpi-dark-card dark:bg-gray-900 text-white px-2 py-1 rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                    Member Dashboard
                   </div>
                 </div>
-              </div>
 
-              {/* Community Support */}
-              <div className="bg-white dark:bg-bpi-dark-card rounded-xl p-2 mb-4 shadow-lg">
-                <div className="relative group">
-                  <Card className="p-4 bg-gradient-to-br from-gray-400 to-gray-500 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer">
-                    <div className="flex flex-col items-center">
-                      <HeadphonesIcon className="w-6 h-6 mb-2" />
-                      <span className="text-xs font-medium">Support</span>
+                {/* Store */}
+                <div className="group">
+                  <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer">
+                    <Store className="w-5 h-5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">Store</div>
                     </div>
-                  </Card>
-                  <div className="absolute left-full ml-2 top-0 bg-bpi-dark-card dark:bg-gray-900 text-white px-2 py-1 rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                    Community Support
                   </div>
                 </div>
-              </div>
 
-              {/* Storefront */}
-              <div className="bg-white dark:bg-bpi-dark-card rounded-xl p-2 mb-4 shadow-lg">
-                <div className="relative group">
-                  <Card className="p-4 bg-gradient-to-br from-gray-400 to-gray-500 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer">
-                    <div className="flex flex-col items-center">
-                      <Store className="w-6 h-6 mb-2" />
-                      <span className="text-xs font-medium">Store</span>
+                {/* Services */}
+                <div className="group">
+                  <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer">
+                    <Grid3x3 className="w-5 h-5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">Services</div>
                     </div>
-                  </Card>
-                  <div className="absolute left-full ml-2 top-0 bg-bpi-dark-card dark:bg-gray-900 text-white px-2 py-1 rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                    Storefront
                   </div>
                 </div>
-              </div>
 
-              {/* Palliative Services */}
-              <div className="bg-white dark:bg-bpi-dark-card rounded-xl p-2 mb-4 shadow-lg">
-                <div className="relative group">
-                  <Card className="p-4 bg-gradient-to-br from-gray-400 to-gray-500 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer">
-                    <div className="flex flex-col items-center">
-                      <Grid3x3 className="w-6 h-6 mb-2" />
-                      <span className="text-xs font-medium">Services</span>
+                {/* Tools */}
+                <div className="group">
+                  <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer">
+                    <Wrench className="w-5 h-5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">Tools</div>
                     </div>
-                  </Card>
-                  <div className="absolute left-full ml-2 top-0 bg-bpi-dark-card dark:bg-gray-900 text-white px-2 py-1 rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                    Palliative Services
                   </div>
                 </div>
-              </div>
 
-              {/* BPI Tools */}
-              <div className="bg-white dark:bg-bpi-dark-card rounded-xl p-2 mb-4 shadow-lg">
-                <div className="relative group">
-                  <Card className="p-4 bg-gradient-to-br from-gray-400 to-gray-500 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer">
-                    <div className="flex flex-col items-center">
-                      <Wrench className="w-6 h-6 mb-2" />
-                      <span className="text-xs font-medium">Tools</span>
+                {/* Account */}
+                <div className="group">
+                  <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer">
+                    <User className="w-5 h-5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">Account</div>
                     </div>
-                  </Card>
-                  <div className="absolute left-full ml-2 top-0 bg-bpi-dark-card dark:bg-gray-900 text-white px-2 py-1 rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                    BPI Tools
                   </div>
                 </div>
-              </div>
 
-              {/* Account Management */}
-              <div className="bg-white dark:bg-bpi-dark-card rounded-xl p-2 mb-4 shadow-lg">
-                <div className="relative group">
-                  <Card className="p-4 bg-gradient-to-br from-gray-400 to-gray-500 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer">
-                    <div className="flex flex-col items-center">
-                      <User className="w-6 h-6 mb-2" />
-                      <span className="text-xs font-medium">Account</span>
+                {/* Help */}
+                <div className="group">
+                  <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer">
+                    <HelpCircle className="w-5 h-5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">Help</div>
                     </div>
-                  </Card>
-                  <div className="absolute left-full ml-2 top-0 bg-bpi-dark-card dark:bg-gray-900 text-white px-2 py-1 rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                    Account Management
                   </div>
                 </div>
-              </div>
-
-              {/* Support */}
-              <div className="bg-white dark:bg-bpi-dark-card rounded-xl p-2 mb-4 shadow-lg">
-                <div className="relative group">
-                  <Card className="p-4 bg-gradient-to-br from-gray-400 to-gray-500 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer">
-                    <div className="flex flex-col items-center">
-                      <HelpCircle className="w-6 h-6 mb-2" />
-                      <span className="text-xs font-medium">Help</span>
-                    </div>
-                  </Card>
-                  <div className="absolute left-full ml-2 top-0 bg-bpi-dark-card dark:bg-gray-900 text-white px-2 py-1 rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                    Support & Help
-                  </div>
-                </div>
-              </div>
-            </div>
+              </nav>
             </div>
           </div>
 
@@ -1556,6 +1505,9 @@ export default function DashboardContent({ session }: DashboardContentProps) {
                     countryValue={userProfile?.country || null}
                     stateValue={userProfile?.state || null}
                     cityValue={userProfile?.city || null}
+                    countryName={(userProfile as any)?.countryRelation?.name || null}
+                    stateName={(userProfile as any)?.stateRelation?.name || null}
+                    cityName={(userProfile as any)?.cityRelation?.name || null}
                     onUpdateStatus={handleUpdateStatus}
                   />
                   
