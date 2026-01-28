@@ -1,0 +1,3442 @@
+{
+  "categories": [
+    {
+      "id": "cmkxg7u1800009qrylsr1y7ll",
+      "name": "Getting Started",
+      "slug": "general",
+      "description": "Basics and onboarding",
+      "order": 1,
+      "isActive": true,
+      "createdAt": "2026-01-28T03:11:20.011Z",
+      "updatedAt": "2026-01-28T21:03:27.573Z"
+    },
+    {
+      "id": "cmkxg7u2o00019qry7aehzylq",
+      "name": "Dashboard",
+      "slug": "dashboard",
+      "description": "Portfolio and daily actions",
+      "order": 2,
+      "isActive": true,
+      "createdAt": "2026-01-28T03:11:20.064Z",
+      "updatedAt": "2026-01-28T21:03:27.586Z"
+    },
+    {
+      "id": "cmkxg7u3l00029qrylr3tuswe",
+      "name": "Store",
+      "slug": "store",
+      "description": "Browse, checkout, and pickup",
+      "order": 3,
+      "isActive": true,
+      "createdAt": "2026-01-28T03:11:20.097Z",
+      "updatedAt": "2026-01-28T21:03:27.592Z"
+    },
+    {
+      "id": "cmkxg7u4t00039qrytpfl1u0r",
+      "name": "Blog",
+      "slug": "blog",
+      "description": "Read and comment",
+      "order": 4,
+      "isActive": true,
+      "createdAt": "2026-01-28T03:11:20.141Z",
+      "updatedAt": "2026-01-28T21:03:27.598Z"
+    },
+    {
+      "id": "cmkxg7u5m00049qrysnilcfb0",
+      "name": "CSP",
+      "slug": "csp",
+      "description": "Community Support Program",
+      "order": 5,
+      "isActive": true,
+      "createdAt": "2026-01-28T03:11:20.171Z",
+      "updatedAt": "2026-01-28T21:03:27.603Z"
+    },
+    {
+      "id": "cmkxg7u7500059qrykxq7r85a",
+      "name": "Account",
+      "slug": "account",
+      "description": "Profile and settings",
+      "order": 6,
+      "isActive": true,
+      "createdAt": "2026-01-28T03:11:20.225Z",
+      "updatedAt": "2026-01-28T21:03:27.609Z"
+    },
+    {
+      "id": "cmkxg7u7m00069qrypnvtldmi",
+      "name": "Security",
+      "slug": "security",
+      "description": "PIN and 2FA",
+      "order": 7,
+      "isActive": true,
+      "createdAt": "2026-01-28T03:11:20.242Z",
+      "updatedAt": "2026-01-28T21:03:27.615Z"
+    },
+    {
+      "id": "cmkxg7u8n00079qryu1g7vf7b",
+      "name": "Troubleshooting",
+      "slug": "troubleshooting",
+      "description": "Fix common issues",
+      "order": 8,
+      "isActive": true,
+      "createdAt": "2026-01-28T03:11:20.279Z",
+      "updatedAt": "2026-01-28T21:03:27.621Z"
+    },
+    {
+      "id": "cmkxg7u9h00089qrybai7a0jo",
+      "name": "Help Center",
+      "slug": "help-center",
+      "description": "Support and guidance",
+      "order": 9,
+      "isActive": true,
+      "createdAt": "2026-01-28T03:11:20.309Z",
+      "updatedAt": "2026-01-28T21:03:27.627Z"
+    }
+  ],
+  "topics": [
+    {
+      "id": "cmkxg7uh6000m9qryc9kvecad",
+      "categoryId": "cmkxg7u4t00039qrytpfl1u0r",
+      "title": "4) Blog",
+      "slug": "4-blog",
+      "summary": "The Blog helps you stay informed.",
+      "steps": [
+        "See featured posts in a hero carousel.",
+        "Search posts by keyword.",
+        "Filter by category.",
+        "Read latest headlines.",
+        "Read the full article with author and stats.",
+        "Add a comment and join the discussion.",
+        "View comments and pagination."
+      ],
+      "faq": null,
+      "tags": [
+        "4",
+        "blog"
+      ],
+      "isPublished": true,
+      "viewCount": 0,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:20.586Z",
+      "updatedAt": "2026-01-28T21:03:27.646Z"
+    },
+    {
+      "id": "cmkxg7uk2000u9qryvjbqf4je",
+      "categoryId": "cmkxg7u7500059qrykxq7r85a",
+      "title": "6) Account settings",
+      "slug": "6-account-settings",
+      "summary": "Settings are accessible from the dashboard.",
+      "steps": [
+        "Enable or update your 4‑digit PIN.",
+        "Enable 2FA if the system has it enabled.",
+        "Disable 2FA with PIN + code if required."
+      ],
+      "faq": null,
+      "tags": [
+        "6",
+        "account",
+        "settings"
+      ],
+      "isPublished": true,
+      "viewCount": 0,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:20.690Z",
+      "updatedAt": "2026-01-28T21:03:27.654Z"
+    },
+    {
+      "id": "cmkxg7um6000y9qryy4faictx",
+      "categoryId": "cmkxg7u8n00079qryu1g7vf7b",
+      "title": "7) Troubleshooting",
+      "slug": "7-troubleshooting",
+      "summary": "- Can’t log in: check your email, password, and internet connection.\n- Forgot password: use the “Forgot Password” link on login.\n- No claim code yet: your order may still be processing.\n- Checkout error: open the store again and restart checkout.\n- 2FA issues: verify your code and ensure time is synced in your authenticator app.",
+      "steps": [
+        "Can’t log in: check your email, password, and internet connection.",
+        "Forgot password: use the “Forgot Password” link on login.",
+        "No claim code yet: your order may still be processing.",
+        "Checkout error: open the store again and restart checkout.",
+        "2FA issues: verify your code and ensure time is synced in your authenticator app."
+      ],
+      "faq": null,
+      "tags": [
+        "7",
+        "troubleshooting"
+      ],
+      "isPublished": true,
+      "viewCount": 0,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:20.766Z",
+      "updatedAt": "2026-01-28T21:03:27.662Z"
+    },
+    {
+      "id": "cmkxg7unk00129qry5z75rfdw",
+      "categoryId": "cmkxg7u9h00089qrybai7a0jo",
+      "title": "8) Getting help",
+      "slug": "8-getting-help",
+      "summary": "- Check this guide first.\n- Use the Help Center link inside Settings.\n- Contact support with your email and a short description of the issue.",
+      "steps": [
+        "Check this guide first.",
+        "Use the Help Center link inside Settings.",
+        "Contact support with your email and a short description of the issue."
+      ],
+      "faq": null,
+      "tags": [
+        "8",
+        "getting",
+        "help"
+      ],
+      "isPublished": true,
+      "viewCount": 0,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:20.816Z",
+      "updatedAt": "2026-01-28T21:03:27.672Z"
+    },
+    {
+      "id": "cmkxg7up800169qryfct5qu04",
+      "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+      "title": "1) Bot purpose",
+      "slug": "1-bot-purpose",
+      "summary": "- Answer common questions about the dashboard, store, blog, CSP, and account settings.\n- Guide users step‑by‑step.\n- Escalate when the request involves payments, security, or account recovery.",
+      "steps": [
+        "Answer common questions about the dashboard, store, blog, CSP, and account settings.",
+        "Guide users step‑by‑step.",
+        "Escalate when the request involves payments, security, or account recovery."
+      ],
+      "faq": null,
+      "tags": [
+        "admin-only",
+        "1",
+        "bot",
+        "purpose"
+      ],
+      "isPublished": true,
+      "viewCount": 0,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:20.876Z",
+      "updatedAt": "2026-01-28T21:03:27.679Z"
+    },
+    {
+      "id": "cmkxg7uqc001a9qry9lgjn6cp",
+      "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+      "title": "2) Tone and behavior",
+      "slug": "2-tone-and-behavior",
+      "summary": "- Friendly, concise, and clear.\n- Use short sentences.\n- Ask one clarification question only if needed.\n- Never request passwords, PINs, or 2FA codes.",
+      "steps": [
+        "Friendly, concise, and clear.",
+        "Use short sentences.",
+        "Ask one clarification question only if needed.",
+        "Never request passwords, PINs, or 2FA codes."
+      ],
+      "faq": null,
+      "tags": [
+        "admin-only",
+        "2",
+        "tone",
+        "and",
+        "behavior"
+      ],
+      "isPublished": true,
+      "viewCount": 0,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:20.916Z",
+      "updatedAt": "2026-01-28T21:03:27.687Z"
+    },
+    {
+      "id": "cmkxg7uig000q9qryn6fefbrl",
+      "categoryId": "cmkxg7u5m00049qrysnilcfb0",
+      "title": "5) CSP (Community Support Program)",
+      "slug": "5-csp-community-support-program",
+      "summary": "This is where you request and track support.",
+      "steps": [
+        "You must meet membership, direct referrals, and contribution rules.",
+        "The dashboard shows your eligibility status.",
+        "Choose a category (National or Global).",
+        "Enter amount, purpose, and notes.",
+        "Submit for admin approval.",
+        "Track broadcast time remaining.",
+        "View raised amount and contributors.",
+        "See time extension rules (paid or referral-based).",
+        "See how contributions are split across wallets.",
+        "View recent support requests and outcomes."
+      ],
+      "faq": null,
+      "tags": [
+        "5",
+        "csp",
+        "community",
+        "support",
+        "program"
+      ],
+      "isPublished": true,
+      "viewCount": 1,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:20.631Z",
+      "updatedAt": "2026-01-28T21:03:27.696Z"
+    },
+    {
+      "id": "cmkxg7uas000a9qrywmz8jmtd",
+      "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+      "title": "1) Getting started",
+      "slug": "1-getting-started",
+      "summary": "- Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.\n- Accept the terms and register.\n- Log in on the Login page using your email and password.\n- After login, you land on the dashboard.",
+      "steps": [
+        "Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.",
+        "Accept the terms and register.",
+        "Log in on the Login page using your email and password.",
+        "After login, you land on the dashboard."
+      ],
+      "faq": null,
+      "tags": [
+        "1",
+        "getting",
+        "started"
+      ],
+      "isPublished": true,
+      "viewCount": 0,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:20.355Z",
+      "updatedAt": "2026-01-28T21:03:27.704Z"
+    },
+    {
+      "id": "cmkxg7uuf001i9qryhr0ibxo1",
+      "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+      "title": "4) Safety and escalation rules",
+      "slug": "4-safety-and-escalation-rules",
+      "summary": "Escalate to human support when the user:\n- Can’t access their account after multiple tries\n- Reports payment or checkout issues\n- Reports suspicious activity\n- Needs account recovery or identity verification",
+      "steps": [
+        "Can’t access their account after multiple tries",
+        "Reports payment or checkout issues",
+        "Reports suspicious activity",
+        "Needs account recovery or identity verification"
+      ],
+      "faq": null,
+      "tags": [
+        "admin-only",
+        "4",
+        "safety",
+        "and",
+        "escalation",
+        "rules"
+      ],
+      "isPublished": true,
+      "viewCount": 0,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:21.062Z",
+      "updatedAt": "2026-01-28T21:03:27.712Z"
+    },
+    {
+      "id": "cmkxg7ux5001m9qryyivj321m",
+      "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+      "title": "5) Answer templates (plain language)",
+      "slug": "5-answer-templates-plain-language",
+      "summary": "Use these templates for quick answers.",
+      "steps": [
+        "“Go to Login, enter your email and password, then press LOGIN. If it fails, use Forgot Password.”",
+        "“Your dashboard shows total portfolio value, wallet breakdown, and recent activity. Use the eye icon to hide or show balances.”",
+        "“Open a product, tap Start Checkout, choose Fiat or Hybrid, then confirm. You’ll see your claim code in Orders when it’s ready.”",
+        "“Copy your claim code from My Store Orders and show it at the pickup center. After staff verifies it, confirm pickup in your orders screen.”",
+        "“Open CSP, check eligibility, fill the request form, and submit for approval. You can track status in the live status panel.”",
+        "“Go to Settings → Security to set a 4‑digit PIN or enable 2FA. Never share your PIN or codes.”"
+      ],
+      "faq": null,
+      "tags": [
+        "admin-only",
+        "5",
+        "answer",
+        "templates",
+        "plain",
+        "language"
+      ],
+      "isPublished": true,
+      "viewCount": 0,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:21.160Z",
+      "updatedAt": "2026-01-28T21:03:27.719Z"
+    },
+    {
+      "id": "cmkxg7v06001q9qryo7895rg8",
+      "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+      "title": "6) Training data structure for a mini bot",
+      "slug": "6-training-data-structure-for-a-mini-bot",
+      "summary": "Store training examples in a database or a JSONL file. Each entry should include:\n- intent\n- user_utterances (array)\n- response\n- tags (feature, page, risk)\n- escalation (true/false)",
+      "steps": [
+        "intent",
+        "user_utterances (array)",
+        "response",
+        "tags (feature, page, risk)",
+        "escalation (true/false)",
+        "auth.login.help",
+        "auth.register.help",
+        "dashboard.portfolio.help",
+        "dashboard.wallets.help",
+        "store.browse.help",
+        "store.checkout.help",
+        "store.claimcode.help",
+        "store.pickup.confirm",
+        "blog.read.help",
+        "blog.comment.help",
+        "csp.eligibility.help",
+        "csp.submit.help",
+        "account.security.pin",
+        "account.security.2fa"
+      ],
+      "faq": null,
+      "tags": [
+        "admin-only",
+        "6",
+        "training",
+        "data",
+        "structure",
+        "for",
+        "a"
+      ],
+      "isPublished": true,
+      "viewCount": 0,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:21.270Z",
+      "updatedAt": "2026-01-28T21:03:27.726Z"
+    },
+    {
+      "id": "cmkxg7v2w001u9qryh30clblr",
+      "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+      "title": "7) Fallback and handoff",
+      "slug": "7-fallback-and-handoff",
+      "summary": "- If the bot can’t find a confident answer, ask the user to rephrase.\n- After two failures, suggest human support.",
+      "steps": [
+        "If the bot can’t find a confident answer, ask the user to rephrase.",
+        "After two failures, suggest human support."
+      ],
+      "faq": null,
+      "tags": [
+        "admin-only",
+        "7",
+        "fallback",
+        "and",
+        "handoff"
+      ],
+      "isPublished": true,
+      "viewCount": 0,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:21.368Z",
+      "updatedAt": "2026-01-28T21:03:27.733Z"
+    },
+    {
+      "id": "cmkxg7v5q001y9qrycvrri4rr",
+      "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+      "title": "8) Admin updates for new topics",
+      "slug": "8-admin-updates-for-new-topics",
+      "summary": "- Add new topics in the admin help center.\n- Each new topic should include a title, plain‑language summary, steps, and common questions.\n- Re‑train the bot with the updated topics.",
+      "steps": [
+        "Add new topics in the admin help center.",
+        "Each new topic should include a title, plain‑language summary, steps, and common questions.",
+        "Re‑train the bot with the updated topics."
+      ],
+      "faq": null,
+      "tags": [
+        "admin-only",
+        "8",
+        "admin",
+        "updates",
+        "for",
+        "new",
+        "topics"
+      ],
+      "isPublished": true,
+      "viewCount": 1,
+      "helpfulYes": 1,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:21.470Z",
+      "updatedAt": "2026-01-28T21:03:27.741Z"
+    },
+    {
+      "id": "cmkxg7us3001e9qry5aqrzhk7",
+      "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+      "title": "3) Knowledge areas",
+      "slug": "3-knowledge-areas",
+      "summary": "- Login and registration\n- Dashboard overview and balances\n- Wallets and quick actions (deposit, withdraw, transfer)\n- Notifications and profile completion\n- Store browsing, checkout, orders, claim codes, pickup, rating\n- Pickup centers and staff verification flow\n- Blog reading and comments\n- CSP eligibility, request flow, live status, extensions, and history\n- Account security (PIN and 2FA)",
+      "steps": [
+        "Login and registration",
+        "Dashboard overview and balances",
+        "Wallets and quick actions (deposit, withdraw, transfer)",
+        "Notifications and profile completion",
+        "Store browsing, checkout, orders, claim codes, pickup, rating",
+        "Pickup centers and staff verification flow",
+        "Blog reading and comments",
+        "CSP eligibility, request flow, live status, extensions, and history",
+        "Account security (PIN and 2FA)"
+      ],
+      "faq": null,
+      "tags": [
+        "admin-only",
+        "3",
+        "knowledge",
+        "areas"
+      ],
+      "isPublished": true,
+      "viewCount": 1,
+      "helpfulYes": 0,
+      "helpfulNo": 1,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:20.978Z",
+      "updatedAt": "2026-01-28T21:03:27.749Z"
+    },
+    {
+      "id": "cmkxg7ufb000i9qryvj4pmy6f",
+      "categoryId": "cmkxg7u3l00029qrylr3tuswe",
+      "title": "3) Store",
+      "slug": "3-store",
+      "summary": "The Store is where you browse, purchase, and manage product pickups.",
+      "steps": [
+        "Browse featured and all products.",
+        "Filter by product type and token.",
+        "Search by name or description.",
+        "View product images, description, price, and rewards.",
+        "See accepted tokens and payment caps.",
+        "Start checkout or save for later.",
+        "Review order details.",
+        "Choose payment mode:",
+        "Fiat only",
+        "Hybrid (token + fiat)",
+        "Token only (if allowed)",
+        "Confirm checkout to create your order.",
+        "Open My Store Orders to track progress.",
+        "When ready, your claim code appears.",
+        "Copy the claim code and present it at the pickup center.",
+        "After staff verifies your claim, confirm pickup in your orders screen.",
+        "Rate your pickup experience and submit feedback.",
+        "Browse available pickup centers.",
+        "View location, contact name, phone, and status."
+      ],
+      "faq": null,
+      "tags": [
+        "3",
+        "store"
+      ],
+      "isPublished": true,
+      "viewCount": 0,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:20.518Z",
+      "updatedAt": "2026-01-28T21:03:27.634Z"
+    },
+    {
+      "id": "cmkxg7ucx000e9qry87zrldpa",
+      "categoryId": "cmkxg7u2o00019qry7aehzylq",
+      "title": "2) Dashboard overview (your home screen)",
+      "slug": "2-dashboard-overview-your-home-screen",
+      "summary": "The dashboard is the main hub for all user activities.",
+      "steps": [
+        "Shows Total Portfolio Value.",
+        "You can hide/show balances.",
+        "You see a wallet breakdown for Main, Palliative, and BPT.",
+        "A 24h change indicator shows gain or loss over time.",
+        "Deposit: add funds to your wallet.",
+        "Withdraw: move funds out.",
+        "Transfer: send funds to others.",
+        "Primary wallets include Main, Locked Capital, Rewards, and BPT.",
+        "Community wallets include Palliative, Shelter, Community, Health, Education, etc.",
+        "You can review balances and see detailed activity in wallet timelines.",
+        "Notifications appear in the Notifications center.",
+        "You can open the Notifications modal to see recent alerts.",
+        "You may be prompted to complete your profile.",
+        "You can update details like name, phone, and address.",
+        "Location and bank details can be entered using guided fields.",
+        "Taxes summary can be opened from the Taxes modal.",
+        "Referrals can be reviewed from the Referral details modal.",
+        "Community updates",
+        "Calculator",
+        "Deals",
+        "Leadership pool",
+        "EPC/EPP resources",
+        "Solar assessment",
+        "Training center",
+        "Promotional materials",
+        "Submit channel and browse channels",
+        "Third‑party opportunities",
+        "You can view the Palliative journey and activation progress.",
+        "A palliative activation modal guides steps if required.",
+        "Access Security settings to enable a 4‑digit PIN.",
+        "Enable 2FA (Google Authenticator) if available."
+      ],
+      "faq": null,
+      "tags": [
+        "2",
+        "dashboard",
+        "overview",
+        "your",
+        "home",
+        "screen"
+      ],
+      "isPublished": true,
+      "viewCount": 1,
+      "helpfulYes": 0,
+      "helpfulNo": 0,
+      "createdById": null,
+      "updatedById": null,
+      "createdAt": "2026-01-28T03:11:20.432Z",
+      "updatedAt": "2026-01-28T21:03:27.759Z"
+    }
+  ],
+  "revisions": [
+    {
+      "id": "cmkxg7ubo000c9qryhgbysxiv",
+      "topicId": "cmkxg7uas000a9qrywmz8jmtd",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "1",
+          "getting",
+          "started"
+        ],
+        "steps": [
+          "Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.",
+          "Accept the terms and register.",
+          "Log in on the Login page using your email and password.",
+          "After login, you land on the dashboard."
+        ],
+        "title": "1) Getting started",
+        "summary": "- Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.\n- Accept the terms and register.\n- Log in on the Login page using your email and password.\n- After login, you land on the dashboard.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.388Z"
+    },
+    {
+      "id": "cmkxg7udt000g9qry6dil1dmu",
+      "topicId": "cmkxg7ucx000e9qry87zrldpa",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "2",
+          "dashboard",
+          "overview",
+          "your",
+          "home",
+          "screen"
+        ],
+        "steps": [
+          "Shows Total Portfolio Value.",
+          "You can hide/show balances.",
+          "You see a wallet breakdown for Main, Palliative, and BPT.",
+          "A 24h change indicator shows gain or loss over time.",
+          "Deposit: add funds to your wallet.",
+          "Withdraw: move funds out.",
+          "Transfer: send funds to others.",
+          "Primary wallets include Main, Locked Capital, Rewards, and BPT.",
+          "Community wallets include Palliative, Shelter, Community, Health, Education, etc.",
+          "You can review balances and see detailed activity in wallet timelines.",
+          "Notifications appear in the Notifications center.",
+          "You can open the Notifications modal to see recent alerts.",
+          "You may be prompted to complete your profile.",
+          "You can update details like name, phone, and address.",
+          "Location and bank details can be entered using guided fields.",
+          "Taxes summary can be opened from the Taxes modal.",
+          "Referrals can be reviewed from the Referral details modal.",
+          "Community updates",
+          "Calculator",
+          "Deals",
+          "Leadership pool",
+          "EPC/EPP resources",
+          "Solar assessment",
+          "Training center",
+          "Promotional materials",
+          "Submit channel and browse channels",
+          "Third‑party opportunities",
+          "You can view the Palliative journey and activation progress.",
+          "A palliative activation modal guides steps if required.",
+          "Access Security settings to enable a 4‑digit PIN.",
+          "Enable 2FA (Google Authenticator) if available."
+        ],
+        "title": "2) Dashboard overview (your home screen)",
+        "summary": "The dashboard is the main hub for all user activities.",
+        "categoryId": "cmkxg7u2o00019qry7aehzylq",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.465Z"
+    },
+    {
+      "id": "cmkxg7ugg000k9qrye1ta4qvj",
+      "topicId": "cmkxg7ufb000i9qryvj4pmy6f",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "3",
+          "store"
+        ],
+        "steps": [
+          "Browse featured and all products.",
+          "Filter by product type and token.",
+          "Search by name or description.",
+          "View product images, description, price, and rewards.",
+          "See accepted tokens and payment caps.",
+          "Start checkout or save for later.",
+          "Review order details.",
+          "Choose payment mode:",
+          "Fiat only",
+          "Hybrid (token + fiat)",
+          "Token only (if allowed)",
+          "Confirm checkout to create your order.",
+          "Open My Store Orders to track progress.",
+          "When ready, your claim code appears.",
+          "Copy the claim code and present it at the pickup center.",
+          "After staff verifies your claim, confirm pickup in your orders screen.",
+          "Rate your pickup experience and submit feedback.",
+          "Browse available pickup centers.",
+          "View location, contact name, phone, and status."
+        ],
+        "title": "3) Store",
+        "summary": "The Store is where you browse, purchase, and manage product pickups.",
+        "categoryId": "cmkxg7u3l00029qrylr3tuswe",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.561Z"
+    },
+    {
+      "id": "cmkxg7uhs000o9qrye12bt3c3",
+      "topicId": "cmkxg7uh6000m9qryc9kvecad",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "4",
+          "blog"
+        ],
+        "steps": [
+          "See featured posts in a hero carousel.",
+          "Search posts by keyword.",
+          "Filter by category.",
+          "Read latest headlines.",
+          "Read the full article with author and stats.",
+          "Add a comment and join the discussion.",
+          "View comments and pagination."
+        ],
+        "title": "4) Blog",
+        "summary": "The Blog helps you stay informed.",
+        "categoryId": "cmkxg7u4t00039qrytpfl1u0r",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.608Z"
+    },
+    {
+      "id": "cmkxg7uiz000s9qrygxmpk4hi",
+      "topicId": "cmkxg7uig000q9qryn6fefbrl",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "5",
+          "csp",
+          "community",
+          "support",
+          "program"
+        ],
+        "steps": [
+          "You must meet membership, direct referrals, and contribution rules.",
+          "The dashboard shows your eligibility status.",
+          "Choose a category (National or Global).",
+          "Enter amount, purpose, and notes.",
+          "Submit for admin approval.",
+          "Track broadcast time remaining.",
+          "View raised amount and contributors.",
+          "See time extension rules (paid or referral-based).",
+          "See how contributions are split across wallets.",
+          "View recent support requests and outcomes."
+        ],
+        "title": "5) CSP (Community Support Program)",
+        "summary": "This is where you request and track support.",
+        "categoryId": "cmkxg7u5m00049qrysnilcfb0",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.651Z"
+    },
+    {
+      "id": "cmkxg7ukx000w9qrys6xp70rm",
+      "topicId": "cmkxg7uk2000u9qryvjbqf4je",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "6",
+          "account",
+          "settings"
+        ],
+        "steps": [
+          "Enable or update your 4‑digit PIN.",
+          "Enable 2FA if the system has it enabled.",
+          "Disable 2FA with PIN + code if required."
+        ],
+        "title": "6) Account settings",
+        "summary": "Settings are accessible from the dashboard.",
+        "categoryId": "cmkxg7u7500059qrykxq7r85a",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.721Z"
+    },
+    {
+      "id": "cmkxg7umv00109qry5u414az7",
+      "topicId": "cmkxg7um6000y9qryy4faictx",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "7",
+          "troubleshooting"
+        ],
+        "steps": [
+          "Can’t log in: check your email, password, and internet connection.",
+          "Forgot password: use the “Forgot Password” link on login.",
+          "No claim code yet: your order may still be processing.",
+          "Checkout error: open the store again and restart checkout.",
+          "2FA issues: verify your code and ensure time is synced in your authenticator app."
+        ],
+        "title": "7) Troubleshooting",
+        "summary": "- Can’t log in: check your email, password, and internet connection.\n- Forgot password: use the “Forgot Password” link on login.\n- No claim code yet: your order may still be processing.\n- Checkout error: open the store again and restart checkout.\n- 2FA issues: verify your code and ensure time is synced in your authenticator app.",
+        "categoryId": "cmkxg7u8n00079qryu1g7vf7b",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.791Z"
+    },
+    {
+      "id": "cmkxg7uod00149qry399phsn7",
+      "topicId": "cmkxg7unk00129qry5z75rfdw",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "8",
+          "getting",
+          "help"
+        ],
+        "steps": [
+          "Check this guide first.",
+          "Use the Help Center link inside Settings.",
+          "Contact support with your email and a short description of the issue."
+        ],
+        "title": "8) Getting help",
+        "summary": "- Check this guide first.\n- Use the Help Center link inside Settings.\n- Contact support with your email and a short description of the issue.",
+        "categoryId": "cmkxg7u9h00089qrybai7a0jo",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.846Z"
+    },
+    {
+      "id": "cmkxg7upn00189qryhobysdg7",
+      "topicId": "cmkxg7up800169qryfct5qu04",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "1",
+          "bot",
+          "purpose"
+        ],
+        "steps": [
+          "Answer common questions about the dashboard, store, blog, CSP, and account settings.",
+          "Guide users step‑by‑step.",
+          "Escalate when the request involves payments, security, or account recovery."
+        ],
+        "title": "1) Bot purpose",
+        "summary": "- Answer common questions about the dashboard, store, blog, CSP, and account settings.\n- Guide users step‑by‑step.\n- Escalate when the request involves payments, security, or account recovery.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.891Z"
+    },
+    {
+      "id": "cmkxg7ur0001c9qry845j7p0e",
+      "topicId": "cmkxg7uqc001a9qry9lgjn6cp",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "2",
+          "tone",
+          "and",
+          "behavior"
+        ],
+        "steps": [
+          "Friendly, concise, and clear.",
+          "Use short sentences.",
+          "Ask one clarification question only if needed.",
+          "Never request passwords, PINs, or 2FA codes."
+        ],
+        "title": "2) Tone and behavior",
+        "summary": "- Friendly, concise, and clear.\n- Use short sentences.\n- Ask one clarification question only if needed.\n- Never request passwords, PINs, or 2FA codes.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.940Z"
+    },
+    {
+      "id": "cmkxg7uss001g9qry1biaus2k",
+      "topicId": "cmkxg7us3001e9qry5aqrzhk7",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "3",
+          "knowledge",
+          "areas"
+        ],
+        "steps": [
+          "Login and registration",
+          "Dashboard overview and balances",
+          "Wallets and quick actions (deposit, withdraw, transfer)",
+          "Notifications and profile completion",
+          "Store browsing, checkout, orders, claim codes, pickup, rating",
+          "Pickup centers and staff verification flow",
+          "Blog reading and comments",
+          "CSP eligibility, request flow, live status, extensions, and history",
+          "Account security (PIN and 2FA)"
+        ],
+        "title": "3) Knowledge areas",
+        "summary": "- Login and registration\n- Dashboard overview and balances\n- Wallets and quick actions (deposit, withdraw, transfer)\n- Notifications and profile completion\n- Store browsing, checkout, orders, claim codes, pickup, rating\n- Pickup centers and staff verification flow\n- Blog reading and comments\n- CSP eligibility, request flow, live status, extensions, and history\n- Account security (PIN and 2FA)",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.004Z"
+    },
+    {
+      "id": "cmkxg7uuw001k9qryyt8685zg",
+      "topicId": "cmkxg7uuf001i9qryhr0ibxo1",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "4",
+          "safety",
+          "and",
+          "escalation",
+          "rules"
+        ],
+        "steps": [
+          "Can’t access their account after multiple tries",
+          "Reports payment or checkout issues",
+          "Reports suspicious activity",
+          "Needs account recovery or identity verification"
+        ],
+        "title": "4) Safety and escalation rules",
+        "summary": "Escalate to human support when the user:\n- Can’t access their account after multiple tries\n- Reports payment or checkout issues\n- Reports suspicious activity\n- Needs account recovery or identity verification",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.080Z"
+    },
+    {
+      "id": "cmkxg7uxt001o9qrymz798jyc",
+      "topicId": "cmkxg7ux5001m9qryyivj321m",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "5",
+          "answer",
+          "templates",
+          "plain",
+          "language"
+        ],
+        "steps": [
+          "“Go to Login, enter your email and password, then press LOGIN. If it fails, use Forgot Password.”",
+          "“Your dashboard shows total portfolio value, wallet breakdown, and recent activity. Use the eye icon to hide or show balances.”",
+          "“Open a product, tap Start Checkout, choose Fiat or Hybrid, then confirm. You’ll see your claim code in Orders when it’s ready.”",
+          "“Copy your claim code from My Store Orders and show it at the pickup center. After staff verifies it, confirm pickup in your orders screen.”",
+          "“Open CSP, check eligibility, fill the request form, and submit for approval. You can track status in the live status panel.”",
+          "“Go to Settings → Security to set a 4‑digit PIN or enable 2FA. Never share your PIN or codes.”"
+        ],
+        "title": "5) Answer templates (plain language)",
+        "summary": "Use these templates for quick answers.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.185Z"
+    },
+    {
+      "id": "cmkxg7v1e001s9qryu8gglrrz",
+      "topicId": "cmkxg7v06001q9qryo7895rg8",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "6",
+          "training",
+          "data",
+          "structure",
+          "for",
+          "a"
+        ],
+        "steps": [
+          "intent",
+          "user_utterances (array)",
+          "response",
+          "tags (feature, page, risk)",
+          "escalation (true/false)",
+          "auth.login.help",
+          "auth.register.help",
+          "dashboard.portfolio.help",
+          "dashboard.wallets.help",
+          "store.browse.help",
+          "store.checkout.help",
+          "store.claimcode.help",
+          "store.pickup.confirm",
+          "blog.read.help",
+          "blog.comment.help",
+          "csp.eligibility.help",
+          "csp.submit.help",
+          "account.security.pin",
+          "account.security.2fa"
+        ],
+        "title": "6) Training data structure for a mini bot",
+        "summary": "Store training examples in a database or a JSONL file. Each entry should include:\n- intent\n- user_utterances (array)\n- response\n- tags (feature, page, risk)\n- escalation (true/false)",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.314Z"
+    },
+    {
+      "id": "cmkxg7v4d001w9qryyg5tht82",
+      "topicId": "cmkxg7v2w001u9qryh30clblr",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "7",
+          "fallback",
+          "and",
+          "handoff"
+        ],
+        "steps": [
+          "If the bot can’t find a confident answer, ask the user to rephrase.",
+          "After two failures, suggest human support."
+        ],
+        "title": "7) Fallback and handoff",
+        "summary": "- If the bot can’t find a confident answer, ask the user to rephrase.\n- After two failures, suggest human support.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.421Z"
+    },
+    {
+      "id": "cmkxg7v6g00209qryy6hnpnxr",
+      "topicId": "cmkxg7v5q001y9qrycvrri4rr",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "8",
+          "admin",
+          "updates",
+          "for",
+          "new",
+          "topics"
+        ],
+        "steps": [
+          "Add new topics in the admin help center.",
+          "Each new topic should include a title, plain‑language summary, steps, and common questions.",
+          "Re‑train the bot with the updated topics."
+        ],
+        "title": "8) Admin updates for new topics",
+        "summary": "- Add new topics in the admin help center.\n- Each new topic should include a title, plain‑language summary, steps, and common questions.\n- Re‑train the bot with the updated topics.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.497Z"
+    },
+    {
+      "id": "cmkxgnced000cwzzoxrgike0i",
+      "topicId": "cmkxg7uas000a9qrywmz8jmtd",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "1",
+          "getting",
+          "started"
+        ],
+        "steps": [
+          "Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.",
+          "Accept the terms and register.",
+          "Log in on the Login page using your email and password.",
+          "After login, you land on the dashboard."
+        ],
+        "title": "1) Getting started",
+        "summary": "- Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.\n- Accept the terms and register.\n- Log in on the Login page using your email and password.\n- After login, you land on the dashboard.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:23.653Z"
+    },
+    {
+      "id": "cmkxgnd2z001gwzzothv03r87",
+      "topicId": "cmkxg7us3001e9qry5aqrzhk7",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "3",
+          "knowledge",
+          "areas"
+        ],
+        "steps": [
+          "Login and registration",
+          "Dashboard overview and balances",
+          "Wallets and quick actions (deposit, withdraw, transfer)",
+          "Notifications and profile completion",
+          "Store browsing, checkout, orders, claim codes, pickup, rating",
+          "Pickup centers and staff verification flow",
+          "Blog reading and comments",
+          "CSP eligibility, request flow, live status, extensions, and history",
+          "Account security (PIN and 2FA)"
+        ],
+        "title": "3) Knowledge areas",
+        "summary": "- Login and registration\n- Dashboard overview and balances\n- Wallets and quick actions (deposit, withdraw, transfer)\n- Notifications and profile completion\n- Store browsing, checkout, orders, claim codes, pickup, rating\n- Pickup centers and staff verification flow\n- Blog reading and comments\n- CSP eligibility, request flow, live status, extensions, and history\n- Account security (PIN and 2FA)",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.539Z"
+    },
+    {
+      "id": "cmkxgnciu000gwzzohm1p3e7p",
+      "topicId": "cmkxg7ucx000e9qry87zrldpa",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "2",
+          "dashboard",
+          "overview",
+          "your",
+          "home",
+          "screen"
+        ],
+        "steps": [
+          "Shows Total Portfolio Value.",
+          "You can hide/show balances.",
+          "You see a wallet breakdown for Main, Palliative, and BPT.",
+          "A 24h change indicator shows gain or loss over time.",
+          "Deposit: add funds to your wallet.",
+          "Withdraw: move funds out.",
+          "Transfer: send funds to others.",
+          "Primary wallets include Main, Locked Capital, Rewards, and BPT.",
+          "Community wallets include Palliative, Shelter, Community, Health, Education, etc.",
+          "You can review balances and see detailed activity in wallet timelines.",
+          "Notifications appear in the Notifications center.",
+          "You can open the Notifications modal to see recent alerts.",
+          "You may be prompted to complete your profile.",
+          "You can update details like name, phone, and address.",
+          "Location and bank details can be entered using guided fields.",
+          "Taxes summary can be opened from the Taxes modal.",
+          "Referrals can be reviewed from the Referral details modal.",
+          "Community updates",
+          "Calculator",
+          "Deals",
+          "Leadership pool",
+          "EPC/EPP resources",
+          "Solar assessment",
+          "Training center",
+          "Promotional materials",
+          "Submit channel and browse channels",
+          "Third‑party opportunities",
+          "You can view the Palliative journey and activation progress.",
+          "A palliative activation modal guides steps if required.",
+          "Access Security settings to enable a 4‑digit PIN.",
+          "Enable 2FA (Google Authenticator) if available."
+        ],
+        "title": "2) Dashboard overview (your home screen)",
+        "summary": "The dashboard is the main hub for all user activities.",
+        "categoryId": "cmkxg7u2o00019qry7aehzylq",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:23.814Z"
+    },
+    {
+      "id": "cmkxgnclt000kwzzo7fd8vtkx",
+      "topicId": "cmkxg7ufb000i9qryvj4pmy6f",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "3",
+          "store"
+        ],
+        "steps": [
+          "Browse featured and all products.",
+          "Filter by product type and token.",
+          "Search by name or description.",
+          "View product images, description, price, and rewards.",
+          "See accepted tokens and payment caps.",
+          "Start checkout or save for later.",
+          "Review order details.",
+          "Choose payment mode:",
+          "Fiat only",
+          "Hybrid (token + fiat)",
+          "Token only (if allowed)",
+          "Confirm checkout to create your order.",
+          "Open My Store Orders to track progress.",
+          "When ready, your claim code appears.",
+          "Copy the claim code and present it at the pickup center.",
+          "After staff verifies your claim, confirm pickup in your orders screen.",
+          "Rate your pickup experience and submit feedback.",
+          "Browse available pickup centers.",
+          "View location, contact name, phone, and status."
+        ],
+        "title": "3) Store",
+        "summary": "The Store is where you browse, purchase, and manage product pickups.",
+        "categoryId": "cmkxg7u3l00029qrylr3tuswe",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:23.921Z"
+    },
+    {
+      "id": "cmkxgncox000owzzomij2yngr",
+      "topicId": "cmkxg7uh6000m9qryc9kvecad",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "4",
+          "blog"
+        ],
+        "steps": [
+          "See featured posts in a hero carousel.",
+          "Search posts by keyword.",
+          "Filter by category.",
+          "Read latest headlines.",
+          "Read the full article with author and stats.",
+          "Add a comment and join the discussion.",
+          "View comments and pagination."
+        ],
+        "title": "4) Blog",
+        "summary": "The Blog helps you stay informed.",
+        "categoryId": "cmkxg7u4t00039qrytpfl1u0r",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.033Z"
+    },
+    {
+      "id": "cmkxgncqi000swzzom1akk5ct",
+      "topicId": "cmkxg7uig000q9qryn6fefbrl",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "5",
+          "csp",
+          "community",
+          "support",
+          "program"
+        ],
+        "steps": [
+          "You must meet membership, direct referrals, and contribution rules.",
+          "The dashboard shows your eligibility status.",
+          "Choose a category (National or Global).",
+          "Enter amount, purpose, and notes.",
+          "Submit for admin approval.",
+          "Track broadcast time remaining.",
+          "View raised amount and contributors.",
+          "See time extension rules (paid or referral-based).",
+          "See how contributions are split across wallets.",
+          "View recent support requests and outcomes."
+        ],
+        "title": "5) CSP (Community Support Program)",
+        "summary": "This is where you request and track support.",
+        "categoryId": "cmkxg7u5m00049qrysnilcfb0",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.087Z"
+    },
+    {
+      "id": "cmkxgncto000wwzzog7klk33d",
+      "topicId": "cmkxg7uk2000u9qryvjbqf4je",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "6",
+          "account",
+          "settings"
+        ],
+        "steps": [
+          "Enable or update your 4‑digit PIN.",
+          "Enable 2FA if the system has it enabled.",
+          "Disable 2FA with PIN + code if required."
+        ],
+        "title": "6) Account settings",
+        "summary": "Settings are accessible from the dashboard.",
+        "categoryId": "cmkxg7u7500059qrykxq7r85a",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.204Z"
+    },
+    {
+      "id": "cmkxgncvz0010wzzo73w81hat",
+      "topicId": "cmkxg7um6000y9qryy4faictx",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "7",
+          "troubleshooting"
+        ],
+        "steps": [
+          "Can’t log in: check your email, password, and internet connection.",
+          "Forgot password: use the “Forgot Password” link on login.",
+          "No claim code yet: your order may still be processing.",
+          "Checkout error: open the store again and restart checkout.",
+          "2FA issues: verify your code and ensure time is synced in your authenticator app."
+        ],
+        "title": "7) Troubleshooting",
+        "summary": "- Can’t log in: check your email, password, and internet connection.\n- Forgot password: use the “Forgot Password” link on login.\n- No claim code yet: your order may still be processing.\n- Checkout error: open the store again and restart checkout.\n- 2FA issues: verify your code and ensure time is synced in your authenticator app.",
+        "categoryId": "cmkxg7u8n00079qryu1g7vf7b",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.287Z"
+    },
+    {
+      "id": "cmkxgncyl0014wzzoelq01441",
+      "topicId": "cmkxg7unk00129qry5z75rfdw",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "8",
+          "getting",
+          "help"
+        ],
+        "steps": [
+          "Check this guide first.",
+          "Use the Help Center link inside Settings.",
+          "Contact support with your email and a short description of the issue."
+        ],
+        "title": "8) Getting help",
+        "summary": "- Check this guide first.\n- Use the Help Center link inside Settings.\n- Contact support with your email and a short description of the issue.",
+        "categoryId": "cmkxg7u9h00089qrybai7a0jo",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.380Z"
+    },
+    {
+      "id": "cmkxgnczy0018wzzo0rb79bom",
+      "topicId": "cmkxg7up800169qryfct5qu04",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "1",
+          "bot",
+          "purpose"
+        ],
+        "steps": [
+          "Answer common questions about the dashboard, store, blog, CSP, and account settings.",
+          "Guide users step‑by‑step.",
+          "Escalate when the request involves payments, security, or account recovery."
+        ],
+        "title": "1) Bot purpose",
+        "summary": "- Answer common questions about the dashboard, store, blog, CSP, and account settings.\n- Guide users step‑by‑step.\n- Escalate when the request involves payments, security, or account recovery.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.430Z"
+    },
+    {
+      "id": "cmkxgnd1k001cwzzoeshrs0p8",
+      "topicId": "cmkxg7uqc001a9qry9lgjn6cp",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "2",
+          "tone",
+          "and",
+          "behavior"
+        ],
+        "steps": [
+          "Friendly, concise, and clear.",
+          "Use short sentences.",
+          "Ask one clarification question only if needed.",
+          "Never request passwords, PINs, or 2FA codes."
+        ],
+        "title": "2) Tone and behavior",
+        "summary": "- Friendly, concise, and clear.\n- Use short sentences.\n- Ask one clarification question only if needed.\n- Never request passwords, PINs, or 2FA codes.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.488Z"
+    },
+    {
+      "id": "cmkxgnd5a001kwzzofipepn78",
+      "topicId": "cmkxg7uuf001i9qryhr0ibxo1",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "4",
+          "safety",
+          "and",
+          "escalation",
+          "rules"
+        ],
+        "steps": [
+          "Can’t access their account after multiple tries",
+          "Reports payment or checkout issues",
+          "Reports suspicious activity",
+          "Needs account recovery or identity verification"
+        ],
+        "title": "4) Safety and escalation rules",
+        "summary": "Escalate to human support when the user:\n- Can’t access their account after multiple tries\n- Reports payment or checkout issues\n- Reports suspicious activity\n- Needs account recovery or identity verification",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.622Z"
+    },
+    {
+      "id": "cmkxgnd6q001owzzoi07til40",
+      "topicId": "cmkxg7ux5001m9qryyivj321m",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "5",
+          "answer",
+          "templates",
+          "plain",
+          "language"
+        ],
+        "steps": [
+          "“Go to Login, enter your email and password, then press LOGIN. If it fails, use Forgot Password.”",
+          "“Your dashboard shows total portfolio value, wallet breakdown, and recent activity. Use the eye icon to hide or show balances.”",
+          "“Open a product, tap Start Checkout, choose Fiat or Hybrid, then confirm. You’ll see your claim code in Orders when it’s ready.”",
+          "“Copy your claim code from My Store Orders and show it at the pickup center. After staff verifies it, confirm pickup in your orders screen.”",
+          "“Open CSP, check eligibility, fill the request form, and submit for approval. You can track status in the live status panel.”",
+          "“Go to Settings → Security to set a 4‑digit PIN or enable 2FA. Never share your PIN or codes.”"
+        ],
+        "title": "5) Answer templates (plain language)",
+        "summary": "Use these templates for quick answers.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.674Z"
+    },
+    {
+      "id": "cmkxgnd8c001swzzodn4afrw9",
+      "topicId": "cmkxg7v06001q9qryo7895rg8",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "6",
+          "training",
+          "data",
+          "structure",
+          "for",
+          "a"
+        ],
+        "steps": [
+          "intent",
+          "user_utterances (array)",
+          "response",
+          "tags (feature, page, risk)",
+          "escalation (true/false)",
+          "auth.login.help",
+          "auth.register.help",
+          "dashboard.portfolio.help",
+          "dashboard.wallets.help",
+          "store.browse.help",
+          "store.checkout.help",
+          "store.claimcode.help",
+          "store.pickup.confirm",
+          "blog.read.help",
+          "blog.comment.help",
+          "csp.eligibility.help",
+          "csp.submit.help",
+          "account.security.pin",
+          "account.security.2fa"
+        ],
+        "title": "6) Training data structure for a mini bot",
+        "summary": "Store training examples in a database or a JSONL file. Each entry should include:\n- intent\n- user_utterances (array)\n- response\n- tags (feature, page, risk)\n- escalation (true/false)",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.732Z"
+    },
+    {
+      "id": "cmkxgnda3001wwzzocx82q9hh",
+      "topicId": "cmkxg7v2w001u9qryh30clblr",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "7",
+          "fallback",
+          "and",
+          "handoff"
+        ],
+        "steps": [
+          "If the bot can’t find a confident answer, ask the user to rephrase.",
+          "After two failures, suggest human support."
+        ],
+        "title": "7) Fallback and handoff",
+        "summary": "- If the bot can’t find a confident answer, ask the user to rephrase.\n- After two failures, suggest human support.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.795Z"
+    },
+    {
+      "id": "cmkxgndc00020wzzozhydmmlf",
+      "topicId": "cmkxg7v5q001y9qrycvrri4rr",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "8",
+          "admin",
+          "updates",
+          "for",
+          "new",
+          "topics"
+        ],
+        "steps": [
+          "Add new topics in the admin help center.",
+          "Each new topic should include a title, plain‑language summary, steps, and common questions.",
+          "Re‑train the bot with the updated topics."
+        ],
+        "title": "8) Admin updates for new topics",
+        "summary": "- Add new topics in the admin help center.\n- Each new topic should include a title, plain‑language summary, steps, and common questions.\n- Re‑train the bot with the updated topics.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.864Z"
+    },
+    {
+      "id": "cmkyidlv40016ht36uo7ktcxl",
+      "topicId": "cmkxg7uas000a9qrywmz8jmtd",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "1",
+          "getting",
+          "started"
+        ],
+        "steps": [
+          "Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.",
+          "Accept the terms and register.",
+          "Log in on the Login page using your email and password.",
+          "After login, you land on the dashboard."
+        ],
+        "title": "1) Getting started",
+        "summary": "- Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.\n- Accept the terms and register.\n- Log in on the Login page using your email and password.\n- After login, you land on the dashboard.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.388Z"
+    },
+    {
+      "id": "cmkyidlvm0018ht360xrq52e5",
+      "topicId": "cmkxg7ucx000e9qry87zrldpa",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "2",
+          "dashboard",
+          "overview",
+          "your",
+          "home",
+          "screen"
+        ],
+        "steps": [
+          "Shows Total Portfolio Value.",
+          "You can hide/show balances.",
+          "You see a wallet breakdown for Main, Palliative, and BPT.",
+          "A 24h change indicator shows gain or loss over time.",
+          "Deposit: add funds to your wallet.",
+          "Withdraw: move funds out.",
+          "Transfer: send funds to others.",
+          "Primary wallets include Main, Locked Capital, Rewards, and BPT.",
+          "Community wallets include Palliative, Shelter, Community, Health, Education, etc.",
+          "You can review balances and see detailed activity in wallet timelines.",
+          "Notifications appear in the Notifications center.",
+          "You can open the Notifications modal to see recent alerts.",
+          "You may be prompted to complete your profile.",
+          "You can update details like name, phone, and address.",
+          "Location and bank details can be entered using guided fields.",
+          "Taxes summary can be opened from the Taxes modal.",
+          "Referrals can be reviewed from the Referral details modal.",
+          "Community updates",
+          "Calculator",
+          "Deals",
+          "Leadership pool",
+          "EPC/EPP resources",
+          "Solar assessment",
+          "Training center",
+          "Promotional materials",
+          "Submit channel and browse channels",
+          "Third‑party opportunities",
+          "You can view the Palliative journey and activation progress.",
+          "A palliative activation modal guides steps if required.",
+          "Access Security settings to enable a 4‑digit PIN.",
+          "Enable 2FA (Google Authenticator) if available."
+        ],
+        "title": "2) Dashboard overview (your home screen)",
+        "summary": "The dashboard is the main hub for all user activities.",
+        "categoryId": "cmkxg7u2o00019qry7aehzylq",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.465Z"
+    },
+    {
+      "id": "cmkyidlvy001aht36z7rxwlrc",
+      "topicId": "cmkxg7ufb000i9qryvj4pmy6f",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "3",
+          "store"
+        ],
+        "steps": [
+          "Browse featured and all products.",
+          "Filter by product type and token.",
+          "Search by name or description.",
+          "View product images, description, price, and rewards.",
+          "See accepted tokens and payment caps.",
+          "Start checkout or save for later.",
+          "Review order details.",
+          "Choose payment mode:",
+          "Fiat only",
+          "Hybrid (token + fiat)",
+          "Token only (if allowed)",
+          "Confirm checkout to create your order.",
+          "Open My Store Orders to track progress.",
+          "When ready, your claim code appears.",
+          "Copy the claim code and present it at the pickup center.",
+          "After staff verifies your claim, confirm pickup in your orders screen.",
+          "Rate your pickup experience and submit feedback.",
+          "Browse available pickup centers.",
+          "View location, contact name, phone, and status."
+        ],
+        "title": "3) Store",
+        "summary": "The Store is where you browse, purchase, and manage product pickups.",
+        "categoryId": "cmkxg7u3l00029qrylr3tuswe",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.561Z"
+    },
+    {
+      "id": "cmkyidlw8001cht36tlpdjsy1",
+      "topicId": "cmkxg7uh6000m9qryc9kvecad",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "4",
+          "blog"
+        ],
+        "steps": [
+          "See featured posts in a hero carousel.",
+          "Search posts by keyword.",
+          "Filter by category.",
+          "Read latest headlines.",
+          "Read the full article with author and stats.",
+          "Add a comment and join the discussion.",
+          "View comments and pagination."
+        ],
+        "title": "4) Blog",
+        "summary": "The Blog helps you stay informed.",
+        "categoryId": "cmkxg7u4t00039qrytpfl1u0r",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.608Z"
+    },
+    {
+      "id": "cmkyidlzy001yht36dyyeyx5n",
+      "topicId": "cmkxg7v2w001u9qryh30clblr",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "7",
+          "fallback",
+          "and",
+          "handoff"
+        ],
+        "steps": [
+          "If the bot can’t find a confident answer, ask the user to rephrase.",
+          "After two failures, suggest human support."
+        ],
+        "title": "7) Fallback and handoff",
+        "summary": "- If the bot can’t find a confident answer, ask the user to rephrase.\n- After two failures, suggest human support.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.421Z"
+    },
+    {
+      "id": "cmkyidlwl001eht36uldm962a",
+      "topicId": "cmkxg7uig000q9qryn6fefbrl",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "5",
+          "csp",
+          "community",
+          "support",
+          "program"
+        ],
+        "steps": [
+          "You must meet membership, direct referrals, and contribution rules.",
+          "The dashboard shows your eligibility status.",
+          "Choose a category (National or Global).",
+          "Enter amount, purpose, and notes.",
+          "Submit for admin approval.",
+          "Track broadcast time remaining.",
+          "View raised amount and contributors.",
+          "See time extension rules (paid or referral-based).",
+          "See how contributions are split across wallets.",
+          "View recent support requests and outcomes."
+        ],
+        "title": "5) CSP (Community Support Program)",
+        "summary": "This is where you request and track support.",
+        "categoryId": "cmkxg7u5m00049qrysnilcfb0",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.651Z"
+    },
+    {
+      "id": "cmkyidlwx001ght36y4dgn10b",
+      "topicId": "cmkxg7uk2000u9qryvjbqf4je",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "6",
+          "account",
+          "settings"
+        ],
+        "steps": [
+          "Enable or update your 4‑digit PIN.",
+          "Enable 2FA if the system has it enabled.",
+          "Disable 2FA with PIN + code if required."
+        ],
+        "title": "6) Account settings",
+        "summary": "Settings are accessible from the dashboard.",
+        "categoryId": "cmkxg7u7500059qrykxq7r85a",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.721Z"
+    },
+    {
+      "id": "cmkyidlx9001iht36xzqrg5gs",
+      "topicId": "cmkxg7um6000y9qryy4faictx",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "7",
+          "troubleshooting"
+        ],
+        "steps": [
+          "Can’t log in: check your email, password, and internet connection.",
+          "Forgot password: use the “Forgot Password” link on login.",
+          "No claim code yet: your order may still be processing.",
+          "Checkout error: open the store again and restart checkout.",
+          "2FA issues: verify your code and ensure time is synced in your authenticator app."
+        ],
+        "title": "7) Troubleshooting",
+        "summary": "- Can’t log in: check your email, password, and internet connection.\n- Forgot password: use the “Forgot Password” link on login.\n- No claim code yet: your order may still be processing.\n- Checkout error: open the store again and restart checkout.\n- 2FA issues: verify your code and ensure time is synced in your authenticator app.",
+        "categoryId": "cmkxg7u8n00079qryu1g7vf7b",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.791Z"
+    },
+    {
+      "id": "cmkyidlxk001kht36x6fdaq9h",
+      "topicId": "cmkxg7unk00129qry5z75rfdw",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "8",
+          "getting",
+          "help"
+        ],
+        "steps": [
+          "Check this guide first.",
+          "Use the Help Center link inside Settings.",
+          "Contact support with your email and a short description of the issue."
+        ],
+        "title": "8) Getting help",
+        "summary": "- Check this guide first.\n- Use the Help Center link inside Settings.\n- Contact support with your email and a short description of the issue.",
+        "categoryId": "cmkxg7u9h00089qrybai7a0jo",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.846Z"
+    },
+    {
+      "id": "cmkyidlxy001mht364xvonu5h",
+      "topicId": "cmkxg7up800169qryfct5qu04",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "1",
+          "bot",
+          "purpose"
+        ],
+        "steps": [
+          "Answer common questions about the dashboard, store, blog, CSP, and account settings.",
+          "Guide users step‑by‑step.",
+          "Escalate when the request involves payments, security, or account recovery."
+        ],
+        "title": "1) Bot purpose",
+        "summary": "- Answer common questions about the dashboard, store, blog, CSP, and account settings.\n- Guide users step‑by‑step.\n- Escalate when the request involves payments, security, or account recovery.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.891Z"
+    },
+    {
+      "id": "cmkyidly9001oht36owjr0ig0",
+      "topicId": "cmkxg7uqc001a9qry9lgjn6cp",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "2",
+          "tone",
+          "and",
+          "behavior"
+        ],
+        "steps": [
+          "Friendly, concise, and clear.",
+          "Use short sentences.",
+          "Ask one clarification question only if needed.",
+          "Never request passwords, PINs, or 2FA codes."
+        ],
+        "title": "2) Tone and behavior",
+        "summary": "- Friendly, concise, and clear.\n- Use short sentences.\n- Ask one clarification question only if needed.\n- Never request passwords, PINs, or 2FA codes.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.940Z"
+    },
+    {
+      "id": "cmkyidlyk001qht365ejb8a70",
+      "topicId": "cmkxg7us3001e9qry5aqrzhk7",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "3",
+          "knowledge",
+          "areas"
+        ],
+        "steps": [
+          "Login and registration",
+          "Dashboard overview and balances",
+          "Wallets and quick actions (deposit, withdraw, transfer)",
+          "Notifications and profile completion",
+          "Store browsing, checkout, orders, claim codes, pickup, rating",
+          "Pickup centers and staff verification flow",
+          "Blog reading and comments",
+          "CSP eligibility, request flow, live status, extensions, and history",
+          "Account security (PIN and 2FA)"
+        ],
+        "title": "3) Knowledge areas",
+        "summary": "- Login and registration\n- Dashboard overview and balances\n- Wallets and quick actions (deposit, withdraw, transfer)\n- Notifications and profile completion\n- Store browsing, checkout, orders, claim codes, pickup, rating\n- Pickup centers and staff verification flow\n- Blog reading and comments\n- CSP eligibility, request flow, live status, extensions, and history\n- Account security (PIN and 2FA)",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.004Z"
+    },
+    {
+      "id": "cmkyidlyy001sht364h963q6l",
+      "topicId": "cmkxg7uuf001i9qryhr0ibxo1",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "4",
+          "safety",
+          "and",
+          "escalation",
+          "rules"
+        ],
+        "steps": [
+          "Can’t access their account after multiple tries",
+          "Reports payment or checkout issues",
+          "Reports suspicious activity",
+          "Needs account recovery or identity verification"
+        ],
+        "title": "4) Safety and escalation rules",
+        "summary": "Escalate to human support when the user:\n- Can’t access their account after multiple tries\n- Reports payment or checkout issues\n- Reports suspicious activity\n- Needs account recovery or identity verification",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.080Z"
+    },
+    {
+      "id": "cmkyidlzc001uht36zzivjjrp",
+      "topicId": "cmkxg7ux5001m9qryyivj321m",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "5",
+          "answer",
+          "templates",
+          "plain",
+          "language"
+        ],
+        "steps": [
+          "“Go to Login, enter your email and password, then press LOGIN. If it fails, use Forgot Password.”",
+          "“Your dashboard shows total portfolio value, wallet breakdown, and recent activity. Use the eye icon to hide or show balances.”",
+          "“Open a product, tap Start Checkout, choose Fiat or Hybrid, then confirm. You’ll see your claim code in Orders when it’s ready.”",
+          "“Copy your claim code from My Store Orders and show it at the pickup center. After staff verifies it, confirm pickup in your orders screen.”",
+          "“Open CSP, check eligibility, fill the request form, and submit for approval. You can track status in the live status panel.”",
+          "“Go to Settings → Security to set a 4‑digit PIN or enable 2FA. Never share your PIN or codes.”"
+        ],
+        "title": "5) Answer templates (plain language)",
+        "summary": "Use these templates for quick answers.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.185Z"
+    },
+    {
+      "id": "cmkyidlzn001wht36hlbo6qqd",
+      "topicId": "cmkxg7v06001q9qryo7895rg8",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "6",
+          "training",
+          "data",
+          "structure",
+          "for",
+          "a"
+        ],
+        "steps": [
+          "intent",
+          "user_utterances (array)",
+          "response",
+          "tags (feature, page, risk)",
+          "escalation (true/false)",
+          "auth.login.help",
+          "auth.register.help",
+          "dashboard.portfolio.help",
+          "dashboard.wallets.help",
+          "store.browse.help",
+          "store.checkout.help",
+          "store.claimcode.help",
+          "store.pickup.confirm",
+          "blog.read.help",
+          "blog.comment.help",
+          "csp.eligibility.help",
+          "csp.submit.help",
+          "account.security.pin",
+          "account.security.2fa"
+        ],
+        "title": "6) Training data structure for a mini bot",
+        "summary": "Store training examples in a database or a JSONL file. Each entry should include:\n- intent\n- user_utterances (array)\n- response\n- tags (feature, page, risk)\n- escalation (true/false)",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.314Z"
+    },
+    {
+      "id": "cmkyidm080020ht36b385c1et",
+      "topicId": "cmkxg7v5q001y9qrycvrri4rr",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "8",
+          "admin",
+          "updates",
+          "for",
+          "new",
+          "topics"
+        ],
+        "steps": [
+          "Add new topics in the admin help center.",
+          "Each new topic should include a title, plain‑language summary, steps, and common questions.",
+          "Re‑train the bot with the updated topics."
+        ],
+        "title": "8) Admin updates for new topics",
+        "summary": "- Add new topics in the admin help center.\n- Each new topic should include a title, plain‑language summary, steps, and common questions.\n- Re‑train the bot with the updated topics.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.497Z"
+    },
+    {
+      "id": "cmkyidm0i0022ht36enw87z2f",
+      "topicId": "cmkxg7uas000a9qrywmz8jmtd",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "1",
+          "getting",
+          "started"
+        ],
+        "steps": [
+          "Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.",
+          "Accept the terms and register.",
+          "Log in on the Login page using your email and password.",
+          "After login, you land on the dashboard."
+        ],
+        "title": "1) Getting started",
+        "summary": "- Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.\n- Accept the terms and register.\n- Log in on the Login page using your email and password.\n- After login, you land on the dashboard.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:23.653Z"
+    },
+    {
+      "id": "cmkyidm0s0024ht36wrjmcndk",
+      "topicId": "cmkxg7us3001e9qry5aqrzhk7",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "3",
+          "knowledge",
+          "areas"
+        ],
+        "steps": [
+          "Login and registration",
+          "Dashboard overview and balances",
+          "Wallets and quick actions (deposit, withdraw, transfer)",
+          "Notifications and profile completion",
+          "Store browsing, checkout, orders, claim codes, pickup, rating",
+          "Pickup centers and staff verification flow",
+          "Blog reading and comments",
+          "CSP eligibility, request flow, live status, extensions, and history",
+          "Account security (PIN and 2FA)"
+        ],
+        "title": "3) Knowledge areas",
+        "summary": "- Login and registration\n- Dashboard overview and balances\n- Wallets and quick actions (deposit, withdraw, transfer)\n- Notifications and profile completion\n- Store browsing, checkout, orders, claim codes, pickup, rating\n- Pickup centers and staff verification flow\n- Blog reading and comments\n- CSP eligibility, request flow, live status, extensions, and history\n- Account security (PIN and 2FA)",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.539Z"
+    },
+    {
+      "id": "cmkyidm120026ht36mq3b6418",
+      "topicId": "cmkxg7ucx000e9qry87zrldpa",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "2",
+          "dashboard",
+          "overview",
+          "your",
+          "home",
+          "screen"
+        ],
+        "steps": [
+          "Shows Total Portfolio Value.",
+          "You can hide/show balances.",
+          "You see a wallet breakdown for Main, Palliative, and BPT.",
+          "A 24h change indicator shows gain or loss over time.",
+          "Deposit: add funds to your wallet.",
+          "Withdraw: move funds out.",
+          "Transfer: send funds to others.",
+          "Primary wallets include Main, Locked Capital, Rewards, and BPT.",
+          "Community wallets include Palliative, Shelter, Community, Health, Education, etc.",
+          "You can review balances and see detailed activity in wallet timelines.",
+          "Notifications appear in the Notifications center.",
+          "You can open the Notifications modal to see recent alerts.",
+          "You may be prompted to complete your profile.",
+          "You can update details like name, phone, and address.",
+          "Location and bank details can be entered using guided fields.",
+          "Taxes summary can be opened from the Taxes modal.",
+          "Referrals can be reviewed from the Referral details modal.",
+          "Community updates",
+          "Calculator",
+          "Deals",
+          "Leadership pool",
+          "EPC/EPP resources",
+          "Solar assessment",
+          "Training center",
+          "Promotional materials",
+          "Submit channel and browse channels",
+          "Third‑party opportunities",
+          "You can view the Palliative journey and activation progress.",
+          "A palliative activation modal guides steps if required.",
+          "Access Security settings to enable a 4‑digit PIN.",
+          "Enable 2FA (Google Authenticator) if available."
+        ],
+        "title": "2) Dashboard overview (your home screen)",
+        "summary": "The dashboard is the main hub for all user activities.",
+        "categoryId": "cmkxg7u2o00019qry7aehzylq",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:23.814Z"
+    },
+    {
+      "id": "cmkyidm1c0028ht36ejrpwtxd",
+      "topicId": "cmkxg7ufb000i9qryvj4pmy6f",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "3",
+          "store"
+        ],
+        "steps": [
+          "Browse featured and all products.",
+          "Filter by product type and token.",
+          "Search by name or description.",
+          "View product images, description, price, and rewards.",
+          "See accepted tokens and payment caps.",
+          "Start checkout or save for later.",
+          "Review order details.",
+          "Choose payment mode:",
+          "Fiat only",
+          "Hybrid (token + fiat)",
+          "Token only (if allowed)",
+          "Confirm checkout to create your order.",
+          "Open My Store Orders to track progress.",
+          "When ready, your claim code appears.",
+          "Copy the claim code and present it at the pickup center.",
+          "After staff verifies your claim, confirm pickup in your orders screen.",
+          "Rate your pickup experience and submit feedback.",
+          "Browse available pickup centers.",
+          "View location, contact name, phone, and status."
+        ],
+        "title": "3) Store",
+        "summary": "The Store is where you browse, purchase, and manage product pickups.",
+        "categoryId": "cmkxg7u3l00029qrylr3tuswe",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:23.921Z"
+    },
+    {
+      "id": "cmkyidm1m002aht36ythslmhy",
+      "topicId": "cmkxg7uh6000m9qryc9kvecad",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "4",
+          "blog"
+        ],
+        "steps": [
+          "See featured posts in a hero carousel.",
+          "Search posts by keyword.",
+          "Filter by category.",
+          "Read latest headlines.",
+          "Read the full article with author and stats.",
+          "Add a comment and join the discussion.",
+          "View comments and pagination."
+        ],
+        "title": "4) Blog",
+        "summary": "The Blog helps you stay informed.",
+        "categoryId": "cmkxg7u4t00039qrytpfl1u0r",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.033Z"
+    },
+    {
+      "id": "cmkyidm1w002cht36d8ttawqe",
+      "topicId": "cmkxg7uig000q9qryn6fefbrl",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "5",
+          "csp",
+          "community",
+          "support",
+          "program"
+        ],
+        "steps": [
+          "You must meet membership, direct referrals, and contribution rules.",
+          "The dashboard shows your eligibility status.",
+          "Choose a category (National or Global).",
+          "Enter amount, purpose, and notes.",
+          "Submit for admin approval.",
+          "Track broadcast time remaining.",
+          "View raised amount and contributors.",
+          "See time extension rules (paid or referral-based).",
+          "See how contributions are split across wallets.",
+          "View recent support requests and outcomes."
+        ],
+        "title": "5) CSP (Community Support Program)",
+        "summary": "This is where you request and track support.",
+        "categoryId": "cmkxg7u5m00049qrysnilcfb0",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.087Z"
+    },
+    {
+      "id": "cmkyidm26002eht36bkv0wne4",
+      "topicId": "cmkxg7uk2000u9qryvjbqf4je",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "6",
+          "account",
+          "settings"
+        ],
+        "steps": [
+          "Enable or update your 4‑digit PIN.",
+          "Enable 2FA if the system has it enabled.",
+          "Disable 2FA with PIN + code if required."
+        ],
+        "title": "6) Account settings",
+        "summary": "Settings are accessible from the dashboard.",
+        "categoryId": "cmkxg7u7500059qrykxq7r85a",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.204Z"
+    },
+    {
+      "id": "cmkyidm2g002ght36opaszzy1",
+      "topicId": "cmkxg7um6000y9qryy4faictx",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "7",
+          "troubleshooting"
+        ],
+        "steps": [
+          "Can’t log in: check your email, password, and internet connection.",
+          "Forgot password: use the “Forgot Password” link on login.",
+          "No claim code yet: your order may still be processing.",
+          "Checkout error: open the store again and restart checkout.",
+          "2FA issues: verify your code and ensure time is synced in your authenticator app."
+        ],
+        "title": "7) Troubleshooting",
+        "summary": "- Can’t log in: check your email, password, and internet connection.\n- Forgot password: use the “Forgot Password” link on login.\n- No claim code yet: your order may still be processing.\n- Checkout error: open the store again and restart checkout.\n- 2FA issues: verify your code and ensure time is synced in your authenticator app.",
+        "categoryId": "cmkxg7u8n00079qryu1g7vf7b",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.287Z"
+    },
+    {
+      "id": "cmkyidm2p002iht369xir05xp",
+      "topicId": "cmkxg7unk00129qry5z75rfdw",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "8",
+          "getting",
+          "help"
+        ],
+        "steps": [
+          "Check this guide first.",
+          "Use the Help Center link inside Settings.",
+          "Contact support with your email and a short description of the issue."
+        ],
+        "title": "8) Getting help",
+        "summary": "- Check this guide first.\n- Use the Help Center link inside Settings.\n- Contact support with your email and a short description of the issue.",
+        "categoryId": "cmkxg7u9h00089qrybai7a0jo",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.380Z"
+    },
+    {
+      "id": "cmkyidm2z002kht36yjch8rok",
+      "topicId": "cmkxg7up800169qryfct5qu04",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "1",
+          "bot",
+          "purpose"
+        ],
+        "steps": [
+          "Answer common questions about the dashboard, store, blog, CSP, and account settings.",
+          "Guide users step‑by‑step.",
+          "Escalate when the request involves payments, security, or account recovery."
+        ],
+        "title": "1) Bot purpose",
+        "summary": "- Answer common questions about the dashboard, store, blog, CSP, and account settings.\n- Guide users step‑by‑step.\n- Escalate when the request involves payments, security, or account recovery.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.430Z"
+    },
+    {
+      "id": "cmkyidm38002mht36zp9gxmjv",
+      "topicId": "cmkxg7uqc001a9qry9lgjn6cp",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "2",
+          "tone",
+          "and",
+          "behavior"
+        ],
+        "steps": [
+          "Friendly, concise, and clear.",
+          "Use short sentences.",
+          "Ask one clarification question only if needed.",
+          "Never request passwords, PINs, or 2FA codes."
+        ],
+        "title": "2) Tone and behavior",
+        "summary": "- Friendly, concise, and clear.\n- Use short sentences.\n- Ask one clarification question only if needed.\n- Never request passwords, PINs, or 2FA codes.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.488Z"
+    },
+    {
+      "id": "cmkyidm3j002oht36lsstkaie",
+      "topicId": "cmkxg7uuf001i9qryhr0ibxo1",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "4",
+          "safety",
+          "and",
+          "escalation",
+          "rules"
+        ],
+        "steps": [
+          "Can’t access their account after multiple tries",
+          "Reports payment or checkout issues",
+          "Reports suspicious activity",
+          "Needs account recovery or identity verification"
+        ],
+        "title": "4) Safety and escalation rules",
+        "summary": "Escalate to human support when the user:\n- Can’t access their account after multiple tries\n- Reports payment or checkout issues\n- Reports suspicious activity\n- Needs account recovery or identity verification",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.622Z"
+    },
+    {
+      "id": "cmkyidm3s002qht36i18z5tef",
+      "topicId": "cmkxg7ux5001m9qryyivj321m",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "5",
+          "answer",
+          "templates",
+          "plain",
+          "language"
+        ],
+        "steps": [
+          "“Go to Login, enter your email and password, then press LOGIN. If it fails, use Forgot Password.”",
+          "“Your dashboard shows total portfolio value, wallet breakdown, and recent activity. Use the eye icon to hide or show balances.”",
+          "“Open a product, tap Start Checkout, choose Fiat or Hybrid, then confirm. You’ll see your claim code in Orders when it’s ready.”",
+          "“Copy your claim code from My Store Orders and show it at the pickup center. After staff verifies it, confirm pickup in your orders screen.”",
+          "“Open CSP, check eligibility, fill the request form, and submit for approval. You can track status in the live status panel.”",
+          "“Go to Settings → Security to set a 4‑digit PIN or enable 2FA. Never share your PIN or codes.”"
+        ],
+        "title": "5) Answer templates (plain language)",
+        "summary": "Use these templates for quick answers.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.674Z"
+    },
+    {
+      "id": "cmkyidm41002sht365bf6k4d1",
+      "topicId": "cmkxg7v06001q9qryo7895rg8",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "6",
+          "training",
+          "data",
+          "structure",
+          "for",
+          "a"
+        ],
+        "steps": [
+          "intent",
+          "user_utterances (array)",
+          "response",
+          "tags (feature, page, risk)",
+          "escalation (true/false)",
+          "auth.login.help",
+          "auth.register.help",
+          "dashboard.portfolio.help",
+          "dashboard.wallets.help",
+          "store.browse.help",
+          "store.checkout.help",
+          "store.claimcode.help",
+          "store.pickup.confirm",
+          "blog.read.help",
+          "blog.comment.help",
+          "csp.eligibility.help",
+          "csp.submit.help",
+          "account.security.pin",
+          "account.security.2fa"
+        ],
+        "title": "6) Training data structure for a mini bot",
+        "summary": "Store training examples in a database or a JSONL file. Each entry should include:\n- intent\n- user_utterances (array)\n- response\n- tags (feature, page, risk)\n- escalation (true/false)",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.732Z"
+    },
+    {
+      "id": "cmkyidm4b002uht36xqvk22ch",
+      "topicId": "cmkxg7v2w001u9qryh30clblr",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "7",
+          "fallback",
+          "and",
+          "handoff"
+        ],
+        "steps": [
+          "If the bot can’t find a confident answer, ask the user to rephrase.",
+          "After two failures, suggest human support."
+        ],
+        "title": "7) Fallback and handoff",
+        "summary": "- If the bot can’t find a confident answer, ask the user to rephrase.\n- After two failures, suggest human support.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.795Z"
+    },
+    {
+      "id": "cmkyidm4m002wht369q0mb9pz",
+      "topicId": "cmkxg7v5q001y9qrycvrri4rr",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "8",
+          "admin",
+          "updates",
+          "for",
+          "new",
+          "topics"
+        ],
+        "steps": [
+          "Add new topics in the admin help center.",
+          "Each new topic should include a title, plain‑language summary, steps, and common questions.",
+          "Re‑train the bot with the updated topics."
+        ],
+        "title": "8) Admin updates for new topics",
+        "summary": "- Add new topics in the admin help center.\n- Each new topic should include a title, plain‑language summary, steps, and common questions.\n- Re‑train the bot with the updated topics.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.864Z"
+    },
+    {
+      "id": "cmkyiilnl0016t2w747m490ij",
+      "topicId": "cmkxg7uas000a9qrywmz8jmtd",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "1",
+          "getting",
+          "started"
+        ],
+        "steps": [
+          "Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.",
+          "Accept the terms and register.",
+          "Log in on the Login page using your email and password.",
+          "After login, you land on the dashboard."
+        ],
+        "title": "1) Getting started",
+        "summary": "- Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.\n- Accept the terms and register.\n- Log in on the Login page using your email and password.\n- After login, you land on the dashboard.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.388Z"
+    },
+    {
+      "id": "cmkyiilnz0018t2w7wgo1dy3f",
+      "topicId": "cmkxg7ucx000e9qry87zrldpa",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "2",
+          "dashboard",
+          "overview",
+          "your",
+          "home",
+          "screen"
+        ],
+        "steps": [
+          "Shows Total Portfolio Value.",
+          "You can hide/show balances.",
+          "You see a wallet breakdown for Main, Palliative, and BPT.",
+          "A 24h change indicator shows gain or loss over time.",
+          "Deposit: add funds to your wallet.",
+          "Withdraw: move funds out.",
+          "Transfer: send funds to others.",
+          "Primary wallets include Main, Locked Capital, Rewards, and BPT.",
+          "Community wallets include Palliative, Shelter, Community, Health, Education, etc.",
+          "You can review balances and see detailed activity in wallet timelines.",
+          "Notifications appear in the Notifications center.",
+          "You can open the Notifications modal to see recent alerts.",
+          "You may be prompted to complete your profile.",
+          "You can update details like name, phone, and address.",
+          "Location and bank details can be entered using guided fields.",
+          "Taxes summary can be opened from the Taxes modal.",
+          "Referrals can be reviewed from the Referral details modal.",
+          "Community updates",
+          "Calculator",
+          "Deals",
+          "Leadership pool",
+          "EPC/EPP resources",
+          "Solar assessment",
+          "Training center",
+          "Promotional materials",
+          "Submit channel and browse channels",
+          "Third‑party opportunities",
+          "You can view the Palliative journey and activation progress.",
+          "A palliative activation modal guides steps if required.",
+          "Access Security settings to enable a 4‑digit PIN.",
+          "Enable 2FA (Google Authenticator) if available."
+        ],
+        "title": "2) Dashboard overview (your home screen)",
+        "summary": "The dashboard is the main hub for all user activities.",
+        "categoryId": "cmkxg7u2o00019qry7aehzylq",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.465Z"
+    },
+    {
+      "id": "cmkyiilo9001at2w7g87l548u",
+      "topicId": "cmkxg7ufb000i9qryvj4pmy6f",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "3",
+          "store"
+        ],
+        "steps": [
+          "Browse featured and all products.",
+          "Filter by product type and token.",
+          "Search by name or description.",
+          "View product images, description, price, and rewards.",
+          "See accepted tokens and payment caps.",
+          "Start checkout or save for later.",
+          "Review order details.",
+          "Choose payment mode:",
+          "Fiat only",
+          "Hybrid (token + fiat)",
+          "Token only (if allowed)",
+          "Confirm checkout to create your order.",
+          "Open My Store Orders to track progress.",
+          "When ready, your claim code appears.",
+          "Copy the claim code and present it at the pickup center.",
+          "After staff verifies your claim, confirm pickup in your orders screen.",
+          "Rate your pickup experience and submit feedback.",
+          "Browse available pickup centers.",
+          "View location, contact name, phone, and status."
+        ],
+        "title": "3) Store",
+        "summary": "The Store is where you browse, purchase, and manage product pickups.",
+        "categoryId": "cmkxg7u3l00029qrylr3tuswe",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.561Z"
+    },
+    {
+      "id": "cmkyiiloj001ct2w7650lh8zk",
+      "topicId": "cmkxg7uh6000m9qryc9kvecad",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "4",
+          "blog"
+        ],
+        "steps": [
+          "See featured posts in a hero carousel.",
+          "Search posts by keyword.",
+          "Filter by category.",
+          "Read latest headlines.",
+          "Read the full article with author and stats.",
+          "Add a comment and join the discussion.",
+          "View comments and pagination."
+        ],
+        "title": "4) Blog",
+        "summary": "The Blog helps you stay informed.",
+        "categoryId": "cmkxg7u4t00039qrytpfl1u0r",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.608Z"
+    },
+    {
+      "id": "cmkyiilot001et2w7mg5rt99q",
+      "topicId": "cmkxg7uig000q9qryn6fefbrl",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "5",
+          "csp",
+          "community",
+          "support",
+          "program"
+        ],
+        "steps": [
+          "You must meet membership, direct referrals, and contribution rules.",
+          "The dashboard shows your eligibility status.",
+          "Choose a category (National or Global).",
+          "Enter amount, purpose, and notes.",
+          "Submit for admin approval.",
+          "Track broadcast time remaining.",
+          "View raised amount and contributors.",
+          "See time extension rules (paid or referral-based).",
+          "See how contributions are split across wallets.",
+          "View recent support requests and outcomes."
+        ],
+        "title": "5) CSP (Community Support Program)",
+        "summary": "This is where you request and track support.",
+        "categoryId": "cmkxg7u5m00049qrysnilcfb0",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.651Z"
+    },
+    {
+      "id": "cmkyiilp3001gt2w7w47i63bx",
+      "topicId": "cmkxg7uk2000u9qryvjbqf4je",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "6",
+          "account",
+          "settings"
+        ],
+        "steps": [
+          "Enable or update your 4‑digit PIN.",
+          "Enable 2FA if the system has it enabled.",
+          "Disable 2FA with PIN + code if required."
+        ],
+        "title": "6) Account settings",
+        "summary": "Settings are accessible from the dashboard.",
+        "categoryId": "cmkxg7u7500059qrykxq7r85a",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.721Z"
+    },
+    {
+      "id": "cmkyiilpb001it2w7oeber3ym",
+      "topicId": "cmkxg7um6000y9qryy4faictx",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "7",
+          "troubleshooting"
+        ],
+        "steps": [
+          "Can’t log in: check your email, password, and internet connection.",
+          "Forgot password: use the “Forgot Password” link on login.",
+          "No claim code yet: your order may still be processing.",
+          "Checkout error: open the store again and restart checkout.",
+          "2FA issues: verify your code and ensure time is synced in your authenticator app."
+        ],
+        "title": "7) Troubleshooting",
+        "summary": "- Can’t log in: check your email, password, and internet connection.\n- Forgot password: use the “Forgot Password” link on login.\n- No claim code yet: your order may still be processing.\n- Checkout error: open the store again and restart checkout.\n- 2FA issues: verify your code and ensure time is synced in your authenticator app.",
+        "categoryId": "cmkxg7u8n00079qryu1g7vf7b",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.791Z"
+    },
+    {
+      "id": "cmkyiilpj001kt2w7vmt297vv",
+      "topicId": "cmkxg7unk00129qry5z75rfdw",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "8",
+          "getting",
+          "help"
+        ],
+        "steps": [
+          "Check this guide first.",
+          "Use the Help Center link inside Settings.",
+          "Contact support with your email and a short description of the issue."
+        ],
+        "title": "8) Getting help",
+        "summary": "- Check this guide first.\n- Use the Help Center link inside Settings.\n- Contact support with your email and a short description of the issue.",
+        "categoryId": "cmkxg7u9h00089qrybai7a0jo",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.846Z"
+    },
+    {
+      "id": "cmkyiilpr001mt2w7zkx3k858",
+      "topicId": "cmkxg7up800169qryfct5qu04",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "1",
+          "bot",
+          "purpose"
+        ],
+        "steps": [
+          "Answer common questions about the dashboard, store, blog, CSP, and account settings.",
+          "Guide users step‑by‑step.",
+          "Escalate when the request involves payments, security, or account recovery."
+        ],
+        "title": "1) Bot purpose",
+        "summary": "- Answer common questions about the dashboard, store, blog, CSP, and account settings.\n- Guide users step‑by‑step.\n- Escalate when the request involves payments, security, or account recovery.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.891Z"
+    },
+    {
+      "id": "cmkyiilpz001ot2w7c1klxv7a",
+      "topicId": "cmkxg7uqc001a9qry9lgjn6cp",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "2",
+          "tone",
+          "and",
+          "behavior"
+        ],
+        "steps": [
+          "Friendly, concise, and clear.",
+          "Use short sentences.",
+          "Ask one clarification question only if needed.",
+          "Never request passwords, PINs, or 2FA codes."
+        ],
+        "title": "2) Tone and behavior",
+        "summary": "- Friendly, concise, and clear.\n- Use short sentences.\n- Ask one clarification question only if needed.\n- Never request passwords, PINs, or 2FA codes.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:20.940Z"
+    },
+    {
+      "id": "cmkyiilq6001qt2w7dfz8qmmn",
+      "topicId": "cmkxg7us3001e9qry5aqrzhk7",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "3",
+          "knowledge",
+          "areas"
+        ],
+        "steps": [
+          "Login and registration",
+          "Dashboard overview and balances",
+          "Wallets and quick actions (deposit, withdraw, transfer)",
+          "Notifications and profile completion",
+          "Store browsing, checkout, orders, claim codes, pickup, rating",
+          "Pickup centers and staff verification flow",
+          "Blog reading and comments",
+          "CSP eligibility, request flow, live status, extensions, and history",
+          "Account security (PIN and 2FA)"
+        ],
+        "title": "3) Knowledge areas",
+        "summary": "- Login and registration\n- Dashboard overview and balances\n- Wallets and quick actions (deposit, withdraw, transfer)\n- Notifications and profile completion\n- Store browsing, checkout, orders, claim codes, pickup, rating\n- Pickup centers and staff verification flow\n- Blog reading and comments\n- CSP eligibility, request flow, live status, extensions, and history\n- Account security (PIN and 2FA)",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.004Z"
+    },
+    {
+      "id": "cmkyiilqe001st2w7asev5kp4",
+      "topicId": "cmkxg7uuf001i9qryhr0ibxo1",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "4",
+          "safety",
+          "and",
+          "escalation",
+          "rules"
+        ],
+        "steps": [
+          "Can’t access their account after multiple tries",
+          "Reports payment or checkout issues",
+          "Reports suspicious activity",
+          "Needs account recovery or identity verification"
+        ],
+        "title": "4) Safety and escalation rules",
+        "summary": "Escalate to human support when the user:\n- Can’t access their account after multiple tries\n- Reports payment or checkout issues\n- Reports suspicious activity\n- Needs account recovery or identity verification",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.080Z"
+    },
+    {
+      "id": "cmkyiilql001ut2w74vmftv1w",
+      "topicId": "cmkxg7ux5001m9qryyivj321m",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "5",
+          "answer",
+          "templates",
+          "plain",
+          "language"
+        ],
+        "steps": [
+          "“Go to Login, enter your email and password, then press LOGIN. If it fails, use Forgot Password.”",
+          "“Your dashboard shows total portfolio value, wallet breakdown, and recent activity. Use the eye icon to hide or show balances.”",
+          "“Open a product, tap Start Checkout, choose Fiat or Hybrid, then confirm. You’ll see your claim code in Orders when it’s ready.”",
+          "“Copy your claim code from My Store Orders and show it at the pickup center. After staff verifies it, confirm pickup in your orders screen.”",
+          "“Open CSP, check eligibility, fill the request form, and submit for approval. You can track status in the live status panel.”",
+          "“Go to Settings → Security to set a 4‑digit PIN or enable 2FA. Never share your PIN or codes.”"
+        ],
+        "title": "5) Answer templates (plain language)",
+        "summary": "Use these templates for quick answers.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.185Z"
+    },
+    {
+      "id": "cmkyiilqu001wt2w7m3bapt6o",
+      "topicId": "cmkxg7v06001q9qryo7895rg8",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "6",
+          "training",
+          "data",
+          "structure",
+          "for",
+          "a"
+        ],
+        "steps": [
+          "intent",
+          "user_utterances (array)",
+          "response",
+          "tags (feature, page, risk)",
+          "escalation (true/false)",
+          "auth.login.help",
+          "auth.register.help",
+          "dashboard.portfolio.help",
+          "dashboard.wallets.help",
+          "store.browse.help",
+          "store.checkout.help",
+          "store.claimcode.help",
+          "store.pickup.confirm",
+          "blog.read.help",
+          "blog.comment.help",
+          "csp.eligibility.help",
+          "csp.submit.help",
+          "account.security.pin",
+          "account.security.2fa"
+        ],
+        "title": "6) Training data structure for a mini bot",
+        "summary": "Store training examples in a database or a JSONL file. Each entry should include:\n- intent\n- user_utterances (array)\n- response\n- tags (feature, page, risk)\n- escalation (true/false)",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.314Z"
+    },
+    {
+      "id": "cmkyiilr3001yt2w7bwhura4r",
+      "topicId": "cmkxg7v2w001u9qryh30clblr",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "7",
+          "fallback",
+          "and",
+          "handoff"
+        ],
+        "steps": [
+          "If the bot can’t find a confident answer, ask the user to rephrase.",
+          "After two failures, suggest human support."
+        ],
+        "title": "7) Fallback and handoff",
+        "summary": "- If the bot can’t find a confident answer, ask the user to rephrase.\n- After two failures, suggest human support.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.421Z"
+    },
+    {
+      "id": "cmkyiilrb0020t2w7wlykux9l",
+      "topicId": "cmkxg7v5q001y9qrycvrri4rr",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "8",
+          "admin",
+          "updates",
+          "for",
+          "new",
+          "topics"
+        ],
+        "steps": [
+          "Add new topics in the admin help center.",
+          "Each new topic should include a title, plain‑language summary, steps, and common questions.",
+          "Re‑train the bot with the updated topics."
+        ],
+        "title": "8) Admin updates for new topics",
+        "summary": "- Add new topics in the admin help center.\n- Each new topic should include a title, plain‑language summary, steps, and common questions.\n- Re‑train the bot with the updated topics.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:11:21.497Z"
+    },
+    {
+      "id": "cmkyiilrj0022t2w717aw80a9",
+      "topicId": "cmkxg7uas000a9qrywmz8jmtd",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "1",
+          "getting",
+          "started"
+        ],
+        "steps": [
+          "Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.",
+          "Accept the terms and register.",
+          "Log in on the Login page using your email and password.",
+          "After login, you land on the dashboard."
+        ],
+        "title": "1) Getting started",
+        "summary": "- Create an account on the Register page. You will enter name, screen name, gender, email, password, confirm password, and the simple math captcha.\n- Accept the terms and register.\n- Log in on the Login page using your email and password.\n- After login, you land on the dashboard.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:23.653Z"
+    },
+    {
+      "id": "cmkyiilrr0024t2w7z4askbhr",
+      "topicId": "cmkxg7us3001e9qry5aqrzhk7",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "3",
+          "knowledge",
+          "areas"
+        ],
+        "steps": [
+          "Login and registration",
+          "Dashboard overview and balances",
+          "Wallets and quick actions (deposit, withdraw, transfer)",
+          "Notifications and profile completion",
+          "Store browsing, checkout, orders, claim codes, pickup, rating",
+          "Pickup centers and staff verification flow",
+          "Blog reading and comments",
+          "CSP eligibility, request flow, live status, extensions, and history",
+          "Account security (PIN and 2FA)"
+        ],
+        "title": "3) Knowledge areas",
+        "summary": "- Login and registration\n- Dashboard overview and balances\n- Wallets and quick actions (deposit, withdraw, transfer)\n- Notifications and profile completion\n- Store browsing, checkout, orders, claim codes, pickup, rating\n- Pickup centers and staff verification flow\n- Blog reading and comments\n- CSP eligibility, request flow, live status, extensions, and history\n- Account security (PIN and 2FA)",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.539Z"
+    },
+    {
+      "id": "cmkyiils00026t2w7jw2q71mt",
+      "topicId": "cmkxg7ucx000e9qry87zrldpa",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "2",
+          "dashboard",
+          "overview",
+          "your",
+          "home",
+          "screen"
+        ],
+        "steps": [
+          "Shows Total Portfolio Value.",
+          "You can hide/show balances.",
+          "You see a wallet breakdown for Main, Palliative, and BPT.",
+          "A 24h change indicator shows gain or loss over time.",
+          "Deposit: add funds to your wallet.",
+          "Withdraw: move funds out.",
+          "Transfer: send funds to others.",
+          "Primary wallets include Main, Locked Capital, Rewards, and BPT.",
+          "Community wallets include Palliative, Shelter, Community, Health, Education, etc.",
+          "You can review balances and see detailed activity in wallet timelines.",
+          "Notifications appear in the Notifications center.",
+          "You can open the Notifications modal to see recent alerts.",
+          "You may be prompted to complete your profile.",
+          "You can update details like name, phone, and address.",
+          "Location and bank details can be entered using guided fields.",
+          "Taxes summary can be opened from the Taxes modal.",
+          "Referrals can be reviewed from the Referral details modal.",
+          "Community updates",
+          "Calculator",
+          "Deals",
+          "Leadership pool",
+          "EPC/EPP resources",
+          "Solar assessment",
+          "Training center",
+          "Promotional materials",
+          "Submit channel and browse channels",
+          "Third‑party opportunities",
+          "You can view the Palliative journey and activation progress.",
+          "A palliative activation modal guides steps if required.",
+          "Access Security settings to enable a 4‑digit PIN.",
+          "Enable 2FA (Google Authenticator) if available."
+        ],
+        "title": "2) Dashboard overview (your home screen)",
+        "summary": "The dashboard is the main hub for all user activities.",
+        "categoryId": "cmkxg7u2o00019qry7aehzylq",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:23.814Z"
+    },
+    {
+      "id": "cmkyiils90028t2w7en8s2749",
+      "topicId": "cmkxg7ufb000i9qryvj4pmy6f",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "3",
+          "store"
+        ],
+        "steps": [
+          "Browse featured and all products.",
+          "Filter by product type and token.",
+          "Search by name or description.",
+          "View product images, description, price, and rewards.",
+          "See accepted tokens and payment caps.",
+          "Start checkout or save for later.",
+          "Review order details.",
+          "Choose payment mode:",
+          "Fiat only",
+          "Hybrid (token + fiat)",
+          "Token only (if allowed)",
+          "Confirm checkout to create your order.",
+          "Open My Store Orders to track progress.",
+          "When ready, your claim code appears.",
+          "Copy the claim code and present it at the pickup center.",
+          "After staff verifies your claim, confirm pickup in your orders screen.",
+          "Rate your pickup experience and submit feedback.",
+          "Browse available pickup centers.",
+          "View location, contact name, phone, and status."
+        ],
+        "title": "3) Store",
+        "summary": "The Store is where you browse, purchase, and manage product pickups.",
+        "categoryId": "cmkxg7u3l00029qrylr3tuswe",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:23.921Z"
+    },
+    {
+      "id": "cmkyiilsg002at2w7pbpafz5n",
+      "topicId": "cmkxg7uh6000m9qryc9kvecad",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "4",
+          "blog"
+        ],
+        "steps": [
+          "See featured posts in a hero carousel.",
+          "Search posts by keyword.",
+          "Filter by category.",
+          "Read latest headlines.",
+          "Read the full article with author and stats.",
+          "Add a comment and join the discussion.",
+          "View comments and pagination."
+        ],
+        "title": "4) Blog",
+        "summary": "The Blog helps you stay informed.",
+        "categoryId": "cmkxg7u4t00039qrytpfl1u0r",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.033Z"
+    },
+    {
+      "id": "cmkyiilso002ct2w7a32kmrmy",
+      "topicId": "cmkxg7uig000q9qryn6fefbrl",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "5",
+          "csp",
+          "community",
+          "support",
+          "program"
+        ],
+        "steps": [
+          "You must meet membership, direct referrals, and contribution rules.",
+          "The dashboard shows your eligibility status.",
+          "Choose a category (National or Global).",
+          "Enter amount, purpose, and notes.",
+          "Submit for admin approval.",
+          "Track broadcast time remaining.",
+          "View raised amount and contributors.",
+          "See time extension rules (paid or referral-based).",
+          "See how contributions are split across wallets.",
+          "View recent support requests and outcomes."
+        ],
+        "title": "5) CSP (Community Support Program)",
+        "summary": "This is where you request and track support.",
+        "categoryId": "cmkxg7u5m00049qrysnilcfb0",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.087Z"
+    },
+    {
+      "id": "cmkyiilsw002et2w7xyroltpf",
+      "topicId": "cmkxg7uk2000u9qryvjbqf4je",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "6",
+          "account",
+          "settings"
+        ],
+        "steps": [
+          "Enable or update your 4‑digit PIN.",
+          "Enable 2FA if the system has it enabled.",
+          "Disable 2FA with PIN + code if required."
+        ],
+        "title": "6) Account settings",
+        "summary": "Settings are accessible from the dashboard.",
+        "categoryId": "cmkxg7u7500059qrykxq7r85a",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.204Z"
+    },
+    {
+      "id": "cmkyiilt5002gt2w7eu86o7qi",
+      "topicId": "cmkxg7um6000y9qryy4faictx",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "7",
+          "troubleshooting"
+        ],
+        "steps": [
+          "Can’t log in: check your email, password, and internet connection.",
+          "Forgot password: use the “Forgot Password” link on login.",
+          "No claim code yet: your order may still be processing.",
+          "Checkout error: open the store again and restart checkout.",
+          "2FA issues: verify your code and ensure time is synced in your authenticator app."
+        ],
+        "title": "7) Troubleshooting",
+        "summary": "- Can’t log in: check your email, password, and internet connection.\n- Forgot password: use the “Forgot Password” link on login.\n- No claim code yet: your order may still be processing.\n- Checkout error: open the store again and restart checkout.\n- 2FA issues: verify your code and ensure time is synced in your authenticator app.",
+        "categoryId": "cmkxg7u8n00079qryu1g7vf7b",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.287Z"
+    },
+    {
+      "id": "cmkyiilte002it2w7gmdrja9e",
+      "topicId": "cmkxg7unk00129qry5z75rfdw",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "8",
+          "getting",
+          "help"
+        ],
+        "steps": [
+          "Check this guide first.",
+          "Use the Help Center link inside Settings.",
+          "Contact support with your email and a short description of the issue."
+        ],
+        "title": "8) Getting help",
+        "summary": "- Check this guide first.\n- Use the Help Center link inside Settings.\n- Contact support with your email and a short description of the issue.",
+        "categoryId": "cmkxg7u9h00089qrybai7a0jo",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.380Z"
+    },
+    {
+      "id": "cmkyiiltm002kt2w7zrgzktzd",
+      "topicId": "cmkxg7up800169qryfct5qu04",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "1",
+          "bot",
+          "purpose"
+        ],
+        "steps": [
+          "Answer common questions about the dashboard, store, blog, CSP, and account settings.",
+          "Guide users step‑by‑step.",
+          "Escalate when the request involves payments, security, or account recovery."
+        ],
+        "title": "1) Bot purpose",
+        "summary": "- Answer common questions about the dashboard, store, blog, CSP, and account settings.\n- Guide users step‑by‑step.\n- Escalate when the request involves payments, security, or account recovery.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.430Z"
+    },
+    {
+      "id": "cmkyiiltu002mt2w73bj4s3mf",
+      "topicId": "cmkxg7uqc001a9qry9lgjn6cp",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "2",
+          "tone",
+          "and",
+          "behavior"
+        ],
+        "steps": [
+          "Friendly, concise, and clear.",
+          "Use short sentences.",
+          "Ask one clarification question only if needed.",
+          "Never request passwords, PINs, or 2FA codes."
+        ],
+        "title": "2) Tone and behavior",
+        "summary": "- Friendly, concise, and clear.\n- Use short sentences.\n- Ask one clarification question only if needed.\n- Never request passwords, PINs, or 2FA codes.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.488Z"
+    },
+    {
+      "id": "cmkyiilu2002ot2w7hu4v16vi",
+      "topicId": "cmkxg7uuf001i9qryhr0ibxo1",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "4",
+          "safety",
+          "and",
+          "escalation",
+          "rules"
+        ],
+        "steps": [
+          "Can’t access their account after multiple tries",
+          "Reports payment or checkout issues",
+          "Reports suspicious activity",
+          "Needs account recovery or identity verification"
+        ],
+        "title": "4) Safety and escalation rules",
+        "summary": "Escalate to human support when the user:\n- Can’t access their account after multiple tries\n- Reports payment or checkout issues\n- Reports suspicious activity\n- Needs account recovery or identity verification",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.622Z"
+    },
+    {
+      "id": "cmkyiilub002qt2w7g1gedqf6",
+      "topicId": "cmkxg7ux5001m9qryyivj321m",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "5",
+          "answer",
+          "templates",
+          "plain",
+          "language"
+        ],
+        "steps": [
+          "“Go to Login, enter your email and password, then press LOGIN. If it fails, use Forgot Password.”",
+          "“Your dashboard shows total portfolio value, wallet breakdown, and recent activity. Use the eye icon to hide or show balances.”",
+          "“Open a product, tap Start Checkout, choose Fiat or Hybrid, then confirm. You’ll see your claim code in Orders when it’s ready.”",
+          "“Copy your claim code from My Store Orders and show it at the pickup center. After staff verifies it, confirm pickup in your orders screen.”",
+          "“Open CSP, check eligibility, fill the request form, and submit for approval. You can track status in the live status panel.”",
+          "“Go to Settings → Security to set a 4‑digit PIN or enable 2FA. Never share your PIN or codes.”"
+        ],
+        "title": "5) Answer templates (plain language)",
+        "summary": "Use these templates for quick answers.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.674Z"
+    },
+    {
+      "id": "cmkyiiluj002st2w74rqg2fop",
+      "topicId": "cmkxg7v06001q9qryo7895rg8",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "6",
+          "training",
+          "data",
+          "structure",
+          "for",
+          "a"
+        ],
+        "steps": [
+          "intent",
+          "user_utterances (array)",
+          "response",
+          "tags (feature, page, risk)",
+          "escalation (true/false)",
+          "auth.login.help",
+          "auth.register.help",
+          "dashboard.portfolio.help",
+          "dashboard.wallets.help",
+          "store.browse.help",
+          "store.checkout.help",
+          "store.claimcode.help",
+          "store.pickup.confirm",
+          "blog.read.help",
+          "blog.comment.help",
+          "csp.eligibility.help",
+          "csp.submit.help",
+          "account.security.pin",
+          "account.security.2fa"
+        ],
+        "title": "6) Training data structure for a mini bot",
+        "summary": "Store training examples in a database or a JSONL file. Each entry should include:\n- intent\n- user_utterances (array)\n- response\n- tags (feature, page, risk)\n- escalation (true/false)",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.732Z"
+    },
+    {
+      "id": "cmkyiilus002ut2w7uu38t5vn",
+      "topicId": "cmkxg7v2w001u9qryh30clblr",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "7",
+          "fallback",
+          "and",
+          "handoff"
+        ],
+        "steps": [
+          "If the bot can’t find a confident answer, ask the user to rephrase.",
+          "After two failures, suggest human support."
+        ],
+        "title": "7) Fallback and handoff",
+        "summary": "- If the bot can’t find a confident answer, ask the user to rephrase.\n- After two failures, suggest human support.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.795Z"
+    },
+    {
+      "id": "cmkyiilv0002wt2w76w5ld0a5",
+      "topicId": "cmkxg7v5q001y9qrycvrri4rr",
+      "contentSnapshot": {
+        "faq": null,
+        "tags": [
+          "admin-only",
+          "8",
+          "admin",
+          "updates",
+          "for",
+          "new",
+          "topics"
+        ],
+        "steps": [
+          "Add new topics in the admin help center.",
+          "Each new topic should include a title, plain‑language summary, steps, and common questions.",
+          "Re‑train the bot with the updated topics."
+        ],
+        "title": "8) Admin updates for new topics",
+        "summary": "- Add new topics in the admin help center.\n- Each new topic should include a title, plain‑language summary, steps, and common questions.\n- Re‑train the bot with the updated topics.",
+        "categoryId": "cmkxg7u1800009qrylsr1y7ll",
+        "isPublished": true
+      },
+      "createdById": null,
+      "createdAt": "2026-01-28T03:23:24.864Z"
+    }
+  ],
+  "intents": [],
+  "examples": []
+}

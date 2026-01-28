@@ -1,0 +1,313 @@
+{
+  "categories": [
+    {
+      "id": 1,
+      "name": "BPI",
+      "slug": "bpi",
+      "description": null,
+      "createdAt": "2026-01-24T14:37:17.196Z",
+      "updatedAt": "2026-01-28T21:03:28.051Z"
+    },
+    {
+      "id": 2,
+      "name": "Palliative",
+      "slug": "palliative",
+      "description": null,
+      "createdAt": "2026-01-24T14:38:08.969Z",
+      "updatedAt": "2026-01-28T21:03:28.059Z"
+    },
+    {
+      "id": 3,
+      "name": "Africa",
+      "slug": "africa",
+      "description": null,
+      "createdAt": "2026-01-24T14:38:24.311Z",
+      "updatedAt": "2026-01-28T21:03:28.064Z"
+    },
+    {
+      "id": 4,
+      "name": "Shelter Palliative",
+      "slug": "shelter-palliative",
+      "description": null,
+      "createdAt": "2026-01-24T14:38:41.407Z",
+      "updatedAt": "2026-01-28T21:03:28.071Z"
+    },
+    {
+      "id": 5,
+      "name": "Land Palliative",
+      "slug": "land-palliative",
+      "description": null,
+      "createdAt": "2026-01-24T14:39:04.954Z",
+      "updatedAt": "2026-01-28T21:03:28.077Z"
+    },
+    {
+      "id": 6,
+      "name": "Business Palliative",
+      "slug": "business-palliative",
+      "description": null,
+      "createdAt": "2026-01-24T14:39:14.672Z",
+      "updatedAt": "2026-01-28T21:03:28.084Z"
+    },
+    {
+      "id": 7,
+      "name": "Solar Palliative",
+      "slug": "solar-palliative",
+      "description": null,
+      "createdAt": "2026-01-24T14:39:49.902Z",
+      "updatedAt": "2026-01-28T21:03:28.090Z"
+    },
+    {
+      "id": 8,
+      "name": "Legals Palliative",
+      "slug": "legals-palliative",
+      "description": null,
+      "createdAt": "2026-01-24T14:40:04.435Z",
+      "updatedAt": "2026-01-28T21:03:28.097Z"
+    },
+    {
+      "id": 9,
+      "name": "Car Pallitive",
+      "slug": "car-pallitive",
+      "description": null,
+      "createdAt": "2026-01-24T14:40:14.567Z",
+      "updatedAt": "2026-01-28T21:03:28.104Z"
+    },
+    {
+      "id": 10,
+      "name": "Free Meals",
+      "slug": "free-meals",
+      "description": null,
+      "createdAt": "2026-01-24T14:40:35.367Z",
+      "updatedAt": "2026-01-28T21:03:28.111Z"
+    },
+    {
+      "id": 11,
+      "name": "Free Healthcare",
+      "slug": "free-healthcare",
+      "description": null,
+      "createdAt": "2026-01-24T14:40:47.149Z",
+      "updatedAt": "2026-01-28T21:03:28.117Z"
+    },
+    {
+      "id": 12,
+      "name": "Educational Palliative",
+      "slug": "educational-palliative",
+      "description": null,
+      "createdAt": "2026-01-24T14:41:02.265Z",
+      "updatedAt": "2026-01-28T21:03:28.124Z"
+    },
+    {
+      "id": 13,
+      "name": "Bpi Card",
+      "slug": "bpi-card",
+      "description": null,
+      "createdAt": "2026-01-24T14:44:38.298Z",
+      "updatedAt": "2026-01-28T21:03:28.130Z"
+    },
+    {
+      "id": 14,
+      "name": "BPI Card",
+      "slug": "bpi-card-1",
+      "description": null,
+      "createdAt": "2026-01-24T14:45:33.014Z",
+      "updatedAt": "2026-01-28T21:03:28.137Z"
+    },
+    {
+      "id": 15,
+      "name": "BPI SSC",
+      "slug": "bpi-ssc",
+      "description": null,
+      "createdAt": "2026-01-24T14:51:44.489Z",
+      "updatedAt": "2026-01-28T21:03:28.144Z"
+    }
+  ],
+  "posts": [
+    {
+      "id": 5,
+      "title": "BPI Bank Accounts For Membership Activation.",
+      "slug": "bpi-bank-accounts-for-membership-activation",
+      "content": "BeepAgro Africa LTD\n\nThis is the Official BeepAgro Bank Accounts:\n\nSterling Bank: 0098486130\nZenith Bank:    1224755684\n\nRegards\nMGT",
+      "excerpt": "BeepAgro Africa LTD\r\n\r\nBank Accounts:\r\n\r\nSterling Bank: 0098486130\r\nZenith Bank:    1224755684\r\n\r\nRegards\r\nMGT",
+      "tags": "#Bank Account",
+      "status": "PUBLISHED",
+      "featured": true,
+      "categoryId": 1,
+      "authorId": "481528f9-fcaf-4aee-9775-edd5594abf96",
+      "image": "/uploads/blog/1769265375265-962029.jpeg",
+      "imageUrl": "https://bpichain.africa/blog/964e827f2557e9fc286ef4786e23b814.jpeg",
+      "imageInternalized": false,
+      "viewCount": 3,
+      "legacyId": 6,
+      "legacySource": "tbl_blog",
+      "publishedAt": "2024-06-13T12:05:26.000Z",
+      "createdAt": "2026-01-24T10:48:55.949Z",
+      "updatedAt": "2026-01-24T14:44:02.695Z"
+    },
+    {
+      "id": 3,
+      "title": "BPI - Social security number Update ( BPI-SSN )",
+      "slug": "bpi-social-security-number-update-bpi-ssn",
+      "content": "Dear BPI Community,\r\n\r\nWe are thrilled to announce that all activated BPI members now have a BPI Social Security Number (BPI-SSN). This is a significant milestone for our community.\r\n\r\nThe BPI-SSN is integrated with blockchain technology, and we will continue to enhance its features and benefits. In the future, members can look forward to additional functionalities, including NFC, QR codes, biometrics, secure address validation, NFT confirmation, discounts, and more.\r\n\r\nActivate your account today to secure your BPI Social Security Number for yourself and your loved ones. Together, we will reposition Africa with our collective mission and unified purpose.\r\n\r\nTo locate your BPI-SSN, please visit your profile if you are an activated member.\r\n\r\nBest Regards,\r\n\r\nMGT\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n",
+      "excerpt": "Dear BPI Community,\r\n\r\nWe are thrilled to announce that all activated BPI members now have a BPI Social Security Number (BPI-SSN). This is a significant milestone for our community.\r\n\r\nThe BPI-SSN is integrated with blockchain technology, and we will continue to enhance its featu",
+      "tags": "#BPI-SSN",
+      "status": "PUBLISHED",
+      "featured": true,
+      "categoryId": 15,
+      "authorId": "481528f9-fcaf-4aee-9775-edd5594abf96",
+      "image": "/uploads/blog/1769266339250-133921.jpeg",
+      "imageUrl": "https://bpichain.africa/blog/b8c5b0a75acbd85c69ab6e7a2f0ace36.jpeg",
+      "imageInternalized": false,
+      "viewCount": 35,
+      "legacyId": 4,
+      "legacySource": "tbl_blog",
+      "publishedAt": "2024-06-12T04:53:31.000Z",
+      "createdAt": "2026-01-24T10:48:55.913Z",
+      "updatedAt": "2026-01-24T14:52:26.759Z"
+    },
+    {
+      "id": 1,
+      "title": "BPI Seals Strategic Partnership with Global Mobility Network",
+      "slug": "bpi-seals-strategic-partnership-with-global-mobility-network",
+      "content": "BPI Seals Strategic Partnership with Global Mobility Network\r\n\r\nJune 9, 2024\r\n\r\nWe are thrilled to announce that BPI has sealed a strategic partnership with the Global Mobility Network, marking a significant milestone in our commitment to providing national and international leadership training. This partnership aligns perfectly with the objectives of our BPI Platinum Membership, which is dedicated to fostering international leadership development.\r\n\r\nCelebrating Success and Looking to the Future\r\n\r\nThis partnership is a testament to our dedication to enhancing the leadership skills of our members. The Global Mobility Network, with its impressive track record and global presence, is the perfect partner to deliver top-tier international leadership training around the world.\r\n\r\nOpportunities for CEOs, Senior Management, and Government Officials\r\n\r\nWe extend a warm welcome to CEOs, senior management personnel, and government officers to take full advantage of our BPI Platinum Membership. Members will enjoy express recommendations, global awards nominations, and cashback options to offset the financial requirements of international leadership training.\r\n\r\nJoin Us in This Exciting Journey\r\n\r\nAs we celebrate this success and look forward to the future with excitement, we invite you to join us in this transformative journey. The BPI Platinum Membership is your gateway to unparalleled leadership development opportunities and international networking.\r\n\r\nStay tuned for more updates and details on upcoming training sessions and events. Together with the Global Mobility Network, we are poised to elevate leadership standards globally.\r\n\r\nBest regards,\r\nAmb. Dr. DonGilead Okolonkwo\r\nCEO, BPI\r\n\r\n",
+      "excerpt": "BPI Seals Strategic Partnership with Global Mobility Network\r\n\r\nJune 9, 2024\r\n\r\nWe are thrilled to announce that BPI has sealed a strategic partnership with the Global Mobility Network, marking a significant milestone in our commitment to providing national and international lead",
+      "tags": "#leadership #BPI #GMN",
+      "status": "PUBLISHED",
+      "featured": true,
+      "categoryId": 1,
+      "authorId": "481528f9-fcaf-4aee-9775-edd5594abf96",
+      "image": "/uploads/blog/1769266507694-674873.jpeg",
+      "imageUrl": "https://bpichain.africa/blog/ca10131a4ac1e18e983fbd156dd2c8b4.jpeg",
+      "imageInternalized": false,
+      "viewCount": 40,
+      "legacyId": 1,
+      "legacySource": "tbl_blog",
+      "publishedAt": "2024-06-08T16:14:20.000Z",
+      "createdAt": "2026-01-24T10:48:55.869Z",
+      "updatedAt": "2026-01-24T20:57:24.924Z"
+    },
+    {
+      "id": 2,
+      "title": "BPI PICK UP CENTER UPDATE .",
+      "slug": "bpi-pick-up-center-update",
+      "content": "Dear BPI Community,\r\n\r\nAs we approach the milestone of 1,000 foundational members, we are excited to announce an important update for our active state representatives. To enhance our services, we will soon commence the approval process for pick-up locations across various states.\r\n\r\nKey Points:\r\n- Pick-Up Location Approval:\r\nThe approval process will start once a state reaches a minimum of 100 activated members.\r\nA fee of N 100,000 is required for the establishment of a BPI pick-up center.\r\n\r\nSpecial Offer for Initial States:\r\nThe first five states to gain approval will have their pick-up center fees covered by BPI.\r\nApproved pick-up centers will grant their sponsors a cash palliative bonus. while the center owner will share revenue for every item picked up at the center.\r\n\r\nState Representatives' Role:\r\nAs a state representative, you play a crucial role in the approval process of pick-up centers within your state.\r\n\r\nApplication Process:\r\nTo apply, please follow these steps:\r\n\r\n1. Click on \\\"Palliative Services.\\\"\r\n2. Select \\\"Pick-Up Location.\\\"\r\n3. Click on \\\"Apply as a Pick-Up Center.\\\"\r\n\r\nWe look forward to expanding our network and providing even greater support to our community.\r\n\r\nBest Regards,\r\nBPI MGT\r\n",
+      "excerpt": "Dear BPI Community,\r\n\r\nAs we approach the milestone of 1,000 foundational members, we are excited to announce an important update for our active state representatives. To enhance our services, we will soon commence the approval process for pick-up locations across various states.",
+      "tags": "#BPIPICKUPCENTER",
+      "status": "PUBLISHED",
+      "featured": true,
+      "categoryId": 1,
+      "authorId": "481528f9-fcaf-4aee-9775-edd5594abf96",
+      "image": "/uploads/blog/1769266387045-734175.jpeg",
+      "imageUrl": "https://bpichain.africa/blog/a55ee040d5f0441874317b03073cee73.jpeg",
+      "imageInternalized": false,
+      "viewCount": 18,
+      "legacyId": 3,
+      "legacySource": "tbl_blog",
+      "publishedAt": "2024-06-12T04:16:12.000Z",
+      "createdAt": "2026-01-24T10:48:55.894Z",
+      "updatedAt": "2026-01-24T14:53:50.087Z"
+    },
+    {
+      "id": 4,
+      "title": "BPI Card Option Automated membership activation and confirmation.",
+      "slug": "bpi-card-option-automated-membership-activation-and-confirmation",
+      "content": "Dear BPI Community,\r\n\r\nWe are pleased to introduce an automated and instant membership activation and confirmation process to accommodate our growing community. By taking advantage of the card option, you can choose from four convenient and automatic payment methods: bank card, USSD, bank transfer, and OPay. The process is straightforward:\r\n\r\n1. Bank Card: Select the card option, enter your card details, and submit. Once the payment is successful, your membership is activated automatically.\r\n2. USSD: Select the USSD option, choose your bank, and dial the provided code. Follow the prompts to complete the payment.\r\n3. Bank Transfer: Choose the bank transfer option, select your bank, and enter your mobile banking username and password to finalize the process.\r\n4. OPay: Select the OPay option, enter your details as requested, and complete the payment.\r\nOnce your payment is successful, your account is activated instantly, and your palliative bonus is distributed. Spendable cash is also ready for immediate withdrawal.\r\n\r\nRegards,\r\n\r\nBPI Management\r\n\r\n",
+      "excerpt": "Dear BPI Community,\r\n\r\nWe are pleased to introduce an automated and instant membership activation and confirmation process to accommodate our growing community. By taking advantage of the card option, you can choose from four convenient and automatic payment methods: bank card, U",
+      "tags": "#Cardoption",
+      "status": "PUBLISHED",
+      "featured": true,
+      "categoryId": 14,
+      "authorId": "481528f9-fcaf-4aee-9775-edd5594abf96",
+      "image": "/uploads/blog/1769266061109-832502.jpeg",
+      "imageUrl": "https://bpichain.africa/blog/822caa87ea28e147e369941318e823db.jpeg",
+      "imageInternalized": false,
+      "viewCount": 10,
+      "legacyId": 5,
+      "legacySource": "tbl_blog",
+      "publishedAt": "2024-06-12T06:14:20.000Z",
+      "createdAt": "2026-01-24T10:48:55.931Z",
+      "updatedAt": "2026-01-24T14:47:51.224Z"
+    }
+  ],
+  "comments": [
+    {
+      "id": 1,
+      "content": "Awesome!!",
+      "postId": 1,
+      "userId": "3d101cbb-4ba7-410c-be8b-6b179fb60b76",
+      "legacyId": 0,
+      "createdAt": "2024-06-17T22:58:37.000Z",
+      "updatedAt": "2026-01-24T10:49:14.748Z"
+    },
+    {
+      "id": 2,
+      "content": "This is awesome guys",
+      "postId": 3,
+      "userId": "511d41cc-de44-410b-b0ec-b6d6e3cf913e",
+      "legacyId": 0,
+      "createdAt": "2024-07-16T12:31:49.000Z",
+      "updatedAt": "2026-01-24T10:49:14.785Z"
+    },
+    {
+      "id": 3,
+      "content": "Awesome!!",
+      "postId": 1,
+      "userId": "3d101cbb-4ba7-410c-be8b-6b179fb60b76",
+      "legacyId": 0,
+      "createdAt": "2024-06-17T22:58:37.000Z",
+      "updatedAt": "2026-01-24T10:49:14.748Z"
+    },
+    {
+      "id": 4,
+      "content": "This is awesome guys",
+      "postId": 3,
+      "userId": "511d41cc-de44-410b-b0ec-b6d6e3cf913e",
+      "legacyId": 0,
+      "createdAt": "2024-07-16T12:31:49.000Z",
+      "updatedAt": "2026-01-24T10:49:14.785Z"
+    },
+    {
+      "id": 5,
+      "content": "Awesome!!",
+      "postId": 1,
+      "userId": "3d101cbb-4ba7-410c-be8b-6b179fb60b76",
+      "legacyId": 0,
+      "createdAt": "2024-06-17T22:58:37.000Z",
+      "updatedAt": "2026-01-24T10:49:14.748Z"
+    },
+    {
+      "id": 6,
+      "content": "This is awesome guys",
+      "postId": 3,
+      "userId": "511d41cc-de44-410b-b0ec-b6d6e3cf913e",
+      "legacyId": 0,
+      "createdAt": "2024-07-16T12:31:49.000Z",
+      "updatedAt": "2026-01-24T10:49:14.785Z"
+    }
+  ],
+  "views": [
+    {
+      "id": 1,
+      "postId": 1,
+      "userId": "3d101cbb-4ba7-410c-be8b-6b179fb60b76",
+      "userAgent": null,
+      "ipAddress": null,
+      "viewedAt": "2026-01-24T20:57:24.960Z"
+    },
+    {
+      "id": 2,
+      "postId": 1,
+      "userId": "3d101cbb-4ba7-410c-be8b-6b179fb60b76",
+      "userAgent": null,
+      "ipAddress": null,
+      "viewedAt": "2026-01-24T20:57:24.960Z"
+    },
+    {
+      "id": 3,
+      "postId": 1,
+      "userId": "3d101cbb-4ba7-410c-be8b-6b179fb60b76",
+      "userAgent": null,
+      "ipAddress": null,
+      "viewedAt": "2026-01-24T20:57:24.960Z"
+    }
+  ]
+}
