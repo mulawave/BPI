@@ -42,7 +42,7 @@ CREATE TABLE "RewardConfig" (
 );
 
 -- CreateTable
-CREATE TABLE "PickupCenter" (
+CREATE TABLE IF NOT EXISTS "PickupCenter" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "addressLine1" TEXT NOT NULL,
