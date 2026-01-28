@@ -65,11 +65,8 @@ export default function DatabaseMaintenancePanel() {
     { refetchOnWindowFocus: false }
   );
   const truncateMutation = api.admin.truncateTable.useMutation();
-  const exportMutation = api.admin.exportTableData.useQuery(
-    { tableName: "" },
-    { enabled: false }
-  );
   const importMutation = api.admin.importTableData.useMutation();
+  const trpcUtils = api.useUtils();
   
   const [previewTable, setPreviewTable] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -115,9 +112,9 @@ export default function DatabaseMaintenancePanel() {
   const handleExport = async (tableName: string) => {
     const toastId = toast.loading(`Exporting ${tableName}...`);
     try {
-      const result = await exportMutation.refetch({ tableName });
-      if (result.data) {
-        const jsonData = JSON.stringify(result.data.data, null, 2);
+      const result = await trpcUtils.admin.exportTableData.fetch({ tableName });
+      if (result) {
+        const jsonData = JSON.stringify(result.data, null, 2);
         const blob = new Blob([jsonData], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -127,7 +124,7 @@ export default function DatabaseMaintenancePanel() {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        toast.success(`Exported ${result.data.rowCount} rows from ${tableName}`);
+        toast.success(`Exported ${result.rowCount} rows from ${tableName}`);
       }
     } catch (err: any) {
       toast.error(err?.message || "Failed to export table data");
