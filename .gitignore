@@ -24,6 +24,7 @@ yarn-error.log*
 
 # Local env files
 .env
+.env.*
 .env*.local
 .env.development.local
 .env.test.local
@@ -50,3 +51,19 @@ public/uploads/
 
 # Backup
 backup/
+backups/
+
+# Logs and reports
+logs/
+test-results/
+reports/
+
+# Legacy data
+legacy_sql/
+
+# Archives
+bpi-app.tar.gz
+
+# Terminal keys
+teminal_key
+teminal_key.pub
