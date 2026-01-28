@@ -575,7 +575,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.publicKey ?? gateway.publicKey ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "publicKey", e.target.value)}
                               placeholder="Enter public key"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -588,7 +588,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.secretKey ?? gateway.secretKey ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "secretKey", e.target.value)}
                               placeholder="Enter secret key"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -600,7 +600,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.merchantId ?? gateway.merchantId ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "merchantId", e.target.value)}
                               placeholder="Enter merchant ID"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -612,7 +612,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.webhookUrl ?? gateway.webhookUrl ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "webhookUrl", e.target.value)}
                               placeholder="https://.../api/webhooks/..."
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -624,7 +624,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.callbackUrl ?? gateway.callbackUrl ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "callbackUrl", e.target.value)}
                               placeholder="https://.../api/webhooks/.../callback"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
                         </div>
@@ -640,7 +640,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.bankName ?? gateway.bankName ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "bankName", e.target.value)}
                               placeholder="Enter bank name"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -652,7 +652,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.bankAccount ?? gateway.bankAccount ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "bankAccount", e.target.value)}
                               placeholder="Enter account number"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -664,7 +664,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.bankAccountName ?? gateway.bankAccountName ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "bankAccountName", e.target.value)}
                               placeholder="Enter account name"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
                         </div>
@@ -680,7 +680,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.tokenName ?? gateway.tokenName ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "tokenName", e.target.value)}
                               placeholder="Enter token name"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -692,7 +692,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.tokenSymbol ?? gateway.tokenSymbol ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "tokenSymbol", e.target.value)}
                               placeholder="Enter token symbol"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -706,7 +706,7 @@ export default function SettingsPage() {
                                 setGatewayEdit(gateway.id, "tokenContractAddress", e.target.value)
                               }
                               placeholder="Enter contract address"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -718,7 +718,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.tokenomicsUrl ?? gateway.tokenomicsUrl ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "tokenomicsUrl", e.target.value)}
                               placeholder="https://..."
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -730,7 +730,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.homePageUrl ?? gateway.homePageUrl ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "homePageUrl", e.target.value)}
                               placeholder="https://..."
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -748,7 +748,7 @@ export default function SettingsPage() {
                                 setGatewayEdit(gateway.id, "currentPriceNgn", e.target.value)
                               }
                               placeholder="0"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -766,7 +766,7 @@ export default function SettingsPage() {
                                 setGatewayEdit(gateway.id, "currentPriceUsd", e.target.value)
                               }
                               placeholder="0"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
                         </div>
@@ -782,7 +782,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.apiProvider ?? gateway.apiProvider ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "apiProvider", e.target.value)}
                               placeholder="Enter API provider"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -795,7 +795,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.merchantKey ?? gateway.merchantKey ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "merchantKey", e.target.value)}
                               placeholder="Enter merchant key"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -807,7 +807,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.cryptoPublicKey ?? gateway.cryptoPublicKey ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "cryptoPublicKey", e.target.value)}
                               placeholder="Enter public key"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
 
@@ -820,7 +820,7 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.cryptoSecretKey ?? gateway.cryptoSecretKey ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "cryptoSecretKey", e.target.value)}
                               placeholder="Enter secret key"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
                         </div>
@@ -1003,7 +1003,7 @@ export default function SettingsPage() {
                 </h2>
               </div>
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-xl">
+                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-green-900/30 rounded-xl">
                   <div>
                     <h3 className="font-medium text-gray-900 dark:text-white">Clear Cache</h3>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -1017,7 +1017,7 @@ export default function SettingsPage() {
                     Clear
                   </button>
                 </div>
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-xl">
+                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-green-900/30 rounded-xl">
                   <div>
                     <h3 className="font-medium text-gray-900 dark:text-white">Database Backup</h3>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -1071,7 +1071,7 @@ export default function SettingsPage() {
                         : "Ready"}
                   </span>
                   {firebaseConfigStatus?.source && (
-                    <span className="rounded-full bg-gray-100 dark:bg-gray-900/60 px-3 py-1">
+                    <span className="rounded-full bg-gray-100 dark:bg-green-900/30/60 px-3 py-1">
                       Source: {firebaseConfigStatus.source}
                     </span>
                   )}
@@ -1079,7 +1079,7 @@ export default function SettingsPage() {
               </div>
 
               <div className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-green-900/30/40 p-4">
                   <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Project</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">
                     {firebaseConfigStatus?.config?.projectId || "Not set"}
@@ -1088,7 +1088,7 @@ export default function SettingsPage() {
                     Used by live ticker & Firestore listeners.
                   </p>
                 </div>
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-green-900/30/40 p-4">
                   <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Keys saved (incl. optional)</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">
                     {firebaseConfigStatus?.config
@@ -1099,7 +1099,7 @@ export default function SettingsPage() {
                     Persists in AdminSettings; falls back to env if missing.
                   </p>
                 </div>
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-green-900/30/40 p-4">
                   <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Missing</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">
                     {firebaseConfigLoading
@@ -1123,7 +1123,7 @@ export default function SettingsPage() {
                     Updates take effect immediately for Hero Ticker and other Firestore clients.
                   </p>
                 </div>
-                <span className="text-xs rounded-full bg-gray-100 dark:bg-gray-900/60 px-3 py-1 text-gray-600 dark:text-gray-300">
+                <span className="text-xs rounded-full bg-gray-100 dark:bg-green-900/30/60 px-3 py-1 text-gray-600 dark:text-gray-300">
                   Stored in AdminSettings
                 </span>
               </div>
@@ -1212,7 +1212,7 @@ export default function SettingsPage() {
                   currentValue={systemSettings?.smtpFromName?.value || "BPI Team"}
                   onSave={handleSaveGeneralSetting}
                 />
-                <div className="flex items-center gap-2 p-4 bg-gray-50 dark:bg-gray-900 rounded-xl">
+                <div className="flex items-center gap-2 p-4 bg-gray-50 dark:bg-green-900/30 rounded-xl">
                   <input
                     type="checkbox"
                     id="smtpSecure"
@@ -1292,7 +1292,7 @@ function SettingField({
             setValue(e.target.value);
             setIsEditing(true);
           }}
-          className="flex-1 px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 text-gray-900 dark:text-white"
+          className="flex-1 px-4 py-2 bg-gray-50 dark:bg-green-900/30 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 text-gray-900 dark:text-white"
         />
         {isEditing && (
           <button
@@ -1346,7 +1346,7 @@ function CurrencySettingField({
             setValue(e.target.value);
             setIsEditing(true);
           }}
-          className="flex-1 px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 text-gray-900 dark:text-white"
+          className="flex-1 px-4 py-2 bg-gray-50 dark:bg-green-900/30 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 text-gray-900 dark:text-white"
         >
           {currencies.map((c) => (
             <option key={c.id} value={c.symbol}>
@@ -1409,7 +1409,7 @@ function SecretSettingField({
             setValue(e.target.value);
             setIsEditing(true);
           }}
-          className="flex-1 px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 text-gray-900 dark:text-white"
+          className="flex-1 px-4 py-2 bg-gray-50 dark:bg-green-900/30 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-emerald-500 dark:focus:border-emerald-400 text-gray-900 dark:text-white"
         />
         <button
           type="button"

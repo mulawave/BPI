@@ -16,7 +16,7 @@ export default function FinancialOverview() {
   const initialTo = React.useMemo(() => new Date().toISOString().slice(0, 10), []);
   const initialFrom = React.useMemo(() => {
     const d = new Date();
-    d.setDate(d.getDate() - 30);
+    d.setDate(d.getDate() - 365);
     return d.toISOString().slice(0, 10);
   }, []);
   const [dateFrom, setDateFrom] = React.useState<string>(initialFrom);
@@ -74,6 +74,52 @@ export default function FinancialOverview() {
     { dateFrom: new Date(dateFrom), dateTo: new Date(dateTo), granularity },
     { refetchOnWindowFocus: false }
   );
+    // BPT activities list
+    const [bptPage, setBptPage] = React.useState(1);
+    const bptPageSize = 12;
+    const { data: bptList, isLoading: isBptLoading, refetch: refetchBpt } = api.admin.getBptTransactions.useQuery(
+      { dateFrom: new Date(dateFrom), dateTo: new Date(dateTo), page: bptPage, pageSize: bptPageSize },
+      { refetchOnWindowFocus: false }
+    );
+
+    const formatDate = (d?: string | Date) => {
+      if (!d) return "-";
+      const date = typeof d === "string" ? new Date(d) : d;
+      return date.toLocaleDateString();
+    };
+
+    const formatBpt = (value?: number) => {
+      const amount = Math.abs(value || 0);
+      return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(amount)} BPT`;
+    };
+
+    const ngnWalletEntries = React.useMemo(() => summary ? Object.entries(summary.wallets.ngn) : [], [summary]);
+    const grossNgnAssets = React.useMemo(
+      () => ngnWalletEntries.reduce((acc, [, v]) => acc + (typeof v === "number" ? v : 0), 0),
+      [ngnWalletEntries],
+    );
+    const bptRateNgn = summary?.bptRateNgn ?? 5;
+    const bptNairaValue = React.useMemo(() => (summary ? (summary.wallets.bpt || 0) * bptRateNgn : 0), [summary, bptRateNgn]);
+    const grossHolisticTotal = React.useMemo(
+      () => (summary ? grossNgnAssets + bptNairaValue + (summary.inflows.total || 0) + (summary.outflows.total || 0) : 0),
+      [summary, grossNgnAssets, bptNairaValue],
+    );
+    const grossParts = React.useMemo(() => ([
+      { label: "NGN Wallets", value: grossNgnAssets },
+      { label: "BPT (₦)", value: bptNairaValue },
+      { label: "Inflows", value: summary?.inflows.total || 0 },
+      { label: "Outflows", value: summary?.outflows.total || 0 },
+    ]), [grossNgnAssets, bptNairaValue, summary]);
+    const assetBreakdown = React.useMemo(
+      () => {
+        const denom = grossNgnAssets || 1;
+        return ngnWalletEntries
+          .map(([key, value]) => ({ key, value: value as number, share: Math.max(0, (Math.abs(value as number) / denom) * 100) }))
+          .sort((a, b) => (b.value || 0) - (a.value || 0));
+      },
+      [grossNgnAssets, ngnWalletEntries],
+    );
+
   React.useEffect(() => {
     if (seriesError) {
       toast.error((seriesError as any)?.message || "Failed to load time series");
@@ -271,6 +317,79 @@ export default function FinancialOverview() {
         </div>
       </motion.div>
 
+      {/* Asset Snapshot */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-card via-[hsl(var(--muted))] to-card p-5 backdrop-blur-xl shadow"
+      >
+        <div className="absolute -bottom-16 -left-16 h-32 w-32 rounded-full bg-gradient-to-br from-[hsl(var(--secondary))] to-[hsl(var(--primary))] opacity-10 blur-2xl" />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2 rounded-xl border border-border/40 bg-background/60 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Asset Snapshot</div>
+                <p className="text-xs text-muted-foreground">Gross total of all NGN-denominated wallets with relative share.</p>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-bold">{formatAmount(grossNgnAssets)}</div>
+                <div className="text-xs text-muted-foreground">Across {ngnWalletEntries.length} wallets</div>
+              </div>
+            </div>
+            <div className="mt-4 space-y-2">
+              {assetBreakdown.map((item) => (
+                <div key={item.key} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="capitalize text-muted-foreground">{item.key}</span>
+                    <span className="font-semibold">{formatAmount(item.value)}</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-border">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[hsl(var(--primary))] to-[hsl(var(--secondary))]"
+                      style={{ width: `${Math.min(100, Math.round(item.share))}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div className="rounded-xl border border-border/50 bg-background/70 p-4 shadow-sm">
+              <div className="text-sm font-semibold">BPT Holdings</div>
+              <div className="mt-2 text-lg font-bold">{formatBpt(summary?.wallets.bpt || 0)}</div>
+              <p className="text-xs text-muted-foreground">Token balance tracked via bpiToken wallet activity.</p>
+            </div>
+            <div className="rounded-xl border border-border/50 bg-background/70 p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold">Range Context</div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Completed transactions between {summary ? new Date(summary.range.from).toLocaleDateString() : "..."} and {summary ? new Date(summary.range.to).toLocaleDateString() : "..."}.
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">BPT rate: ₦{bptRateNgn.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-lg border border-border/70 bg-card/70 p-3 shadow-inner">
+                <div className="text-xs font-semibold text-muted-foreground">Gross Total</div>
+                <div className="text-3xl font-extrabold leading-tight text-foreground">{formatAmount(grossHolisticTotal)}</div>
+                <div className="mt-2 text-[11px] text-muted-foreground">Summed from inflows, outflows, NGN wallets, and BPT (converted to ₦).</div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  {grossParts.map((item) => (
+                    <div key={item.label} className="rounded border border-border/70 bg-background/60 p-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">{item.label}</span>
+                        <span className="font-semibold">{formatAmount(item.value)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
       {/* Category Breakdown Chart */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -350,6 +469,7 @@ export default function FinancialOverview() {
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl border p-4">
               <div className="text-xs font-semibold text-muted-foreground">Series Info</div>
+              <p className="mt-1 text-[11px] text-muted-foreground">Completed transactions only; withdrawal fees also match service-charge descriptions.</p>
               <div className="mt-2 space-y-1 text-xs">
                 <div className="flex justify-between"><span>Granularity</span><span>{series?.granularity || "day"}</span></div>
                 <div className="flex justify-between"><span>Points</span><span>{series ? series.points.length : 0}</span></div>
@@ -357,6 +477,7 @@ export default function FinancialOverview() {
             </div>
             <div className="rounded-xl border p-4">
               <div className="text-xs font-semibold text-muted-foreground">Actions</div>
+              <p className="mt-1 text-[11px] text-muted-foreground">Reload after tweaking dates; adjust granularity to smooth or reveal short-term spikes.</p>
               <div className="mt-2 flex gap-2">
                 <button onClick={() => refetchSeries()} className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted">Reload Series</button>
                 {/* Mobile granularity selector */}
@@ -473,11 +594,57 @@ export default function FinancialOverview() {
           </div>
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="rounded-2xl border border-border bg-card/75 p-6 backdrop-blur-xl">
-          <h3 className="text-lg font-semibold">BPT Activities</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">BPT Activities</h3>
+            <span className="text-xs text-muted-foreground">Convert To Contact: {formatBpt(summary?.bptActivities.convertToContact || 0)}</span>
+          </div>
           <div className="mt-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Convert To Contact</span>
-              <span className="text-sm font-semibold">{summary ? (summary.bptActivities.convertToContact || 0) : 0}</span>
+            <div className="rounded-lg border bg-background/60 p-3">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Type</span>
+                <span>Date</span>
+              </div>
+              <div className="mt-2 space-y-2 max-h-96 overflow-auto">
+                {isBptLoading && <div className="text-sm text-muted-foreground">Loading BPT transactions...</div>}
+                {!isBptLoading && bptList?.items.length === 0 && <div className="text-sm text-muted-foreground">No BPT transactions in range.</div>}
+                {!isBptLoading && bptList?.items.map((tx) => (
+                  <div key={tx.id} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+                    <div className="flex flex-col">
+                      <span className="font-semibold">{tx.transactionType}</span>
+                      <span className="text-xs text-muted-foreground truncate max-w-[200px]">{tx.description || "-"}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-semibold">{formatBpt(tx.amount || 0)}</div>
+                      <div className="text-xs text-muted-foreground">{formatDate(tx.createdAt)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">
+                  Page {bptPage} of {bptList ? Math.max(1, Math.ceil(bptList.total / bptPageSize)) : 1} ({bptList?.total || 0} items)
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    className="rounded border px-2 py-1 disabled:opacity-50"
+                    onClick={() => { setBptPage((p) => Math.max(1, p - 1)); refetchBpt(); }}
+                    disabled={bptPage === 1}
+                  >
+                    Prev
+                  </button>
+                  <button
+                    className="rounded border px-2 py-1 disabled:opacity-50"
+                    onClick={() => {
+                      const maxPage = bptList ? Math.max(1, Math.ceil(bptList.total / bptPageSize)) : 1;
+                      setBptPage((p) => Math.min(maxPage, p + 1));
+                      refetchBpt();
+                    }}
+                    disabled={bptList ? bptPage >= Math.max(1, Math.ceil(bptList.total / bptPageSize)) : true}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </motion.div>

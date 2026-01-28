@@ -42,6 +42,11 @@ import { adminBankRouter } from "./adminBank";
 import { documentationRouter } from "./documentation";
 import { securityRouter } from "./security";
 import { adminReferralsRouter } from "./adminReferrals";
+import { contentRouter } from "./content";
+import { cspRouter } from "./csp";
+import { adminBlogRouter } from "./adminBlog";
+import { storeRouter } from "./store";
+import { helpRouter } from "./help";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -83,9 +88,14 @@ export const appRouter = createTRPCRouter({
   adminLocation: adminLocationRouter,
   bank: bankRouter,
   adminBank: adminBankRouter,
+  adminBlog: adminBlogRouter,
   documentation: documentationRouter,
   security: securityRouter,
   adminReferrals: adminReferralsRouter,
+  content: contentRouter,
+  csp: cspRouter,
+  store: storeRouter,
+  help: helpRouter,
 
   // Legacy router, to be deprecated
 });

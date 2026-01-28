@@ -32,7 +32,7 @@ export function CommunityCard({
 }: CommunityCardProps) {
   const stateStyles = {
     locked: {
-      card: "bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-700 opacity-75",
+      card: "bg-gray-100 dark:bg-green-950/30 border-gray-300 dark:border-green-900/50 opacity-75",
       icon: "text-gray-400 dark:text-gray-600",
       title: "text-gray-600 dark:text-gray-400",
       description: "text-gray-500 dark:text-gray-500",
@@ -44,16 +44,16 @@ export function CommunityCard({
       description: "text-yellow-700 dark:text-yellow-300",
     },
     active: {
-      card: "bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 border-green-300 dark:border-green-700 hover:shadow-lg hover:scale-[1.02]",
-      icon: "text-green-600 dark:text-green-400",
-      title: "text-green-900 dark:text-green-100",
-      description: "text-green-700 dark:text-green-300",
+      card: "bg-gradient-to-br from-green-50 to-emerald-50 dark:from-emerald-950/20 dark:to-green-900/20 border-green-300 dark:border-green-700 hover:shadow-lg hover:scale-[1.02]",
+      icon: "text-emerald-600 dark:text-emerald-400",
+      title: "text-emerald-900 dark:text-emerald-100",
+      description: "text-emerald-700 dark:text-emerald-300",
     },
     new: {
-      card: "bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-blue-300 dark:border-blue-700 hover:shadow-lg hover:scale-[1.02] animate-pulse",
-      icon: "text-blue-600 dark:text-blue-400",
-      title: "text-blue-900 dark:text-blue-100",
-      description: "text-blue-700 dark:text-blue-300",
+      card: "bg-gradient-to-br from-emerald-50 to-lime-50 dark:from-emerald-950/20 dark:to-lime-950/20 border-emerald-300 dark:border-emerald-700 hover:shadow-lg hover:scale-[1.02] animate-pulse",
+      icon: "text-emerald-600 dark:text-emerald-400",
+      title: "text-emerald-900 dark:text-emerald-100",
+      description: "text-emerald-700 dark:text-emerald-300",
     },
   };
 
@@ -76,7 +76,7 @@ export function CommunityCard({
         <div className="absolute top-3 right-3">
           <span className={cn(
             "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
-            state === "new" && "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+            state === "new" && "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
             state === "in-progress" && "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
             state === "active" && "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
             state === "locked" && "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
@@ -92,7 +92,7 @@ export function CommunityCard({
         state === "locked" && "bg-gray-200 dark:bg-gray-800",
         state === "in-progress" && "bg-yellow-100 dark:bg-yellow-900/50",
         state === "active" && "bg-green-100 dark:bg-green-900/50",
-        state === "new" && "bg-blue-100 dark:bg-blue-900/50"
+        state === "new" && "bg-emerald-100 dark:bg-emerald-900/50"
       )}>
         <Icon className={cn("h-6 w-6", currentStyles.icon)} />
       </div>
@@ -159,7 +159,7 @@ export function CommunityCard({
           <span className={cn(
             "text-sm font-medium",
             state === "active" && "text-green-700 dark:text-green-300",
-            state === "new" && "text-blue-700 dark:text-blue-300",
+            state === "new" && "text-emerald-700 dark:text-emerald-300",
             state === "in-progress" && "text-yellow-700 dark:text-yellow-300"
           )}>
             {state === "in-progress" && "Continue"}
@@ -170,7 +170,7 @@ export function CommunityCard({
             className={cn(
               "h-5 w-5",
               state === "active" && "text-green-600 dark:text-green-400",
-              state === "new" && "text-blue-600 dark:text-blue-400",
+              state === "new" && "text-emerald-600 dark:text-emerald-400",
               state === "in-progress" && "text-yellow-600 dark:text-yellow-400"
             )}
             fill="none"

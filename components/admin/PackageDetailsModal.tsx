@@ -119,7 +119,7 @@ export default function PackageDetailsModal({
                       </div>
 
                       {/* Stats */}
-                      <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                    <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                           Statistics
                         </h3>
@@ -146,7 +146,7 @@ export default function PackageDetailsModal({
                               className={`px-2 py-1 text-xs font-medium rounded-full ${
                                 pkg.isActive
                                   ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                                  : "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300"
+                                : "bg-gray-100 text-gray-800 dark:bg-green-900/30 dark:text-gray-300"
                               }`}
                             >
                               {pkg.isActive ? "ACTIVE" : "INACTIVE"}
@@ -156,7 +156,7 @@ export default function PackageDetailsModal({
                       </div>
 
                       {/* Dates */}
-                      <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                    <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                           <MdEvent size={20} />
                           Timeline
@@ -183,7 +183,7 @@ export default function PackageDetailsModal({
                     {/* Right Column - Features & Subscribers */}
                     <div className="lg:col-span-2 space-y-6">
                       {/* Features */}
-                      <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                    <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                           <MdCheckCircle size={20} />
                           Package Features
@@ -208,7 +208,7 @@ export default function PackageDetailsModal({
                       </div>
 
                       {/* Reward Distribution */}
-                      <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                    <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                           <MdInfo size={20} />
                           Referral Rewards
@@ -245,7 +245,7 @@ export default function PackageDetailsModal({
                       </div>
 
                       {/* Recent Subscribers */}
-                      <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                    <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                           <MdPeople size={20} />
                           Recent Subscribers

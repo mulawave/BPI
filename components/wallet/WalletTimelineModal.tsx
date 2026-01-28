@@ -401,7 +401,7 @@ export default function WalletTimelineModal({ isOpen, onClose }: WalletTimelineM
                 <select
                   value={dateRange}
                   onChange={(e) => setDateRange(e.target.value as DateRange)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-bpi-dark-card text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-green-800/50 rounded-lg bg-white dark:bg-bpi-dark-card text-sm"
                 >
                   <option value="last-7">Last 7 Days</option>
                   <option value="last-30">Last 30 Days</option>
@@ -420,7 +420,7 @@ export default function WalletTimelineModal({ isOpen, onClose }: WalletTimelineM
                 <select
                   value={transactionType}
                   onChange={(e) => setTransactionType(e.target.value as any)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-bpi-dark-card text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-green-800/50 rounded-lg bg-white dark:bg-bpi-dark-card text-sm"
                 >
                   <option value="all">All Types</option>
                   <option value="debit">Debits (Outflow)</option>
@@ -436,7 +436,7 @@ export default function WalletTimelineModal({ isOpen, onClose }: WalletTimelineM
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as any)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-bpi-dark-card text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-green-800/50 rounded-lg bg-white dark:bg-bpi-dark-card text-sm"
                 >
                   <option value="all">All Status</option>
                   <option value="completed">Completed</option>
@@ -453,7 +453,7 @@ export default function WalletTimelineModal({ isOpen, onClose }: WalletTimelineM
                 <select
                   value={sortOption}
                   onChange={(e) => setSortOption(e.target.value as SortOption)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-bpi-dark-card text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-green-800/50 rounded-lg bg-white dark:bg-bpi-dark-card text-sm"
                 >
                   <option value="date-desc">Newest First</option>
                   <option value="date-asc">Oldest First</option>
@@ -509,7 +509,7 @@ export default function WalletTimelineModal({ isOpen, onClose }: WalletTimelineM
                 <select
                   value={viewMode}
                   onChange={(e) => setViewMode(e.target.value as ViewMode)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-bpi-dark-card text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-green-800/50 rounded-lg bg-white dark:bg-bpi-dark-card text-sm"
                 >
                   <option value="infinite">Infinite Scroll</option>
                   <option value="pagination">Pagination</option>

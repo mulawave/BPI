@@ -5,6 +5,7 @@ const navLinks = [
 	{ href: "#programs", label: "Programs" },
 	{ href: "#training", label: "Training" },
 	{ href: "#join", label: "Join" },
+	{ href: "/blog", label: "Blog & News" },
 	{ href: "#news", label: "News" },
 	{ href: "#partners", label: "Partners" },
 	{ href: "#contact", label: "Contact" },

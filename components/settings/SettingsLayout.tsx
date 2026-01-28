@@ -9,6 +9,7 @@ import {
   ChevronRight, Home
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import UserSecuritySettingsPanel from '@/components/user/SecuritySettingsPanel';
 import Footer from '@/components/Footer';
 
@@ -113,7 +114,7 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800">
+      <header className="sticky top-0 z-50 bg-white/80 dark:bg-green-900/30 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             {/* Left: Navigation */}
@@ -239,9 +240,12 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
                     <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
                       Check our help center for guides and tutorials
                     </p>
-                    <button className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                    <Link
+                      href="/help"
+                      className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                    >
                       Visit Help Center →
-                    </button>
+                    </Link>
                   </div>
                 </div>
               </div>

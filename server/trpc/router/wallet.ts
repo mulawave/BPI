@@ -610,7 +610,7 @@ export const walletRouter = createTRPCRouter({
 
       return {
         success: false,
-        message: "Bank details fields are not yet added to the schema. Please add bankName, accountNumber, accountName, and bnbWalletAddress to the User model in schema.prisma, then run 'npx prisma migrate dev'."
+        message: "Bank details fields are not yet added to the schema. Please add bankName, accountNumber, accountName, and bnbWalletAddress to the User model in schema.prisma, then apply the schema with your standard Prisma migration." 
       };
     })
 });

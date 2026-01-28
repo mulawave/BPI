@@ -121,7 +121,7 @@ export default function PaymentDetailsModal({
                       </div>
 
                       {/* Transaction Details */}
-                      <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                    <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                           Transaction Details
                         </h3>
@@ -158,7 +158,7 @@ export default function PaymentDetailsModal({
 
                       {/* Metadata */}
                       {payment.metadata && (
-                        <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                      <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                             <MdInfo size={24} />
                             Additional Information
@@ -173,7 +173,7 @@ export default function PaymentDetailsModal({
                     {/* Right Column - User Info & Proof */}
                     <div className="space-y-6">
                       {/* User Information */}
-                      <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                    <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                           User Information
                         </h3>
@@ -208,7 +208,7 @@ export default function PaymentDetailsModal({
 
                       {/* Proof of Payment */}
                       {payment.proofOfPayment && (
-                        <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                      <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                             <MdImage size={24} />
                             Proof of Payment

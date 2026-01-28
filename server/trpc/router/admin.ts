@@ -4881,7 +4881,7 @@ export const adminRouter = createTRPCRouter({
 
       // Inflows
       const deposits = await prisma.transaction.aggregate({
-        where: { ...whereRange, status: "completed", transactionType: { in: ["DEPOSIT", "deposit"] } },
+        where: { ...whereRange, status: "completed", transactionType: { in: ["DEPOSIT", "deposit", "CREDIT"] } },
         _sum: { amount: true },
       });
       const vat = await prisma.transaction.aggregate({
@@ -4889,7 +4889,14 @@ export const adminRouter = createTRPCRouter({
         _sum: { amount: true },
       });
       const withdrawalFeesRaw = await prisma.transaction.aggregate({
-        where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_FEE"] } },
+        where: {
+          ...whereRange,
+          status: "completed",
+          OR: [
+            { transactionType: { in: ["WITHDRAWAL_FEE"] } },
+            { description: { contains: "service charge", mode: "insensitive" } },
+          ],
+        },
         _sum: { amount: true },
       });
       const withdrawalFees = Math.abs(withdrawalFeesRaw._sum.amount || 0);
@@ -4898,6 +4905,7 @@ export const adminRouter = createTRPCRouter({
           "MEMBERSHIP_PAYMENT", "membership_payment",
           "MEMBERSHIP_ACTIVATION", "membership_activation",
           "MEMBERSHIP_UPGRADE", "membership_upgrade",
+          "SUBSCRIPTION", "PURCHASE",
         ] } },
         _sum: { amount: true },
       });
@@ -4905,7 +4913,7 @@ export const adminRouter = createTRPCRouter({
 
       // Outflows
       const withdrawalCash = await prisma.transaction.aggregate({
-        where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_CASH"] } },
+        where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_CASH", "DEBIT"] } },
         _sum: { amount: true },
       });
       const withdrawalBpt = await prisma.transaction.aggregate({
@@ -4917,6 +4925,10 @@ export const adminRouter = createTRPCRouter({
         _sum: { amount: true },
       });
 
+      // BPT conversion rate (active)
+      const activeBptRate = await prisma.bptConversionRate.findFirst({ where: { isActive: true }, orderBy: { effectiveDate: "desc" } });
+      const bptRateNgn = activeBptRate?.rateNgn || 5;
+
       // BPT activities
       const convertToContactRaw = await prisma.transaction.aggregate({
         where: { ...whereRange, status: "completed", walletType: "bpiToken", transactionType: { in: ["CONVERT_TO_CONTACT"] } },
@@ -4924,12 +4936,15 @@ export const adminRouter = createTRPCRouter({
       });
       const convertToContact = Math.abs(convertToContactRaw._sum.amount || 0);
 
+      const bptFromTransactions = (rewardsBpt._sum.amount || 0) - Math.abs(withdrawalBpt._sum.amount || 0) - convertToContact;
+
       // Wallet totals
       const walletTotals = await prisma.user.aggregate({ _sum: {
         wallet: true, spendable: true, cashback: true, community: true, shareholder: true,
         education: true, car: true, business: true, palliative: true, studentCashback: true,
         bpiTokenWallet: true,
       } });
+      const bptWalletTotal = (walletTotals._sum.bpiTokenWallet || 0) || bptFromTransactions;
 
       // Palliatives
       const totalPalliativeTickets = await prisma.palliativeTicket.count();
@@ -4965,11 +4980,67 @@ export const adminRouter = createTRPCRouter({
             palliative: walletTotals._sum.palliative || 0,
             studentCashback: walletTotals._sum.studentCashback || 0,
           },
-          bpt: walletTotals._sum.bpiTokenWallet || 0,
+          bpt: bptWalletTotal,
         },
+        bptRateNgn,
         palliatives: {
           totalTickets: totalPalliativeTickets,
         },
+      };
+    }),
+
+  getBptTransactions: adminProcedure
+    .input(z.object({
+      dateFrom: z.date().optional(),
+      dateTo: z.date().optional(),
+      page: z.number().min(1).optional(),
+      pageSize: z.number().min(1).max(100).optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const now = new Date();
+      const dateTo = input?.dateTo ?? now;
+      // default to last 365 days to surface legacy imports
+      const dateFrom = input?.dateFrom ?? new Date(dateTo.getTime() - 365 * 24 * 60 * 60 * 1000);
+      const page = input?.page ?? 1;
+      const pageSize = input?.pageSize ?? 12;
+
+      const where = {
+        createdAt: { gte: dateFrom, lte: dateTo },
+        status: "completed" as const,
+        AND: [
+          {
+            OR: [
+              { transactionType: "WITHDRAWAL_BPT" },
+              { transactionType: { startsWith: "REFERRAL_" } as any },
+              { transactionType: "CONVERT_TO_CONTACT" },
+            ],
+          },
+          {
+            OR: [
+              { walletType: "bpiToken" },
+              { description: { contains: "bpt", mode: "insensitive" } },
+            ],
+          },
+        ],
+      } satisfies NonNullable<Parameters<typeof prisma.transaction.findMany>[0]>["where"];
+
+      const [total, items] = await Promise.all([
+        prisma.transaction.count({ where }),
+        prisma.transaction.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          select: { id: true, transactionType: true, amount: true, description: true, createdAt: true, walletType: true },
+        }),
+      ]);
+
+      return {
+        range: { from: dateFrom, to: dateTo },
+        page,
+        pageSize,
+        total,
+        items,
       };
     }),
 
@@ -4990,7 +5061,7 @@ export const adminRouter = createTRPCRouter({
 
       const txns = await prisma.transaction.findMany({
         where: whereRange,
-        select: { createdAt: true, transactionType: true, amount: true },
+        select: { createdAt: true, transactionType: true, amount: true, description: true },
         orderBy: { createdAt: "asc" },
       });
 
@@ -5023,20 +5094,22 @@ export const adminRouter = createTRPCRouter({
         }
         const amt = t.amount || 0;
         const type = t.transactionType || "";
+        const desc = (t as any).description?.toLowerCase?.() || "";
 
-        if (type === "DEPOSIT" || type === "deposit") {
+        if (type === "DEPOSIT" || type === "deposit" || type === "CREDIT") {
           buckets[key].deposits += Math.abs(amt);
         } else if (
           type === "MEMBERSHIP_PAYMENT" || type === "membership_payment" ||
           type === "MEMBERSHIP_ACTIVATION" || type === "membership_activation" ||
-          type === "MEMBERSHIP_UPGRADE" || type === "membership_upgrade"
+          type === "MEMBERSHIP_UPGRADE" || type === "membership_upgrade" ||
+          type === "SUBSCRIPTION" || type === "PURCHASE"
         ) {
           buckets[key].membershipRevenue += Math.abs(amt);
         } else if (type === "VAT" || type === "vat") {
           buckets[key].vat += Math.abs(amt);
-        } else if (type === "WITHDRAWAL_FEE") {
+        } else if (type === "WITHDRAWAL_FEE" || desc.includes("service charge")) {
           buckets[key].withdrawalFees += Math.abs(amt);
-        } else if (type === "WITHDRAWAL_CASH") {
+        } else if (type === "WITHDRAWAL_CASH" || type === "DEBIT") {
           buckets[key].withdrawalsCash += Math.abs(amt);
         } else if (type === "WITHDRAWAL_BPT") {
           buckets[key].withdrawalsBpt += Math.abs(amt);
@@ -5414,21 +5487,23 @@ export const adminRouter = createTRPCRouter({
       const whereRange = { createdAt: { gte: dateFrom, lte: dateTo } };
 
       // Reuse aggregation similar to getFinancialSummary
-      const deposits = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["DEPOSIT", "deposit"] } }, _sum: { amount: true } });
+      const deposits = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["DEPOSIT", "deposit", "CREDIT"] } }, _sum: { amount: true } });
       const vat = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["VAT", "vat"] } }, _sum: { amount: true } });
-      const withdrawalFeesRaw = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_FEE"] } }, _sum: { amount: true } });
+      const withdrawalFeesRaw = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", OR: [ { transactionType: { in: ["WITHDRAWAL_FEE"] } }, { description: { contains: "service charge", mode: "insensitive" } } ] }, _sum: { amount: true } });
       const withdrawalFees = Math.abs(withdrawalFeesRaw._sum.amount || 0);
-      const membershipRevenueRaw = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["MEMBERSHIP_PAYMENT", "membership_payment", "MEMBERSHIP_ACTIVATION", "membership_activation", "MEMBERSHIP_UPGRADE", "membership_upgrade"] } }, _sum: { amount: true } });
+      const membershipRevenueRaw = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["MEMBERSHIP_PAYMENT", "membership_payment", "MEMBERSHIP_ACTIVATION", "membership_activation", "MEMBERSHIP_UPGRADE", "membership_upgrade", "SUBSCRIPTION", "PURCHASE"] } }, _sum: { amount: true } });
       const membershipRevenue = Math.abs(membershipRevenueRaw._sum.amount || 0);
 
-      const withdrawalCash = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_CASH"] } }, _sum: { amount: true } });
+      const withdrawalCash = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_CASH", "DEBIT"] } }, _sum: { amount: true } });
       const withdrawalBpt = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { in: ["WITHDRAWAL_BPT"] } }, _sum: { amount: true } });
       const rewardsBpt = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", transactionType: { startsWith: "REFERRAL_" } as any }, _sum: { amount: true } });
 
       const convertToContactRaw = await prisma.transaction.aggregate({ where: { ...whereRange, status: "completed", walletType: "bpiToken", transactionType: { in: ["CONVERT_TO_CONTACT"] } }, _sum: { amount: true } });
       const convertToContact = Math.abs(convertToContactRaw._sum.amount || 0);
+      const bptFromTransactions = (rewardsBpt._sum.amount || 0) - Math.abs(withdrawalBpt._sum.amount || 0) - convertToContact;
 
       const walletTotals = await prisma.user.aggregate({ _sum: { wallet: true, spendable: true, cashback: true, community: true, shareholder: true, education: true, car: true, business: true, palliative: true, studentCashback: true, bpiTokenWallet: true } });
+      const bptWalletTotal = (walletTotals._sum.bpiTokenWallet || 0) || bptFromTransactions;
 
       const inflowsTotal = (deposits._sum.amount || 0) + membershipRevenue + (vat._sum.amount || 0) + withdrawalFees;
       const outflowsTotal = Math.abs(withdrawalCash._sum.amount || 0) + Math.abs(withdrawalBpt._sum.amount || 0) + (rewardsBpt._sum.amount || 0);
@@ -5466,7 +5541,7 @@ export const adminRouter = createTRPCRouter({
       rows.push(["Wallets (NGN)", "business", ((walletTotals._sum.business || 0)).toString()]);
       rows.push(["Wallets (NGN)", "palliative", ((walletTotals._sum.palliative || 0)).toString()]);
       rows.push(["Wallets (NGN)", "studentCashback", ((walletTotals._sum.studentCashback || 0)).toString()]);
-      rows.push(["Wallets (BPT)", "bpiTokenWallet", ((walletTotals._sum.bpiTokenWallet || 0)).toString()]);
+      rows.push(["Wallets (BPT)", "bpiTokenWallet", ((bptWalletTotal)).toString()]);
 
       const csvContent = [
         headers.join(","),
@@ -6759,5 +6834,231 @@ export const adminRouter = createTRPCRouter({
           name: newSponsor.name,
         },
       };
+    }),
+
+  // Help Center - Admin Management
+  helpListCategories: adminProcedure.query(async () => {
+    return prisma.helpCategory.findMany({
+      orderBy: [{ order: "asc" }, { name: "asc" }],
+    });
+  }),
+
+  helpCreateCategory: adminProcedure
+    .input(
+      z.object({
+        name: z.string().min(2),
+        slug: z.string().min(2),
+        description: z.string().optional(),
+        order: z.number().int().default(0),
+        isActive: z.boolean().default(true),
+      })
+    )
+    .mutation(async ({ input }) => {
+      return prisma.helpCategory.create({
+        data: {
+          name: input.name,
+          slug: input.slug,
+          description: input.description,
+          order: input.order,
+          isActive: input.isActive,
+        },
+      });
+    }),
+
+  helpUpdateCategory: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string().min(2),
+        slug: z.string().min(2),
+        description: z.string().optional(),
+        order: z.number().int().default(0),
+        isActive: z.boolean().default(true),
+      })
+    )
+    .mutation(async ({ input }) => {
+      return prisma.helpCategory.update({
+        where: { id: input.id },
+        data: {
+          name: input.name,
+          slug: input.slug,
+          description: input.description,
+          order: input.order,
+          isActive: input.isActive,
+        },
+      });
+    }),
+
+  helpDeleteCategory: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      await prisma.helpCategory.delete({ where: { id: input.id } });
+      return { success: true };
+    }),
+
+  helpListTopics: adminProcedure
+    .input(
+      z.object({
+        search: z.string().optional(),
+        categoryId: z.string().optional(),
+        page: z.number().min(1).default(1),
+        pageSize: z.number().min(1).max(50).default(20),
+      })
+    )
+    .query(async ({ input }) => {
+      const { search, categoryId, page, pageSize } = input;
+      const skip = (page - 1) * pageSize;
+      const where: any = {};
+      if (categoryId) where.categoryId = categoryId;
+      if (search) {
+        where.OR = [
+          { title: { contains: search, mode: "insensitive" } },
+          { summary: { contains: search, mode: "insensitive" } },
+          { tags: { has: search.toLowerCase() } },
+        ];
+      }
+
+      const [topics, total] = await prisma.$transaction([
+        prisma.helpTopic.findMany({
+          where,
+          skip,
+          take: pageSize,
+          orderBy: [{ updatedAt: "desc" }],
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            summary: true,
+            tags: true,
+            isPublished: true,
+            updatedAt: true,
+            category: { select: { id: true, name: true } },
+          },
+        }),
+        prisma.helpTopic.count({ where }),
+      ]);
+
+      return {
+        topics,
+        total,
+        page,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      };
+    }),
+
+  helpGetTopic: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      return prisma.helpTopic.findUnique({ where: { id: input.id } });
+    }),
+
+  helpCreateTopic: adminProcedure
+    .input(
+      z.object({
+        categoryId: z.string().optional(),
+        title: z.string().min(3),
+        slug: z.string().min(3),
+        summary: z.string().optional(),
+        steps: z.array(z.string()).optional(),
+        faq: z.array(z.object({ question: z.string(), answer: z.string() })).optional(),
+        tags: z.array(z.string()).default([]),
+        isPublished: z.boolean().default(false),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const topic = await prisma.helpTopic.create({
+        data: {
+          categoryId: input.categoryId || null,
+          title: input.title,
+          slug: input.slug,
+          summary: input.summary,
+          steps: input.steps ?? [],
+          faq: input.faq ?? [],
+          tags: input.tags,
+          isPublished: input.isPublished,
+          createdById: ctx.session?.user?.id,
+          updatedById: ctx.session?.user?.id,
+        },
+      });
+
+      await prisma.helpRevision.create({
+        data: {
+          topicId: topic.id,
+          createdById: ctx.session?.user?.id,
+          contentSnapshot: {
+            title: topic.title,
+            summary: topic.summary,
+            steps: topic.steps,
+            faq: topic.faq,
+            tags: topic.tags,
+            isPublished: topic.isPublished,
+            categoryId: topic.categoryId,
+          },
+        },
+      });
+
+      return topic;
+    }),
+
+  helpUpdateTopic: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        categoryId: z.string().optional(),
+        title: z.string().min(3),
+        slug: z.string().min(3),
+        summary: z.string().optional(),
+        steps: z.array(z.string()).optional(),
+        faq: z.array(z.object({ question: z.string(), answer: z.string() })).optional(),
+        tags: z.array(z.string()).default([]),
+        isPublished: z.boolean().default(false),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const existing = await prisma.helpTopic.findUnique({ where: { id: input.id } });
+      if (!existing) throw new Error("Topic not found");
+
+      await prisma.helpRevision.create({
+        data: {
+          topicId: existing.id,
+          createdById: ctx.session?.user?.id,
+          contentSnapshot: {
+            title: existing.title,
+            summary: existing.summary,
+            steps: existing.steps,
+            faq: existing.faq,
+            tags: existing.tags,
+            isPublished: existing.isPublished,
+            categoryId: existing.categoryId,
+          },
+        },
+      });
+
+      return prisma.helpTopic.update({
+        where: { id: input.id },
+        data: {
+          categoryId: input.categoryId || null,
+          title: input.title,
+          slug: input.slug,
+          summary: input.summary,
+          steps: input.steps ?? [],
+          faq: input.faq ?? [],
+          tags: input.tags,
+          isPublished: input.isPublished,
+          updatedById: ctx.session?.user?.id,
+        },
+      });
+    }),
+
+  helpTogglePublish: adminProcedure
+    .input(z.object({ id: z.string(), isPublished: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      return prisma.helpTopic.update({
+        where: { id: input.id },
+        data: {
+          isPublished: input.isPublished,
+          updatedById: ctx.session?.user?.id,
+        },
+      });
     }),
 });

@@ -240,7 +240,7 @@ export default function UserDetailsModal({
             exit={{ opacity: 0, scale: 0.95 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6"
           >
-            <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl rounded-3xl shadow-2xl w-full h-[94vh] max-w-none overflow-hidden flex flex-col border border-white/20 dark:border-gray-800">
+            <div className="bg-white/95 dark:bg-green-900/30/95 backdrop-blur-xl rounded-3xl shadow-2xl w-full h-[94vh] max-w-none overflow-hidden flex flex-col border border-white/20 dark:border-gray-800">
               {/* Header */}
               <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -335,7 +335,7 @@ export default function UserDetailsModal({
                         {/* Left Column - Main Info */}
                         <div className="lg:col-span-2 space-y-6">
                           {/* Basic Info */}
-                          <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                          <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                               Basic Information
                             </h3>
@@ -394,7 +394,7 @@ export default function UserDetailsModal({
                           </div>
 
                           {/* Account Status */}
-                          <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                          <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                               Account Status
                             </h3>
@@ -656,7 +656,7 @@ export default function UserDetailsModal({
                           </div>
 
                           {/* Network Stats */}
-                          <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                          <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                               Network
                             </h3>
@@ -707,7 +707,7 @@ export default function UserDetailsModal({
                               initial={{ opacity: 0, x: -20 }}
                               animate={{ opacity: 1, x: 0 }}
                               transition={{ delay: idx * 0.05 }}
-                              className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-xl"
+                              className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-green-900/30 rounded-xl"
                             >
                               <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
                                 <MdHistory className="text-green-600" size={20} />
@@ -750,7 +750,7 @@ export default function UserDetailsModal({
                           </button>
                         </div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                          <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-xl">
+                          <div className="p-4 bg-gray-50 dark:bg-green-900/30 rounded-xl">
                             <p className="text-sm font-semibold text-gray-900 dark:text-white">
                               Referred By (Sponsor)
                             </p>
@@ -772,7 +772,7 @@ export default function UserDetailsModal({
                                   : "None"}
                             </p>
                           </div>
-                          <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-xl">
+                          <div className="p-4 bg-gray-50 dark:bg-green-900/30 rounded-xl">
                             <p className="text-sm font-semibold text-gray-900 dark:text-white">
                               Sponsor (Same as Referred By)
                             </p>
@@ -802,7 +802,7 @@ export default function UserDetailsModal({
                               initial={{ opacity: 0, x: -20 }}
                               animate={{ opacity: 1, x: 0 }}
                               transition={{ delay: idx * 0.05 }}
-                              className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-xl"
+                              className="flex items-center justify-between p-4 bg-gray-50 dark:bg-green-900/30 rounded-xl"
                             >
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white font-bold overflow-hidden">

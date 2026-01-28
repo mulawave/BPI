@@ -317,7 +317,7 @@ export default function AssignMembershipModal({
               </div>
 
               {/* Mode Selection */}
-              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-green-900/30">
                 <div className="flex gap-2">
                   <button
                     onClick={() => setMode("single")}
@@ -368,7 +368,7 @@ export default function AssignMembershipModal({
                       value={selectedUserId}
                       onChange={(e) => setSelectedUserId(e.target.value)}
                       placeholder="Enter user ID"
-                      className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900 dark:text-white"
+                    className="w-full px-4 py-3 bg-white dark:bg-green-900/30 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900 dark:text-white"
                       disabled={!!preSelectedUserId}
                     />
                     {preSelectedUserId && (
@@ -394,7 +394,7 @@ export default function AssignMembershipModal({
                           setEmailSearch(e.target.value);
                         }}
                         placeholder="user@example.com"
-                        className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900 dark:text-white"
+                        className="w-full px-4 py-3 bg-white dark:bg-green-900/30 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900 dark:text-white"
                       />
                       
                       {/* Autocomplete Suggestions */}
@@ -447,7 +447,7 @@ export default function AssignMembershipModal({
                         onChange={(e) => setEmailInput(e.target.value)}
                         placeholder="user1@example.com, user2@example.com&#10;user3@example.com"
                         rows={4}
-                        className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900 dark:text-white resize-none"
+                        className="w-full px-4 py-3 bg-white dark:bg-green-900/30 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900 dark:text-white resize-none"
                       />
                       <button
                         onClick={handleParseBulkEmails}
@@ -469,7 +469,7 @@ export default function AssignMembershipModal({
                           value={emailSearch}
                           onChange={(e) => setEmailSearch(e.target.value)}
                           placeholder="Search by email..."
-                          className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900 dark:text-white"
+                          className="w-full pl-10 pr-4 py-3 bg-white dark:bg-green-900/30 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900 dark:text-white"
                         />
                       </div>
 
@@ -505,7 +505,7 @@ export default function AssignMembershipModal({
 
                     {/* Email list */}
                     {bulkEmails.length > 0 && (
-                      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                      <div className="bg-gray-50 dark:bg-green-900/30 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                             {bulkEmails.length} email(s) added
@@ -627,7 +627,7 @@ export default function AssignMembershipModal({
               </div>
 
               {/* Footer */}
-              <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3 bg-gray-50 dark:bg-gray-900/50">
+              <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3 bg-gray-50 dark:bg-green-900/30">
                 <button
                   onClick={onClose}
                   className="px-6 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg font-medium transition-colors"

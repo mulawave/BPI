@@ -169,7 +169,7 @@ export default function PackageEditModal({
                       onChange={(e) =>
                         setFormData((prev) => ({ ...prev, name: e.target.value }))
                       }
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                       placeholder="Enter package name"
                       required
                     />
@@ -185,7 +185,7 @@ export default function PackageEditModal({
                         type="number"
                         value={formData.price}
                         onChange={(e) => handlePriceChange(parseFloat(e.target.value) || 0)}
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                         placeholder="0.00"
                         step="0.01"
                         min="0"
@@ -234,7 +234,7 @@ export default function PackageEditModal({
                           renewalFee: parseFloat(e.target.value) || 0,
                         }))
                       }
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                       placeholder="0.00"
                       step="0.01"
                       min="0"
@@ -242,7 +242,7 @@ export default function PackageEditModal({
                   </div>
 
                   {/* Status Toggle */}
-                  <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-green-900/30 rounded-lg">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                         Package Status
@@ -292,7 +292,7 @@ export default function PackageEditModal({
                               newFeatures[idx] = e.target.value;
                               setFormData((prev) => ({ ...prev, features: newFeatures }));
                             }}
-                            className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                           />
                           <button
                             type="button"
@@ -314,7 +314,7 @@ export default function PackageEditModal({
                               addFeature();
                             }
                           }}
-                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                        className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                           placeholder="Add a new feature..."
                         />
                         <button

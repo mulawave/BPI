@@ -3,11 +3,10 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "prisma:pull": "prisma db pull",
+    "prisma:generate": "prisma generate",
+    "prisma:deploy": "prisma migrate deploy",
     "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
-    "postinstall": "prisma generate",
     "smoke:backups": "npx tsx scripts/smokeAdminBackups.ts",
     "smoke:payments": "npx tsx scripts/smokeAdminPayments.ts",
     "smoke:reports": "npx tsx scripts/smokeAdminReports.ts",
@@ -30,7 +29,10 @@
     "db:seed": "npx tsx prisma/seed.ts",
     "db:reset": "npx prisma migrate reset --force && npm run db:seed",
     "backup:git": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gitAutoBackup.ps1",
-    "backup:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scheduleGitAutoBackup.ps1"
+    "backup:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scheduleGitAutoBackup.ps1",
+    "migrate:legacy-blogs": "npx tsx scripts/migrateLegacyBlogs.ts",
+    "lint": "next lint"
+ 
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
@@ -70,6 +72,7 @@
     "react-markdown": "^9.1.0",
     "react-syntax-highlighter": "^16.1.0",
     "recharts": "^3.6.0",
+    "mysql2": "^3.11.3",
     "remark-gfm": "^4.0.1",
     "speakeasy": "^2.0.0",
     "superjson": "^2.2.2",

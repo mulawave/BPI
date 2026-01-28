@@ -613,7 +613,7 @@ export default function UsersPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="relative overflow-hidden rounded-2xl border border-gray-200/50 bg-white/80 backdrop-blur-xl shadow-xl dark:border-gray-800/50 dark:bg-gray-900/80"
+          className="relative overflow-hidden rounded-2xl border border-gray-200/50 bg-white/80 backdrop-blur-xl shadow-xl dark:border-gray-800/50 dark:bg-green-900/30/80"
         >
           <div className="absolute -top-20 right-1/4 h-40 w-40 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 opacity-5 blur-3xl" />
           <div className="relative overflow-x-auto">

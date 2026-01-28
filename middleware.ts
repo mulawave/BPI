@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { prisma } from "./lib/prisma";
 
 export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.AUTH_SECRET });
@@ -19,13 +18,9 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL("/admin/login", req.url));
     }
 
-    // Check if user has admin role
-    const user = await prisma.user.findUnique({
-      where: { id: token.sub },
-      select: { role: true },
-    });
-
-    const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+    // Check if user has admin role from token (avoid DB in middleware)
+    const role = (token as any)?.role;
+    const isAdmin = role === "admin" || role === "super_admin";
 
     if (!isAdmin) {
       // Not an admin, redirect to user dashboard
@@ -51,31 +46,20 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  if (token) {
-    // If user is authenticated, check for active subscription
-    const user = await prisma.user.findUnique({
-      where: { id: token.sub },
-      include: { EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser: true },
-    });
-
-    const hasActiveStandardPackage = !!user?.activeMembershipPackageId;
-    const hasActiveEmpowermentPackage = user?.EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser.some((p: any) =>
-      p.status.startsWith("Active")
-    );
-
-    if (
-      !hasActiveStandardPackage &&
-      !hasActiveEmpowermentPackage &&
-      pathname !== "/membership" &&
-      pathname !== "/empowerment"
-    ) {
-      // If no active package, redirect to membership page
-      return NextResponse.redirect(new URL("/membership", req.url));
-    }
-  } else {
+  if (!token) {
     // If user is not authenticated, redirect to login page
     if (pathname !== "/login") {
       return NextResponse.redirect(new URL("/login", req.url));
+    }
+  }
+
+  // Enforce membership gating for authenticated users (no DB calls in middleware)
+  if (token) {
+    const hasActiveMembership = (token as any)?.hasActiveMembership === true;
+    const isMembershipRoute = pathname === "/membership" || pathname.startsWith("/membership/");
+
+    if (!hasActiveMembership && !isMembershipRoute) {
+      return NextResponse.redirect(new URL("/membership", req.url));
     }
   }
 
@@ -83,8 +67,8 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
+  // Apply middleware to all routes except Next internals and API
   matcher: [
-    // Add protected routes here when needed
-    // "/dashboard/:path*"
+    "/((?!_next/static|_next/image|favicon.ico|api).*)",
   ],
 };

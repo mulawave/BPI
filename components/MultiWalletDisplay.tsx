@@ -75,8 +75,8 @@ export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWa
       name: "Shelter Wallet",
       balance: wallets.shelter,
       icon: Home,
-      color: "text-blue-600",
-      bgColor: "bg-blue-50 dark:bg-blue-900/20",
+      color: "text-gray-600",
+      bgColor: "bg-gray-50 dark:bg-green-900/20",
       description: "Housing support (Gold/Platinum L1-L10)",
       displayValue: undefined,
     },
@@ -133,7 +133,7 @@ export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWa
       balance: wallets.spendable,
       icon: DollarSign,
       color: "text-gray-600",
-      bgColor: "bg-gray-50 dark:bg-gray-900/20",
+      bgColor: "bg-gray-50 dark:bg-green-900/10",
       description: "Available for spending",
       displayValue: undefined,
     },
@@ -182,9 +182,9 @@ export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWa
       )}
 
       {showAll && (
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-          <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">💡 Wallet Information</h4>
-          <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4">
+          <h4 className="font-semibold text-emerald-900 dark:text-emerald-100 mb-2">💡 Wallet Information</h4>
+          <ul className="text-sm text-emerald-800 dark:text-emerald-200 space-y-1">
             <li><strong>Main Wallet:</strong> Fully withdrawable cash balance</li>
             <li><strong>BPI Token (BPT):</strong> 50% of your token rewards (5 per BPT value). Other 50% goes to buy-back wallet</li>
             <li><strong>Palliative:</strong> Welfare support from referral activations</li>

@@ -156,7 +156,7 @@ export default function UserSecuritySettingsPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
+      <div className="bg-white dark:bg-bpi-dark-card border border-gray-200 dark:border-bpi-dark-accent rounded-xl p-6 shadow-sm">
         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
           Security Settings
         </h2>
@@ -175,7 +175,7 @@ export default function UserSecuritySettingsPanel() {
         <div className="space-y-6">
           {/* PIN Setup Card */}
           {pinEnabled && (
-            <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
+            <div className="bg-gray-50 dark:bg-bpi-dark-card border border-gray-200 dark:border-green-800/50 rounded-xl p-6">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-xl flex items-center justify-center">
@@ -226,7 +226,7 @@ export default function UserSecuritySettingsPanel() {
                           type={showPin ? 'text' : 'password'}
                           value={pinData.currentPin}
                           onChange={(e) => setPinData({ ...pinData, currentPin: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                          className="w-full px-4 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          className="w-full px-4 py-2 pr-10 bg-white dark:bg-bpi-dark-card border border-gray-200 dark:border-bpi-dark-accent rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                           placeholder="••••"
                           maxLength={4}
                         />
@@ -249,7 +249,7 @@ export default function UserSecuritySettingsPanel() {
                       type={showPin ? 'text' : 'password'}
                       value={pinData.newPin}
                       onChange={(e) => setPinData({ ...pinData, newPin: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                      className="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-4 py-2 bg-white dark:bg-bpi-dark-card border border-gray-200 dark:border-bpi-dark-accent rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       placeholder="••••"
                       maxLength={4}
                     />
@@ -263,7 +263,7 @@ export default function UserSecuritySettingsPanel() {
                       type={showPin ? 'text' : 'password'}
                       value={pinData.confirmPin}
                       onChange={(e) => setPinData({ ...pinData, confirmPin: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                      className="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      className="w-full px-4 py-2 bg-white dark:bg-bpi-dark-card border border-gray-200 dark:border-bpi-dark-accent rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       placeholder="••••"
                       maxLength={4}
                     />
@@ -290,7 +290,7 @@ export default function UserSecuritySettingsPanel() {
                         setPinData({ currentPin: '', newPin: '', confirmPin: '' });
                       }}
                       disabled={setupPinMutation.isPending}
-                      className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+                      className="px-4 py-2 bg-gray-200 dark:bg-green-900/30 text-gray-700 dark:text-emerald-200 rounded-lg hover:bg-gray-300 dark:hover:bg-green-800/40 transition-colors disabled:opacity-50"
                     >
                       Cancel
                     </button>
@@ -302,11 +302,11 @@ export default function UserSecuritySettingsPanel() {
 
           {/* 2FA Setup Card */}
           {twoFAEnabled && (
-            <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
+            <div className="bg-gray-50 dark:bg-bpi-dark-card border border-gray-200 dark:border-green-800/50 rounded-xl p-6">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
-                    <Shield className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                  <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center">
+                    <Shield className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Two-Factor Authentication</h3>
@@ -358,7 +358,7 @@ export default function UserSecuritySettingsPanel() {
                         type="password"
                         value={disable2FAData.pin}
                         onChange={(e) => setDisable2FAData({ ...disable2FAData, pin: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                        className="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="w-full px-4 py-2 bg-white dark:bg-bpi-dark-card border border-gray-200 dark:border-bpi-dark-accent rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         placeholder="••••"
                         maxLength={4}
                       />
@@ -372,7 +372,7 @@ export default function UserSecuritySettingsPanel() {
                         type="text"
                         value={disable2FAData.code}
                         onChange={(e) => setDisable2FAData({ ...disable2FAData, code: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                        className="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="w-full px-4 py-2 bg-white dark:bg-bpi-dark-card border border-gray-200 dark:border-bpi-dark-accent rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         placeholder="000000"
                         maxLength={6}
                       />
@@ -399,7 +399,7 @@ export default function UserSecuritySettingsPanel() {
                           setDisable2FAData({ pin: '', code: '' });
                         }}
                         disabled={disable2FAMutation.isPending}
-                        className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+                        className="px-4 py-2 bg-gray-200 dark:bg-green-900/30 text-gray-700 dark:text-emerald-200 rounded-lg hover:bg-gray-300 dark:hover:bg-green-800/40 transition-colors disabled:opacity-50"
                       >
                         Cancel
                       </button>
@@ -414,7 +414,7 @@ export default function UserSecuritySettingsPanel() {
                       handleSetup2FA();
                     }}
                     disabled={setup2FAMutation.isPending}
-                    className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {setup2FAMutation.isPending ? (
                       <>
@@ -433,12 +433,12 @@ export default function UserSecuritySettingsPanel() {
                   >
                     {setup2FAMutation.isPending ? (
                       <div className="flex items-center justify-center py-8">
-                        <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full" />
+                        <div className="animate-spin w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full" />
                       </div>
                     ) : qrCodeUrl ? (
                       <>
-                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                          <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                        <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+                          <p className="text-sm text-emerald-800 dark:text-emerald-200 mb-3">
                             1. Install Google Authenticator on your phone<br />
                             2. Scan this QR code or enter the secret manually<br />
                             3. Enter the 6-digit code from the app below
@@ -458,7 +458,7 @@ export default function UserSecuritySettingsPanel() {
                           {secret && (
                             <div className="mt-3">
                               <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Manual Entry:</p>
-                              <code className="block p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm break-all">
+                              <code className="block p-2 bg-gray-100 dark:bg-bpi-dark-card rounded text-sm break-all">
                                 {secret}
                               </code>
                             </div>
@@ -473,7 +473,7 @@ export default function UserSecuritySettingsPanel() {
                             type="text"
                             value={twoFAData.verificationCode}
                             onChange={(e) => setTwoFAData({ verificationCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
-                            className="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-4 py-2 bg-white dark:bg-bpi-dark-card border border-gray-200 dark:border-bpi-dark-accent rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                             placeholder="000000"
                             maxLength={6}
                           />
@@ -502,7 +502,7 @@ export default function UserSecuritySettingsPanel() {
                               setTwoFAData({ verificationCode: '' });
                             }}
                             disabled={verify2FAMutation.isPending}
-                            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+                            className="px-4 py-2 bg-gray-200 dark:bg-green-900/30 text-gray-700 dark:text-emerald-200 rounded-lg hover:bg-gray-300 dark:hover:bg-green-800/40 transition-colors disabled:opacity-50"
                           >
                             Cancel
                           </button>

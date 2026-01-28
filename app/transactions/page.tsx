@@ -368,7 +368,7 @@ export default function TransactionsPage() {
                     className={`flex items-start justify-between p-4 rounded-xl border transition-all hover:shadow-md ${getStatusColor()}`}
                   >
                     <div className="flex items-start gap-4 flex-1">
-                      <div className="p-2 bg-white dark:bg-gray-900 rounded-lg">
+                    <div className="p-2 bg-white dark:bg-green-900/30 rounded-lg">
                         {getStatusIcon()}
                       </div>
                       <div className="flex-1 min-w-0">

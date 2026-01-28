@@ -9,6 +9,7 @@ import {
   CreditCard,
   Settings,
   FileText,
+  Store,
   ShieldCheck,
   TrendingUp,
   Package,
@@ -24,6 +25,9 @@ import {
   ExternalLink,
   Share2,
   Award,
+  Palette,
+  RadioTower,
+  MapPin,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -53,6 +57,12 @@ const navigation = [
     description: "Project documentation"
   },
   { 
+    name: "Help & Support", 
+    href: "/admin/help/topics", 
+    icon: BookOpen,
+    description: "Smart Help topics"
+  },
+  { 
     name: "DB Audit Coverage", 
     href: "/admin/help/db-audit", 
     icon: FileText, 
@@ -66,6 +76,24 @@ const navigation = [
     badge: "pending"
   },
   { 
+    name: "Store", 
+    href: "/admin/store", 
+    icon: Store,
+    description: "Products, rewards, limits"
+  },
+  { 
+    name: "Pickup Centers", 
+    href: "/admin/pickup-centers", 
+    icon: MapPin,
+    description: "Fulfillment locations"
+  },
+  { 
+    name: "CSP Queue", 
+    href: "/admin/csp", 
+    icon: RadioTower,
+    description: "Approve & extend CSP requests"
+  },
+  { 
     name: "Packages", 
     href: "/admin/packages", 
     icon: Package,
@@ -76,6 +104,12 @@ const navigation = [
     href: "/admin/analytics", 
     icon: TrendingUp,
     description: "System analytics"
+  },
+  { 
+    name: "Bank Accounts", 
+    href: "/admin/bank-accounts", 
+    icon: Banknote,
+    description: "User payout accounts"
   },
   { 
     name: "Financials", 
@@ -100,6 +134,12 @@ const navigation = [
     href: "/admin/community", 
     icon: Bell,
     description: "Updates & deals"
+  },
+  { 
+    name: "Blog & News", 
+    href: "/admin/blog", 
+    icon: BookOpen,
+    description: "Posts, categories, comments"
   },
   { 
     name: "Leadership Pool", 
@@ -137,6 +177,12 @@ const navigation = [
     icon: Settings,
     description: "System config"
   },
+  { 
+    name: "App Design", 
+    href: "/admin/design", 
+    icon: Palette,
+    description: "Pages, policies, home layout"
+  },
 ];
 
 interface AdminSidebarProps {
@@ -147,7 +193,7 @@ export default function AdminSidebar({ pendingCount = 0 }: AdminSidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
-  const [expandedMenus, setExpandedMenus] = useState<string[]>(['Localization']); // Auto-expand Localization
+  const [expandedMenus, setExpandedMenus] = useState<string[]>([]); // Default collapsed
 
   useEffect(() => {
     setPendingHref(null);

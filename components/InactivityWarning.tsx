@@ -14,7 +14,7 @@ export default function InactivityWarning() {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 border border-gray-200 dark:border-gray-700">
+      <div className="bg-white dark:bg-bpi-dark-card rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 border border-gray-200 dark:border-green-800/50">
         <div className="flex flex-col items-center text-center">
           {/* Icon */}
           <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-4">

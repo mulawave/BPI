@@ -154,7 +154,7 @@ export default function SwapSponsorModal({
               {/* Content */}
               <div className="p-6 space-y-6">
                 {/* User Info */}
-                <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+              <div className="bg-gray-50 dark:bg-green-900/30 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-3 mb-3">
                     <MdPerson className="text-gray-400" size={20} />
                     <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -170,7 +170,7 @@ export default function SwapSponsorModal({
                 </div>
 
                 {/* Current Sponsor */}
-                <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+              <div className="bg-gray-50 dark:bg-green-900/30 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                   <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Current Sponsor
                   </div>
@@ -199,10 +199,8 @@ export default function SwapSponsorModal({
                         setEmailSearch(e.target.value);
                       }}
                       placeholder="sponsor@example.com"
-                      className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-gray-900 dark:text-white"
+                      className="w-full pl-10 pr-4 py-3 bg-white dark:bg-green-900/30 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-gray-900 dark:text-white"
                     />
-
-                    {/* Autocomplete Suggestions */}
                     {emailSearch.length >= 2 &&
                       emailSuggestions &&
                       emailSuggestions.length > 0 && (

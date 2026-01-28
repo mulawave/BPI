@@ -130,10 +130,10 @@ export default function TaxesModal({ isOpen, onClose }: TaxesModalProps) {
                 </div>
               ) : (
                 <>
-                  <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-green-800/50">
                     <table className="w-full">
                       <thead>
-                        <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
+                        <tr className="bg-gray-50 dark:bg-green-950/30 border-b border-gray-200 dark:border-green-800/50">
                           <th className="text-left py-4 px-4 text-sm font-semibold text-foreground">
                             <div className="flex items-center gap-2">
                               <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -166,7 +166,7 @@ export default function TaxesModal({ isOpen, onClose }: TaxesModalProps) {
                           <tr
                             key={tax.id}
                             className={`border-b border-gray-100 dark:border-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors ${
-                              index % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/50 dark:bg-gray-800/30'
+                              index % 2 === 0 ? 'bg-white dark:bg-green-950/30' : 'bg-gray-50/50 dark:bg-green-900/30'
                             }`}
                           >
                             <td className="py-4 px-4 text-sm text-foreground">
@@ -204,7 +204,7 @@ export default function TaxesModal({ isOpen, onClose }: TaxesModalProps) {
 
                   {/* Pagination */}
                   {totalPages > 1 && (
-                    <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-green-800/50">
                       <p className="text-sm text-muted-foreground">
                         Showing <span className="font-semibold text-foreground">{((currentPage - 1) * itemsPerPage) + 1}</span> to <span className="font-semibold text-foreground">{Math.min(currentPage * itemsPerPage, taxData.totalCount)}</span> of <span className="font-semibold text-foreground">{taxData.totalCount}</span> records
                       </p>
@@ -237,7 +237,7 @@ export default function TaxesModal({ isOpen, onClose }: TaxesModalProps) {
                                 className={`w-9 h-9 rounded-lg ${
                                   currentPage === pageNum
                                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 font-bold'
-                                    : 'bg-gray-100 dark:bg-gray-800 text-foreground hover:bg-gray-200 dark:hover:bg-gray-700 font-medium'
+                                    : 'bg-gray-100 dark:bg-green-900/30 text-foreground hover:bg-gray-200 dark:hover:bg-green-800/40 font-medium'
                                 } transition-all text-sm`}
                               >
                                 {pageNum}

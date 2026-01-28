@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { 
   Facebook, Twitter, Instagram, Linkedin, Youtube,
@@ -7,6 +7,7 @@ import {
   Leaf, Users, Shield, Award, TrendingUp, BookOpen,
   Sparkles, GraduationCap, Calculator, Download, Megaphone
 } from "lucide-react";
+import { api } from "@/client/trpc";
 
 interface FooterProps {
   onModalOpen?: (modalName: string) => void;
@@ -14,6 +15,18 @@ interface FooterProps {
 
 export default function Footer({ onModalOpen }: FooterProps) {
   const [email, setEmail] = useState("");
+  const { data: footerPages } = api.content.getFooterPages.useQuery(undefined, { refetchOnWindowFocus: false });
+
+  const footerLinks = useMemo<{ label: string; href: string }[]>(() => {
+    if (!footerPages || footerPages.length === 0) {
+      return [
+        { label: "Terms of Service", href: "/pages/terms-of-service" },
+        { label: "Privacy Policy", href: "/pages/privacy-policy" },
+        { label: "Cookie Policy", href: "/pages/cookie-policy" },
+      ];
+    }
+    return footerPages.map((p: { title: string; slug: string }) => ({ label: p.title, href: `/pages/${p.slug}` }));
+  }, [footerPages]);
 
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +39,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
   };
 
   return (
-    <footer className="relative bg-gradient-to-br from-gray-900 via-bpi-dark-card to-gray-950 text-gray-300 mt-16">
+    <footer className="relative bg-gradient-to-br from-green-950 via-bpi-dark-card to-emerald-950 text-gray-300 mt-16">
       {/* Decorative Top Wave */}
       <div className="absolute top-0 left-0 w-full overflow-hidden leading-none">
         <svg className="relative block w-full h-12" viewBox="0 0 1200 120" preserveAspectRatio="none">
@@ -37,7 +50,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
         </svg>
       </div>
 
-      <div className="container mx-auto px-4 pt-20 pb-8">
+      <div className="w-full px-3 sm:px-4 lg:px-6 pt-20 pb-8">
         {/* Main Footer Content */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
           
@@ -66,7 +79,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
                   key={label}
                   href={href}
                   aria-label={label}
-                  className="w-10 h-10 bg-gray-800 hover:bg-bpi-primary rounded-lg flex items-center justify-center transition-all duration-300 hover:scale-110 group"
+                  className="w-10 h-10 bg-green-900/30 hover:bg-bpi-primary rounded-lg flex items-center justify-center transition-all duration-300 hover:scale-110 group"
                 >
                   <Icon className="w-5 h-5 text-gray-400 group-hover:text-white transition-colors" />
                 </a>
@@ -176,7 +189,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Your email"
-                  className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-bpi-primary transition-colors"
+                  className="flex-1 px-3 py-2 bg-green-900/20 border border-green-800/50 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-bpi-primary transition-colors"
                   required
                 />
                 <button
@@ -192,7 +205,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
         </div>
 
         {/* Divider */}
-        <div className="border-t border-gray-800 mb-8"></div>
+        <div className="border-t border-green-800/30 mb-8"></div>
 
         {/* Bottom Footer */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm">
@@ -202,20 +215,16 @@ export default function Footer({ onModalOpen }: FooterProps) {
           
           {/* Footer Links */}
           <div className="flex flex-wrap items-center justify-center gap-6 text-gray-500">
-            <Link href="/terms" className="hover:text-bpi-primary transition-colors">
-              Terms of Service
-            </Link>
-            <Link href="/privacy" className="hover:text-bpi-primary transition-colors">
-              Privacy Policy
-            </Link>
-            <Link href="/cookies" className="hover:text-bpi-primary transition-colors">
-              Cookie Policy
-            </Link>
+            {footerLinks.map((link) => (
+              <Link key={link.href} href={link.href} className="hover:text-bpi-primary transition-colors">
+                {link.label}
+              </Link>
+            ))}
           </div>
         </div>
 
         {/* Trust Badges */}
-        <div className="flex flex-wrap items-center justify-center gap-6 mt-8 pt-8 border-t border-gray-800">
+        <div className="flex flex-wrap items-center justify-center gap-6 mt-8 pt-8 border-t border-green-800/30">
           <div className="flex items-center gap-2 text-gray-500 text-xs">
             <Shield className="w-4 h-4 text-green-500" />
             <span>Secure Platform</span>
@@ -238,7 +247,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
       {/* Scroll to Top Button */}
       <button
         onClick={scrollToTop}
-        className="fixed bottom-8 right-8 w-12 h-12 bg-gradient-to-br from-bpi-primary to-emerald-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 flex items-center justify-center z-50 group"
+        className="fixed bottom-24 md:bottom-8 right-4 md:right-8 w-12 h-12 bg-gradient-to-br from-bpi-primary to-emerald-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 flex items-center justify-center z-50 group"
         aria-label="Scroll to top"
       >
         <ChevronUp className="w-6 h-6 group-hover:animate-bounce" />

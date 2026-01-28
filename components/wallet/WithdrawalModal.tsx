@@ -325,7 +325,7 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
                       <select
                         value={selectedBankAccountId || ''}
                         onChange={(e) => setSelectedBankAccountId(Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2 bg-white dark:bg-bpi-dark-card border border-gray-300 dark:border-green-800/50 rounded-lg text-foreground focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                       >
                         <option value="">Select an account</option>
                         {bankAccounts.map((account: any) => (
@@ -435,7 +435,7 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
                         +{formatAmount(fee)}
                       </span>
                     </div>
-                    <div className="pt-2 border-t border-gray-300 dark:border-gray-600">
+                    <div className="pt-2 border-t border-gray-300 dark:border-green-800/50">
                       <div className="flex justify-between">
                         <span className="font-bold">Total Debit from Wallet:</span>
                         <span className="font-bold text-lg text-red-600">{formatAmount(totalDebit)}</span>
@@ -536,7 +536,7 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
                   <div className="space-y-2 text-sm">
                     <div>
                       <p className="text-muted-foreground mb-1">BNB Wallet:</p>
-                      <p className="font-mono text-xs bg-white dark:bg-gray-900 p-2 rounded border break-all">
+                      <p className="font-mono text-xs bg-white dark:bg-green-900/30 p-2 rounded border break-all">
                         {bnbWallet}
                       </p>
                     </div>

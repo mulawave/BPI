@@ -124,7 +124,7 @@ export default function UserEditModal({
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-6">
                     {/* Basic Information */}
-                    <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                  <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                         <MdPerson size={24} />
                         Basic Information
@@ -161,7 +161,7 @@ export default function UserEditModal({
                     </div>
 
                     {/* Role & Status */}
-                    <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                  <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                         Role & Status
                       </h3>

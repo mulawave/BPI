@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { compare } from "bcryptjs";
 
 export const authConfig: NextAuthOptions = {
+  secret: process.env.NEXTAUTH_SECRET,
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" }, // Changed from "database" to "jwt" for better compatibility
   providers: [
@@ -66,13 +67,37 @@ export const authConfig: NextAuthOptions = {
         token.id = user.id;
         token.role = (user as any).role ?? "user";
       }
+
+      // Enrich token with membership flags (Edge-safe gating via middleware)
+      try {
+        if (token?.id) {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            include: { EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser: true },
+          });
+          const hasActiveStandardPackage = !!dbUser?.activeMembershipPackageId;
+          const hasActiveEmpowermentPackage = dbUser?.EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser?.some((p: any) =>
+            typeof p?.status === "string" && p.status.startsWith("Active")
+          ) ?? false;
+
+          (token as any).hasActiveMembership = hasActiveStandardPackage;
+          (token as any).hasActiveEmpowerment = hasActiveEmpowermentPackage;
+        }
+      } catch (e) {
+        // On error, default to no active packages to remain conservative
+        (token as any).hasActiveMembership = false;
+        (token as any).hasActiveEmpowerment = false;
+      }
+
       return token;
     },
     async session({ session, token }) {
-      // Pass user info from token to session
+      // Pass user info and membership flags from token to session
       if (token && session.user) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role;
+        (session.user as any).hasActiveMembership = (token as any).hasActiveMembership ?? false;
+        (session.user as any).hasActiveEmpowerment = (token as any).hasActiveEmpowerment ?? false;
       }
       return session;
     }

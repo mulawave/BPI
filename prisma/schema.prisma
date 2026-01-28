@@ -138,6 +138,22 @@ model Blog {
   User      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }
 
+model Page {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  category  String   @default("custom")
+  status    String   @default("draft")
+  summary   String?
+  body      String   @default("")
+  blocks    Json?
+  heroImage String?
+  createdBy String?
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model BpiMember {
   id                String   @id
   userId            String   @unique
@@ -167,6 +183,76 @@ model BptConversionRate {
   effectiveDate DateTime @default(now())
   createdBy     String?
   createdAt     DateTime @default(now())
+}
+
+model HelpCategory {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?
+  order       Int        @default(0)
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  topics      HelpTopic[]
+
+  @@index([isActive, order])
+}
+
+model HelpTopic {
+  id           String        @id @default(cuid())
+  categoryId   String?
+  category     HelpCategory? @relation(fields: [categoryId], references: [id])
+  title        String
+  slug         String        @unique
+  summary      String?
+  steps        Json?
+  faq          Json?
+  tags         String[]
+  isPublished  Boolean       @default(false)
+  viewCount    Int           @default(0)
+  helpfulYes   Int           @default(0)
+  helpfulNo    Int           @default(0)
+  createdById  String?
+  updatedById  String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  revisions    HelpRevision[]
+
+  @@index([isPublished, updatedAt])
+  @@index([categoryId])
+}
+
+model HelpRevision {
+  id              String    @id @default(cuid())
+  topicId         String
+  topic           HelpTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  contentSnapshot Json
+  createdById     String?
+  createdAt       DateTime  @default(now())
+
+  @@index([topicId, createdAt])
+}
+
+model HelpBotIntent {
+  id        String                   @id @default(cuid())
+  name      String                   @unique
+  response  String?
+  tags      String[]
+  isActive  Boolean                  @default(true)
+  createdAt DateTime                 @default(now())
+  updatedAt DateTime                 @updatedAt
+  examples  HelpBotTrainingExample[]
+}
+
+model HelpBotTrainingExample {
+  id        String        @id @default(cuid())
+  intentId  String
+  intent    HelpBotIntent @relation(fields: [intentId], references: [id], onDelete: Cascade)
+  utterance String
+  createdAt DateTime      @default(now())
+
+  @@index([intentId])
 }
 
 model BurnEvent {
@@ -401,6 +487,81 @@ model DealClaim {
   @@index([userId])
 }
 
+
+// -----------------------------
+// Blog models (additive, no back-rel on User required)
+// -----------------------------
+
+enum BlogPostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model BlogCategory {
+  id          Int         @id @default(autoincrement())
+  name        String
+  slug        String      @unique
+  description String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  posts       BlogPost[]
+}
+
+model BlogPost {
+  id                Int            @id @default(autoincrement())
+  title             String
+  slug              String         @unique
+  content           String
+  excerpt           String?
+  tags              String?
+  status            BlogPostStatus @default(DRAFT)
+  featured          Boolean        @default(false)
+  categoryId        Int?
+  category          BlogCategory?  @relation(fields: [categoryId], references: [id])
+  authorId          String?
+  author            User?          @relation(fields: [authorId], references: [id])
+  image             String?
+  imageUrl          String?
+  imageInternalized Boolean        @default(false)
+  viewCount         Int            @default(0)
+  legacyId          Int?
+  legacySource      String?
+  publishedAt       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  comments          BlogComment[]
+  views             BlogView[]
+
+  @@index([legacyId])
+}
+
+model BlogComment {
+  id        Int       @id @default(autoincrement())
+  content   String
+  postId    Int
+  post      BlogPost  @relation(fields: [postId], references: [id])
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id])
+  legacyId  Int?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([postId])
+}
+
+model BlogView {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  post      BlogPost @relation(fields: [postId], references: [id])
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  userAgent String?
+  ipAddress String?
+  viewedAt  DateTime @default(now())
+
+  @@index([postId])
+}
 model DigitalCrop {
   id               String      @id
   farmId           String
@@ -776,9 +937,9 @@ model PalliativeTicket {
   createdAt                             DateTime       @default(now())
   TicketCategory                        TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   User_PalliativeTicket_createdByToUser User           @relation("PalliativeTicket_createdByToUser", fields: [createdBy], references: [id], onDelete: Cascade)
-  User_PalliativeTicket_userIdToUser    User           @relation("PalliativeTicket_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
   PartnerOffer                          PartnerOffer   @relation(fields: [offerId], references: [id], onDelete: Cascade)
   Partner                               Partner        @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  User_PalliativeTicket_userIdToUser    User           @relation("PalliativeTicket_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model PalliativeWalletActivation {
@@ -956,6 +1117,226 @@ model SolarAssessment {
 
   @@index([assessmentStatus])
   @@index([userId])
+}
+
+// --- BPI Store v2 domain models ---
+
+enum ProductType {
+  PHYSICAL
+  DIGITAL
+  LICENSE
+  SERVICE
+  UTILITY
+}
+
+enum InventoryType {
+  UNLIMITED
+  LIMITED
+  TIME_BOUND
+}
+
+enum ProductStatus {
+  ACTIVE
+  PAUSED
+  RETIRED
+}
+
+enum RewardType {
+  CASH
+  CASHBACK
+  BPT
+  UTILITY_TOKEN
+}
+
+enum RewardValueType {
+  FIXED
+  PERCENTAGE
+}
+
+enum TokenRateSource {
+  FIXED
+  ADMIN_DAILY
+  ORACLE_FUTURE
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  DELIVERED
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum ClaimStatus {
+  NOT_READY
+  CODE_ISSUED
+  VERIFIED
+  COMPLETED
+}
+
+enum RewardSettlementState {
+  PENDING
+  ISSUED
+  FAILED
+}
+
+enum WalletType {
+  FIAT
+  CASHBACK
+  BPT
+  UTILITY
+}
+
+model RewardConfig {
+  id                  String           @id @default(cuid())
+  rewardType          RewardType
+  rewardValue         Decimal          @db.Decimal(18, 4)
+  rewardValueType     RewardValueType
+  vestingRule         String
+  maxRewardCap        Decimal?         @db.Decimal(18, 4)
+  utilityTokenSymbol  String?
+  isActive            Boolean          @default(true)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  products            Product[]
+}
+
+model PickupCenter {
+  id            String   @id @default(cuid())
+  name          String
+  addressLine1  String
+  addressLine2  String?
+  city          String
+  state         String
+  country       String
+  contactName   String?
+  contactPhone  String?
+  contactEmail  String?
+  logoUrl       String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  products      Product[]
+  orders        Order[]
+  pickupExperienceRatings PickupExperienceRating[]
+}
+
+model RewardCenter {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  products      Product[]
+  orders        Order[]
+}
+
+model Product {
+  id                  String          @id @default(cuid())
+  name                String
+  description         String
+  productType         ProductType
+  basePriceFiat       Decimal         @db.Decimal(18, 2)
+  acceptedTokens      String[]
+  tokenPaymentLimits  Json
+  rewardConfigId      String?
+  inventoryType       InventoryType   @default(UNLIMITED)
+  status              ProductStatus   @default(ACTIVE)
+  pickupCenterId      String?
+  rewardCenterId      String?
+  deliveryRequired    Boolean         @default(false)
+  heroBadge           String?
+  images              String[]        @default([])
+  featured            Boolean         @default(false)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  rewardConfig        RewardConfig?   @relation(fields: [rewardConfigId], references: [id])
+  pickupCenter        PickupCenter?   @relation(fields: [pickupCenterId], references: [id])
+  rewardCenter        RewardCenter?   @relation(fields: [rewardCenterId], references: [id])
+  orders              Order[]
+
+  @@index([productType, status])
+  @@index([pickupCenterId])
+  @@index([rewardCenterId])
+}
+
+model TokenRate {
+  id          String          @id @default(cuid())
+  symbol      String
+  rateToFiat  Decimal         @db.Decimal(18, 6)
+  source      TokenRateSource @default(FIXED)
+  effectiveAt DateTime        @default(now())
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([symbol, effectiveAt])
+}
+
+model Order {
+  id                     String                 @id @default(cuid())
+  productId              String
+  userId                 String
+  quantity               Int
+  pricingSnapshot        Json
+  paymentBreakdown       Json
+  status                 OrderStatus            @default(PENDING)
+  claimStatus            ClaimStatus            @default(NOT_READY)
+  claimCode              String?                @unique
+  pickupVerifiedAt       DateTime?
+  pickupVerifiedBy       String?
+  pickupCompletionConfirmedAt DateTime?
+  pickupCompletionConfirmedBy String?
+  feedbackInvitationSentAt DateTime?
+  feedbackSubmittedAt    DateTime?
+  rewardSettlementState  RewardSettlementState  @default(PENDING)
+  rewardConfigSnapshot   Json?
+  tokenRateSnapshot      Json?
+  pickupCenterId         String?
+  rewardCenterId         String?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  product                Product                @relation(fields: [productId], references: [id])
+  user                   User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pickupCenter           PickupCenter?          @relation(fields: [pickupCenterId], references: [id])
+  rewardCenter           RewardCenter?          @relation(fields: [rewardCenterId], references: [id])
+  pickupExperienceRating PickupExperienceRating?
+
+  @@index([userId, status])
+  @@index([productId])
+  @@index([pickupCenterId])
+}
+
+model PickupExperienceRating {
+  id            String   @id @default(cuid())
+  orderId       String   @unique
+  userId        String
+  pickupCenterId String?
+  rating        Int
+  comment       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  order         Order    @relation(fields: [orderId], references: [id])
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pickupCenter  PickupCenter? @relation(fields: [pickupCenterId], references: [id])
+
+  @@index([pickupCenterId])
+  @@index([userId])
+}
+
+model WalletBalance {
+  id         String     @id @default(cuid())
+  userId     String?
+  walletType WalletType
+  symbol     String?
+  balance    Decimal    @db.Decimal(28, 8) @default(0)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  User       User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, walletType, symbol])
 }
 
 model StoreOrder {
@@ -1299,6 +1680,9 @@ model User {
   BPICalculation                                                       BPICalculation[]
   BestDeal                                                             BestDeal[]
   Blog                                                                 Blog[]
+  BlogPosts                                                            BlogPost[]
+  BlogComments                                                         BlogComment[]
+  BlogViews                                                            BlogView[]
   BpiMember                                                            BpiMember?
   ChannelSubscription                                                  ChannelSubscription[]
   CommunityPost                                                        CommunityPost[]
@@ -1333,6 +1717,8 @@ model User {
   ShelterReward                                                        ShelterReward[]
   SolarAssessment                                                      SolarAssessment[]
   StoreOrder                                                           StoreOrder[]
+  Order                                                                Order[]
+  WalletBalance                                                        WalletBalance[]
   ThirdPartyRegistration_ThirdPartyRegistration_referredByUserIdToUser ThirdPartyRegistration[]     @relation("ThirdPartyRegistration_referredByUserIdToUser")
   ThirdPartyRegistration_ThirdPartyRegistration_userIdToUser           ThirdPartyRegistration[]     @relation("ThirdPartyRegistration_userIdToUser")
   TokenTransaction                                                     TokenTransaction[]
@@ -1341,18 +1727,21 @@ model User {
   Transaction                                                          Transaction[]
   TransactionHistory                                                   TransactionHistory[]
   UpdateRead                                                           UpdateRead[]
+  CspSupportRequests                                                   CspSupportRequest[]
+  CspContributions                                                     CspContribution[]
+  cityRelation                                                         City?                        @relation(fields: [cityId], references: [id])
+  countryRelation                                                      Country?                     @relation(fields: [countryId], references: [id])
   User                                                                 User?                        @relation("UserToUser", fields: [sponsorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   other_User                                                           User[]                       @relation("UserToUser")
+  stateRelation                                                        State?                       @relation(fields: [stateId], references: [id])
   UserEarning                                                          UserEarning[]
   UserFeatureProgress                                                  UserFeatureProgress[]
   UserThirdPartyLink                                                   UserThirdPartyLink[]
   WithdrawalHistory                                                    WithdrawalHistory[]
   YoutubeChannel                                                       YoutubeChannel[]
   YoutubeProvider                                                      YoutubeProvider?
-  cityRelation                                                         City?                        @relation(fields: [cityId], references: [id], onDelete: SetNull)
-  stateRelation                                                        State?                       @relation(fields: [stateId], references: [id], onDelete: SetNull)
-  countryRelation                                                      Country?                     @relation(fields: [countryId], references: [id], onDelete: SetNull)
   bankRecords                                                          UserBankRecord[]
+  PickupExperienceRatings                                              PickupExperienceRating[]
 
   @@index([cityId])
   @@index([stateId])
@@ -1649,4 +2038,54 @@ model UserBankRecord {
   @@index([bankId])
   @@index([userId, isDefault])
   @@map("bank_records")
+}
+
+model CspSupportRequest {
+  id                 String   @id @default(cuid())
+  userId             String
+  category           String   // "national" | "global"
+  amount             Int
+  purpose            String
+  notes              String?
+  status             String   @default("pending") // pending | approved | rejected | broadcasting | closed
+  thresholdAmount    Int
+  raisedAmount       Int      @default(0)
+  contributorsCount  Int      @default(0)
+  broadcastExpiresAt DateTime?
+  approvedBy         String?
+  approvedAt         DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  User               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Contributions      CspContribution[]
+  Extensions         CspBroadcastExtension[]
+
+  @@index([userId, status])
+  @@index([status, broadcastExpiresAt])
+}
+
+model CspContribution {
+  id            String   @id @default(cuid())
+  requestId     String
+  contributorId String
+  amount        Int
+  walletType    String   // community | cash
+  createdAt     DateTime @default(now())
+  Request       CspSupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  Contributor   User              @relation(fields: [contributorId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([contributorId])
+}
+
+model CspBroadcastExtension {
+  id           String   @id @default(cuid())
+  requestId    String
+  type         String   // paid | referrals
+  value        Int?
+  hoursGranted Int
+  createdAt    DateTime @default(now())
+  Request      CspSupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
 }

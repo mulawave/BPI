@@ -25,7 +25,12 @@ export type NotificationType =
   | "WITHDRAWAL_PROCESSING"
   | "WITHDRAWAL_COMPLETED"
   | "WITHDRAWAL_REJECTED"
-  | "WITHDRAWAL_FAILED";
+  | "WITHDRAWAL_FAILED"
+  | "CSP_REQUEST_SUBMITTED"
+  | "CSP_REQUEST_APPROVED"
+  | "CSP_BROADCAST_EXTENDED"
+  | "CSP_CONTRIBUTION_RECEIVED"
+  | "CSP_CONTRIBUTION_SENT";
 
 interface NotificationData {
   userId: string;
@@ -34,6 +39,56 @@ interface NotificationData {
   message: string;
   actionUrl?: string;
   metadata?: Record<string, any>;
+}
+
+export async function notifyCspRequestSubmitted(userId: string, category: string, amount: number) {
+  await sendNotification({
+    userId,
+    type: "CSP_REQUEST_SUBMITTED",
+    title: "CSP request submitted",
+    message: `Your ${category} CSP request for ₦${amount.toLocaleString()} was submitted. Awaiting admin approval.`,
+    actionUrl: "/csp",
+  });
+}
+
+export async function notifyCspRequestApproved(userId: string, category: string, threshold: number, expiresAt?: Date | null) {
+  await sendNotification({
+    userId,
+    type: "CSP_REQUEST_APPROVED",
+    title: "CSP request approved",
+    message: `Your ${category} CSP request is live. Threshold ₦${threshold.toLocaleString()}` + (expiresAt ? `, ends ${expiresAt.toLocaleString()}.` : "."),
+    actionUrl: "/csp",
+  });
+}
+
+export async function notifyCspContributionReceived(requestOwnerId: string, amount: number) {
+  await sendNotification({
+    userId: requestOwnerId,
+    type: "CSP_CONTRIBUTION_RECEIVED",
+    title: "Contribution received",
+    message: `You received a CSP contribution of ₦${amount.toLocaleString()} to your community wallet.`,
+    actionUrl: "/csp",
+  });
+}
+
+export async function notifyCspContributionSent(contributorId: string, amount: number, walletType: string) {
+  await sendNotification({
+    userId: contributorId,
+    type: "CSP_CONTRIBUTION_SENT",
+    title: "Contribution sent",
+    message: `You contributed ₦${amount.toLocaleString()} via ${walletType} wallet to a CSP request.`,
+    actionUrl: "/csp",
+  });
+}
+
+export async function notifyCspBroadcastExtended(userId: string, hours: number) {
+  await sendNotification({
+    userId,
+    type: "CSP_BROADCAST_EXTENDED",
+    title: "Broadcast extended",
+    message: `Your CSP broadcast was extended by ${hours} hour(s).`,
+    actionUrl: "/csp",
+  });
 }
 
 /**

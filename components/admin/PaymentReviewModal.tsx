@@ -167,7 +167,7 @@ export default function PaymentReviewModal({
                         ? "Please provide a clear reason for rejecting this payment..."
                         : "Add any notes or comments about this payment..."
                     }
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
                   />
                   <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                     {action === "reject"

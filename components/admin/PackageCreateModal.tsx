@@ -179,7 +179,7 @@ export default function PackageCreateModal({
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Left Column - Basic Info */}
                   <div className="space-y-6">
-                    <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                  <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                         Basic Information
                       </h3>
@@ -195,7 +195,7 @@ export default function PackageCreateModal({
                           onChange={(e) =>
                             setFormData((prev) => ({ ...prev, name: e.target.value }))
                           }
-                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                           placeholder="Enter package name"
                           required
                         />
@@ -211,7 +211,7 @@ export default function PackageCreateModal({
                           onChange={(e) =>
                             setFormData((prev) => ({ ...prev, packageType: e.target.value }))
                           }
-                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                         >
                           <option value="STANDARD">STANDARD</option>
                           <option value="PREMIUM">PREMIUM</option>
@@ -229,7 +229,7 @@ export default function PackageCreateModal({
                             type="number"
                             value={formData.price}
                             onChange={(e) => handlePriceChange(parseFloat(e.target.value) || 0)}
-                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                             placeholder="0.00"
                             step="0.01"
                             min="0"
@@ -278,7 +278,7 @@ export default function PackageCreateModal({
                               renewalFee: parseFloat(e.target.value) || 0,
                             }))
                           }
-                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                           placeholder="0.00"
                           step="0.01"
                           min="0"
@@ -316,7 +316,7 @@ export default function PackageCreateModal({
                     </div>
 
                     {/* Features */}
-                    <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                  <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                         Package Features
                       </h3>
@@ -337,7 +337,7 @@ export default function PackageCreateModal({
                                 newFeatures[idx] = e.target.value;
                                 setFormData((prev) => ({ ...prev, features: newFeatures }));
                               }}
-                              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                            className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                             />
                             <button
                               type="button"
@@ -359,7 +359,7 @@ export default function PackageCreateModal({
                                 addFeature();
                               }
                             }}
-                            className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                             placeholder="Add a new feature..."
                           />
                           <button
@@ -376,7 +376,7 @@ export default function PackageCreateModal({
 
                   {/* Right Column - Referral Rewards */}
                   <div className="space-y-6">
-                    <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-6">
+                  <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-6">
                       <button
                         type="button"
                         onClick={() => setShowAdvanced(!showAdvanced)}
@@ -421,7 +421,7 @@ export default function PackageCreateModal({
                                         [`cash_l${level}`]: parseFloat(e.target.value) || 0,
                                       }))
                                     }
-                                    className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                                  className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                                     step="0.01"
                                     min="0"
                                   />
@@ -439,7 +439,7 @@ export default function PackageCreateModal({
                                         [`bpt_l${level}`]: parseFloat(e.target.value) || 0,
                                       }))
                                     }
-                                    className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                                  className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                                     step="0.01"
                                     min="0"
                                   />
@@ -459,7 +459,7 @@ export default function PackageCreateModal({
                                         [`palliative_l${level}`]: parseFloat(e.target.value) || 0,
                                       }))
                                     }
-                                    className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                                  className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
                                     step="0.01"
                                     min="0"
                                   />

@@ -424,7 +424,7 @@ export default function TestingDashboard() {
               transition={{ duration: 0.2 }}
               className="border-t border-gray-200 dark:border-gray-700"
             >
-              <div className="p-4 bg-gray-50 dark:bg-gray-900/50">
+              <div className="p-4 bg-gray-50 dark:bg-green-900/30/50">
                 {/* Test Steps */}
                 <div className="mb-4">
                   <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">

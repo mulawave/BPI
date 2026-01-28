@@ -20,6 +20,21 @@ import {
   processCompositePackagePurchase 
 } from "@/server/services/compositePackages.service";
 
+const CSP_COMMUNITY_CREDIT_AMOUNT = 10000;
+const qualifiesForCspCommunityCredit = (packageName: string) => {
+  const qualifyingNames = [
+    "Regular Plus",
+    "Gold",
+    "Gold Plus",
+    "Platinum",
+    "Platinum Plus",
+    "Travel & Tour Agent",
+    "Basic Early Retirement",
+    "Child Educational / Vocational Support",
+  ];
+  return qualifyingNames.some((name) => name.toLowerCase() === packageName.toLowerCase());
+};
+
 export const packageRouter = createTRPCRouter({
   getPackages: publicProcedure.query(async () => {
     return await prisma.membershipPackage.findMany();
@@ -355,7 +370,11 @@ export const packageRouter = createTRPCRouter({
         palliativeData.palliative = 0;
       }
 
-      // Update the user's active package and membership dates
+      const cspCommunityCredit = qualifiesForCspCommunityCredit(membershipPackage.name)
+        ? CSP_COMMUNITY_CREDIT_AMOUNT
+        : 0;
+
+      // Update the user's active package and membership dates (include CSP credit if eligible)
       await prisma.user.update({
         where: { id: userId },
         data: { 
@@ -363,6 +382,7 @@ export const packageRouter = createTRPCRouter({
           membershipActivatedAt: activatedAt,
           membershipExpiresAt: expiresAt,
           activated: true,
+          ...(cspCommunityCredit > 0 ? { community: { increment: cspCommunityCredit } } : {}),
           ...palliativeData,
         },
       });
@@ -379,6 +399,22 @@ export const packageRouter = createTRPCRouter({
           reference: `MOCK-${packageId}-${Date.now()}`,
         }
       });
+
+      // Record CSP community credit (if applicable)
+      if (cspCommunityCredit > 0) {
+        await prisma.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "CSP_COMMUNITY_CREDIT",
+            amount: cspCommunityCredit,
+            description: `${membershipPackage.name} activation CSP community credit`,
+            status: "completed",
+            reference: `CSP-CREDIT-${packageId}-${Date.now()}`,
+            walletType: "community",
+          },
+        });
+      }
 
       // Create VAT transaction record
       if (membershipPackage.vat > 0) {
@@ -505,6 +541,10 @@ export const packageRouter = createTRPCRouter({
         }
       }
       
+      const cspCommunityCredit = qualifiesForCspCommunityCredit(membershipPackage.name)
+        ? CSP_COMMUNITY_CREDIT_AMOUNT
+        : 0;
+
       // Update the user's active package and membership dates
       await prisma.user.update({
         where: { id: userId },
@@ -513,8 +553,25 @@ export const packageRouter = createTRPCRouter({
           membershipActivatedAt: activatedAt,
           membershipExpiresAt: expiresAt,
           activated: true,
+          ...(cspCommunityCredit > 0 ? { community: { increment: cspCommunityCredit } } : {}),
         },
       });
+
+      // Record CSP community credit (if applicable)
+      if (cspCommunityCredit > 0) {
+        await prisma.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "CSP_COMMUNITY_CREDIT",
+            amount: cspCommunityCredit,
+            description: `${membershipPackage.name} activation CSP community credit`,
+            status: "completed",
+            reference: `CSP-CREDIT-${packageId}-${Date.now()}`,
+            walletType: "community",
+          },
+        });
+      }
 
       // Send activation notification
       await notifyMembershipActivation(userId, membershipPackage.name, expiresAt);
@@ -1085,7 +1142,9 @@ export const packageRouter = createTRPCRouter({
 
       // Calculate actual conversion cost from database
       const CONVERSION_COST = regularPlusPackage.price + regularPlusPackage.vat;
-      const COMMUNITY_CREDIT = 0;
+      const COMMUNITY_CREDIT = qualifiesForCspCommunityCredit(regularPlusPackage.name)
+        ? CSP_COMMUNITY_CREDIT_AMOUNT
+        : 0;
 
       if (user.wallet < CONVERSION_COST) {
         throw new Error(`Insufficient balance. Need ${CONVERSION_COST} for conversion.`);
@@ -1133,6 +1192,22 @@ export const packageRouter = createTRPCRouter({
           performedBy: userId,
         },
       });
+
+      // Record CSP community credit for audit
+      if (COMMUNITY_CREDIT > 0) {
+        await prisma.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "CSP_COMMUNITY_CREDIT",
+            amount: COMMUNITY_CREDIT,
+            description: `Conversion to Regular Plus CSP community credit`,
+            status: "completed",
+            reference: `CSP-CREDIT-CONVERSION-${empowermentId}-${Date.now()}`,
+            walletType: "community",
+          },
+        });
+      }
 
       return {
         success: true,
@@ -1457,6 +1532,10 @@ export const packageRouter = createTRPCRouter({
         }
       }
 
+      const newQualifiesForCsp = qualifiesForCspCommunityCredit(newPackage.name);
+      const currentQualifiesForCsp = qualifiesForCspCommunityCredit(currentPackage.name);
+      const cspCommunityCredit = newQualifiesForCsp && !currentQualifiesForCsp ? CSP_COMMUNITY_CREDIT_AMOUNT : 0;
+
       // Update user's membership
       await prisma.user.update({
         where: { id: userId },
@@ -1464,6 +1543,7 @@ export const packageRouter = createTRPCRouter({
           activeMembershipPackageId: packageId,
           membershipActivatedAt: activatedAt,
           membershipExpiresAt: expiresAt,
+          ...(cspCommunityCredit > 0 ? { community: { increment: cspCommunityCredit } } : {}),
           ...palliativeUpdateData,
         },
       });
@@ -1480,6 +1560,22 @@ export const packageRouter = createTRPCRouter({
           reference: `UPGRADE-${Date.now()}`,
         },
       });
+
+      // Record CSP community credit (if applicable on upgrade)
+      if (cspCommunityCredit > 0) {
+        await prisma.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "CSP_COMMUNITY_CREDIT",
+            amount: cspCommunityCredit,
+            description: `Upgrade to ${newPackage.name} CSP community credit`,
+            status: "completed",
+            reference: `CSP-CREDIT-UPGRADE-${packageId}-${Date.now()}`,
+            walletType: "community",
+          },
+        });
+      }
 
       // Create VAT transaction for upgrade (differential VAT)
       const vatDifferential = newPackage.vat - currentPackage.vat;
