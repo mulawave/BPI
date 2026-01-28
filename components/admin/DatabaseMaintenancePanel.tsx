@@ -5,10 +5,12 @@ import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import {
   MdDeleteSweep,
+  MdDownload,
   MdRefresh,
   MdShield,
   MdStorage,
   MdTableChart,
+  MdUpload,
   MdWarningAmber,
 } from "react-icons/md";
 import { api } from "@/client/trpc";
@@ -63,6 +65,12 @@ export default function DatabaseMaintenancePanel() {
     { refetchOnWindowFocus: false }
   );
   const truncateMutation = api.admin.truncateTable.useMutation();
+  const exportMutation = api.admin.exportTableData.useQuery(
+    { tableName: "" },
+    { enabled: false }
+  );
+  const importMutation = api.admin.importTableData.useMutation();
+  
   const [previewTable, setPreviewTable] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const previewQuery = api.admin.previewTable.useQuery(
@@ -101,6 +109,76 @@ export default function DatabaseMaintenancePanel() {
   const [processingTable, setProcessingTable] = useState<string | null>(null);
   const confirmTargetRef = useRef<string | null>(null);
   const [confirmWipe, setConfirmWipe] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importingTable, setImportingTable] = useState<string | null>(null);
+
+  const handleExport = async (tableName: string) => {
+    const toastId = toast.loading(`Exporting ${tableName}...`);
+    try {
+      const result = await exportMutation.refetch({ tableName });
+      if (result.data) {
+        const jsonData = JSON.stringify(result.data.data, null, 2);
+        const blob = new Blob([jsonData], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${tableName}_export_${new Date().toISOString().split("T")[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success(`Exported ${result.data.rowCount} rows from ${tableName}`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to export table data");
+    } finally {
+      toast.dismiss(toastId);
+    }
+  };
+
+  const handleImport = (tableName: string) => {
+    setImportingTable(tableName);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !importingTable) return;
+
+    const toastId = toast.loading(`Importing data to ${importingTable}...`);
+    try {
+      const text = await file.text();
+      const parsedData = JSON.parse(text);
+      
+      // Handle both direct array and export format
+      let dataArray: any[];
+      if (Array.isArray(parsedData)) {
+        dataArray = parsedData;
+      } else if (parsedData.data && Array.isArray(parsedData.data)) {
+        dataArray = parsedData.data;
+      } else {
+        throw new Error("Invalid file format. Expected JSON array or export object with 'data' array.");
+      }
+
+      const result = await importMutation.mutateAsync({
+        tableName: importingTable,
+        data: dataArray,
+      });
+
+      toast.success(
+        `Import complete: ${result.inserted} inserted, ${result.updated} updated${result.errors > 0 ? `, ${result.errors} errors` : ""}`
+      );
+      await refetch();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to import table data");
+    } finally {
+      toast.dismiss(toastId);
+      setImportingTable(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   useEffect(() => {
     if (error) {
@@ -215,6 +293,13 @@ export default function DatabaseMaintenancePanel() {
 
   return (
     <div className="space-y-8 pb-16">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
       <motion.div
         initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -424,6 +509,24 @@ export default function DatabaseMaintenancePanel() {
                           ) : (
                             <span>Preview</span>
                           )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="flex items-center gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-200 dark:hover:bg-emerald-950"
+                          onClick={() => handleExport(table.name)}
+                          disabled={busy}
+                        >
+                          <MdDownload className="h-4 w-4" />
+                          Export
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="flex items-center gap-2 border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-200 dark:hover:bg-blue-950"
+                          onClick={() => handleImport(table.name)}
+                          disabled={busy || importMutation.isPending}
+                        >
+                          <MdUpload className="h-4 w-4" />
+                          Import
                         </Button>
                         <Button
                           variant="outline"

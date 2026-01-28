@@ -3307,6 +3307,140 @@ export const adminRouter = createTRPCRouter({
     };
   }),
 
+  exportTableData: superAdminProcedure
+    .input(z.object({ tableName: z.string().min(1, "Table name is required") }))
+    .query(async ({ input }) => {
+      const exists = await prisma.$queryRaw<
+        Array<{ schemaname: string; tablename: string; quoted_name: string }>
+      >`
+        SELECT schemaname, tablename, quote_ident(tablename) as quoted_name
+        FROM pg_tables
+        WHERE schemaname = 'public' AND tablename = ${input.tableName}
+      `;
+
+      const target = exists[0];
+      if (!target) {
+        throw new Error("Table not found in public schema");
+      }
+
+      const tableIdent = `"${target.schemaname}".${target.quoted_name}`;
+      const rows = await prisma.$queryRawUnsafe<any[]>(`SELECT * FROM ${tableIdent};`);
+
+      return {
+        tableName: target.tablename,
+        schema: target.schemaname,
+        rowCount: rows.length,
+        data: rows,
+        exportedAt: new Date().toISOString(),
+      };
+    }),
+
+  importTableData: superAdminProcedure
+    .input(
+      z.object({
+        tableName: z.string().min(1, "Table name is required"),
+        data: z.array(z.record(z.any())),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const now = new Date();
+
+      if (!input.data.length) {
+        throw new Error("No data provided for import");
+      }
+
+      const exists = await prisma.$queryRaw<
+        Array<{ schemaname: string; tablename: string; quoted_name: string }>
+      >`
+        SELECT schemaname, tablename, quote_ident(tablename) as quoted_name
+        FROM pg_tables
+        WHERE schemaname = 'public' AND tablename = ${input.tableName}
+      `;
+
+      const target = exists[0];
+      if (!target) {
+        throw new Error("Table not found in public schema");
+      }
+
+      const tableIdent = `"${target.schemaname}".${target.quoted_name}`;
+
+      // Get column names from the first row
+      const columns = Object.keys(input.data[0]);
+      
+      let inserted = 0;
+      let updated = 0;
+      let errors = 0;
+
+      // Import each row with upsert logic
+      for (const row of input.data) {
+        try {
+          const columnNames = columns.map((col) => `"${col}"`).join(", ");
+          const placeholders = columns.map((_, i) => `$${i + 1}`).join(", ");
+          const values = columns.map((col) => {
+            const val = row[col];
+            // Handle dates
+            if (val && typeof val === "string" && /^\d{4}-\d{2}-\d{2}T/.test(val)) {
+              return new Date(val);
+            }
+            return val;
+          });
+
+          // Check if row exists (assumes first column is ID)
+          const idCol = columns[0];
+          const existing = await prisma.$queryRawUnsafe<any[]>(
+            `SELECT * FROM ${tableIdent} WHERE "${idCol}" = $1 LIMIT 1;`,
+            row[idCol]
+          );
+
+          if (existing.length > 0) {
+            // Update existing row
+            const setClauses = columns
+              .map((col, i) => `"${col}" = $${i + 1}`)
+              .join(", ");
+            await prisma.$queryRawUnsafe(
+              `UPDATE ${tableIdent} SET ${setClauses} WHERE "${idCol}" = $${columns.length + 1};`,
+              ...values,
+              row[idCol]
+            );
+            updated++;
+          } else {
+            // Insert new row
+            await prisma.$queryRawUnsafe(
+              `INSERT INTO ${tableIdent} (${columnNames}) VALUES (${placeholders});`,
+              ...values
+            );
+            inserted++;
+          }
+        } catch (err) {
+          console.error(`Error importing row:`, err);
+          errors++;
+        }
+      }
+
+      try {
+        await prisma.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: (ctx.session?.user as any)?.id || "system",
+            action: "IMPORT_TABLE_DATA",
+            entity: "DatabaseTable",
+            entityId: target.tablename,
+            status: "success",
+            changes: JSON.stringify({ inserted, updated, errors, totalRows: input.data.length }),
+            createdAt: now,
+          },
+        });
+      } catch (_) {}
+
+      return {
+        tableName: target.tablename,
+        inserted,
+        updated,
+        errors,
+        totalRows: input.data.length,
+      };
+    }),
+
   getPendingEmpowermentPackages: adminProcedure.query(async () => {
     return await prisma.empowermentPackage.findMany({
       where: {
