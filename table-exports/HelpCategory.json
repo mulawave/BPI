@@ -1,0 +1,92 @@
+[
+  {
+    "id": "cmkxg7u1800009qrylsr1y7ll",
+    "name": "Getting Started",
+    "slug": "general",
+    "description": "Basics and onboarding",
+    "order": 1,
+    "isActive": true,
+    "createdAt": "2026-01-28T03:11:20.011Z",
+    "updatedAt": "2026-01-28T21:03:27.573Z"
+  },
+  {
+    "id": "cmkxg7u2o00019qry7aehzylq",
+    "name": "Dashboard",
+    "slug": "dashboard",
+    "description": "Portfolio and daily actions",
+    "order": 2,
+    "isActive": true,
+    "createdAt": "2026-01-28T03:11:20.064Z",
+    "updatedAt": "2026-01-28T21:03:27.586Z"
+  },
+  {
+    "id": "cmkxg7u3l00029qrylr3tuswe",
+    "name": "Store",
+    "slug": "store",
+    "description": "Browse, checkout, and pickup",
+    "order": 3,
+    "isActive": true,
+    "createdAt": "2026-01-28T03:11:20.097Z",
+    "updatedAt": "2026-01-28T21:03:27.592Z"
+  },
+  {
+    "id": "cmkxg7u4t00039qrytpfl1u0r",
+    "name": "Blog",
+    "slug": "blog",
+    "description": "Read and comment",
+    "order": 4,
+    "isActive": true,
+    "createdAt": "2026-01-28T03:11:20.141Z",
+    "updatedAt": "2026-01-28T21:03:27.598Z"
+  },
+  {
+    "id": "cmkxg7u5m00049qrysnilcfb0",
+    "name": "CSP",
+    "slug": "csp",
+    "description": "Community Support Program",
+    "order": 5,
+    "isActive": true,
+    "createdAt": "2026-01-28T03:11:20.171Z",
+    "updatedAt": "2026-01-28T21:03:27.603Z"
+  },
+  {
+    "id": "cmkxg7u7500059qrykxq7r85a",
+    "name": "Account",
+    "slug": "account",
+    "description": "Profile and settings",
+    "order": 6,
+    "isActive": true,
+    "createdAt": "2026-01-28T03:11:20.225Z",
+    "updatedAt": "2026-01-28T21:03:27.609Z"
+  },
+  {
+    "id": "cmkxg7u7m00069qrypnvtldmi",
+    "name": "Security",
+    "slug": "security",
+    "description": "PIN and 2FA",
+    "order": 7,
+    "isActive": true,
+    "createdAt": "2026-01-28T03:11:20.242Z",
+    "updatedAt": "2026-01-28T21:03:27.615Z"
+  },
+  {
+    "id": "cmkxg7u8n00079qryu1g7vf7b",
+    "name": "Troubleshooting",
+    "slug": "troubleshooting",
+    "description": "Fix common issues",
+    "order": 8,
+    "isActive": true,
+    "createdAt": "2026-01-28T03:11:20.279Z",
+    "updatedAt": "2026-01-28T21:03:27.621Z"
+  },
+  {
+    "id": "cmkxg7u9h00089qrybai7a0jo",
+    "name": "Help Center",
+    "slug": "help-center",
+    "description": "Support and guidance",
+    "order": 9,
+    "isActive": true,
+    "createdAt": "2026-01-28T03:11:20.309Z",
+    "updatedAt": "2026-01-28T21:03:27.627Z"
+  }
+]

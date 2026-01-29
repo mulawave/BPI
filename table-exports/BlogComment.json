@@ -1,0 +1,56 @@
+[
+  {
+    "id": 1,
+    "content": "Awesome!!",
+    "postId": 1,
+    "userId": "3d101cbb-4ba7-410c-be8b-6b179fb60b76",
+    "legacyId": 0,
+    "createdAt": "2024-06-17T22:58:37.000Z",
+    "updatedAt": "2026-01-24T10:49:14.748Z"
+  },
+  {
+    "id": 2,
+    "content": "This is awesome guys",
+    "postId": 3,
+    "userId": "511d41cc-de44-410b-b0ec-b6d6e3cf913e",
+    "legacyId": 0,
+    "createdAt": "2024-07-16T12:31:49.000Z",
+    "updatedAt": "2026-01-24T10:49:14.785Z"
+  },
+  {
+    "id": 3,
+    "content": "Awesome!!",
+    "postId": 1,
+    "userId": "3d101cbb-4ba7-410c-be8b-6b179fb60b76",
+    "legacyId": 0,
+    "createdAt": "2024-06-17T22:58:37.000Z",
+    "updatedAt": "2026-01-24T10:49:14.748Z"
+  },
+  {
+    "id": 4,
+    "content": "This is awesome guys",
+    "postId": 3,
+    "userId": "511d41cc-de44-410b-b0ec-b6d6e3cf913e",
+    "legacyId": 0,
+    "createdAt": "2024-07-16T12:31:49.000Z",
+    "updatedAt": "2026-01-24T10:49:14.785Z"
+  },
+  {
+    "id": 5,
+    "content": "Awesome!!",
+    "postId": 1,
+    "userId": "3d101cbb-4ba7-410c-be8b-6b179fb60b76",
+    "legacyId": 0,
+    "createdAt": "2024-06-17T22:58:37.000Z",
+    "updatedAt": "2026-01-24T10:49:14.748Z"
+  },
+  {
+    "id": 6,
+    "content": "This is awesome guys",
+    "postId": 3,
+    "userId": "511d41cc-de44-410b-b0ec-b6d6e3cf913e",
+    "legacyId": 0,
+    "createdAt": "2024-07-16T12:31:49.000Z",
+    "updatedAt": "2026-01-24T10:49:14.785Z"
+  }
+]

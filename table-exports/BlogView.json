@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "postId": 1,
+    "userId": "3d101cbb-4ba7-410c-be8b-6b179fb60b76",
+    "userAgent": null,
+    "ipAddress": null,
+    "viewedAt": "2026-01-24T20:57:24.960Z"
+  },
+  {
+    "id": 2,
+    "postId": 1,
+    "userId": "3d101cbb-4ba7-410c-be8b-6b179fb60b76",
+    "userAgent": null,
+    "ipAddress": null,
+    "viewedAt": "2026-01-24T20:57:24.960Z"
+  },
+  {
+    "id": 3,
+    "postId": 1,
+    "userId": "3d101cbb-4ba7-410c-be8b-6b179fb60b76",
+    "userAgent": null,
+    "ipAddress": null,
+    "viewedAt": "2026-01-24T20:57:24.960Z"
+  }
+]
