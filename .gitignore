@@ -55,7 +55,8 @@ backup/
 backups/
 
 # Logs and reports
-logs/
+logs/*.log
+*.log
 test-results/
 reports/
 
