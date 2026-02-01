@@ -53,7 +53,11 @@ export const walletRouter = createTRPCRouter({
       const totalAmount = amount + vatAmount;
 
       const userName = [user.firstname, user.lastname].filter(Boolean).join(" ") || user.name || "User";
-      const callbackUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/dashboard?payment=success`;
+      
+      // Use NEXTAUTH_URL from env, fallback to production domain if not set
+      const baseUrl = process.env.NEXTAUTH_URL || 
+                     (process.env.NODE_ENV === 'production' ? 'https://beepagro.com' : 'http://localhost:3000');
+      const callbackUrl = `${baseUrl}/dashboard?payment=success`;
 
       // Handle Paystack payments
       if (paymentGateway === 'paystack') {
