@@ -293,7 +293,7 @@ export async function sendWithdrawalRequestToAdmins(
   // Send to all admins
   const emailPromises = admins.map(admin =>
     sendEmail({
-      to: admin.email,
+      to: admin.email || '',
       subject: `🔔 New Withdrawal Request - ₦${amount.toLocaleString()} from ${userName}`,
       html,
     }).catch(error => {

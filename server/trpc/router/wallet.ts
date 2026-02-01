@@ -444,7 +444,7 @@ export const walletRouter = createTRPCRouter({
             console.log("📧 [EMAIL] Sending admin notifications...");
             await sendWithdrawalRequestToAdmins(
               user.name || user.email || 'User',
-              user.email,
+              user.email || '',
               amount,
               withdrawalType,
               txReference
@@ -505,9 +505,8 @@ export const walletRouter = createTRPCRouter({
                 console.log("🔄 [WITHDRAWAL] Updating transaction with Flutterwave reference...");
                 await prisma.transaction.update({
                   where: { id: transaction.id },
-                  data: { 
+                  data: {
                     status: "completed",
-                    gatewayReference: transferResult.id || transferResult.reference || txReference
                   }
                 });
                 console.log("✅ [WITHDRAWAL] Transaction updated to completed");

@@ -1180,7 +1180,6 @@ export const adminRouter = createTRPCRouter({
               id: true,
               name: true,
               email: true,
-              phone: true,
               username: true,
               bankRecords: {
                 include: { bank: true }
@@ -1307,8 +1306,6 @@ export const adminRouter = createTRPCRouter({
           where: { id: withdrawalId },
           data: {
             status: "completed",
-            gatewayReference: gatewayReference,
-            updatedAt: new Date(),
           }
         });
         console.log("✅ [ADMIN-APPROVAL] Transaction updated successfully");
@@ -1341,7 +1338,7 @@ export const adminRouter = createTRPCRouter({
         try {
           console.log("📧 [EMAIL] Sending approval email to user...");
           await sendWithdrawalApprovedToUser(
-            withdrawal.User.email,
+            withdrawal.User.email || '',
             withdrawal.User.name || 'User',
             amount,
             isCashWithdrawal ? 'cash' : 'bpt',
@@ -1438,7 +1435,6 @@ export const adminRouter = createTRPCRouter({
         where: { id: withdrawalId },
         data: {
           status: "rejected",
-          updatedAt: new Date(),
         }
       });
 
@@ -1511,7 +1507,7 @@ export const adminRouter = createTRPCRouter({
       // Send email notification to user
       try {
         await sendWithdrawalRejectedToUser(
-          withdrawal.User.email,
+          withdrawal.User.email || '',
           withdrawal.User.name || 'User',
           amount,
           txReference,

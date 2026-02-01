@@ -105,7 +105,6 @@ export async function POST(req: NextRequest) {
         { error: "Invalid signature" },
         { status: 401 }
       );
-      );
     }
 
     // Only process successful payments
