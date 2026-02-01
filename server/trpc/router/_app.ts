@@ -27,6 +27,7 @@ import { membershipPackagesRouter } from "./membershipPackages";
 import { epcEppRouter } from "./epcEpp";
 import { solarAssessmentRouter } from "./solarAssessment";
 import { trainingCenterRouter } from "./trainingCenter";
+import { digitalFarmRouter } from "./digitalFarm";
 import { currencyRouter } from "./currency";
 import { youtubeRouter } from "./youtube";
 import { thirdPartyPlatformsRouter } from "./thirdPartyPlatforms";
@@ -76,6 +77,7 @@ export const appRouter = createTRPCRouter({
   epcEpp: epcEppRouter,
   solarAssessment: solarAssessmentRouter,
   trainingCenter: trainingCenterRouter,
+  digitalFarm: digitalFarmRouter,
   currency: currencyRouter,
   youtube: youtubeRouter,
   thirdPartyPlatforms: thirdPartyPlatformsRouter,

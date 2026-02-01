@@ -28,6 +28,10 @@ import {
   Palette,
   RadioTower,
   MapPin,
+  ArrowDownToLine,
+  Image,
+  GraduationCap,
+  Activity,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -74,6 +78,12 @@ const navigation = [
     icon: CreditCard,
     description: "Payment verification",
     badge: "pending"
+  },
+  { 
+    name: "Withdrawals", 
+    href: "/admin/withdrawals", 
+    icon: ArrowDownToLine,
+    description: "Approve withdrawal requests"
   },
   { 
     name: "Store", 
@@ -154,6 +164,28 @@ const navigation = [
     description: "External opportunities"
   },
   { 
+    name: "Promotional Materials", 
+    href: "/admin/promotional-materials", 
+    icon: Image,
+    description: "Marketing assets & downloads"
+  },
+  { 
+    name: "Training Center", 
+    href: "/admin/training", 
+    icon: GraduationCap,
+    description: "Courses & lessons"
+  },
+  { 
+    name: "Logs", 
+    href: "/admin/logs/deposits", 
+    icon: Activity,
+    description: "Transaction logs",
+    submenu: [
+      { name: "Deposit Logs", href: "/admin/logs/deposits" },
+      { name: "Withdrawal Logs", href: "/admin/logs/withdrawals" },
+    ]
+  },
+  { 
     name: "Audit Logs", 
     href: "/admin/audit", 
     icon: ScrollText,
@@ -187,9 +219,10 @@ const navigation = [
 
 interface AdminSidebarProps {
   pendingCount?: number;
+  pendingWithdrawalsCount?: number;
 }
 
-export default function AdminSidebar({ pendingCount = 0 }: AdminSidebarProps) {
+export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount = 0 }: AdminSidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
@@ -246,6 +279,8 @@ export default function AdminSidebar({ pendingCount = 0 }: AdminSidebarProps) {
               const isActive = pathname === item.href || item.submenu?.some(sub => pathname === sub.href);
               const Icon = item.icon;
               const showBadge = item.badge === "pending" && pendingCount > 0;
+              const showWithdrawalBadge = item.name === "Withdrawals" && pendingWithdrawalsCount > 0;
+              const badgeCount = item.badge === "pending" ? pendingCount : item.name === "Withdrawals" ? pendingWithdrawalsCount : 0;
               const isPending = pendingHref === item.href;
               const isExpanded = expandedMenus.includes(item.name);
               const hasSubmenu = !!item.submenu;
@@ -292,9 +327,9 @@ export default function AdminSidebar({ pendingCount = 0 }: AdminSidebarProps) {
                                 Loading
                               </span>
                             )}
-                            {showBadge && (
+                            {(showBadge || showWithdrawalBadge) && badgeCount > 0 && (
                               <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white">
-                                {pendingCount}
+                                {badgeCount}
                               </span>
                             )}
                             {hasSubmenu && (
@@ -309,9 +344,9 @@ export default function AdminSidebar({ pendingCount = 0 }: AdminSidebarProps) {
                         </div>
                       </>
                     )}
-                    {collapsed && showBadge && (
+                    {collapsed && (showBadge || showWithdrawalBadge) && badgeCount > 0 && (
                       <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                        {pendingCount > 9 ? "9+" : pendingCount}
+                        {badgeCount > 9 ? "9+" : badgeCount}
                       </span>
                     )}
                   </Link>
@@ -321,12 +356,18 @@ export default function AdminSidebar({ pendingCount = 0 }: AdminSidebarProps) {
                     <div className="ml-8 mt-1 space-y-1">
                       {item.submenu.map((subItem) => {
                         const isSubActive = pathname === subItem.href;
+                        const isSubPending = pendingHref === subItem.href;
                         return (
                           <Link
                             key={subItem.href}
                             href={subItem.href}
+                            onClick={() => {
+                              if (subItem.href !== pathname) {
+                                setPendingHref(subItem.href);
+                              }
+                            }}
                             className={`
-                              block rounded-lg px-3 py-1.5 text-sm transition-all
+                              flex items-center justify-between rounded-lg px-3 py-1.5 text-sm transition-all
                               ${
                                 isSubActive
                                   ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] font-medium"
@@ -334,7 +375,10 @@ export default function AdminSidebar({ pendingCount = 0 }: AdminSidebarProps) {
                               }
                             `}
                           >
-                            {subItem.name}
+                            <span>{subItem.name}</span>
+                            {isSubPending && (
+                              <Loader2 className="h-3 w-3 animate-spin text-[hsl(var(--secondary))]" />
+                            )}
                           </Link>
                         );
                       })}

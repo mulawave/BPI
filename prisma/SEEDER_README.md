@@ -81,7 +81,7 @@ npm run db:reset
 npm install
 
 # 2. Setup database
-npx prisma migrate dev --name init
+npx prisma db push
 
 # 3. Seed with initial data
 npm run db:seed

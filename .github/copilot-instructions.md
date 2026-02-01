@@ -52,7 +52,7 @@
   - Routers in `server/trpc/router/*`, merged in `_app.ts`
   - Use for all server-client API calls
 - **Prisma:**
-  - Schema in `prisma/schema.prisma`, migrations via `npx prisma migrate dev`
+  - Schema in `prisma/schema.prisma`, migrations via `npx prisma migrate deploy` or `npx prisma db push`
 - **Styling:**
   - Tailwind CSS for all layout and utility classes
   - Custom gradients and backgrounds for hero sections
@@ -61,7 +61,7 @@
 - **Setup:**
   - Copy `.env.example` → `.env.local`, set `DATABASE_URL`, `AUTH_SECRET`, provider creds
   - Install deps: `pnpm i` (or `npm i`/`yarn`)
-  - Run migrations: `npx prisma migrate dev --name init`
+  - Run migrations: `npx prisma migrate deploy` (or `npx prisma db push` for dev sync)
 - **Dev:**
   - Start: `pnpm dev` (or `npm run dev`)
   - Visit: http://localhost:3000

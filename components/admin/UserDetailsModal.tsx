@@ -25,6 +25,7 @@ import {
   MdArrowDownward,
   MdAdd,
   MdRefresh,
+  MdLogin,
 } from "react-icons/md";
 import { format } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
@@ -92,6 +93,9 @@ export default function UserDetailsModal({
   const [addAmount, setAddAmount] = useState<string>("");
   const [addRemark, setAddRemark] = useState<string>("");
   const [addingWallet, setAddingWallet] = useState(false);
+  const [impersonating, setImpersonating] = useState(false);
+
+  const impersonateMutation = api.admin.createImpersonationToken.useMutation();
 
   useEffect(() => {
     setMounted(true);
@@ -220,6 +224,33 @@ export default function UserDetailsModal({
     }
   };
 
+  const handleImpersonateUser = async () => {
+    if (!userId) return;
+    
+    setImpersonating(true);
+    try {
+      // Generate impersonation token
+      const result = await impersonateMutation.mutateAsync({ targetUserId: userId });
+      
+      // Open in a NEW browser window with separate session context
+      // Using specific window features to ensure it's a new context
+      const impersonateUrl = `/api/auth/impersonate?token=${result.token}`;
+      const windowFeatures = 'width=1400,height=900,menubar=no,toolbar=no,location=yes,status=no';
+      const newWindow = window.open(impersonateUrl, 'BPI_Impersonation_' + Date.now(), windowFeatures);
+      
+      if (!newWindow) {
+        toast.error("Please allow popups to impersonate users");
+      } else {
+        toast.success(`Opening session as ${user?.email || 'user'}...`);
+        // Admin session remains intact in the original window
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to impersonate user");
+    } finally {
+      setImpersonating(false);
+    }
+  };
+
   return createPortal(
     <AnimatePresence>
       {isOpen && (
@@ -267,6 +298,15 @@ export default function UserDetailsModal({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleImpersonateUser}
+                    disabled={impersonating}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-lg transition-colors font-medium"
+                    title="Login as this user (opens in new tab)"
+                  >
+                    <MdLogin size={20} />
+                    <span>{impersonating ? "Logging in..." : "Login as User"}</span>
+                  </button>
                   <button
                     onClick={() => setShowAssignModal(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white hover:bg-green-600 rounded-lg transition-colors font-medium"

@@ -1729,6 +1729,9 @@ model User {
   UpdateRead                                                           UpdateRead[]
   CspSupportRequests                                                   CspSupportRequest[]
   CspContributions                                                     CspContribution[]
+  FarmPlots                                                            FarmPlot[]
+  ImpersonationTokensAsAdmin                                           ImpersonationToken[]         @relation("ImpersonationTokenAdmin")
+  ImpersonationTokensAsTarget                                          ImpersonationToken[]         @relation("ImpersonationTokenTarget")
   cityRelation                                                         City?                        @relation(fields: [cityId], references: [id])
   countryRelation                                                      Country?                     @relation(fields: [countryId], references: [id])
   User                                                                 User?                        @relation("UserToUser", fields: [sponsorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -2088,4 +2091,80 @@ model CspBroadcastExtension {
   Request      CspSupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId])
+}
+
+model FarmPlot {
+  id              String   @id
+  userId          String
+  plotName        String
+  cropType        String
+  plotSize        Float    // in hectares
+  investmentAmount Float
+  stage           String   @default("seeded") // seeded | growing | harvesting | completed
+  progress        Int      @default(0)
+  daysRemaining   Int
+  estimatedYield  Float
+  estimatedRevenue Float
+  actualYield     Float?
+  actualRevenue   Float?
+  imageUrl        String?
+  startedAt       DateTime @default(now())
+  harvestDate     DateTime?
+  completedAt     DateTime?
+  status          String   @default("active") // active | harvested | failed
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Activities      FarmActivity[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model FarmActivity {
+  id          String   @id
+  plotId      String
+  activityType String  // watering | fertilizing | harvesting | maintenance
+  description String
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  Plot        FarmPlot @relation(fields: [plotId], references: [id], onDelete: Cascade)
+
+  @@index([plotId])
+}
+
+model CropType {
+  id              String   @id
+  name            String
+  category        String   // vegetables | grains | fruits | livestock
+  description     String
+  growthDuration  Int      // days
+  minInvestment   Float
+  maxInvestment   Float
+  yieldPerHectare Float
+  pricePerKg      Float
+  imageUrl        String?
+  isActive        Boolean  @default(true)
+  displayOrder    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([name])
+}
+
+model ImpersonationToken {
+  id           String   @id
+  token        String   @unique
+  adminId      String
+  targetUserId String
+  expiresAt    DateTime
+  used         Boolean  @default(false)
+  usedAt       DateTime?
+  createdAt    DateTime @default(now())
+  Admin        User     @relation("ImpersonationTokenAdmin", fields: [adminId], references: [id], onDelete: Cascade)
+  TargetUser   User     @relation("ImpersonationTokenTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([adminId])
+  @@index([targetUserId])
 }

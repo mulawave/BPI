@@ -14,6 +14,10 @@ import {
 } from "@/server/services/membershipPayments.service";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
+import { initiateBankTransfer } from "@/lib/flutterwave";
+import { notifyWithdrawalStatus } from "@/server/services/notification.service";
+import { generateReceiptLink } from "@/server/services/receipt.service";
+import { sendWithdrawalApprovedToUser, sendWithdrawalRejectedToUser } from "@/lib/email";
 
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.session?.user) {
@@ -1101,6 +1105,444 @@ export const adminRouter = createTRPCRouter({
       });
 
       return { count: payments.length };
+    }),
+
+  // ============================================
+  // WITHDRAWAL MANAGEMENT
+  // ============================================
+  
+  getPendingWithdrawals: adminProcedure
+    .input(
+      z.object({
+        page: z.number().min(1).default(1),
+        pageSize: z.number().min(1).max(100).default(10),
+        search: z.string().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const { page, pageSize, search } = input;
+      const skip = (page - 1) * pageSize;
+
+      const where: any = {
+        status: "pending",
+        transactionType: { in: ["WITHDRAWAL_CASH", "WITHDRAWAL_BPT"] }
+      };
+
+      if (search) {
+        where.OR = [
+          { reference: { contains: search, mode: "insensitive" } },
+          { description: { contains: search, mode: "insensitive" } },
+          { User: { name: { contains: search, mode: "insensitive" } } },
+          { User: { email: { contains: search, mode: "insensitive" } } },
+        ];
+      }
+
+      const [withdrawals, total] = await Promise.all([
+        prisma.transaction.findMany({
+          where,
+          skip,
+          take: pageSize,
+          orderBy: { createdAt: "desc" },
+          include: {
+            User: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                bankRecords: {
+                  where: { isDefault: true },
+                  include: { bank: true },
+                  take: 1
+                }
+              }
+            }
+          }
+        }),
+        prisma.transaction.count({ where })
+      ]);
+
+      return {
+        withdrawals,
+        total,
+        pages: Math.ceil(total / pageSize),
+        currentPage: page
+      };
+    }),
+
+  getWithdrawalById: adminProcedure
+    .input(z.object({ withdrawalId: z.string() }))
+    .query(async ({ input }) => {
+      const withdrawal = await prisma.transaction.findUnique({
+        where: { id: input.withdrawalId },
+        include: {
+          User: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              username: true,
+              bankRecords: {
+                include: { bank: true }
+              }
+            }
+          }
+        }
+      });
+
+      if (!withdrawal) throw new Error("Withdrawal not found");
+      return withdrawal;
+    }),
+
+  approveWithdrawal: adminProcedure
+    .input(
+      z.object({
+        withdrawalId: z.string(),
+        notes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { withdrawalId, notes } = input;
+      
+      console.log("\n🔵 [ADMIN-APPROVAL] Withdrawal approval initiated");
+      console.log("📋 Details:", { withdrawalId, notes: notes || 'N/A' });
+      
+      const withdrawal = await prisma.transaction.findUnique({
+        where: { id: withdrawalId },
+        include: {
+          User: {
+            include: {
+              bankRecords: {
+                where: { isDefault: true },
+                include: { bank: true },
+                take: 1
+              }
+            }
+          }
+        }
+      });
+
+      if (!withdrawal) {
+        console.error("❌ [ADMIN-APPROVAL] Withdrawal not found:", withdrawalId);
+        throw new Error("Withdrawal not found");
+      }
+      
+      console.log("✅ [ADMIN-APPROVAL] Withdrawal found:", {
+        user: withdrawal.User.name || withdrawal.User.email,
+        amount: withdrawal.amount,
+        type: withdrawal.transactionType,
+        status: withdrawal.status
+      });
+
+      const currentStatus = (withdrawal.status || "").toLowerCase();
+      if (currentStatus !== "pending") {
+        console.error("❌ [ADMIN-APPROVAL] Withdrawal already processed. Current status:", currentStatus);
+        throw new Error("Withdrawal has already been processed");
+      }
+
+      const reviewerId = (ctx.session?.user as any)?.id;
+      const amount = Math.abs(withdrawal.amount);
+      const txReference = withdrawal.reference || `WD-${Date.now()}`;
+      const isCashWithdrawal = withdrawal.transactionType === "WITHDRAWAL_CASH";
+      
+      console.log("⚙️  [ADMIN-APPROVAL] Processing:", {
+        amount,
+        reference: txReference,
+        cashWithdrawal: isCashWithdrawal,
+        reviewerId
+      });
+
+      try {
+        // Get Flutterwave credentials from admin settings
+        console.log("🔄 [ADMIN-APPROVAL] Fetching Flutterwave configuration...");
+        const flutterwaveGateway = await prisma.paymentGatewayConfig.findFirst({
+          where: { gatewayName: 'flutterwave', isActive: true }
+        });
+
+        if (!flutterwaveGateway?.secretKey && isCashWithdrawal) {
+          console.error("❌ [ADMIN-APPROVAL] Flutterwave not configured");
+          throw new Error('Flutterwave is not configured. Please configure in admin settings.');
+        }
+        console.log("✅ [ADMIN-APPROVAL] Flutterwave configuration found");
+
+        let gatewayReference = txReference;
+
+        // Initiate bank transfer via Flutterwave (only for cash withdrawals)
+        if (isCashWithdrawal && flutterwaveGateway?.secretKey) {
+          const defaultBank = withdrawal.User.bankRecords?.[0];
+          
+          if (!defaultBank?.bank?.bankCode || !defaultBank?.accountNumber) {
+            console.error("❌ [ADMIN-APPROVAL] User bank details not found");
+            throw new Error('User bank details not found');
+          }
+          
+          console.log("📋 [ADMIN-APPROVAL] Bank details:", {
+            bankCode: defaultBank.bank.bankCode,
+            bankName: defaultBank.bank.bankName,
+            account: `****${defaultBank.accountNumber.slice(-4)}`,
+            accountName: defaultBank.accountName
+          });
+
+          console.log("🌐 [ADMIN-APPROVAL] Initiating Flutterwave transfer...");
+          const transferResult = await initiateBankTransfer(
+            flutterwaveGateway.secretKey,
+            {
+              accountBank: defaultBank.bank.bankCode,
+              accountNumber: defaultBank.accountNumber,
+              amount: amount,
+              narration: `Withdrawal - ${txReference}`,
+              currency: 'NGN',
+              reference: txReference,
+              beneficiaryName: defaultBank.accountName || withdrawal.User.name || 'BPI User'
+            }
+          );
+
+          gatewayReference = transferResult.id || transferResult.reference || txReference;
+          console.log("✅ [ADMIN-APPROVAL] Flutterwave transfer successful. Reference:", gatewayReference);
+        }
+
+        // Update transaction status
+        console.log("🔄 [ADMIN-APPROVAL] Updating transaction status to completed...");
+        const updated = await prisma.transaction.update({
+          where: { id: withdrawalId },
+          data: {
+            status: "completed",
+            gatewayReference: gatewayReference,
+            updatedAt: new Date(),
+          }
+        });
+        console.log("✅ [ADMIN-APPROVAL] Transaction updated successfully");
+
+        // Update withdrawal history
+        await prisma.withdrawalHistory.updateMany({
+          where: {
+            userId: withdrawal.userId,
+            amount: amount,
+            status: "pending"
+          },
+          data: { status: "completed" }
+        });
+
+        // Generate receipt link
+        const receiptUrl = generateReceiptLink(withdrawalId, 'withdrawal');
+        console.log("📄 [ADMIN-APPROVAL] Receipt generated:", receiptUrl);
+
+        // Send success notification
+        console.log("📧 [ADMIN-APPROVAL] Sending notification to user...");
+        await notifyWithdrawalStatus(
+          withdrawal.userId, 
+          "completed", 
+          amount, 
+          txReference, 
+          receiptUrl
+        );
+
+        // Send email notification to user
+        try {
+          console.log("📧 [EMAIL] Sending approval email to user...");
+          await sendWithdrawalApprovedToUser(
+            withdrawal.User.email,
+            withdrawal.User.name || 'User',
+            amount,
+            isCashWithdrawal ? 'cash' : 'bpt',
+            txReference,
+            receiptUrl
+          );
+          console.log("✅ [EMAIL] Approval email sent successfully");
+        } catch (emailError) {
+          console.error('❌ [EMAIL] Failed to send approval email to user:', emailError);
+          // Don't fail the approval if email fails
+        }
+
+        // Log the action
+        console.log("📝 [ADMIN-APPROVAL] Creating audit log...");
+        await prisma.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: reviewerId || "system",
+            action: "WITHDRAWAL_APPROVAL",
+            entity: "Transaction",
+            entityId: withdrawalId,
+            changes: JSON.stringify({ 
+              action: "approve", 
+              amount: amount, 
+              userId: withdrawal.userId,
+              gatewayReference: gatewayReference,
+              notes: notes
+            }),
+            status: "success",
+            createdAt: new Date(),
+          },
+        });
+        console.log("✅ [ADMIN-APPROVAL] Audit log created");
+        
+        console.log("\n✅ [ADMIN-APPROVAL] Withdrawal approval completed successfully");
+        console.log("═".repeat(60) + "\n");
+
+        return updated;
+      } catch (error) {
+        console.error('\n❌ [ADMIN-APPROVAL] Withdrawal approval error:', error);
+        console.error('Error details:', error instanceof Error ? error.message : 'Unknown error');
+        
+        // Log the failed action
+        await prisma.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: reviewerId || "system",
+            action: "WITHDRAWAL_APPROVAL",
+            entity: "Transaction",
+            entityId: withdrawalId,
+            changes: JSON.stringify({ 
+              action: "approve", 
+              amount: amount, 
+              userId: withdrawal.userId,
+              error: error instanceof Error ? error.message : 'Unknown error'
+            }),
+            status: "error",
+            createdAt: new Date(),
+          },
+        });
+
+        throw error;
+      }
+    }),
+
+  rejectWithdrawal: adminProcedure
+    .input(
+      z.object({
+        withdrawalId: z.string(),
+        reason: z.string().min(1, "Rejection reason is required"),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { withdrawalId, reason } = input;
+      
+      const withdrawal = await prisma.transaction.findUnique({
+        where: { id: withdrawalId },
+        include: { User: true }
+      });
+
+      if (!withdrawal) throw new Error("Withdrawal not found");
+
+      const currentStatus = (withdrawal.status || "").toLowerCase();
+      if (currentStatus !== "pending") {
+        throw new Error("Withdrawal has already been processed");
+      }
+
+      const reviewerId = (ctx.session?.user as any)?.id;
+      const amount = Math.abs(withdrawal.amount);
+      const txReference = withdrawal.reference || `WD-${Date.now()}`;
+
+      // Update transaction status
+      const updated = await prisma.transaction.update({
+        where: { id: withdrawalId },
+        data: {
+          status: "rejected",
+          updatedAt: new Date(),
+        }
+      });
+
+      // Update withdrawal history
+      await prisma.withdrawalHistory.updateMany({
+        where: {
+          userId: withdrawal.userId,
+          amount: amount,
+          status: "pending"
+        },
+        data: { status: "rejected" }
+      });
+
+      // Refund the amount back to user's wallet
+      // Calculate what was deducted (amount + fee + tax)
+      const withdrawalFees = await prisma.transaction.findMany({
+        where: {
+          userId: withdrawal.userId,
+          reference: { startsWith: `FEE-WD-` },
+          createdAt: { gte: new Date(withdrawal.createdAt.getTime() - 5000) },
+          status: "completed"
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1
+      });
+
+      const taxPayments = await prisma.transaction.findMany({
+        where: {
+          userId: withdrawal.userId,
+          reference: { startsWith: `TAX-WD-` },
+          createdAt: { gte: new Date(withdrawal.createdAt.getTime() - 5000) },
+          status: "completed"
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1
+      });
+
+      const feeAmount = Math.abs(withdrawalFees[0]?.amount || 0);
+      const taxAmount = Math.abs(taxPayments[0]?.amount || 0);
+      const totalRefund = amount + feeAmount + taxAmount;
+
+      // Determine source wallet (default to main wallet)
+      const sourceWallet = withdrawal.walletType || 'wallet';
+
+      // Refund to source wallet
+      await prisma.user.update({
+        where: { id: withdrawal.userId },
+        data: {
+          [sourceWallet]: { increment: totalRefund }
+        }
+      });
+
+      // Create refund transaction
+      await prisma.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId: withdrawal.userId,
+          transactionType: "REFUND",
+          amount: totalRefund,
+          description: `Withdrawal rejected: ${reason}`,
+          status: "completed",
+          reference: `REFUND-${txReference}`,
+          walletType: sourceWallet
+        }
+      });
+
+      // Send rejection notification
+      await notifyWithdrawalStatus(withdrawal.userId, "rejected", amount, txReference);
+
+      // Send email notification to user
+      try {
+        await sendWithdrawalRejectedToUser(
+          withdrawal.User.email,
+          withdrawal.User.name || 'User',
+          amount,
+          txReference,
+          reason
+        );
+      } catch (emailError) {
+        console.error('Failed to send rejection email to user:', emailError);
+        // Don't fail the rejection if email fails
+      }
+
+      // Log the action
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: reviewerId || "system",
+          action: "WITHDRAWAL_REJECTION",
+          entity: "Transaction",
+          entityId: withdrawalId,
+          changes: JSON.stringify({ 
+            action: "reject", 
+            amount: amount, 
+            userId: withdrawal.userId,
+            reason: reason,
+            refundAmount: totalRefund
+          }),
+          status: "success",
+          createdAt: new Date(),
+        },
+      });
+
+      return updated;
     }),
 
   bulkExportPayments: adminProcedure
@@ -4428,7 +4870,7 @@ export const adminRouter = createTRPCRouter({
     // Convert to key-value object with boolean conversion for toggles, string for others
     const settingsMap = settings.reduce((acc, setting) => {
       // Boolean settings
-      if (['enableEpcEpp', 'enableSolarAssessment', 'enableBestDeals'].includes(setting.settingKey)) {
+      if (['enableEpcEpp', 'enableSolarAssessment', 'enableBestDeals', 'enableBpiCalculator', 'enableDigitalFarm', 'enableTrainingCenter', 'enablePromotionalMaterials', 'enableLatestUpdates'].includes(setting.settingKey)) {
         acc[setting.settingKey] = setting.settingValue === 'true';
       } else {
         // String settings
@@ -4442,6 +4884,11 @@ export const adminRouter = createTRPCRouter({
       enableEpcEpp: settingsMap.enableEpcEpp ?? false,
       enableSolarAssessment: settingsMap.enableSolarAssessment ?? false,
       enableBestDeals: settingsMap.enableBestDeals ?? false,
+      enableBpiCalculator: settingsMap.enableBpiCalculator ?? true,
+      enableDigitalFarm: settingsMap.enableDigitalFarm ?? false,
+      enableTrainingCenter: settingsMap.enableTrainingCenter ?? true,
+      enablePromotionalMaterials: settingsMap.enablePromotionalMaterials ?? true,
+      enableLatestUpdates: settingsMap.enableLatestUpdates ?? true,
       siteTitle: settingsMap.siteTitle ?? 'BPI - BeepAgro Progress Initiative',
       supportEmail: settingsMap.supportEmail ?? 'support@beepagroafrica.com',
       smtpHost: settingsMap.smtpHost ?? '',
@@ -4460,6 +4907,11 @@ export const adminRouter = createTRPCRouter({
       enableEpcEpp: z.boolean().optional(),
       enableSolarAssessment: z.boolean().optional(),
       enableBestDeals: z.boolean().optional(),
+      enableBpiCalculator: z.boolean().optional(),
+      enableDigitalFarm: z.boolean().optional(),
+      enableTrainingCenter: z.boolean().optional(),
+      enablePromotionalMaterials: z.boolean().optional(),
+      enableLatestUpdates: z.boolean().optional(),
       siteTitle: z.string().optional(),
       supportEmail: z.string().email().optional(),
       smtpHost: z.string().optional(),
@@ -4524,6 +4976,101 @@ export const adminRouter = createTRPCRouter({
             },
             update: {
               settingValue: String(input.enableBestDeals),
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.enableBpiCalculator !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'enableBpiCalculator' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'enableBpiCalculator',
+              settingValue: String(input.enableBpiCalculator),
+              description: 'Enable/disable BPI Calculator card on dashboard',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: String(input.enableBpiCalculator),
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.enableDigitalFarm !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'enableDigitalFarm' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'enableDigitalFarm',
+              settingValue: String(input.enableDigitalFarm),
+              description: 'Enable/disable Digital Farm card on dashboard',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: String(input.enableDigitalFarm),
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.enableTrainingCenter !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'enableTrainingCenter' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'enableTrainingCenter',
+              settingValue: String(input.enableTrainingCenter),
+              description: 'Enable/disable Training Center card on dashboard',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: String(input.enableTrainingCenter),
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.enablePromotionalMaterials !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'enablePromotionalMaterials' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'enablePromotionalMaterials',
+              settingValue: String(input.enablePromotionalMaterials),
+              description: 'Enable/disable Promotional Materials card on dashboard',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: String(input.enablePromotionalMaterials),
+              updatedAt: new Date(),
+            },
+          })
+        );
+      }
+
+      if (input.enableLatestUpdates !== undefined) {
+        updates.push(
+          prisma.adminSettings.upsert({
+            where: { settingKey: 'enableLatestUpdates' },
+            create: {
+              id: randomUUID(),
+              settingKey: 'enableLatestUpdates',
+              settingValue: String(input.enableLatestUpdates),
+              description: 'Enable/disable Latest Updates card on dashboard',
+              updatedAt: new Date(),
+            },
+            update: {
+              settingValue: String(input.enableLatestUpdates),
               updatedAt: new Date(),
             },
           })
@@ -4736,6 +5283,14 @@ export const adminRouter = createTRPCRouter({
       where: { status: "pending" },
     });
 
+    // Pending withdrawals
+    const pendingWithdrawals = await prisma.transaction.count({
+      where: {
+        status: "pending",
+        transactionType: { in: ["WITHDRAWAL_CASH", "WITHDRAWAL_BPT"] }
+      }
+    });
+
     // Total revenue (last 30 days)
     const revenueTransactions = await prisma.transaction.aggregate({
       where: {
@@ -4791,6 +5346,7 @@ export const adminRouter = createTRPCRouter({
       totalUsers,
       usersChange,
       pendingPayments,
+      pendingWithdrawals,
       totalRevenue,
       revenueChange,
       activeMembers,
@@ -7194,5 +7750,254 @@ export const adminRouter = createTRPCRouter({
           updatedById: ctx.session?.user?.id,
         },
       });
+    }),
+
+  // Generate impersonation token for admin to login as user
+  createImpersonationToken: adminProcedure
+    .input(z.object({ targetUserId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const adminId = ctx.session?.user?.id;
+      if (!adminId) throw new Error("Admin not authenticated");
+
+      // Verify target user exists
+      const targetUser = await prisma.user.findUnique({
+        where: { id: input.targetUserId },
+        select: { id: true, email: true, name: true, role: true },
+      });
+
+      if (!targetUser) throw new Error("Target user not found");
+
+      // Prevent impersonating other admins
+      if (targetUser.role === "admin" || targetUser.role === "super_admin") {
+        throw new Error("Cannot impersonate admin users");
+      }
+
+      // Create a one-time impersonation token
+      const token = randomUUID();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+      await prisma.impersonationToken.create({
+        data: {
+          id: randomUUID(),
+          token,
+          adminId,
+          targetUserId: input.targetUserId,
+          expiresAt,
+          used: false,
+        },
+      });
+
+      // Log the impersonation attempt in admin audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId,
+          action: "ADMIN_IMPERSONATION",
+          entity: "User",
+          entityId: input.targetUserId,
+          status: "success",
+          metadata: {
+            targetUserEmail: targetUser.email,
+            targetUserName: targetUser.name,
+          },
+        },
+      });
+
+      return { token, expiresAt };
+    }),
+
+  // ============ PROMOTIONAL MATERIALS MANAGEMENT ============
+  getAllPromotionalMaterials: adminProcedure.query(async () => {
+    return await prisma.promotionalMaterial.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        User: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+  }),
+
+  createPromotionalMaterial: adminProcedure
+    .input(z.object({
+      title: z.string(),
+      description: z.string().optional(),
+      type: z.string(),
+      category: z.string(),
+      fileUrl: z.string(),
+      thumbnailUrl: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id;
+      if (!userId) throw new Error("Unauthorized");
+      
+      return await prisma.promotionalMaterial.create({
+        data: {
+          id: randomUUID(),
+          ...input,
+          isActive: true,
+          downloadCount: 0,
+          shareCount: 0,
+          createdBy: userId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+    }),
+
+  updatePromotionalMaterial: adminProcedure
+    .input(z.object({
+      id: z.string(),
+      title: z.string().optional(),
+      description: z.string().optional(),
+      type: z.string().optional(),
+      category: z.string().optional(),
+      fileUrl: z.string().optional(),
+      thumbnailUrl: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      return await prisma.promotionalMaterial.update({
+        where: { id },
+        data: {
+          ...data,
+          updatedAt: new Date(),
+        },
+      });
+    }),
+
+  deletePromotionalMaterial: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      return await prisma.promotionalMaterial.delete({
+        where: { id: input.id },
+      });
+    }),
+
+  togglePromotionalMaterialActive: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      const material = await prisma.promotionalMaterial.findUnique({
+        where: { id: input.id },
+      });
+      if (!material) throw new Error("Material not found");
+      
+      return await prisma.promotionalMaterial.update({
+        where: { id: input.id },
+        data: { isActive: !material.isActive },
+      });
+    }),
+
+  // ============ DEPOSIT LOGS ============
+  getDepositLogs: adminProcedure
+    .input(z.object({
+      page: z.number().default(1),
+      pageSize: z.number().default(50),
+      search: z.string().optional(),
+      status: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      const { page, pageSize, search, status } = input;
+      const skip = (page - 1) * pageSize;
+
+      const where: any = {
+        transactionType: { in: ['deposit', 'funding', 'payment'] },
+      };
+
+      if (search) {
+        where.OR = [
+          { userId: { contains: search } },
+          { reference: { contains: search } },
+          { description: { contains: search } },
+        ];
+      }
+
+      if (status) {
+        where.status = status;
+      }
+
+      const [transactions, total] = await Promise.all([
+        prisma.transaction.findMany({
+          where,
+          skip,
+          take: pageSize,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            User: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        }),
+        prisma.transaction.count({ where }),
+      ]);
+
+      return {
+        transactions,
+        total,
+        pages: Math.ceil(total / pageSize),
+        currentPage: page,
+      };
+    }),
+
+  // ============ WITHDRAWAL LOGS ============
+  getWithdrawalLogs: adminProcedure
+    .input(z.object({
+      page: z.number().default(1),
+      pageSize: z.number().default(50),
+      search: z.string().optional(),
+      status: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      const { page, pageSize, search, status } = input;
+      const skip = (page - 1) * pageSize;
+
+      const where: any = {
+        transactionType: { in: ['WITHDRAWAL_CASH', 'WITHDRAWAL_BPT', 'WITHDRAWAL_FEE'] },
+      };
+
+      if (search) {
+        where.OR = [
+          { userId: { contains: search } },
+          { reference: { contains: search } },
+          { description: { contains: search } },
+        ];
+      }
+
+      if (status) {
+        where.status = status;
+      }
+
+      const [withdrawals, total] = await Promise.all([
+        prisma.transaction.findMany({
+          where,
+          skip,
+          take: pageSize,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            User: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        }),
+        prisma.transaction.count({ where }),
+      ]);
+
+      return {
+        withdrawals,
+        total,
+        pages: Math.ceil(total / pageSize),
+        currentPage: page,
+      };
     }),
 });

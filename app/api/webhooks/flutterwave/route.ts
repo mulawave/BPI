@@ -4,6 +4,8 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
+import { notifyDepositStatus } from "@/server/services/notification.service";
+import { generateReceiptLink } from "@/server/services/receipt.service";
 import {
   PaymentGatewayFactory,
   PaymentGateway,
@@ -21,6 +23,60 @@ export async function POST(req: NextRequest) {
       txRef: payload.data?.tx_ref,
       status: payload.data?.status,
     });
+
+    // Handle deposit completion
+    if (payload.event === 'charge.completed' && payload.data?.status === 'successful') {
+      const { tx_ref, amount, currency } = payload.data;
+      
+      console.log('💳 [FLUTTERWAVE-WEBHOOK] Deposit completed:', {
+        reference: tx_ref,
+        amount,
+        currency,
+      });
+
+      // Find the pending deposit transaction
+      const transaction = await prisma.transaction.findFirst({
+        where: { 
+          reference: tx_ref, 
+          status: 'pending',
+          transactionType: 'DEPOSIT'
+        },
+      });
+
+      if (!transaction) {
+        console.warn('⚠️  [FLUTTERWAVE-WEBHOOK] Deposit transaction not found:', tx_ref);
+        return NextResponse.json({ message: 'Transaction not found' }, { status: 200 });
+      }
+
+      // Credit user wallet
+      await prisma.user.update({
+        where: { id: transaction.userId },
+        data: {
+          wallet: { increment: transaction.amount },
+        },
+      });
+
+      // Update transaction status
+      await prisma.transaction.update({
+        where: { id: transaction.id },
+        data: { status: 'completed' },
+      });
+
+      // Generate receipt
+      const receiptUrl = generateReceiptLink(transaction.id, 'deposit');
+
+      // Send success notification
+      await notifyDepositStatus(
+        transaction.userId,
+        'completed',
+        transaction.amount,
+        tx_ref,
+        receiptUrl
+      );
+
+      console.log('✅ [FLUTTERWAVE-WEBHOOK] Deposit processed successfully');
+      return NextResponse.json({ message: 'Deposit processed' }, { status: 200 });
+    }
 
     // Get Flutterwave gateway instance
     const config = {
@@ -48,6 +104,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Invalid signature" },
         { status: 401 }
+      );
       );
     }
 

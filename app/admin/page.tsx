@@ -13,6 +13,7 @@ import {
   MdPending,
   MdAttachMoney,
   MdRefresh,
+  MdCallReceived,
 } from "react-icons/md";
 import { HiSparkles, HiLightningBolt } from "react-icons/hi";
 import { api } from "@/client/trpc";
@@ -167,7 +168,7 @@ export default function AdminDashboardPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.15 }}
-        className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4"
+        className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5"
       >
         <motion.div
           whileHover={{ y: -4, scale: 1.02 }}
@@ -191,6 +192,20 @@ export default function AdminDashboardPage() {
             icon={MdPending}
             color="orange"
             badge="Action Required"
+            href="/admin/payments"
+          />
+        </motion.div>
+        <motion.div
+          whileHover={{ y: -4, scale: 1.02 }}
+          transition={{ type: "spring", stiffness: 300 }}
+        >
+          <StatsCard
+            title="Pending Withdrawals"
+            value={stats?.pendingWithdrawals || 0}
+            icon={MdCallReceived}
+            color="red"
+            badge={stats?.pendingWithdrawals && stats.pendingWithdrawals > 0 ? "Review Now" : undefined}
+            href="/admin/withdrawals"
           />
         </motion.div>
         <motion.div

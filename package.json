@@ -7,6 +7,8 @@
     "prisma:generate": "prisma generate",
     "prisma:deploy": "prisma migrate deploy",
     "dev": "next dev",
+    "build": "next build",
+    "start": "next start -p 3000",
     "smoke:backups": "npx tsx scripts/smokeAdminBackups.ts",
     "smoke:payments": "npx tsx scripts/smokeAdminPayments.ts",
     "smoke:reports": "npx tsx scripts/smokeAdminReports.ts",

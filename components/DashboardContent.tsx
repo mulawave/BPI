@@ -39,6 +39,7 @@ import EpcEppModal from "./community/EpcEppModal";
 import SolarAssessmentModal from "./community/SolarAssessmentModal";
 import TrainingCenterModal from "./community/TrainingCenterModal";
 import PromotionalMaterialsModal from "./community/PromotionalMaterialsModal";
+import DigitalFarmModal from "./community/DigitalFarmModal";
 import SubmitChannelModal from "./community/SubmitChannelModal";
 import BrowseChannelsModal from "./community/BrowseChannelsModal";
 import ThirdPartyOpportunitiesModal from "./community/ThirdPartyOpportunitiesModal";
@@ -505,12 +506,32 @@ export default function DashboardContent({ session, customContent }: DashboardCo
 
   // API data fetching
   const utils = api.useUtils();
-  const { data: userProfile, isLoading: isLoadingProfile } = api.user.getDetails.useQuery();
-  const { data: dashboardData, isLoading: isLoadingWallets } = api.dashboard.getOverview.useQuery();
-  const { data: referralStats } = api.referral.getReferralStats.useQuery();
-  const { data: leadershipData } = api.leadership.getMyProgress.useQuery();
-  const { data: notifications, isLoading: isLoadingNotifications, error: notificationsError } = api.notification.getMyNotifications.useQuery();
-  const { data: communityStats, isLoading: isLoadingCommunityStats } = api.community.getStats.useQuery();
+  const { data: userProfile, isLoading: isLoadingProfile } = api.user.getDetails.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const { data: dashboardData, isLoading: isLoadingWallets } = api.dashboard.getOverview.useQuery(undefined, {
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const { data: referralStats } = api.referral.getReferralStats.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const { data: leadershipData } = api.leadership.getMyProgress.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const { data: notifications, isLoading: isLoadingNotifications, error: notificationsError } = api.notification.getMyNotifications.useQuery(undefined, {
+    staleTime: 1 * 60 * 1000, // 1 minute for notifications
+    refetchOnWindowFocus: false,
+  });
+  const { data: communityStats, isLoading: isLoadingCommunityStats } = api.community.getStats.useQuery(undefined, {
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    refetchOnWindowFocus: false,
+  });
   const markNotificationAsRead = api.notification.markAsRead.useMutation({
     onSuccess: () => {
       utils.notification.getMyNotifications.invalidate();
@@ -547,26 +568,47 @@ export default function DashboardContent({ session, customContent }: DashboardCo
   const leadershipPool = leadershipData;
   
   // New membership package query for gating
-  const { data: userDetails, isLoading: isLoadingDetails } = api.user.getDetails.useQuery();
+  const { data: userDetails, isLoading: isLoadingDetails } = api.user.getDetails.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   const needsActivation = !isLoadingDetails && !userDetails?.activeMembership;
   
   // Training progress for current course tracker
-  const { data: myTrainingProgress } = api.trainingCenter.getMyProgress.useQuery();
+  const { data: myTrainingProgress } = api.trainingCenter.getMyProgress.useQuery(undefined, {
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   const currentCourse = myTrainingProgress?.find((p: any) => !p.completedAt);
   // const { data: userKnowledgeRank } = api.trainingCenter.getMyBadges.useQuery();
-  const { data: myBadges } = api.trainingCenter.getMyBadges.useQuery();
+  const { data: myBadges } = api.trainingCenter.getMyBadges.useQuery(undefined, {
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   
   // Daily invite count query
-  const { data: inviteCount } = api.referral.getDailyInviteCount.useQuery();
+  const { data: inviteCount } = api.referral.getDailyInviteCount.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   
   // Get user's referral link
-  const { data: referralLinkData } = api.referral.getMyReferralLink.useQuery();
+  const { data: referralLinkData } = api.referral.getMyReferralLink.useQuery(undefined, {
+    staleTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   
   // Get recent referrals (last 5)
-  const { data: recentReferralsData } = api.referral.getRecentReferrals.useQuery();
+  const { data: recentReferralsData } = api.referral.getRecentReferrals.useQuery(undefined, {
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   
   // Get latest blog posts for dashboard carousel
-  const { data: latestBlogPosts } = api.blog.getLatestPosts.useQuery({ limit: 12 });
+  const { data: latestBlogPosts } = api.blog.getLatestPosts.useQuery({ limit: 12 }, {
+    staleTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   const [blogSlide, setBlogSlide] = useState(0);
   const [blogCardsPerView, setBlogCardsPerView] = useState(1);
   const blogCarouselRef = useRef<HTMLDivElement | null>(null);
@@ -619,25 +661,46 @@ export default function DashboardContent({ session, customContent }: DashboardCo
   }, [blogSlide, blogCardsPerView]);
   
   // Get wallet health status
-  const { data: walletHealth } = api.dashboard.getWalletHealth.useQuery();
+  const { data: walletHealth } = api.dashboard.getWalletHealth.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   
   // Get admin settings for feature toggles
-  const { data: adminSettings } = api.admin.getSettings.useQuery();
+  const { data: adminSettings } = api.admin.getSettings.useQuery(undefined, {
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   
   // Get third-party platforms summary
-  const { data: summary } = api.thirdPartyPlatforms.getSummary.useQuery();
+  const { data: summary } = api.thirdPartyPlatforms.getSummary.useQuery(undefined, {
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   
   // Get available third-party platforms (to check if there are any from upline)
-  const { data: availablePlatforms } = api.thirdPartyPlatforms.getAvailablePlatforms.useQuery();
+  const { data: availablePlatforms } = api.thirdPartyPlatforms.getAvailablePlatforms.useQuery(undefined, {
+    staleTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   
   // Get total taxes paid
-  const { data: totalTaxes } = api.taxes.getTotalTaxes.useQuery();
+  const { data: totalTaxes } = api.taxes.getTotalTaxes.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   
   // Get Leadership Pool progress
-  const { data: leadershipProgress } = api.leadership.getMyProgress.useQuery();
+  const { data: leadershipProgress } = api.leadership.getMyProgress.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   
   // Get Leadership Pool admin settings
-  const { data: leadershipPoolSettings } = api.leadershipPool.getPoolSettings.useQuery();
+  const { data: leadershipPoolSettings } = api.leadershipPool.getPoolSettings.useQuery(undefined, {
+    staleTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
   
   // Portfolio 24h tracking
   const [portfolio24hChange, setPortfolio24hChange] = useState({ change: 0, percentage: 0 });
@@ -707,6 +770,10 @@ export default function DashboardContent({ session, customContent }: DashboardCo
   
   // Promotional Materials modal state
   const [isPromotionalMaterialsModalOpen, setIsPromotionalMaterialsModalOpen] = useState(false);
+  
+  // Digital Farm modal state
+  const [isDigitalFarmModalOpen, setIsDigitalFarmModalOpen] = useState(false);
+  
   const [isSubmitChannelModalOpen, setIsSubmitChannelModalOpen] = useState(false);
   const [isBrowseChannelsModalOpen, setIsBrowseChannelsModalOpen] = useState(false);
   
@@ -2912,14 +2979,16 @@ export default function DashboardContent({ session, customContent }: DashboardCo
               <h3 className="text-base font-semibold text-foreground mb-3">Community Features</h3>
               <hr className="border-gray-200 dark:border-bpi-dark-accent mb-4" />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-h-[460px] overflow-y-auto pr-1">
-              {/* BPI Calculator Card */}
-              <CommunityCard
-                title="BPI Calculator"
-                description="Calculate your potential earnings"
-                icon={Calculator}
-                state="active"
-                onClick={() => setIsCalculatorModalOpen(true)}
-              />
+              {/* BPI Calculator Card - Admin Controlled */}
+              {(adminSettings?.enableBpiCalculator === true || adminSettings?.enableBpiCalculator === undefined) && (
+                <CommunityCard
+                  title="BPI Calculator"
+                  description="Calculate your potential earnings"
+                  icon={Calculator}
+                  state="active"
+                  onClick={() => setIsCalculatorModalOpen(true)}
+                />
+              )}
 
               {/* Leadership Pool Card - Only show if enabled by admin */}
               {leadershipPoolSettings?.enabled && (
@@ -2965,43 +3034,51 @@ export default function DashboardContent({ session, customContent }: DashboardCo
                 />
               )}
 
-              {/* Digital Farm Card */}
-              <CommunityCard
-                title="Digital Farm"
-                description="Virtual agriculture platform"
-                icon={Leaf}
-                state="locked"
-                onClick={() => {/* TODO: Show requirements */}}
-              />
+              {/* Digital Farm Card - Admin Controlled */}
+              {adminSettings?.enableDigitalFarm === true && (
+                <CommunityCard
+                  title="Digital Farm"
+                  description="Virtual agriculture platform"
+                  icon={Leaf}
+                  state="active"
+                  onClick={() => setIsDigitalFarmModalOpen(true)}
+                />
+              )}
 
-              {/* Training Center Card */}
-              <CommunityCard
-                title="Training Center"
-                description="Skill development courses"
-                icon={GraduationCap}
-                state="active"
-                onClick={() => setIsTrainingCenterModalOpen(true)}
-              />
+              {/* Training Center Card - Admin Controlled */}
+              {(adminSettings?.enableTrainingCenter === true || adminSettings?.enableTrainingCenter === undefined) && (
+                <CommunityCard
+                  title="Training Center"
+                  description="Skill development courses"
+                  icon={GraduationCap}
+                  state="active"
+                  onClick={() => setIsTrainingCenterModalOpen(true)}
+                />
+              )}
 
-              {/* Promotional Materials Card */}
-              <CommunityCard
-                title="Promotional Materials"
-                description="Download marketing assets"
-                icon={Download}
-                state="active"
-                badge="24 New"
-                onClick={() => setIsPromotionalMaterialsModalOpen(true)}
-              />
+              {/* Promotional Materials Card - Admin Controlled */}
+              {(adminSettings?.enablePromotionalMaterials === true || adminSettings?.enablePromotionalMaterials === undefined) && (
+                <CommunityCard
+                  title="Promotional Materials"
+                  description="Download marketing assets"
+                  icon={Download}
+                  state="active"
+                  badge="24 New"
+                  onClick={() => setIsPromotionalMaterialsModalOpen(true)}
+                />
+              )}
 
-              {/* Latest Updates Card */}
-              <CommunityCard
-                title="Latest Updates"
-                description="Company news & announcements"
-                icon={Megaphone}
-                state="new"
-                badge={unreadUpdatesCount > 0 ? `${unreadUpdatesCount} New` : "New"}
-                onClick={() => setIsUpdatesModalOpen(true)}
-              />
+              {/* Latest Updates Card - Admin Controlled */}
+              {(adminSettings?.enableLatestUpdates === true || adminSettings?.enableLatestUpdates === undefined) && (
+                <CommunityCard
+                  title="Latest Updates"
+                  description="Company news & announcements"
+                  icon={Megaphone}
+                  state="new"
+                  badge={unreadUpdatesCount > 0 ? `${unreadUpdatesCount} New` : "New"}
+                  onClick={() => setIsUpdatesModalOpen(true)}
+                />
+              )}
 
               {/* Best Deals Card - Admin Controlled */}
               {adminSettings?.enableBestDeals === true && (
@@ -4260,6 +4337,11 @@ export default function DashboardContent({ session, customContent }: DashboardCo
       <TrainingCenterModal
         isOpen={isTrainingCenterModalOpen}
         onClose={() => setIsTrainingCenterModalOpen(false)}
+      />
+      
+      <DigitalFarmModal
+        isOpen={isDigitalFarmModalOpen}
+        onClose={() => setIsDigitalFarmModalOpen(false)}
       />
       
       <PromotionalMaterialsModal

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FiX, FiCheck, FiAlertCircle } from "react-icons/fi";
-import { Wallet, CreditCard, Bitcoin, CheckCircle, Loader2, AlertTriangle, Building, BadgeCheck, Lock } from "lucide-react";
+import { Wallet, CreditCard, Bitcoin, CheckCircle, Loader2, AlertTriangle, Building, BadgeCheck } from "lucide-react";
 import { api } from "@/client/trpc";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { Button } from "../ui/button";
@@ -29,8 +29,6 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
   // Bank account selection
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
   const [bnbWallet, setBnbWallet] = useState<string>('');
-  const [pin, setPin] = useState<string>('');
-  const [twoFactorCode, setTwoFactorCode] = useState<string>('');
 
   // Fetch user's bank accounts
   const { data: bankAccounts } = api.bank.getUserBankRecords.useQuery();
@@ -104,16 +102,6 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
       }
     }
 
-    if (!pin || pin.length !== 4) {
-      setError('Please enter your 4-digit PIN');
-      return;
-    }
-
-    if (!twoFactorCode || twoFactorCode.length !== 6) {
-      setError('Please enter your 6-digit 2FA code');
-      return;
-    }
-
     setError('');
     setCurrentStep('summary');
   };
@@ -129,16 +117,12 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
           bankCode: selectedBankAccount?.bank?.bankCode || '',
           accountNumber: selectedBankAccount?.accountNumber || '',
           accountName: selectedBankAccount?.accountName || '',
-          pin,
-          twoFactorCode,
         }
       : {
           withdrawalType: 'bpt' as const,
           amount: numAmount,
           sourceWallet: 'wallet' as const,
           bnbWalletAddress: bnbWallet,
-          pin,
-          twoFactorCode,
         };
 
     withdrawalMutation.mutate(payload);
@@ -149,8 +133,6 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
     setAmount('');
     setSelectedBankAccountId(null);
     setBnbWallet('');
-    setPin('');
-    setTwoFactorCode('');
     setError('');
     setSuccessData(null);
   };
@@ -385,41 +367,6 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
                   </div>
                 </div>
               )}
-
-              {/* Security Verification Fields */}
-              <div className="space-y-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
-                <h3 className="font-semibold text-foreground flex items-center gap-2">
-                  <Lock className="w-5 h-5" />
-                  Security Verification Required
-                </h3>
-                
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">Profile PIN</label>
-                  <Input
-                    type="password"
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    placeholder="Enter 4-digit PIN"
-                    maxLength={4}
-                    className="font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">2FA Code</label>
-                  <Input
-                    type="text"
-                    value={twoFactorCode}
-                    onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="Enter 6-digit code"
-                    maxLength={6}
-                    className="font-mono"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Enter the code from your authenticator app
-                  </p>
-                </div>
-              </div>
 
               {/* Fee Display */}
               {numAmount > 0 && (

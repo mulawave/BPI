@@ -11,10 +11,10 @@ This guide walks you through migrating users from the legacy MySQL database (SQL
    POSTGRES_URL="postgresql://..."
    ```
 
-2. **Prisma Schema**: Run migrations to ensure your database schema is up to date:
-   ```bash
-   npx prisma migrate dev
-   ```
+2. **Prisma Schema**: Push schema to ensure your database is in sync:
+  ```bash
+  npx prisma db push
+  ```
 
 3. **SQL Dump**: The SQL dump file should be at:
    ```

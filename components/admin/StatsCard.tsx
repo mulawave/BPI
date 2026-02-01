@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import Link from "next/link";
 import type { IconType } from "react-icons";
 import { MdTrendingUp, MdTrendingDown } from "react-icons/md";
 
@@ -52,6 +53,7 @@ interface StatsCardProps {
   icon: IconType;
   color: ColorKey;
   badge?: string;
+  href?: string;
 }
 
 export default function StatsCard({
@@ -61,16 +63,13 @@ export default function StatsCard({
   icon: Icon,
   color,
   badge,
+  href,
 }: StatsCardProps) {
   const styles = colorStyles[color];
   const isPositive = change !== undefined && change >= 0;
 
-  return (
-    <motion.div
-      whileHover={{ scale: 1.02, y: -4 }}
-      transition={{ duration: 0.2 }}
-      className="premium-stat-card relative overflow-hidden rounded-2xl border border-border bg-card/75 p-6 shadow-xl shadow-black/5 backdrop-blur-sm dark:shadow-black/20"
-    >
+  const content = (
+    <>
       {/* Gradient Background Accent */}
       <div
         className={`absolute right-0 top-0 h-full w-2 bg-gradient-to-b ${styles.bg}`}
@@ -121,6 +120,32 @@ export default function StatsCard({
       <div
         className={`absolute -bottom-8 -right-8 h-32 w-32 rounded-full bg-gradient-to-br ${styles.bg} opacity-10 blur-3xl`}
       />
+    </>
+  );
+
+  const baseClasses = "premium-stat-card relative overflow-hidden rounded-2xl border border-border bg-card/75 p-6 shadow-xl shadow-black/5 backdrop-blur-sm dark:shadow-black/20";
+
+  if (href) {
+    return (
+      <Link href={href}>
+        <motion.div
+          whileHover={{ scale: 1.02, y: -4 }}
+          transition={{ duration: 0.2 }}
+          className={`${baseClasses} cursor-pointer hover:border-primary/50 transition-colors`}
+        >
+          {content}
+        </motion.div>
+      </Link>
+    );
+  }
+
+  return (
+    <motion.div
+      whileHover={{ scale: 1.02, y: -4 }}
+      transition={{ duration: 0.2 }}
+      className={baseClasses}
+    >
+      {content}
     </motion.div>
   );
 }

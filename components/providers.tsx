@@ -11,7 +11,17 @@ import { CurrencyProvider } from "@/contexts/CurrencyContext";
 import { Toaster } from "react-hot-toast";
 
 export default function Providers({ children }: { children: ReactNode }) {
-  const [qc] = useState(() => new QueryClient());
+  const [qc] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 5 * 60 * 1000, // 5 minutes default
+        gcTime: 10 * 60 * 1000, // 10 minutes cache
+        refetchOnWindowFocus: false, // Disable aggressive refetching
+        refetchOnReconnect: false,
+        retry: 1,
+      },
+    },
+  }));
   const [trpcClient] = useState(() =>
     api.createClient({
       links: [

@@ -40,8 +40,16 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
 
   const depositMutation = api.wallet.deposit.useMutation({
     onSuccess: (data) => {
-      setSuccessData(data);
-      setCurrentStep('success');
+      // If payment URL is returned, redirect user to payment page
+      if (data.paymentUrl) {
+        window.open(data.paymentUrl, '_blank');
+        setSuccessData(data);
+        setCurrentStep('processing');
+      } else {
+        // Mock payment - immediate success
+        setSuccessData(data);
+        setCurrentStep('success');
+      }
     },
     onError: (error) => {
       setError(error.message);
@@ -428,8 +436,47 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
         {currentStep === 'processing' && (
           <div className="flex flex-col items-center justify-center py-20 animate-fadeIn">
             <Loader2 className="w-20 h-20 text-green-600 animate-spin mb-6" />
-            <h2 className="text-2xl font-bold text-foreground mb-2">Processing Payment...</h2>
-            <p className="text-muted-foreground">Please wait while we process your deposit</p>
+            <h2 className="text-2xl font-bold text-foreground mb-2">Payment Window Opened</h2>
+            <p className="text-muted-foreground mb-8">Complete your payment in the new tab</p>
+            
+            {selectedGateway !== 'mock' && (
+              <div className="max-w-md w-full space-y-4">
+                <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800 text-center">
+                  <p className="text-sm text-blue-800 dark:text-blue-300">
+                    A payment window has been opened in a new tab.
+                    <br />
+                    Complete the payment and return here to verify.
+                  </p>
+                </div>
+                
+                <Button
+                  onClick={() => {
+                    if (successData?.paymentUrl) {
+                      window.open(successData.paymentUrl, '_blank');
+                    }
+                  }}
+                  variant="outline"
+                  className="w-full"
+                >
+                  Reopen Payment Window
+                </Button>
+                
+                <Button
+                  onClick={() => setCurrentStep('success')}
+                  className="w-full bg-gradient-to-r from-green-600 to-emerald-600"
+                >
+                  I've Completed Payment - Verify Now
+                </Button>
+                
+                <Button
+                  onClick={handleClose}
+                  variant="ghost"
+                  className="w-full"
+                >
+                  Cancel & Return to Dashboard
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

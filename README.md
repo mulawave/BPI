@@ -15,11 +15,10 @@ pnpm i # or npm i / yarn
 
 Copy `.env.example` to `.env.local` and set `DATABASE_URL`, `AUTH_SECRET` (use `openssl rand -base64 32`). Add provider creds if using GitHub/Google.
 
-## 3) Prisma migrate & generate
+## 3) Prisma schema sync & generate
 
 ```bash
-npx prisma migrate dev --name init
-npx prisma db push # (optional if you didn't migrate)
+npx prisma db push
 ```
 
 ## 4) Dev
@@ -58,9 +57,26 @@ npx tsx scripts/smokeAdminReports.ts
 # Payments: seed a pending payment, then review (reject) it
 npx tsx scripts/seedPendingPaymentForSmoke.ts
 npx tsx scripts/smokeAdminPayments.ts
+
+# Withdrawal Notifications: test email system and admin notifications
+npx tsx scripts/testWithdrawalNotifications.ts
 ```
 
 Troubleshooting:
 - Ensure `.env.local` is configured and the database is reachable.
 - If Prisma types seem stale, run `npx prisma generate`.
 - For audit logging foreign keys, scripts automatically use an existing admin (or first user) as the session user.
+
+## Documentation
+
+### System Guides
+- **[ADMIN_NOTIFICATION_SYSTEM.md](./ADMIN_NOTIFICATION_SYSTEM.md)** - Complete guide to withdrawal notification system
+- **[WITHDRAWAL_AUDIT_REPORT.md](./WITHDRAWAL_AUDIT_REPORT.md)** - Comprehensive audit and code quality report
+- **[WITHDRAWAL_EXECUTIVE_SUMMARY.md](./WITHDRAWAL_EXECUTIVE_SUMMARY.md)** - Executive summary and deployment status
+- **[DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md)** - Production deployment checklist
+
+### Deployment Guides
+- **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** - General deployment guide
+- **[CPANEL_DEPLOYMENT.md](./CPANEL_DEPLOYMENT.md)** - cPanel-specific deployment
+- **[PRODUCTION_SUMMARY.md](./PRODUCTION_SUMMARY.md)** - Production configuration summary
+

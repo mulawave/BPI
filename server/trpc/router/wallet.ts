@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { notifyDepositStatus, notifyWithdrawalStatus } from "@/server/services/notification.service";
 import { generateReceiptLink } from "@/server/services/receipt.service";
 import { randomUUID } from "crypto";
+import { initiateBankTransfer, initializeFlutterwavePayment, verifyFlutterwavePayment } from "@/lib/flutterwave";
+import { initializePaystackPayment, verifyPaystackPayment } from "@/lib/paystack";
+import { sendWithdrawalRequestToAdmins } from "@/lib/email";
 
 // Default admin settings (will be overridden by DB settings)
 const DEFAULT_CASH_WITHDRAWAL_FEE = 100;
@@ -34,6 +37,13 @@ export const walletRouter = createTRPCRouter({
       const userId = (ctx.session?.user as any)?.id;
       if (!userId) throw new Error("UNAUTHORIZED");
 
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, firstname: true, lastname: true, name: true, mobile: true },
+      });
+
+      if (!user?.email) throw new Error("User email not found");
+
       const { amount, paymentGateway, reference } = input;
       const txReference = reference || `DEP-${Date.now()}`;
 
@@ -42,77 +52,192 @@ export const walletRouter = createTRPCRouter({
       const vatAmount = amount * vatRate;
       const totalAmount = amount + vatAmount;
 
-      // For now, only mock payment is implemented
-      if (paymentGateway !== 'mock') {
-        throw new Error(`${paymentGateway} integration coming soon! Use mock payment for testing.`);
-      }
+      const userName = [user.firstname, user.lastname].filter(Boolean).join(" ") || user.name || "User";
+      const callbackUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/dashboard?payment=success`;
 
-      // Send pending notification
-      await notifyDepositStatus(userId, "pending", amount, txReference);
-
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // Send processing notification
-      await notifyDepositStatus(userId, "processing", amount, txReference);
-
-      try {
-        // Add funds to main wallet
-        await prisma.user.update({
-          where: { id: userId },
-          data: {
-            wallet: { increment: amount }
-          }
+      // Handle Paystack payments
+      if (paymentGateway === 'paystack') {
+        const gateway = await prisma.paymentGatewayConfig.findFirst({
+          where: { gatewayName: 'paystack', isActive: true },
         });
 
-        // Create deposit transaction
-        const transaction = await prisma.transaction.create({
+        if (!gateway?.secretKey) {
+          throw new Error("Paystack is not configured. Please contact admin.");
+        }
+
+        // Initialize Paystack payment
+        const paymentResult = await initializePaystackPayment(gateway.secretKey, {
+          email: user.email,
+          amount: Math.round(totalAmount * 100), // Convert to kobo
+          reference: txReference,
+          callbackUrl,
+          metadata: {
+            userId,
+            depositAmount: amount,
+            vatAmount,
+            purpose: 'wallet_deposit',
+          },
+        });
+
+        // Create pending transaction
+        await prisma.transaction.create({
           data: {
             id: randomUUID(),
             userId,
             transactionType: "DEPOSIT",
             amount: amount,
-            description: `Wallet deposit via ${paymentGateway}`,
-            status: "completed",
+            description: `Wallet deposit via Paystack`,
+            status: "pending",
             reference: txReference,
             walletType: 'main',
-          }
+          },
         });
 
-        // Create VAT transaction
+        await notifyDepositStatus(userId, "pending", amount, txReference);
+
+        return {
+          success: true,
+          paymentUrl: paymentResult.data.authorization_url,
+          reference: txReference,
+          message: "Payment initialized. Please complete payment.",
+          depositedAmount: amount,
+          vatAmount,
+          totalPaid: totalAmount,
+        };
+      }
+
+      // Handle Flutterwave payments
+      if (paymentGateway === 'flutterwave') {
+        const gateway = await prisma.paymentGatewayConfig.findFirst({
+          where: { gatewayName: 'flutterwave', isActive: true },
+        });
+
+        if (!gateway?.secretKey) {
+          throw new Error("Flutterwave is not configured. Please contact admin.");
+        }
+
+        // Initialize Flutterwave payment
+        const paymentResult = await initializeFlutterwavePayment(gateway.secretKey, {
+          txRef: txReference,
+          amount: totalAmount,
+          currency: 'NGN',
+          redirectUrl: callbackUrl,
+          customer: {
+            email: user.email,
+            name: userName,
+            phonenumber: user.mobile || undefined,
+          },
+          customizations: {
+            title: 'BPI Wallet Deposit',
+            description: 'Wallet top-up',
+            logo: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/img/logo.png`,
+          },
+          meta: {
+            userId,
+            depositAmount: amount,
+            vatAmount,
+          },
+        });
+
+        // Create pending transaction
         await prisma.transaction.create({
           data: {
             id: randomUUID(),
             userId,
-            transactionType: "VAT",
-            amount: vatAmount,
-            description: `VAT on wallet deposit (7.5%)`,
-            status: "completed",
-            reference: `VAT-DEP-${Date.now()}`,
+            transactionType: "DEPOSIT",
+            amount: amount,
+            description: `Wallet deposit via Flutterwave`,
+            status: "pending",
+            reference: txReference,
             walletType: 'main',
-          }
+          },
         });
 
-        // Generate receipt link
-        const receiptUrl = generateReceiptLink(transaction.id, 'deposit');
-
-        // Send success notification with receipt
-        await notifyDepositStatus(userId, "completed", amount, txReference, receiptUrl);
+        await notifyDepositStatus(userId, "pending", amount, txReference);
 
         return {
           success: true,
-          message: `Successfully deposited ₦${amount.toLocaleString()}. VAT: ₦${vatAmount.toFixed(2)}`,
+          paymentUrl: paymentResult.paymentLink,
+          reference: txReference,
+          message: "Payment initialized. Please complete payment.",
           depositedAmount: amount,
           vatAmount,
           totalPaid: totalAmount,
-          receiptUrl,
-          transactionId: transaction.id
         };
-      } catch (error) {
-        // Send failure notification
-        await notifyDepositStatus(userId, "failed", amount, txReference);
-        throw error;
       }
+
+      // Mock payment (for testing)
+      if (paymentGateway === 'mock') {
+        // Send pending notification
+        await notifyDepositStatus(userId, "pending", amount, txReference);
+
+        // Simulate payment processing
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // Send processing notification
+        await notifyDepositStatus(userId, "processing", amount, txReference);
+
+        try {
+          // Add funds to main wallet
+          await prisma.user.update({
+            where: { id: userId },
+            data: {
+              wallet: { increment: amount }
+            }
+          });
+
+          // Create deposit transaction
+          const transaction = await prisma.transaction.create({
+            data: {
+              id: randomUUID(),
+              userId,
+              transactionType: "DEPOSIT",
+              amount: amount,
+              description: `Wallet deposit via ${paymentGateway}`,
+              status: "completed",
+              reference: txReference,
+              walletType: 'main',
+            }
+          });
+
+          // Create VAT transaction
+          await prisma.transaction.create({
+            data: {
+              id: randomUUID(),
+              userId,
+              transactionType: "VAT",
+              amount: vatAmount,
+              description: `VAT on wallet deposit (7.5%)`,
+              status: "completed",
+              reference: `VAT-DEP-${Date.now()}`,
+              walletType: 'main',
+            }
+          });
+
+          // Generate receipt link
+          const receiptUrl = generateReceiptLink(transaction.id, 'deposit');
+
+          // Send success notification with receipt
+          await notifyDepositStatus(userId, "completed", amount, txReference, receiptUrl);
+
+          return {
+            success: true,
+            message: `Successfully deposited ₦${amount.toLocaleString()}. VAT: ₦${vatAmount.toFixed(2)}`,
+            depositedAmount: amount,
+            vatAmount,
+            totalPaid: totalAmount,
+            receiptUrl,
+            transactionId: transaction.id
+          };
+        } catch (error) {
+          // Send failure notification
+          await notifyDepositStatus(userId, "failed", amount, txReference);
+          throw error;
+        }
+      }
+
+      // Other payment gateways not implemented yet
+      throw new Error(`${paymentGateway} integration coming soon!`);
     }),
 
   // ============================================
@@ -124,7 +249,7 @@ export const walletRouter = createTRPCRouter({
       withdrawalType: z.enum(['cash', 'bpt']),
       sourceWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business']),
       // Bank details (required for cash withdrawal)
-      bankName: z.string().optional(),
+      bankCode: z.string().optional(), // Flutterwave bank code
       accountNumber: z.string().optional(),
       accountName: z.string().optional(),
       // Crypto details (required for BPT withdrawal)
@@ -134,16 +259,35 @@ export const walletRouter = createTRPCRouter({
       const userId = (ctx.session?.user as any)?.id;
       if (!userId) throw new Error("UNAUTHORIZED");
 
-      const { amount, withdrawalType, sourceWallet, bankName, accountNumber, accountName, bnbWalletAddress } = input;
+      const { amount, withdrawalType, sourceWallet, bankCode, accountNumber, accountName, bnbWalletAddress } = input;
       const txReference = `WD-${withdrawalType.toUpperCase()}-${Date.now()}`;
+
+      console.log("\n🔵 [WITHDRAWAL] Request initiated");
+      console.log("📋 Details:", {
+        userId,
+        amount,
+        type: withdrawalType,
+        sourceWallet,
+        bankCode: bankCode || 'N/A',
+        accountNumber: accountNumber ? `****${accountNumber.slice(-4)}` : 'N/A',
+        reference: txReference
+      });
 
       // Get user data
       const user = await prisma.user.findUnique({
         where: { id: userId }
       });
 
-      if (!user) throw new Error("User not found");
-      if (user.withdrawBan === 1) throw new Error("Your account is banned from withdrawals. Contact support.");
+      if (!user) {
+        console.error("❌ [WITHDRAWAL] User not found:", userId);
+        throw new Error("User not found");
+      }
+      if (user.withdrawBan === 1) {
+        console.error("❌ [WITHDRAWAL] User is banned from withdrawals:", userId);
+        throw new Error("Your account is banned from withdrawals. Contact support.");
+      }
+      
+      console.log("✅ [WITHDRAWAL] User verified:", user.name || user.email);
 
       // EMPOWERMENT GATE: Block education & empowermentSponsorReward withdrawals until final admin confirmation
       if (sourceWallet === 'education' || sourceWallet === 'empowermentSponsorReward') {
@@ -170,30 +314,39 @@ export const walletRouter = createTRPCRouter({
 
       // Check balance
       const currentBalance = (user as any)[sourceWallet] || 0;
+      console.log("💰 [WITHDRAWAL] Current balance:", currentBalance, "NGN in", sourceWallet);
       
       // Get withdrawal fee from admin settings
       const withdrawalFee = withdrawalType === 'cash' 
         ? await getAdminSetting('CASH_WITHDRAWAL_FEE', DEFAULT_CASH_WITHDRAWAL_FEE)
         : await getAdminSetting('BPT_WITHDRAWAL_FEE', DEFAULT_BPT_WITHDRAWAL_FEE);
+      console.log("💸 [WITHDRAWAL] Withdrawal fee:", withdrawalFee);
 
       // Apply tax for empowerment-related wallets (education, empowermentSponsorReward)
       const taxRate = 0.075; // 7.5%
       const isEmpowermentWallet = sourceWallet === 'education' || sourceWallet === 'empowermentSponsorReward';
       const taxAmount = isEmpowermentWallet ? Math.round(amount * taxRate * 100) / 100 : 0;
+      if (taxAmount > 0) {
+        console.log("📊 [WITHDRAWAL] Tax amount (7.5%):", taxAmount);
+      }
       
       const totalDeduction = amount + withdrawalFee + taxAmount;
+      console.log("🔢 [WITHDRAWAL] Total deduction:", totalDeduction, "(amount:", amount, "+ fee:", withdrawalFee, "+ tax:", taxAmount, ")");
 
       if (currentBalance < totalDeduction) {
         const breakdown = isEmpowermentWallet
           ? `₦${amount.toLocaleString()} + ₦${withdrawalFee.toLocaleString()} fee + ₦${taxAmount.toLocaleString()} tax`
           : `₦${amount.toLocaleString()} + ₦${withdrawalFee.toLocaleString()} fee`;
+        console.error("❌ [WITHDRAWAL] Insufficient balance. Need:", totalDeduction, "Have:", currentBalance);
         throw new Error(`Insufficient balance. You need ₦${totalDeduction.toLocaleString()} (${breakdown})`);
       }
+      
+      console.log("✅ [WITHDRAWAL] Balance check passed");
 
       // Validate withdrawal details
       if (withdrawalType === 'cash') {
-        if (!bankName || !accountNumber || !accountName) {
-          throw new Error("Bank details are required for cash withdrawal. Please provide bank name, account number, and account name.");
+        if (!bankCode || !accountNumber || !accountName) {
+          throw new Error("Bank details are required for cash withdrawal. Please provide bank code, account number, and account name.");
         }
       } else {
         // BPT withdrawal
@@ -206,17 +359,24 @@ export const walletRouter = createTRPCRouter({
       const autoWithdrawalThreshold = await getAdminSetting('AUTO_WITHDRAWAL_THRESHOLD', DEFAULT_AUTO_WITHDRAWAL_THRESHOLD);
       const requiresApproval = amount >= autoWithdrawalThreshold;
       const status = requiresApproval ? "pending" : "processing";
+      
+      console.log("⚙️  [WITHDRAWAL] Auto-approval threshold:", autoWithdrawalThreshold);
+      console.log("🤖 [WITHDRAWAL] Auto-approve:", !requiresApproval ? "YES" : "NO (requires manual approval)");
+      console.log("📌 [WITHDRAWAL] Initial status:", status);
 
       try {
         // Deduct from source wallet
+        console.log("🔄 [WITHDRAWAL] Deducting from wallet...");
         await prisma.user.update({
           where: { id: userId },
           data: {
             [sourceWallet]: { decrement: totalDeduction }
           }
         });
+        console.log("✅ [WITHDRAWAL] Wallet deducted successfully");
 
         // Create withdrawal transaction
+        console.log("🔄 [WITHDRAWAL] Creating transaction record...");
         const transaction = await prisma.transaction.create({
           data: {
             id: randomUUID(),
@@ -228,6 +388,7 @@ export const walletRouter = createTRPCRouter({
             reference: txReference
           }
         });
+        console.log("✅ [WITHDRAWAL] Transaction created:", transaction.id);
 
         // Create fee transaction
         if (withdrawalFee > 0) {
@@ -275,34 +436,163 @@ export const walletRouter = createTRPCRouter({
 
         // Send appropriate notification based on status
         if (requiresApproval) {
+          console.log("⏳ [WITHDRAWAL] Manual approval required - notifying admins...");
           await notifyWithdrawalStatus(userId, "pending", amount, txReference);
+          
+          // Send email notification to all admins
+          try {
+            console.log("📧 [EMAIL] Sending admin notifications...");
+            await sendWithdrawalRequestToAdmins(
+              user.name || user.email || 'User',
+              user.email,
+              amount,
+              withdrawalType,
+              txReference
+            );
+            console.log("✅ [EMAIL] Admin notifications sent successfully");
+          } catch (emailError) {
+            console.error('❌ [EMAIL] Failed to send admin email notification:', emailError);
+            // Don't fail the withdrawal if email fails
+          }
         } else {
+          console.log("🤖 [WITHDRAWAL] Auto-approved - initiating Flutterwave transfer in 3s...");
           await notifyWithdrawalStatus(userId, "processing", amount, txReference);
           
-          // Simulate processing time for auto-approved withdrawals
+          // Process auto-approved withdrawal with Flutterwave
           setTimeout(async () => {
-            // Update transaction status to completed
-            await prisma.transaction.update({
-              where: { id: transaction.id },
-              data: { status: "completed" }
-            });
+            try {
+              console.log("\n🌐 [FLUTTERWAVE] Fetching gateway configuration...");
+              // Get Flutterwave credentials from admin settings
+              const flutterwaveGateway = await prisma.paymentGatewayConfig.findFirst({
+                where: { gatewayName: 'flutterwave', isActive: true }
+              });
 
-            await prisma.withdrawalHistory.updateMany({
-              where: { 
-                userId,
-                amount,
-                status: "processing"
-              },
-              data: { status: "completed" }
-            });
+              if (!flutterwaveGateway?.secretKey) {
+                console.error("❌ [FLUTTERWAVE] Not configured in admin settings");
+                throw new Error('Flutterwave is not configured. Please configure in admin settings.');
+              }
+              console.log("✅ [FLUTTERWAVE] Configuration found");
 
-            // Generate receipt link
-            const receiptUrl = generateReceiptLink(transaction.id, 'withdrawal');
+              // Initiate bank transfer via Flutterwave (only for cash withdrawals)
+              if (withdrawalType === 'cash' && bankCode && accountNumber) {
+                console.log("🌐 [FLUTTERWAVE] Initiating bank transfer...");
+                console.log("📋 Transfer details:", {
+                  bank: bankCode,
+                  account: `****${accountNumber.slice(-4)}`,
+                  amount,
+                  reference: txReference
+                });
+                
+                const transferResult = await initiateBankTransfer(
+                  flutterwaveGateway.secretKey,
+                  {
+                    accountBank: bankCode,
+                    accountNumber: accountNumber,
+                    amount: amount,
+                    narration: `Withdrawal - ${txReference}`,
+                    currency: 'NGN',
+                    reference: txReference,
+                    beneficiaryName: accountName
+                  }
+                );
 
-            // Send completion notification
-            await notifyWithdrawalStatus(userId, "completed", amount, txReference, receiptUrl);
+                console.log("✅ [FLUTTERWAVE] Transfer successful:", {
+                  reference: transferResult.reference || transferResult.id,
+                  id: transferResult.id
+                });
+
+                // Update transaction with Flutterwave reference
+                console.log("🔄 [WITHDRAWAL] Updating transaction with Flutterwave reference...");
+                await prisma.transaction.update({
+                  where: { id: transaction.id },
+                  data: { 
+                    status: "completed",
+                    gatewayReference: transferResult.id || transferResult.reference || txReference
+                  }
+                });
+                console.log("✅ [WITHDRAWAL] Transaction updated to completed");
+              } else {
+                // For BPT withdrawal, just mark as completed (manual crypto transfer needed)
+                console.log("🔄 [WITHDRAWAL] BPT withdrawal - marking as completed (manual crypto transfer)");
+                await prisma.transaction.update({
+                  where: { id: transaction.id },
+                  data: { status: "completed" }
+                });
+                console.log("✅ [WITHDRAWAL] Transaction marked as completed");
+              }
+
+              // Update withdrawal history
+              await prisma.withdrawalHistory.updateMany({
+                where: { 
+                  userId,
+                  amount,
+                  status: "processing"
+                },
+                data: { status: "completed" }
+              });
+
+              // Generate receipt link
+              const receiptUrl = generateReceiptLink(transaction.id, 'withdrawal');
+
+              // Send completion notification
+              console.log("📧 [NOTIFICATION] Sending completion notification to user...");
+              await notifyWithdrawalStatus(userId, "completed", amount, txReference, receiptUrl);
+              console.log("✅ [NOTIFICATION] User notified of completion");
+              
+              console.log("\n✅ [WITHDRAWAL] Auto-approved withdrawal completed successfully");
+              console.log("═".repeat(60) + "\n");
+            } catch (error) {
+              console.error('\n❌ [WITHDRAWAL] Processing error:', error);
+              console.error('Error details:', error instanceof Error ? error.message : 'Unknown error');
+              
+              console.log("🔄 [WITHDRAWAL] Initiating refund...");
+              // Mark as failed and refund user
+              await prisma.transaction.update({
+                where: { id: transaction.id },
+                data: { status: "failed" }
+              });
+
+              await prisma.withdrawalHistory.updateMany({
+                where: { 
+                  userId,
+                  amount,
+                  status: "processing"
+                },
+                data: { status: "failed" }
+              });
+
+              // Refund the complete deducted amount (withdrawal + fees + tax)
+              console.log("💰 [REFUND] Refunding complete amount:", {
+                withdrawalAmount: amount,
+                withdrawalFee: withdrawalFee,
+                taxAmount: taxAmount,
+                totalRefund: totalDeduction,
+                breakdown: `₦${amount} + ₦${withdrawalFee} fee + ₦${taxAmount} tax = ₦${totalDeduction}`
+              });
+              await prisma.user.update({
+                where: { id: userId },
+                data: {
+                  [sourceWallet]: { increment: totalDeduction }
+                }
+              });
+              console.log("✅ [WITHDRAWAL] User refunded ₦" + totalDeduction + " successfully (includes all fees and taxes)");
+
+              // Send failure notification
+              await notifyWithdrawalStatus(userId, "failed", amount, txReference);
+              console.log("📧 [NOTIFICATION] User notified of failure");
+              console.log("═".repeat(60) + "\n");
+            }
           }, 3000); // 3 seconds processing time
         }
+
+        console.log("\n✅ [WITHDRAWAL] Request completed successfully");
+        console.log("📊 Final Status:", {
+          transactionId: transaction.id,
+          status,
+          requiresApproval,
+          totalDeducted: totalDeduction
+        });
+        console.log("═".repeat(60) + "\n");
 
         const messageBreakdown = taxAmount > 0
           ? `₦${amount.toLocaleString()} + ₦${withdrawalFee} fee + ₦${taxAmount} tax`
@@ -589,6 +879,107 @@ export const walletRouter = createTRPCRouter({
       message: "Bank details fields are not yet added to the schema. Please add them to the User model in schema.prisma."
     };
   }),
+
+  // ============================================
+  // VERIFY PAYMENT
+  // ============================================
+  verifyPayment: protectedProcedure
+    .input(z.object({
+      reference: z.string(),
+      gateway: z.enum(['paystack', 'flutterwave']),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id;
+      if (!userId) throw new Error("UNAUTHORIZED");
+
+      const { reference, gateway } = input;
+
+      // Find the pending transaction
+      const transaction = await prisma.transaction.findFirst({
+        where: {
+          reference,
+          userId,
+          status: "pending",
+        },
+      });
+
+      if (!transaction) {
+        throw new Error("Transaction not found or already processed");
+      }
+
+      let verificationResult: any;
+      let paymentStatus: string;
+      let amountPaid: number;
+
+      // Verify with appropriate gateway
+      if (gateway === 'paystack') {
+        const gatewayConfig = await prisma.paymentGatewayConfig.findFirst({
+          where: { gatewayName: 'paystack', isActive: true },
+        });
+
+        if (!gatewayConfig?.secretKey) {
+          throw new Error("Paystack configuration not found");
+        }
+
+        verificationResult = await verifyPaystackPayment(gatewayConfig.secretKey, reference);
+        paymentStatus = verificationResult.data.status;
+        amountPaid = verificationResult.data.amount / 100; // Convert from kobo
+      } else if (gateway === 'flutterwave') {
+        const gatewayConfig = await prisma.paymentGatewayConfig.findFirst({
+          where: { gatewayName: 'flutterwave', isActive: true },
+        });
+
+        if (!gatewayConfig?.secretKey) {
+          throw new Error("Flutterwave configuration not found");
+        }
+
+        verificationResult = await verifyFlutterwavePayment(gatewayConfig.secretKey, reference);
+        paymentStatus = verificationResult.status;
+        amountPaid = verificationResult.amount;
+      } else {
+        throw new Error("Unsupported gateway");
+      }
+
+      // Check if payment was successful
+      if (paymentStatus !== 'success' && paymentStatus !== 'successful') {
+        await prisma.transaction.update({
+          where: { id: transaction.id },
+          data: { status: "failed" },
+        });
+
+        await notifyDepositStatus(userId, "failed", transaction.amount, reference);
+
+        throw new Error(`Payment ${paymentStatus}. Please try again.`);
+      }
+
+      // Credit user wallet
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          wallet: { increment: transaction.amount },
+        },
+      });
+
+      // Update transaction status
+      await prisma.transaction.update({
+        where: { id: transaction.id },
+        data: { status: "completed" },
+      });
+
+      // Generate receipt
+      const receiptUrl = generateReceiptLink(transaction.id, 'deposit');
+
+      // Send success notification
+      await notifyDepositStatus(userId, "completed", transaction.amount, reference, receiptUrl);
+
+      return {
+        success: true,
+        message: `Deposit of ₦${transaction.amount.toLocaleString()} successful!`,
+        amountDeposited: transaction.amount,
+        receiptUrl,
+        transactionId: transaction.id,
+      };
+    }),
 
   // ============================================
   // UPDATE BANK DETAILS
