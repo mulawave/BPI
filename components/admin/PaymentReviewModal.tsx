@@ -78,11 +78,11 @@ export default function PaymentReviewModal({
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto"
           >
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl my-8 flex flex-col max-h-[90vh]">
               {/* Header */}
-              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                   Review Payment
                 </h2>
@@ -94,8 +94,8 @@ export default function PaymentReviewModal({
                 </button>
               </div>
 
-              {/* Content */}
-              <div className="p-6 space-y-6">
+              {/* Content - Scrollable */}
+              <div className="p-6 space-y-6 overflow-y-auto flex-1">
                 {/* Payment Details */}
                 {payment && (
                   <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-4 space-y-3">
@@ -129,8 +129,9 @@ export default function PaymentReviewModal({
                             <img
                               src={proofOfPayment}
                               alt="Proof of Payment"
-                              className="max-h-96 mx-auto rounded-lg border-2 border-gray-200 dark:border-gray-700 cursor-pointer hover:scale-105 transition-transform"
+                              className="max-h-64 w-auto mx-auto rounded-lg border-2 border-gray-200 dark:border-gray-700 cursor-pointer hover:opacity-90 transition-opacity"
                               onClick={handleOpenProof}
+                              title="Click to view full size"
                             />
                           ) : (
                             <a
@@ -279,8 +280,8 @@ export default function PaymentReviewModal({
                 )}
               </div>
 
-              {/* Footer */}
-              <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3">
+              {/* Footer - Sticky */}
+              <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3 flex-shrink-0 bg-white dark:bg-gray-800">
                 <button
                   onClick={onClose}
                   className="px-6 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
