@@ -16,6 +16,7 @@ interface FooterProps {
 export default function Footer({ onModalOpen }: FooterProps) {
   const [email, setEmail] = useState("");
   const { data: footerPages } = api.content.getFooterPages.useQuery(undefined, { refetchOnWindowFocus: false });
+  const { data: companyInfo } = api.admin.getSystemSettings.useQuery(undefined, { refetchOnWindowFocus: false });
 
   const footerLinks = useMemo<{ label: string; href: string }[]>(() => {
     if (!footerPages || footerPages.length === 0) {
@@ -69,15 +70,17 @@ export default function Footer({ onModalOpen }: FooterProps) {
             {/* Social Links */}
             <div className="flex gap-3 pt-4">
               {[
-                { icon: Facebook, href: "#", label: "Facebook" },
-                { icon: Twitter, href: "#", label: "Twitter" },
-                { icon: Instagram, href: "#", label: "Instagram" },
-                { icon: Linkedin, href: "#", label: "LinkedIn" },
-                { icon: Youtube, href: "#", label: "YouTube" }
-              ].map(({ icon: Icon, href, label }) => (
+                { icon: Facebook, href: companyInfo?.social_facebook?.value || "#", label: "Facebook", show: !!companyInfo?.social_facebook?.value },
+                { icon: Twitter, href: companyInfo?.social_twitter?.value || "#", label: "Twitter", show: !!companyInfo?.social_twitter?.value },
+                { icon: Instagram, href: companyInfo?.social_instagram?.value || "#", label: "Instagram", show: !!companyInfo?.social_instagram?.value },
+                { icon: Linkedin, href: companyInfo?.social_linkedin?.value || "#", label: "LinkedIn", show: !!companyInfo?.social_linkedin?.value },
+                { icon: Youtube, href: companyInfo?.social_youtube?.value || "#", label: "YouTube", show: !!companyInfo?.social_youtube?.value }
+              ].filter(s => s.show).map(({ icon: Icon, href, label }) => (
                 <a
                   key={label}
                   href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   aria-label={label}
                   className="w-10 h-10 bg-green-900/30 hover:bg-bpi-primary rounded-lg flex items-center justify-center transition-all duration-300 hover:scale-110 group"
                 >
@@ -162,22 +165,28 @@ export default function Footer({ onModalOpen }: FooterProps) {
             
             {/* Contact Info */}
             <div className="space-y-3 mb-6">
-              <div className="flex items-start gap-3 text-sm">
-                <MapPin className="w-4 h-4 text-bpi-primary flex-shrink-0 mt-1" />
-                <span className="text-gray-400">Nigeria</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm">
-                <Mail className="w-4 h-4 text-bpi-primary flex-shrink-0" />
-                <a href="mailto:support@bpi.com" className="text-gray-400 hover:text-bpi-primary transition-colors">
-                  support@bpi.com
-                </a>
-              </div>
-              <div className="flex items-center gap-3 text-sm">
-                <Phone className="w-4 h-4 text-bpi-primary flex-shrink-0" />
-                <a href="tel:+234" className="text-gray-400 hover:text-bpi-primary transition-colors">
-                  +234 xxx xxx xxxx
-                </a>
-              </div>
+              {companyInfo?.company_address?.value && (
+                <div className="flex items-start gap-3 text-sm">
+                  <MapPin className="w-4 h-4 text-bpi-primary flex-shrink-0 mt-1" />
+                  <span className="text-gray-400">{companyInfo.company_address.value}</span>
+                </div>
+              )}
+              {companyInfo?.company_email?.value && (
+                <div className="flex items-center gap-3 text-sm">
+                  <Mail className="w-4 h-4 text-bpi-primary flex-shrink-0" />
+                  <a href={`mailto:${companyInfo.company_email.value}`} className="text-gray-400 hover:text-bpi-primary transition-colors">
+                    {companyInfo.company_email.value}
+                  </a>
+                </div>
+              )}
+              {companyInfo?.company_phone?.value && (
+                <div className="flex items-center gap-3 text-sm">
+                  <Phone className="w-4 h-4 text-bpi-primary flex-shrink-0" />
+                  <a href={`tel:${companyInfo.company_phone.value}`} className="text-gray-400 hover:text-bpi-primary transition-colors">
+                    {companyInfo.company_phone.value}
+                  </a>
+                </div>
+              )}
             </div>
 
             {/* Newsletter Signup */}

@@ -62,6 +62,19 @@ export async function POST(req: NextRequest) {
         data: { status: 'completed' },
       });
 
+      // Update pending payment if exists
+      await prisma.pendingPayment.updateMany({
+        where: { 
+          gatewayReference: tx_ref,
+          status: 'pending'
+        },
+        data: { 
+          status: 'approved',
+          reviewedAt: new Date(),
+          reviewNotes: 'Auto-approved via Flutterwave webhook'
+        },
+      });
+
       // Generate receipt
       const receiptUrl = generateReceiptLink(transaction.id, 'deposit');
 
@@ -114,23 +127,69 @@ export async function POST(req: NextRequest) {
       const currency = payload.data.currency;
       const flwRef = payload.data.flw_ref;
       const userId = payload.data.meta?.userId;
-      const purpose = payload.data.meta?.purpose;
+      const purpose = (payload.data.meta?.purpose || '').toUpperCase();
       const packageId = payload.data.meta?.packageId;
+      const currentPackageId = payload.data.meta?.currentPackageId;
 
       console.log("✅ Processing successful payment:", {
         txRef,
         userId,
         amount,
         purpose,
+        packageId,
       });
 
-      // TODO: Create payment_transactions table entry
-      // For now, just log and return success
-
-      // TODO: Trigger membership activation if purpose is MEMBERSHIP
-      // if (purpose === "MEMBERSHIP" && packageId && userId) {
-      //   await activateMembershipPackage(userId, packageId);
-      // }
+      // WEBHOOK UPGRADE VS ACTIVATION DISTINCTION: Handle different payment purposes
+      if (purpose === "MEMBERSHIP" && packageId && userId) {
+        console.log("📦 [WEBHOOK] Processing MEMBERSHIP activation...");
+        
+        try {
+          const { activateMembershipAfterExternalPayment } = await import("@/server/services/membershipPayments.service");
+          
+          await activateMembershipAfterExternalPayment({
+            prisma,
+            userId,
+            packageId,
+            selectedPalliative: payload.data.meta?.selectedPalliative,
+            paymentReference: txRef,
+            paymentMethodLabel: "Flutterwave",
+            activatorName: payload.data.customer?.name || "Member"
+          });
+          
+          console.log("✅ [WEBHOOK] Membership activated successfully");
+        } catch (error) {
+          console.error("❌ [WEBHOOK] Membership activation failed:", error);
+          throw error;
+        }
+      } else if (purpose === "UPGRADE" && packageId && currentPackageId && userId) {
+        console.log("📦 [WEBHOOK] Processing MEMBERSHIP upgrade...");
+        
+        try {
+          const { upgradeMembershipAfterExternalPayment } = await import("@/server/services/membershipPayments.service");
+          
+          await upgradeMembershipAfterExternalPayment({
+            prisma,
+            userId,
+            packageId,
+            currentPackageId,
+            selectedPalliative: payload.data.meta?.selectedPalliative,
+            paymentReference: txRef,
+            paymentMethodLabel: "Flutterwave"
+          });
+          
+          console.log("✅ [WEBHOOK] Membership upgraded successfully");
+        } catch (error) {
+          console.error("❌ [WEBHOOK] Membership upgrade failed:", error);
+          throw error;
+        }
+      } else if (purpose === "DEPOSIT" || purpose === "TOPUP") {
+        console.log("💰 [WEBHOOK] Processing wallet deposit...");
+        
+        // Already handled above in the deposit-specific block
+        console.log("✅ [WEBHOOK] Deposit already processed");
+      } else {
+        console.warn("⚠️  [WEBHOOK] Unknown payment purpose:", purpose);
+      }
 
       console.log("💾 Payment webhook processed successfully");
     }

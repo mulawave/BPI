@@ -278,4 +278,87 @@ export const securityRouter = createTRPCRouter({
         message: "2FA disabled successfully",
       };
     }),
+
+  // Verify PIN (for use in other routers)
+  verifyPin: protectedProcedure
+    .input(z.object({
+      pin: z.string().length(4, "PIN must be 4 digits"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.session?.user?.id) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: ctx.session.user.id },
+        select: { userProfilePin: true },
+      });
+
+      if (!user?.userProfilePin) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Please set up a PIN first",
+        });
+      }
+
+      const isPinValid = await bcrypt.compare(input.pin, user.userProfilePin);
+
+      if (!isPinValid) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Invalid PIN",
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // Verify 2FA code (for use in other routers)
+  verify2FACode: protectedProcedure
+    .input(z.object({
+      code: z.string().length(6, "Code must be 6 digits"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.session?.user?.id) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: ctx.session.user.id },
+        select: {
+          twoFactorEnabled: true,
+          twoFactorSecret: true,
+        },
+      });
+
+      if (!user?.twoFactorEnabled) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "2FA is not enabled",
+        });
+      }
+
+      if (!user?.twoFactorSecret) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "2FA secret not found",
+        });
+      }
+
+      const isValid = speakeasy.totp.verify({
+        secret: user.twoFactorSecret,
+        encoding: "base32",
+        token: input.code,
+        window: 2,
+      });
+
+      if (!isValid) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Invalid 2FA code",
+        });
+      }
+
+      return { success: true };
+    }),
 });

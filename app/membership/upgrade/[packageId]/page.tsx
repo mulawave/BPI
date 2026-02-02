@@ -45,6 +45,7 @@ export default function UpgradePage() {
       const result = await upgradeMutation.mutateAsync({
         packageId: newPackage.id,
         currentPackageId: fromPackageId,
+        frontendCalculatedCost: upgradeCost // Cost validation
       });
 
       toast.success(

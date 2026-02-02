@@ -67,10 +67,30 @@ export default function ActivateMembershipPage() {
   // Check if user has active membership
   const { data: activeMembership } = api.package.getUserActiveMembership.useQuery();
 
-  // Calculate cost (upgrade shows differential, activation shows full price)
+  const addonPackages = [
+    "Travel & Tour Agent",
+    "Basic Early Retirement",
+    "Child Educational/Vocational Support",
+  ];
+
+  const isAddon = selectedPackage ? addonPackages.includes(selectedPackage.name) : false;
+  const regularPlusPackage = packages?.find(pkg => pkg.name === "Regular Plus");
+  const regularPlusTotal = regularPlusPackage ? regularPlusPackage.price + regularPlusPackage.vat : 0;
+  const currentTotal = activeMembership?.package
+    ? activeMembership.package.price + activeMembership.package.vat
+    : 0;
+
+  const activationCost = selectedPackage ? (selectedPackage.price + selectedPackage.vat) : 0;
+  const adjustedActivationCost = (isAddon && regularPlusTotal > 0 && currentTotal >= regularPlusTotal)
+    ? Math.max(0, activationCost - regularPlusTotal)
+    : activationCost;
+
+  // Calculate cost (upgrade shows differential, activation shows adjusted cost)
   const totalCost = isUpgrade && fromPackage && selectedPackage
-    ? (selectedPackage.price + selectedPackage.vat) - (fromPackage.price + fromPackage.vat)
-    : selectedPackage ? (selectedPackage.price + selectedPackage.vat) : 0;
+    ? (isAddon
+        ? adjustedActivationCost
+        : (selectedPackage.price + selectedPackage.vat) - (fromPackage.price + fromPackage.vat))
+    : adjustedActivationCost;
 
   // Fetch user details to check wallet balance
   const { data: userDetails } = api.user.getDetails.useQuery();
@@ -206,7 +226,8 @@ export default function ActivateMembershipPage() {
           await processUpgradeMutation.mutateAsync({ 
             packageId: selectedPackage.id,
             currentPackageId: fromPackageId,
-            paymentMethod: 'wallet'
+            paymentMethod: 'wallet',
+            frontendCalculatedCost: totalCost // Cost validation
           });
         } else {
           await processMockPayment.mutateAsync({ 
@@ -222,7 +243,8 @@ export default function ActivateMembershipPage() {
         if (isUpgrade && fromPackageId) {
           await processUpgradeMutation.mutateAsync({ 
             packageId: selectedPackage.id,
-            currentPackageId: fromPackageId
+            currentPackageId: fromPackageId,
+            frontendCalculatedCost: totalCost // Cost validation
           });
         } else {
           await processMockPayment.mutateAsync({ 

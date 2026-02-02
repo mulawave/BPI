@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
+import { sendVerificationEmail } from "@/lib/email";
 
 // Store verification codes temporarily (in production, use Redis or database)
 const verificationCodes = new Map<string, { code: string; expiresAt: Date }>();
@@ -150,17 +151,12 @@ export const userRouter = createTRPCRouter({
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
     verificationCodes.set(userId, { code, expiresAt });
 
-    // In production, send actual email here
-    // For now, log the code (in development)
-    console.log(`[DEV] Verification code for ${user.email}: ${code}`);
-    
-    // TODO: Integrate with email service (SendGrid, Resend, etc.)
-    // await sendEmail({
-    //   to: user.email!,
-    //   subject: "BPI Email Verification Code",
-    //   text: `Your verification code is: ${code}`,
-    //   html: `<p>Your verification code is: <strong>${code}</strong></p>`
-    // });
+    try {
+      await sendVerificationEmail(user.email!, code);
+    } catch (error) {
+      console.error("[user.sendVerificationEmail] Failed to send email:", error);
+      throw new Error("Failed to send verification email. Please try again.");
+    }
 
     return { success: true, message: "Verification code sent to your email" };
   }),

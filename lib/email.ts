@@ -6,6 +6,12 @@ interface EmailOptions {
   subject: string;
   html: string;
   from?: string;
+  replyTo?: string;
+  attachments?: Array<{
+    filename: string;
+    content: string;
+    encoding?: string;
+  }>;
 }
 
 async function getSmtpConfig() {
@@ -53,6 +59,8 @@ export async function sendEmail(options: EmailOptions) {
       to: options.to,
       subject: options.subject,
       html: options.html,
+      replyTo: options.replyTo,
+      attachments: options.attachments,
     });
 
     return { success: true };
@@ -456,6 +464,328 @@ export async function sendWithdrawalRejectedToUser(
   await sendEmail({
     to: email,
     subject: `❌ Withdrawal Rejected - ₦${amount.toLocaleString()}`,
+    html,
+  });
+}
+
+export async function sendTransferConfirmationToUser(
+  email: string,
+  userName: string,
+  amount: number,
+  fromWallet: string,
+  toWallet: string,
+  reference: string
+) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #0d3b29 0%, #16a34a 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .success-box { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 15px; margin: 20px 0; border-radius: 5px; }
+          .info-grid { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; }
+          .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+          .info-label { font-weight: 600; color: #6b7280; }
+          .info-value { color: #111827; font-weight: 500; }
+          .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>✅ Transfer Successful</h1>
+          </div>
+          <div class="content">
+            <p>Dear ${userName},</p>
+            
+            <div class="success-box">
+              <strong>✓ Your wallet transfer has been completed successfully!</strong>
+            </div>
+
+            <div class="info-grid">
+              <div class="info-row">
+                <span class="info-label">Amount:</span>
+                <span class="info-value">₦${amount.toLocaleString()}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">From Wallet:</span>
+                <span class="info-value">${fromWallet}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">To Wallet:</span>
+                <span class="info-value">${toWallet}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Reference:</span>
+                <span class="info-value">${reference}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Date:</span>
+                <span class="info-value">${new Date().toLocaleString()}</span>
+              </div>
+            </div>
+
+            <p>This transfer was processed instantly. Your ${toWallet} balance has been updated.</p>
+
+            <p>If you did not authorize this transfer, please contact our support team immediately.</p>
+            
+            <p>Best regards,<br>The BPI Team</p>
+          </div>
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  await sendEmail({
+    to: email,
+    subject: `✅ Wallet Transfer Complete - ₦${amount.toLocaleString()}`,
+    html,
+  });
+}
+
+export async function sendTransferToUserConfirmation(
+  senderEmail: string,
+  senderName: string,
+  receiverName: string,
+  amount: number,
+  reference: string,
+  isSender: boolean
+) {
+  const html = isSender ? `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #0d3b29 0%, #16a34a 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .success-box { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 15px; margin: 20px 0; border-radius: 5px; }
+          .info-grid { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; }
+          .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+          .info-label { font-weight: 600; color: #6b7280; }
+          .info-value { color: #111827; font-weight: 500; }
+          .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>💸 Money Sent Successfully</h1>
+          </div>
+          <div class="content">
+            <p>Dear ${senderName},</p>
+            
+            <div class="success-box">
+              <strong>✓ Your transfer to ${receiverName} has been completed!</strong>
+            </div>
+
+            <div class="info-grid">
+              <div class="info-row">
+                <span class="info-label">Amount Sent:</span>
+                <span class="info-value">₦${amount.toLocaleString()}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Recipient:</span>
+                <span class="info-value">${receiverName}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Reference:</span>
+                <span class="info-value">${reference}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Date:</span>
+                <span class="info-value">${new Date().toLocaleString()}</span>
+              </div>
+            </div>
+
+            <p>The funds have been transferred instantly. Your wallet balance has been updated.</p>
+
+            <p>If you did not authorize this transfer, please contact our support team immediately.</p>
+            
+            <p>Best regards,<br>The BPI Team</p>
+          </div>
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  ` : `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #0d3b29 0%, #16a34a 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .success-box { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 15px; margin: 20px 0; border-radius: 5px; }
+          .info-grid { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; }
+          .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+          .info-label { font-weight: 600; color: #6b7280; }
+          .info-value { color: #111827; font-weight: 500; }
+          .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>💰 Money Received!</h1>
+          </div>
+          <div class="content">
+            <p>Dear ${receiverName},</p>
+            
+            <div class="success-box">
+              <strong>✓ You've received money from ${senderName}!</strong>
+            </div>
+
+            <div class="info-grid">
+              <div class="info-row">
+                <span class="info-label">Amount Received:</span>
+                <span class="info-value">₦${amount.toLocaleString()}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">From:</span>
+                <span class="info-value">${senderName}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Reference:</span>
+                <span class="info-value">${reference}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Date:</span>
+                <span class="info-value">${new Date().toLocaleString()}</span>
+              </div>
+            </div>
+
+            <p>The funds have been credited to your wallet instantly. You can now use this balance for purchases, withdrawals, or other transactions.</p>
+
+            <p>If you have any questions, please contact our support team.</p>
+            
+            <p>Best regards,<br>The BPI Team</p>
+          </div>
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  await sendEmail({
+    to: senderEmail,
+    subject: isSender 
+      ? `💸 Transfer Sent - ₦${amount.toLocaleString()} to ${receiverName}`
+      : `💰 Money Received - ₦${amount.toLocaleString()} from ${senderName}`,
+    html,
+  });
+}
+
+export async function sendRenewalReminderEmail(
+  email: string,
+  userName: string,
+  packageName: string,
+  expiryDate: Date,
+  daysUntilExpiry: number,
+  renewalFee: number
+) {
+  const renewalUrl = `${process.env.NEXT_PUBLIC_APP_URL}/membership`;
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #0d3b29 0%, #16a34a 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .warning-box { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 5px; }
+          .info-grid { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; }
+          .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+          .info-label { font-weight: 600; color: #6b7280; }
+          .info-value { color: #111827; font-weight: 500; }
+          .button { display: inline-block; padding: 12px 30px; background: #0d3b29; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+          .urgent { color: #dc2626; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>⏰ Membership Renewal Reminder</h1>
+          </div>
+          <div class="content">
+            <p>Dear ${userName},</p>
+            
+            <div class="warning-box">
+              <strong>⚠️ Your membership is expiring soon!</strong>
+            </div>
+
+            <p>This is a friendly reminder that your <strong>${packageName}</strong> membership will expire in <span class="${daysUntilExpiry <= 7 ? 'urgent' : ''}">${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}</span>.</p>
+
+            <div class="info-grid">
+              <div class="info-row">
+                <span class="info-label">Membership Package:</span>
+                <span class="info-value">${packageName}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Expiry Date:</span>
+                <span class="info-value ${daysUntilExpiry <= 7 ? 'urgent' : ''}">${expiryDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Days Remaining:</span>
+                <span class="info-value ${daysUntilExpiry <= 7 ? 'urgent' : ''}">${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Renewal Fee:</span>
+                <span class="info-value">₦${renewalFee.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <p><strong>Why renew now?</strong></p>
+            <ul>
+              <li>Continue enjoying all membership benefits without interruption</li>
+              <li>Maintain your referral network and bonus structure</li>
+              <li>Keep access to exclusive features and rewards</li>
+              <li>Avoid re-activation fees</li>
+            </ul>
+
+            <p style="text-align: center;">
+              <a href="${renewalUrl}" class="button">Renew Membership Now</a>
+            </p>
+
+            ${daysUntilExpiry <= 7 ? `
+              <div class="warning-box" style="background: #fee2e2; border-color: #dc2626;">
+                <strong>🚨 URGENT: Only ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''} remaining!</strong><br>
+                Renew today to avoid service interruption.
+              </div>
+            ` : ''}
+
+            <p>If you have any questions about renewal, please contact our support team.</p>
+            
+            <p>Best regards,<br>The BPI Team</p>
+          </div>
+          <div class="footer">
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  await sendEmail({
+    to: email,
+    subject: daysUntilExpiry <= 7 
+      ? `🚨 URGENT: ${packageName} Membership Expires in ${daysUntilExpiry} Days!`
+      : `⏰ Reminder: ${packageName} Membership Expires in ${daysUntilExpiry} Days`,
     html,
   });
 }

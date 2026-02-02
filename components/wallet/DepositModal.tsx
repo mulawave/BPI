@@ -14,7 +14,7 @@ interface DepositModalProps {
 }
 
 type PaymentGateway = 'paystack' | 'flutterwave' | 'bank-transfer' | 'utility-token' | 'crypto' | 'mock';
-type Step = 'amount' | 'gateway' | 'summary' | 'processing' | 'success' | 'error';
+type Step = 'amount' | 'gateway' | 'summary' | 'bank-details' | 'processing' | 'success' | 'error';
 
 export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const [currentStep, setCurrentStep] = useState<Step>('amount');
@@ -22,12 +22,18 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const [selectedGateway, setSelectedGateway] = useState<PaymentGateway | null>(null);
   const [error, setError] = useState<string>('');
   const [successData, setSuccessData] = useState<any>(null);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreview, setProofPreview] = useState<string>('');
+  const [uploadingProof, setUploadingProof] = useState(false);
   
   const { formatAmount } = useCurrency();
   const VAT_RATE = 0.075; // 7.5%
 
   const { data: gatewayConfigs } = api.payment.getPaymentGateways.useQuery(undefined, {
     enabled: isOpen,
+  });
+  const { data: bankDetails } = api.admin.getSystemSettings.useQuery(undefined, {
+    enabled: isOpen && selectedGateway === 'bank-transfer',
   });
   const enabledByName = new Map(
     (gatewayConfigs ?? []).map((g) => [g.gatewayName, g.isActive] as const),
@@ -132,6 +138,13 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
 
   const handleConfirm = () => {
     if (!selectedGateway) return;
+    
+    // Bank transfer requires proof of payment
+    if (selectedGateway === 'bank-transfer') {
+      setCurrentStep('bank-details');
+      return;
+    }
+    
     setCurrentStep('processing');
     depositMutation.mutate({
       amount: numAmount,
@@ -140,12 +153,73 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
     });
   };
 
+  const handleProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'].includes(file.type)) {
+      setError('Please upload a valid image (JPG, PNG) or PDF file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('File size must be less than 5MB');
+      return;
+    }
+
+    setProofFile(file);
+    setError('');
+
+    // Generate preview for images
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProofPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleBankTransferSubmit = async () => {
+    if (!proofFile) {
+      setError('Please upload proof of payment');
+      return;
+    }
+
+    setUploadingProof(true);
+    setCurrentStep('processing');
+
+    try {
+      // Convert file to base64
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        depositMutation.mutate({
+          amount: numAmount,
+          paymentGateway: 'bank-transfer',
+          reference: `DEP-BANK-${Date.now()}`,
+          proofOfPayment: base64,
+        });
+      };
+      reader.readAsDataURL(proofFile);
+    } catch (err: any) {
+      setError(err.message);
+      setCurrentStep('error');
+      setUploadingProof(false);
+    }
+  };
+
   const handleReset = () => {
     setCurrentStep('amount');
     setAmount('');
     setSelectedGateway(null);
     setError('');
     setSuccessData(null);
+    setProofFile(null);
+    setProofPreview('');
+    setUploadingProof(false);
   };
 
   const handleClose = () => {
@@ -350,6 +424,138 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
               >
                 Continue to Summary
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3.5: Bank Details & Proof Upload */}
+        {currentStep === 'bank-details' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="text-center mb-8">
+              <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Building2 className="w-10 h-10 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Bank Transfer Instructions</h2>
+              <p className="text-muted-foreground">Transfer to the account below and upload proof</p>
+            </div>
+
+            <div className="max-w-md mx-auto space-y-6">
+              {/* Amount Summary */}
+              <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-800">
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground mb-1">Amount to Transfer</p>
+                  <p className="text-3xl font-bold text-green-600">{formatAmount(totalAmount)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    (₦{numAmount.toLocaleString()} + ₦{vatAmount.toFixed(2)} VAT)
+                  </p>
+                </div>
+              </div>
+
+              {/* Bank Account Details */}
+              <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl border-2 border-blue-300 dark:border-blue-700">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-blue-600" />
+                  Company Bank Account
+                </h3>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Bank Name</p>
+                    <p className="font-bold text-lg">{bankDetails?.bank_name?.value || 'Not configured'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Account Number</p>
+                    <p className="font-bold text-2xl tracking-wider">{bankDetails?.bank_account_number?.value || 'Not configured'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Account Name</p>
+                    <p className="font-bold">{bankDetails?.bank_account_name?.value || 'Not configured'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800">
+                <h4 className="font-bold text-sm mb-2 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                  Important Instructions
+                </h4>
+                <ol className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1">
+                  <li>1. Transfer exactly <strong>{formatAmount(totalAmount)}</strong> to the account above</li>
+                  <li>2. Take a screenshot of the transfer receipt</li>
+                  <li>3. Upload the screenshot below</li>
+                  <li>4. Wait for admin approval (usually within 24 hours)</li>
+                </ol>
+              </div>
+
+              {/* Proof of Payment Upload */}
+              <div className="space-y-3">
+                <label className="block">
+                  <span className="text-sm font-medium mb-2 block">Upload Proof of Payment *</span>
+                  <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 text-center hover:border-green-400 transition-colors cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,application/pdf"
+                      onChange={handleProofUpload}
+                      className="hidden"
+                      id="proof-upload"
+                    />
+                    <label htmlFor="proof-upload" className="cursor-pointer">
+                      {proofPreview ? (
+                        <div className="space-y-3">
+                          <img src={proofPreview} alt="Proof preview" className="max-h-48 mx-auto rounded-lg" />
+                          <p className="text-sm text-green-600 font-medium">✓ {proofFile?.name}</p>
+                          <p className="text-xs text-muted-foreground">Click to change</p>
+                        </div>
+                      ) : proofFile ? (
+                        <div className="space-y-2">
+                          <FiCreditCard className="w-12 h-12 mx-auto text-green-600" />
+                          <p className="text-sm text-green-600 font-medium">✓ {proofFile.name}</p>
+                          <p className="text-xs text-muted-foreground">Click to change</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <FiCreditCard className="w-12 h-12 mx-auto text-gray-400" />
+                          <p className="text-sm font-medium">Click to upload</p>
+                          <p className="text-xs text-muted-foreground">JPG, PNG, or PDF (Max 5MB)</p>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                </label>
+              </div>
+
+              {error && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2 text-red-700 dark:text-red-400">
+                  <FiAlertCircle />
+                  <span className="text-sm">{error}</span>
+                </div>
+              )}
+
+              <div className="flex gap-4">
+                <Button
+                  onClick={() => setCurrentStep('summary')}
+                  variant="outline"
+                  className="flex-1 py-6"
+                  size="lg"
+                >
+                  Back
+                </Button>
+                <Button
+                  onClick={handleBankTransferSubmit}
+                  disabled={!proofFile || uploadingProof}
+                  className="flex-1 py-6 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50"
+                  size="lg"
+                >
+                  {uploadingProof ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                      Submitting...
+                    </>
+                  ) : (
+                    'Submit for Approval'
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         )}

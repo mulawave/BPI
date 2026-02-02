@@ -18,8 +18,22 @@ export async function distributeBptReward(
   transactionType: string = "REFERRAL",
   description: string = "BPT referral reward"
 ) {
-  const userReward = totalBptReward / 2;
-  const buyBackAmount = totalBptReward / 2;
+  // INPUT VALIDATION: Ensure reward amount is positive
+  if (totalBptReward <= 0) {
+    console.error(`❌ Invalid BPT reward amount: ${totalBptReward} for user ${userId}`);
+    throw new Error("BPT reward amount must be greater than zero");
+  }
+
+  // PRECISION: Round to prevent floating point issues
+  const userReward = Math.round((totalBptReward / 2) * 100) / 100;
+  const buyBackAmount = Math.round((totalBptReward / 2) * 100) / 100;
+
+  // TOKEN CALCULATION VALIDATION: Verify split equals total
+  const calculatedTotal = userReward + buyBackAmount;
+  if (Math.abs(calculatedTotal - totalBptReward) > 0.01) {
+    console.error(`❌ Token split calculation error: user(${userReward}) + buyBack(${buyBackAmount}) = ${calculatedTotal}, expected ${totalBptReward}`);
+    throw new Error("Token distribution calculation mismatch detected");
+  }
 
   // Ensure the buy-back wallet exists
   let buyBackWallet = await prisma.systemWallet.findUnique({
@@ -40,6 +54,25 @@ export async function distributeBptReward(
 
   // Perform the distribution in a transaction
   await prisma.$transaction(async (tx) => {
+    // BALANCE VALIDATION: Check current BPT balance before update
+    const currentUser = await tx.user.findUnique({
+      where: { id: userId },
+      select: { bpiTokenWallet: true, name: true, email: true }
+    });
+
+    if (!currentUser) {
+      throw new Error(`User ${userId} not found`);
+    }
+
+    const currentBalance = currentUser.bpiTokenWallet || 0;
+    const newBalance = currentBalance + userReward;
+
+    // SAFETY CHECK: Ensure new balance won't be negative (shouldn't happen on increment, but validate anyway)
+    if (newBalance < 0) {
+      console.error(`❌ BPT balance would become negative for user ${userId}: ${currentBalance} + ${userReward} = ${newBalance}`);
+      throw new Error("BPT balance validation failed - operation would result in negative balance");
+    }
+
     // Update user BPT wallet
     const updatedUser = await tx.user.update({
       where: { id: userId },
@@ -49,6 +82,9 @@ export async function distributeBptReward(
         },
       },
     });
+    
+    // VERIFICATION: Log the actual balance after update
+    console.log(`✅ BPT Balance Update: ${currentUser.name} (${currentUser.email}) - Before: ${currentBalance}, Added: ${userReward}, After: ${updatedUser.bpiTokenWallet}`);
     
     // Record user transaction
     await tx.tokenTransaction.create({
@@ -88,7 +124,7 @@ export async function distributeBptReward(
       }
     });
 
-    console.log(`Distributed ${userReward} BPT to user ${userId}`);
-    console.log(`Distributed ${buyBackAmount} BPT to ${BUY_BACK_WALLET_NAME}`);
+    console.log(`✅ Distributed ${userReward} BPT to user ${userId} (${currentUser.name})`);
+    console.log(`✅ Distributed ${buyBackAmount} BPT to ${BUY_BACK_WALLET_NAME}`);
   });
 }

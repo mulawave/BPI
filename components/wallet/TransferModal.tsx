@@ -26,6 +26,7 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
   const [fromWallet, setFromWallet] = useState<WalletType>('wallet');
   const [toWallet, setToWallet] = useState<WalletType>('spendable');
   const [recipientIdentifier, setRecipientIdentifier] = useState<string>('');
+  const [pin, setPin] = useState<string>('');
   
   const [error, setError] = useState<string>('');
   const [successData, setSuccessData] = useState<any>(null);
@@ -94,6 +95,11 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
       }
     }
 
+    if (!/^[0-9]{4}$/.test(pin)) {
+      setError('Please enter your 4-digit PIN');
+      return;
+    }
+
     setError('');
     setCurrentStep('summary');
   };
@@ -105,13 +111,15 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
       transferInterWalletMutation.mutate({
         amount: numAmount,
         fromWallet: fromWallet as any,
-        toWallet: toWallet as any
+        toWallet: toWallet as any,
+        pin
       });
     } else {
       transferToUserMutation.mutate({
         amount: numAmount,
         recipientIdentifier,
-        sourceWallet: fromWallet as any
+        sourceWallet: fromWallet as any,
+        pin
       });
     }
   };
@@ -122,6 +130,7 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
     setFromWallet('wallet');
     setToWallet('spendable');
     setRecipientIdentifier('');
+    setPin('');
     setError('');
     setSuccessData(null);
   };
@@ -363,6 +372,19 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
                   </div>
                 </div>
               )}
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Transaction PIN</label>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="Enter 4-digit PIN"
+                />
+              </div>
 
               {/* Amount Display */}
               {numAmount > 0 && (

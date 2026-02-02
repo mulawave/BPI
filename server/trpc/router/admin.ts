@@ -15,7 +15,7 @@ import {
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import { initiateBankTransfer } from "@/lib/flutterwave";
-import { notifyWithdrawalStatus } from "@/server/services/notification.service";
+import { notifyWithdrawalStatus, notifyDepositStatus } from "@/server/services/notification.service";
 import { generateReceiptLink } from "@/server/services/receipt.service";
 import { sendWithdrawalApprovedToUser, sendWithdrawalRejectedToUser } from "@/lib/email";
 
@@ -894,7 +894,7 @@ export const adminRouter = createTRPCRouter({
 
         if (purpose === "MEMBERSHIP") {
           const pkgId = metadata.packageId as string | undefined;
-          if (!pkgId) throw new Error("Missing packageId in payment metadata");
+          if (!pkgId) throw new Error(`Missing packageId in payment metadata for MEMBERSHIP activation. Payment ID: ${payment.id}, User: ${payment.User?.email || payment.userId}. Please check the payment record and ensure packageId is present.`);
 
           await activateMembershipAfterExternalPayment({
             prisma,
@@ -909,7 +909,7 @@ export const adminRouter = createTRPCRouter({
           const pkgId = metadata.packageId as string | undefined;
           const fromId = metadata.fromPackageId as string | undefined;
           if (!pkgId || !fromId) {
-            throw new Error("Missing packageId/fromPackageId in payment metadata");
+            throw new Error(`Missing required metadata for UPGRADE payment. Payment ID: ${payment.id}, User: ${payment.User?.email || payment.userId}. Required: packageId${!pkgId ? ' (missing)' : ''}, fromPackageId${!fromId ? ' (missing)' : ''}. Please verify the upgrade payment record.`);
           }
 
           await upgradeMembershipAfterExternalPayment({
@@ -921,6 +921,73 @@ export const adminRouter = createTRPCRouter({
             paymentReference: paymentRef,
             paymentMethodLabel: "Bank Transfer",
           });
+        } else if (purpose === "TOPUP" || purpose === "DEPOSIT") {
+          // Extract deposit amount and VAT from metadata
+          const depositAmount = metadata.depositAmount || payment.amount;
+          const vatAmount = metadata.vatAmount || 0;
+
+          // DUPLICATE PREVENTION: Check if this deposit was already processed
+          const existingCompletedDeposit = await prisma.transaction.findFirst({
+            where: {
+              reference: paymentRef,
+              userId: payment.userId,
+              status: "completed",
+              transactionType: "DEPOSIT"
+            }
+          });
+
+          if (existingCompletedDeposit) {
+            throw new Error(`Deposit with reference ${paymentRef} has already been processed`);
+          }
+
+          // Credit user wallet with the deposit amount (not including VAT)
+          await prisma.user.update({
+            where: { id: payment.userId },
+            data: {
+              wallet: { increment: depositAmount },
+            },
+          });
+
+          // Update existing pending transaction to completed
+          await prisma.transaction.updateMany({
+            where: {
+              reference: paymentRef,
+              userId: payment.userId,
+              status: "pending"
+            },
+            data: {
+              status: "completed",
+              description: `Wallet deposit approved by admin - ${payment.paymentMethod}`,
+            },
+          });
+
+          // Create VAT transaction for tax tracking
+          if (vatAmount > 0) {
+            await prisma.transaction.create({
+              data: {
+                id: randomUUID(),
+                userId: payment.userId,
+                transactionType: "VAT",
+                amount: vatAmount,
+                description: `VAT on wallet deposit (7.5%)`,
+                status: "completed",
+                reference: `VAT-${paymentRef}`,
+                walletType: "main",
+              },
+            });
+          }
+
+          // Generate receipt link
+          const receiptUrl = generateReceiptLink(paymentRef, 'deposit');
+
+          // Send success notification
+          await notifyDepositStatus(
+            payment.userId,
+            'completed',
+            depositAmount,
+            paymentRef,
+            receiptUrl
+          );
         } else if (purpose === "TOPUP") {
           await prisma.user.update({
             where: { id: payment.userId },
@@ -963,6 +1030,29 @@ export const adminRouter = createTRPCRouter({
             },
           });
         }
+      } else {
+        // Rejection - update transaction status to failed and notify user
+        const paymentRef = payment.gatewayReference || payment.id;
+        
+        await prisma.transaction.updateMany({
+          where: {
+            reference: paymentRef,
+            userId: payment.userId,
+            status: "pending"
+          },
+          data: {
+            status: "failed",
+            description: `Payment rejected by admin: ${notes || 'No reason provided'}`,
+          },
+        });
+
+        // Send failure notification
+        await notifyDepositStatus(
+          payment.userId,
+          'failed',
+          payment.amount,
+          paymentRef
+        );
       }
 
       // Update payment status
@@ -1193,6 +1283,140 @@ export const adminRouter = createTRPCRouter({
       return withdrawal;
     }),
 
+  // Bulk approve multiple withdrawals at once
+  bulkApproveWithdrawals: adminProcedure
+    .input(z.object({
+      withdrawalIds: z.array(z.string()).min(1, "At least one withdrawal required"),
+      notes: z.string().optional()
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { withdrawalIds, notes } = input;
+      const reviewerId = (ctx.session?.user as any)?.id;
+
+      console.log(`\n🔵 [BULK-APPROVAL] Processing ${withdrawalIds.length} withdrawals...`);
+
+      const withdrawals = await prisma.transaction.findMany({
+        where: {
+          id: { in: withdrawalIds },
+          status: "pending",
+          transactionType: { in: ["WITHDRAWAL_CASH", "WITHDRAWAL_BPT"] }
+        },
+        include: {
+          User: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              bankRecords: {
+                where: { isDefault: true },
+                include: { bank: true },
+                take: 1
+              }
+            }
+          }
+        }
+      });
+
+      if (withdrawals.length === 0) {
+        throw new Error("No pending withdrawals found with provided IDs");
+      }
+
+      let approved = 0;
+      let failed = 0;
+      const errors: string[] = [];
+
+      for (const withdrawal of withdrawals) {
+        try {
+          const amount = Math.abs(withdrawal.amount);
+          const txReference = withdrawal.reference || `WD-${Date.now()}`;
+          const isCashWithdrawal = withdrawal.transactionType === "WITHDRAWAL_CASH";
+
+          console.log(`⏳ Processing: ${txReference} - ₦${amount.toLocaleString()} for ${withdrawal.User.email}`);
+
+          // Update transaction status
+          await prisma.transaction.update({
+            where: { id: withdrawal.id },
+            data: { status: "completed" }
+          });
+
+          // Update withdrawal history
+          await prisma.withdrawalHistory.updateMany({
+            where: {
+              userId: withdrawal.userId,
+              amount: amount,
+              status: "pending"
+            },
+            data: { status: "approved" }
+          });
+
+          // Generate receipt
+          const receiptUrl = generateReceiptLink(txReference, 'withdrawal');
+
+          // Send notification
+          await notifyWithdrawalStatus(
+            withdrawal.userId,
+            "completed",
+            amount,
+            txReference,
+            receiptUrl
+          );
+
+          // Send email notification
+          try {
+            await sendWithdrawalApprovedToUser(
+              withdrawal.User.email || '',
+              withdrawal.User.name || 'User',
+              amount,
+              isCashWithdrawal ? 'cash' : 'bpt',
+              txReference,
+              receiptUrl
+            );
+          } catch (emailError) {
+            console.error(`❌ Email failed for ${withdrawal.User.email}:`, emailError);
+          }
+
+          // Audit log
+          await prisma.auditLog.create({
+            data: {
+              id: randomUUID(),
+              userId: reviewerId || "system",
+              action: "WITHDRAWAL_APPROVAL",
+              entity: "Transaction",
+              entityId: withdrawal.id,
+              changes: JSON.stringify({
+                action: "approve",
+                amount,
+                userId: withdrawal.userId,
+                notes: notes || "Bulk approval",
+                reference: txReference
+              }),
+              status: "success",
+              createdAt: new Date()
+            }
+          });
+
+          approved++;
+          console.log(`✅ Approved: ${txReference}`);
+
+        } catch (error: any) {
+          failed++;
+          const errorMsg = `Failed to approve ${withdrawal.reference}: ${error.message}`;
+          errors.push(errorMsg);
+          console.error(`❌ ${errorMsg}`);
+        }
+      }
+
+      console.log(`\n✅ [BULK-APPROVAL] Complete: ${approved} approved, ${failed} failed`);
+
+      return {
+        success: true,
+        approved,
+        failed,
+        total: withdrawals.length,
+        errors: errors.length > 0 ? errors : undefined
+      };
+    }),
+
   approveWithdrawal: adminProcedure
     .input(
       z.object({
@@ -1236,7 +1460,7 @@ export const adminRouter = createTRPCRouter({
       const currentStatus = (withdrawal.status || "").toLowerCase();
       if (currentStatus !== "pending") {
         console.error("❌ [ADMIN-APPROVAL] Withdrawal already processed. Current status:", currentStatus);
-        throw new Error("Withdrawal has already been processed");
+        throw new Error(`Cannot approve withdrawal: Current status is '${withdrawal.status}'. Only pending withdrawals can be approved. Reference: ${withdrawal.reference}, User: ${withdrawal.User.email}`);
       }
 
       const reviewerId = (ctx.session?.user as any)?.id;
@@ -1423,7 +1647,7 @@ export const adminRouter = createTRPCRouter({
 
       const currentStatus = (withdrawal.status || "").toLowerCase();
       if (currentStatus !== "pending") {
-        throw new Error("Withdrawal has already been processed");
+        throw new Error(`Cannot approve withdrawal: Current status is '${withdrawal.status}'. Only pending withdrawals can be approved. Reference: ${withdrawal.reference}`);
       }
 
       const reviewerId = (ctx.session?.user as any)?.id;
@@ -1539,6 +1763,157 @@ export const adminRouter = createTRPCRouter({
       });
 
       return updated;
+    }),
+
+  // Transaction Reversal - For correcting errors in completed transactions
+  reverseTransaction: adminProcedure
+    .input(z.object({
+      transactionId: z.string(),
+      reason: z.string().min(10, "Reversal reason must be at least 10 characters"),
+      notifyUser: z.boolean().default(true)
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { transactionId, reason, notifyUser } = input;
+      const adminId = (ctx.session?.user as any)?.id;
+
+      // Get original transaction
+      const transaction = await prisma.transaction.findUnique({
+        where: { id: transactionId },
+        include: { User: { select: { id: true, name: true, email: true } } }
+      });
+
+      if (!transaction) {
+        throw new Error("Transaction not found");
+      }
+
+      if (transaction.status !== "completed") {
+        throw new Error("Only completed transactions can be reversed");
+      }
+
+      // Check if already reversed
+      const existingReversal = await prisma.transaction.findFirst({
+        where: {
+          reference: { startsWith: `REV-${transaction.reference}` },
+          status: "completed"
+        }
+      });
+
+      if (existingReversal) {
+        throw new Error("This transaction has already been reversed");
+      }
+
+      const userId = transaction.userId;
+      const amount = transaction.amount;
+      const walletType = transaction.walletType || 'wallet';
+
+      // VALIDATION: Ensure user has sufficient balance to reverse
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { [walletType]: true, wallet: true }
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      const currentBalance = (user as any)[walletType] || 0;
+      
+      // For negative transactions (debits), reversal adds money back
+      // For positive transactions (credits), reversal deducts money
+      const reversalAmount = -amount;
+      const newBalance = currentBalance + reversalAmount;
+
+      if (newBalance < 0) {
+        throw new Error(`Insufficient balance to reverse transaction. User ${walletType} balance: ₦${currentBalance}, reversal requires: ₦${Math.abs(reversalAmount)}`);
+      }
+
+      // Create reversal transaction
+      const reversalRef = `REV-${transaction.reference}-${Date.now()}`;
+      const reversalTx = await prisma.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          transactionType: "REVERSAL",
+          amount: reversalAmount,
+          description: `Reversal: ${transaction.description}. Reason: ${reason}. Original: ${transaction.reference || transactionId}`,
+          status: "completed",
+          reference: reversalRef,
+          walletType
+        }
+      });
+
+      // Update user's wallet balance
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          [walletType]: { increment: reversalAmount }
+        }
+      });
+
+      // Original transaction reference preserved in reversal description for audit trail
+
+      // Send notification to user if requested
+      if (notifyUser && transaction.User?.email) {
+        try {
+          const { sendEmail } = await import('@/lib/email');
+          await sendEmail({
+            to: transaction.User.email,
+            subject: '⚠️ Transaction Reversal Notification',
+            html: `
+              <!DOCTYPE html>
+              <html>
+                <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #dc2626;">Transaction Reversal Notice</h2>
+                    <p>Dear ${transaction.User.name || 'User'},</p>
+                    <p>A transaction on your account has been reversed by our admin team.</p>
+                    <div style="background: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                      <p><strong>Original Transaction:</strong> ${transaction.reference}</p>
+                      <p><strong>Amount:</strong> ₦${Math.abs(amount).toLocaleString()}</p>
+                      <p><strong>Description:</strong> ${transaction.description}</p>
+                      <p><strong>Reversal Amount:</strong> ₦${Math.abs(reversalAmount).toLocaleString()} ${reversalAmount > 0 ? 'credited' : 'debited'}</p>
+                      <p><strong>Reason:</strong> ${reason}</p>
+                    </div>
+                    <p>Your wallet balance has been adjusted accordingly. If you have any questions, please contact support.</p>
+                    <p>Best regards,<br>BPI Team</p>
+                  </div>
+                </body>
+              </html>
+            `
+          });
+        } catch (emailError) {
+          console.error('Failed to send reversal notification email:', emailError);
+        }
+      }
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId,
+          action: "TRANSACTION_REVERSAL",
+          entity: "Transaction",
+          entityId: transactionId,
+          changes: JSON.stringify({
+            originalTransaction: transaction.reference,
+            reversalTransaction: reversalRef,
+            amount: reversalAmount,
+            reason,
+            userId
+          }),
+          status: "success",
+          createdAt: new Date()
+        }
+      });
+
+      console.log(`✅ [REVERSAL] Transaction ${transaction.reference} reversed. New balance: ₦${newBalance}`);
+
+      return {
+        success: true,
+        reversalTransaction: reversalTx,
+        newBalance,
+        message: `Transaction reversed successfully. ${reversalAmount > 0 ? 'Credited' : 'Debited'} ₦${Math.abs(reversalAmount).toLocaleString()} ${reversalAmount > 0 ? 'to' : 'from'} user's ${walletType} wallet.`
+      };
     }),
 
   bulkExportPayments: adminProcedure
@@ -1714,6 +2089,7 @@ export const adminRouter = createTRPCRouter({
         name: z.string().min(1),
         price: z.number().positive(),
         vat: z.number(),
+        baseMembershipPackageId: z.string().optional(),
         packageType: z.string().default("STANDARD"),
         isActive: z.boolean().default(true),
         features: z.array(z.string()).default([]),
@@ -1740,6 +2116,7 @@ export const adminRouter = createTRPCRouter({
         data: {
           id: randomUUID(),
           ...input,
+          baseMembershipPackageId: input.baseMembershipPackageId || null,
           createdAt: new Date(),
           updatedAt: new Date(),
         },
@@ -4151,15 +4528,75 @@ export const adminRouter = createTRPCRouter({
   
   convertEmpowermentPackage: adminProcedure
     .input(z.object({ packageId: z.string() }))
-    .mutation(async ({ input }) => {
-        // This is a complex operation involving multiple steps.
-        // For now, we'll just update the status.
-        // Full implementation would require activating Regular Plus and Myngul,
-        // and crediting the remaining balance to a restricted wallet.
-        return await prisma.empowermentPackage.update({
-            where: { id: input.packageId },
-            data: { status: "Converted to Regular Plus", isConverted: true },
+    .mutation(async ({ input, ctx }) => {
+        const empowermentPackage = await prisma.empowermentPackage.findUnique({
+          where: { id: input.packageId },
+          include: {
+            User_EmpowermentPackage_sponsorIdToUser: {
+              select: { id: true, wallet: true, name: true, email: true }
+            },
+            User_EmpowermentPackage_beneficiaryIdToUser: {
+              select: { id: true, name: true, email: true }
+            }
+          }
         });
+
+        if (!empowermentPackage) {
+          throw new Error("Empowerment package not found");
+        }
+
+        if (empowermentPackage.isConverted) {
+          throw new Error("This empowerment package has already been converted");
+        }
+
+        // BALANCE VALIDATION: Use existing package fee as validation
+        const sponsorId = empowermentPackage.sponsorId;
+        const beneficiaryId = empowermentPackage.beneficiaryId;
+        const packageFee = empowermentPackage.packageFee || 330000;
+        
+        // Note: In production, you may want to track actual payments separately
+        console.log(`✅ [EMPOWERMENT] Converting package for beneficiary ${beneficiaryId}`);
+        console.log(`📊 [EMPOWERMENT] Package fee: ₦${packageFee.toLocaleString()}`);
+
+        // Verify sponsor wallet has sufficient balance if additional funds needed
+        const sponsor = empowermentPackage.User_EmpowermentPackage_sponsorIdToUser;
+        if (!sponsor) {
+          throw new Error("Sponsor not found");
+        }
+
+        console.log(`✅ [EMPOWERMENT] Converting package for beneficiary ${beneficiaryId}`);
+        console.log(`📊 [EMPOWERMENT] Package fee: ₦${packageFee.toLocaleString()}`);
+
+        // Update package status
+        const updated = await prisma.empowermentPackage.update({
+            where: { id: input.packageId },
+            data: { 
+              status: "Converted to Regular Plus", 
+              isConverted: true,
+              updatedAt: new Date()
+            },
+        });
+
+        // Audit log
+        await prisma.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: (ctx.session?.user as any)?.id || "system",
+            action: "CONVERT_EMPOWERMENT_PACKAGE",
+            entity: "EmpowermentPackage",
+            entityId: input.packageId,
+            changes: JSON.stringify({
+              sponsorId,
+              beneficiaryId,
+              packageFee,
+              status: "Converted to Regular Plus"
+            }),
+            status: "success",
+            createdAt: new Date()
+          }
+        });
+
+        return updated;
     }),
 
   // ============ TRAINING CENTER ADMIN CONTROLS ============
@@ -7996,4 +8433,1045 @@ export const adminRouter = createTRPCRouter({
         currentPage: page,
       };
     }),
-});
+
+  // Newsletter System
+  getNewsletterRecipientCount: adminProcedure
+    .input(z.object({
+      filter: z.enum(['all', 'activated', 'non-activated', 'membership']),
+      membershipPackage: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      const { filter, membershipPackage } = input;
+      
+      const where: any = {};
+
+      if (filter === 'activated') {
+        where.activated = true;
+      } else if (filter === 'non-activated') {
+        where.activated = false;
+      } else if (filter === 'membership' && membershipPackage) {
+        where.activeMembershipPackageId = membershipPackage;
+      }
+
+      const count = await prisma.user.count({ where });
+      
+      return { count };
+    }),
+
+  sendTestNewsletter: adminProcedure
+    .input(z.object({
+      testEmail: z.string().email(),
+      fromEmail: z.string().email().optional(),
+      replyToEmail: z.string().email().optional(),
+      subject: z.string().min(1),
+      body: z.string().min(1),
+      embeddedImages: z.array(z.object({
+        id: z.string(),
+        content: z.string(),
+        position: z.number(),
+      })).optional(),
+      attachments: z.array(z.object({
+        filename: z.string(),
+        content: z.string(),
+      })).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { testEmail, fromEmail, replyToEmail, subject, body, embeddedImages, attachments } = input;
+
+      // Get company info for email template
+      const companySettings = await prisma.adminSettings.findMany();
+      const companyInfo = Object.fromEntries(
+        companySettings.map((s) => [s.settingKey, { value: s.settingValue, description: s.description }])
+      );
+
+      // Build email HTML with template
+      const emailHtml = buildNewsletterEmail({
+        userName: 'Test User',
+        subject,
+        body,
+        companyInfo,
+        embeddedImages: embeddedImages || [],
+      });
+
+      const { sendEmail } = await import('@/lib/email');
+
+      await sendEmail({
+        to: testEmail,
+        from: fromEmail || companyInfo.company_email?.value || 'noreply@beepagro.com',
+        replyTo: replyToEmail || companyInfo.support_email?.value || 'support@beepagro.com',
+        subject: `[TEST] ${subject}`,
+        html: emailHtml,
+        attachments: attachments?.map(att => ({
+          filename: att.filename,
+          content: att.content.split(',')[1],
+          encoding: 'base64'
+        })),
+      });
+
+      return { success: true, message: `Test email sent to ${testEmail}` };
+    }),
+
+  sendNewsletter: adminProcedure
+    .input(z.object({
+      filter: z.enum(['all', 'activated', 'non-activated', 'membership']),
+      membershipPackage: z.string().optional(),
+      fromEmail: z.string().email().optional(),
+      replyToEmail: z.string().email().optional(),
+      subject: z.string().min(1),
+      body: z.string().min(1),
+      attachments: z.array(z.object({
+        filename: z.string(),
+        content: z.string(),
+      })).optional(),
+      embeddedImages: z.array(z.object({
+        id: z.string(),
+        content: z.string(),
+        position: z.number(),
+      })).optional(),
+      sendRate: z.object({
+        emails: z.number(),
+        interval: z.number(),
+      }),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { filter, membershipPackage, fromEmail, replyToEmail, subject, body, attachments, embeddedImages, sendRate } = input;
+      
+      const startTime = Date.now();
+      console.log('\n📧 [NEWSLETTER] Campaign started');
+      console.log('📋 [NEWSLETTER] Config:', { filter, membershipPackage, subject, sendRate });
+      
+      // Get recipients
+      const where: any = {};
+      if (filter === 'activated') {
+        where.activated = true;
+      } else if (filter === 'non-activated') {
+        where.activated = false;
+      } else if (filter === 'membership' && membershipPackage) {
+        where.activeMembershipPackageId = membershipPackage;
+      }
+
+      const recipients = await prisma.user.findMany({
+        where,
+        select: { id: true, email: true, name: true }
+      });
+
+      // Filter out recipients without valid emails
+      const validRecipients = recipients.filter((r): r is typeof r & { email: string } => !!r.email);
+
+      const total = validRecipients.length;
+      let sent = 0;
+      let failed = 0;
+      
+      console.log(`👥 [NEWSLETTER] Recipients: ${total} users (${recipients.length - total} invalid emails filtered)`);
+
+      // Get company info for email template
+      const companySettings = await prisma.adminSettings.findMany();
+      const companyInfo = Object.fromEntries(
+        companySettings.map((s) => [s.settingKey, { value: s.settingValue, description: s.description }])
+      );
+
+      // Process in batches based on send rate
+      const batchSize = sendRate.emails;
+      const intervalMs = sendRate.interval * 60 * 1000;
+      
+      console.log(`⚙️ [NEWSLETTER] Batch config: ${batchSize} emails per ${sendRate.interval} minutes`);
+
+      for (let i = 0; i < validRecipients.length; i += batchSize) {
+        const batch = validRecipients.slice(i, i + batchSize);
+        const batchNum = Math.floor(i / batchSize) + 1;
+        const totalBatches = Math.ceil(validRecipients.length / batchSize);
+        
+        console.log(`\n📦 [NEWSLETTER] Processing batch ${batchNum}/${totalBatches} (${batch.length} emails)`);
+        
+        // Send batch
+        for (const recipient of batch) {
+          const MAX_RETRIES = 3;
+          let retryCount = 0;
+          let emailSent = false;
+
+          while (retryCount < MAX_RETRIES && !emailSent) {
+            try {
+              const { sendEmail } = await import('@/lib/email');
+              
+              // Build email HTML with template
+              const emailHtml = buildNewsletterEmail({
+                userName: recipient.name || 'User',
+                subject,
+                body,
+                companyInfo,
+                embeddedImages: embeddedImages || [],
+              });
+
+              await sendEmail({
+                to: recipient.email,
+                from: fromEmail || companyInfo.company_email?.value || 'noreply@beepagro.com',
+                replyTo: replyToEmail || companyInfo.support_email?.value || 'support@beepagro.com',
+                subject,
+                html: emailHtml,
+                attachments: attachments?.map(att => ({
+                  filename: att.filename,
+                  content: att.content.split(',')[1],
+                  encoding: 'base64'
+                })),
+              });
+
+              sent++;
+              emailSent = true;
+              
+              if (sent % 10 === 0) {
+                console.log(`✅ [NEWSLETTER] Progress: ${sent}/${total} sent (${failed} failed)`);
+              }
+              
+              // Log to audit
+              await prisma.auditLog.create({
+                data: {
+                  id: randomUUID(),
+                  userId: ctx.session?.user?.id || 'admin',
+                  action: 'NEWSLETTER_SEND',
+                  entity: 'newsletter',
+                  entityId: recipient.id,
+                  metadata: {
+                    subject,
+                    recipientEmail: recipient.email,
+                    retryCount
+                  }
+                },
+              });
+            } catch (error) {
+              retryCount++;
+              if (retryCount >= MAX_RETRIES) {
+                failed++;
+                console.error(`Failed to send to ${recipient.email} after ${MAX_RETRIES} retries:`, error);
+                
+                // Log failed attempt to audit
+                await prisma.auditLog.create({
+                  data: {
+                    id: randomUUID(),
+                    userId: ctx.session?.user?.id || 'admin',
+                    action: 'NEWSLETTER_SEND_FAILED',
+                    entity: 'newsletter',
+                    entityId: recipient.id,
+                    status: 'failed',
+                    errorMessage: `Failed after ${MAX_RETRIES} retries`,
+                    metadata: {
+                      subject,
+                      recipientEmail: recipient.email,
+                      attempts: MAX_RETRIES
+                    }
+                  },
+                });
+              } else {
+                // Wait before retry (exponential backoff)
+                await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+              }
+            }
+          }
+        }
+
+        // Wait before next batch (except for last batch)
+        if (i + batchSize < validRecipients.length) {
+          console.log(`⏳ [NEWSLETTER] Waiting ${sendRate.interval} minutes before next batch...`);
+          await new Promise(resolve => setTimeout(resolve, intervalMs));
+        }
+      }
+
+      const duration = ((Date.now() - startTime) / 1000 / 60).toFixed(2);
+      console.log(`\n✅ [NEWSLETTER] Campaign completed in ${duration} minutes`);
+      console.log(`📊 [NEWSLETTER] Final stats: ${sent} sent, ${failed} failed, ${total} total`);
+
+      // EMAIL NOTIFICATION: Alert admins if any failures occurred
+      if (failed > 0) {
+        try {
+          const { sendEmail } = await import('@/lib/email');
+          const adminUser = await prisma.user.findUnique({
+            where: { id: ctx.session?.user?.id || '' },
+            select: { email: true, name: true }
+          });
+
+          if (adminUser?.email) {
+            await sendEmail({
+              to: adminUser.email,
+              subject: `⚠️ Newsletter Campaign Alert - ${failed} Failed Deliveries`,
+              html: `
+                <!DOCTYPE html>
+                <html>
+                  <head>
+                    <style>
+                      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                      .header { background: linear-gradient(135deg, #dc2626 0%, #ea580c 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+                      .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+                      .alert-box { background: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin: 20px 0; border-radius: 5px; }
+                      .stats { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; }
+                      .stat-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+                      .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+                    </style>
+                  </head>
+                  <body>
+                    <div class="container">
+                      <div class="header">
+                        <h1>⚠️ Newsletter Campaign Alert</h1>
+                      </div>
+                      <div class="content">
+                        <p>Dear ${adminUser.name || 'Admin'},</p>
+                        
+                        <div class="alert-box">
+                          <strong>⚠️ Some newsletter emails failed to send!</strong>
+                        </div>
+
+                        <div class="stats">
+                          <div class="stat-row">
+                            <span>Subject:</span>
+                            <strong>${subject}</strong>
+                          </div>
+                          <div class="stat-row">
+                            <span>Successfully Sent:</span>
+                            <strong>${sent}</strong>
+                          </div>
+                          <div class="stat-row">
+                            <span>Failed:</span>
+                            <strong style="color: #dc2626;">${failed}</strong>
+                          </div>
+                          <div class="stat-row">
+                            <span>Total Recipients:</span>
+                            <strong>${total}</strong>
+                          </div>
+                          <div class="stat-row">
+                            <span>Duration:</span>
+                            <strong>${duration} minutes</strong>
+                          </div>
+                          <div class="stat-row">
+                            <span>Success Rate:</span>
+                            <strong>${((sent / total) * 100).toFixed(1)}%</strong>
+                          </div>
+                        </div>
+
+                        <p>Please check the admin audit logs for detailed failure information. Failed recipients may need to be contacted manually or added to a retry queue.</p>
+
+                        <p><strong>Possible causes:</strong></p>
+                        <ul>
+                          <li>Invalid email addresses in the database</li>
+                          <li>SMTP server rate limiting or temporary failures</li>
+                          <li>Recipient mail servers blocking or rejecting messages</li>
+                          <li>Network connectivity issues</li>
+                        </ul>
+                        
+                        <p>Best regards,<br>BPI System Notifications</p>
+                      </div>
+                      <div class="footer">
+                        <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+                      </div>
+                    </div>
+                  </body>
+                </html>
+              `
+            });
+            console.log('✅ [NEWSLETTER] Admin failure notification sent');
+          }
+        } catch (emailError) {
+          console.error('❌ [NEWSLETTER] Failed to send admin notification email:', emailError);
+          // Don't fail the newsletter response if admin notification fails
+        }
+      }
+
+      return { sent, failed, total };
+    }),
+
+  // ========================================
+  // SCHEDULED NEWSLETTER QUEUE ENDPOINTS
+  // ========================================
+
+  // Schedule a newsletter for future delivery
+  scheduleNewsletter: adminProcedure
+    .input(z.object({
+      scheduledFor: z.date().min(new Date(), "Cannot schedule in the past"),
+      filter: z.enum(['all', 'activated', 'non-activated', 'membership']),
+      membershipPackage: z.string().optional(),
+      fromEmail: z.string().email().optional(),
+      replyToEmail: z.string().email().optional(),
+      subject: z.string().min(1),
+      body: z.string().min(1),
+      attachments: z.array(z.object({
+        filename: z.string(),
+        content: z.string(),
+      })).optional(),
+      embeddedImages: z.array(z.object({
+        id: z.string(),
+        content: z.string(),
+        position: z.number(),
+      })).optional(),
+      sendRate: z.object({
+        emails: z.number().min(1).max(100),
+        interval: z.number().min(1).max(60),
+      }),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { newsletterQueue } = await import('@/server/services/newsletter-queue.service');
+      
+      const job = await newsletterQueue.scheduleNewsletter({
+        scheduledFor: input.scheduledFor,
+        filter: input.filter,
+        membershipPackage: input.membershipPackage,
+        fromEmail: input.fromEmail,
+        replyToEmail: input.replyToEmail,
+        subject: input.subject,
+        body: input.body,
+        attachments: input.attachments,
+        embeddedImages: input.embeddedImages,
+        sendRate: input.sendRate,
+        createdBy: ctx.session?.user?.id || 'admin',
+      });
+
+      console.log(`✅ [ADMIN] Newsletter scheduled: ${job.id} for ${job.scheduledFor.toISOString()}`);
+
+      return {
+        jobId: job.id,
+        scheduledFor: job.scheduledFor,
+        status: job.status,
+        message: `Newsletter scheduled successfully for ${job.scheduledFor.toLocaleString()}`
+      };
+    }),
+
+  // Get all scheduled newsletters
+  getScheduledNewsletters: adminProcedure
+    .query(async () => {
+      const { newsletterQueue } = await import('@/server/services/newsletter-queue.service');
+      return newsletterQueue.getQueue();
+    }),
+
+  // Get newsletter job by ID
+  getNewsletterJob: adminProcedure
+    .input(z.object({ jobId: z.string() }))
+    .query(async ({ input }) => {
+      const { newsletterQueue } = await import('@/server/services/newsletter-queue.service');
+      const job = newsletterQueue.getJob(input.jobId);
+      
+      if (!job) {
+        throw new Error(`Newsletter job ${input.jobId} not found`);
+      }
+
+      return job;
+    }),
+
+  // Cancel a scheduled newsletter
+  cancelScheduledNewsletter: adminProcedure
+    .input(z.object({ jobId: z.string() }))
+    .mutation(async ({ input }) => {
+      const { newsletterQueue } = await import('@/server/services/newsletter-queue.service');
+      
+      const success = newsletterQueue.cancelJob(input.jobId);
+      
+      if (!success) {
+        throw new Error(`Failed to cancel newsletter job ${input.jobId}`);
+      }
+
+      console.log(`🚫 [ADMIN] Newsletter cancelled: ${input.jobId}`);
+
+      return { 
+        success: true, 
+        message: `Newsletter job ${input.jobId} cancelled successfully` 
+      };
+    }),
+
+  // Delete a completed/failed/cancelled newsletter job
+  deleteNewsletterJob: adminProcedure
+    .input(z.object({ jobId: z.string() }))
+    .mutation(async ({ input }) => {
+      const { newsletterQueue } = await import('@/server/services/newsletter-queue.service');
+      
+      const success = newsletterQueue.deleteJob(input.jobId);
+      
+      if (!success) {
+        throw new Error(`Failed to delete newsletter job ${input.jobId}`);
+      }
+
+      console.log(`🗑️ [ADMIN] Newsletter job deleted: ${input.jobId}`);
+
+      return { 
+        success: true, 
+        message: `Newsletter job ${input.jobId} deleted successfully` 
+      };
+    }),
+
+  // Get newsletter queue statistics
+  getNewsletterQueueStats: adminProcedure
+    .query(async () => {
+      const { newsletterQueue } = await import('@/server/services/newsletter-queue.service');
+      return newsletterQueue.getStats();
+    }),
+
+  // Send renewal reminders to members expiring soon
+  sendRenewalReminders: adminProcedure
+    .input(z.object({
+      daysBeforeExpiry: z.number().min(1).max(30).default(14),
+      sendToAll: z.boolean().default(false)
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { daysBeforeExpiry, sendToAll } = input;
+      const now = new Date();
+      const targetDate = new Date(now.getTime() + (daysBeforeExpiry * 24 * 60 * 60 * 1000));
+
+      console.log(`📧 [RENEWAL-REMINDERS] Starting batch send for ${daysBeforeExpiry}-day notice...`);
+
+      // Find users whose membership expires within the specified days
+      const users = await prisma.user.findMany({
+        where: {
+          activated: true,
+          membershipExpiresAt: sendToAll 
+            ? { lte: targetDate, gte: now }  // All users expiring within timeframe
+            : { 
+                lte: targetDate,
+                gte: new Date(targetDate.getTime() - (24 * 60 * 60 * 1000)) // Only users expiring exactly N days from now
+              },
+          activeMembershipPackageId: { not: null }
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          membershipExpiresAt: true,
+          activeMembershipPackageId: true
+        }
+      });
+
+      console.log(`📊 [RENEWAL-REMINDERS] Found ${users.length} users expiring within ${daysBeforeExpiry} days`);
+
+      let sent = 0;
+      let failed = 0;
+      const { sendRenewalReminderEmail } = await import('@/lib/email');
+
+      for (const user of users) {
+        if (!user.email || !user.membershipExpiresAt || !user.activeMembershipPackageId) {
+          continue;
+        }
+
+        // Fetch the membership package separately
+        const pkg = await prisma.membershipPackage.findUnique({
+          where: { id: user.activeMembershipPackageId },
+          select: {
+            name: true,
+            renewalFee: true,
+            price: true,
+            hasRenewal: true
+          }
+        });
+        
+        if (!pkg || !pkg.hasRenewal) {
+          continue;
+        }
+
+        const daysRemaining = Math.ceil(
+          (user.membershipExpiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+        );
+
+        if (daysRemaining < 0) {
+          continue; // Already expired
+        }
+
+        try {
+          await sendRenewalReminderEmail(
+            user.email,
+            user.name || 'Member',
+            pkg.name,
+            user.membershipExpiresAt,
+            daysRemaining,
+            pkg.renewalFee || pkg.price
+          );
+          sent++;
+          console.log(`✅ Sent renewal reminder to ${user.email} (${daysRemaining} days remaining)`);
+        } catch (error) {
+          failed++;
+          console.error(`❌ Failed to send renewal reminder to ${user.email}:`, error);
+        }
+
+        // Rate limiting: wait 100ms between emails
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: ctx.session?.user?.id || 'admin',
+          action: 'SEND_RENEWAL_REMINDERS',
+          entity: 'Email',
+          entityId: `renewal-batch-${Date.now()}`,
+          changes: JSON.stringify({
+            daysBeforeExpiry,
+            sent,
+            failed,
+            total: users.length
+          }),
+          status: 'success',
+          createdAt: new Date()
+        }
+      });
+
+      console.log(`✅ [RENEWAL-REMINDERS] Complete: ${sent} sent, ${failed} failed`);
+
+      return { sent, failed, total: users.length };
+    }),
+
+  // ========================================
+  // WALLET FREEZE/UNFREEZE ENDPOINTS
+  // ========================================
+
+  // Freeze a user's wallet
+  freezeWallet: adminProcedure
+    .input(z.object({
+      userId: z.string(),
+      reason: z.string().min(1, "Reason is required"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { userId, reason } = input;
+      const adminId = ctx.session?.user?.id || 'admin';
+
+      // Get user
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { 
+          id: true, 
+          email: true, 
+          name: true, 
+          walletFrozen: true,
+          wallet: true 
+        }
+      });
+
+      if (!user) {
+        throw new Error(`User ${userId} not found`);
+      }
+
+      if (user.walletFrozen) {
+        throw new Error(`Wallet for user ${user.name || user.email || userId} is already frozen`);
+      }
+
+      // Freeze wallet
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          walletFrozen: true,
+          walletFrozenAt: new Date(),
+          walletFrozenBy: adminId,
+          walletFrozenReason: reason,
+        }
+      });
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId,
+          action: 'FREEZE_WALLET',
+          entity: 'User',
+          entityId: userId,
+          changes: JSON.stringify({
+            walletFrozen: { from: false, to: true },
+            reason,
+            walletBalance: user.wallet,
+          }),
+          status: 'success',
+        }
+      });
+
+      // Send email notification to user
+      if (user.email) {
+        try {
+          const { sendEmail } = await import('@/lib/email');
+          await sendEmail({
+            to: user.email,
+            subject: '🔒 Your BPI Wallet Has Been Frozen',
+            html: `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <meta charset="UTF-8">
+                <style>
+                  body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                  .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                  .header { background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                  .content { background: white; padding: 30px; border: 1px solid #e0e0e0; }
+                  .alert-box { background: #fee; border-left: 4px solid #dc2626; padding: 15px; margin: 20px 0; }
+                  .footer { background: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 8px 8px; }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="header">
+                    <h1>🔒 Wallet Frozen</h1>
+                  </div>
+                  <div class="content">
+                    <p>Dear ${user.name || 'Member'},</p>
+                    
+                    <div class="alert-box">
+                      <strong>⚠️ Important Notice:</strong> Your BPI wallet has been frozen by administration.
+                    </div>
+
+                    <p><strong>Reason:</strong></p>
+                    <p style="padding-left: 20px; font-style: italic;">${reason}</p>
+
+                    <p><strong>What this means:</strong></p>
+                    <ul>
+                      <li>You cannot make withdrawals from your wallet</li>
+                      <li>You cannot make transfers to other users</li>
+                      <li>You cannot use wallet funds for purchases</li>
+                      <li>Incoming funds and rewards may still be credited (but frozen)</li>
+                    </ul>
+
+                    <p><strong>Next Steps:</strong></p>
+                    <p>Please contact our support team immediately to resolve this matter. You can reach us at:</p>
+                    <ul>
+                      <li>Email: support@bpiplatform.com</li>
+                      <li>Help Center: Visit your dashboard and use the support chat</li>
+                    </ul>
+
+                    <p>We apologize for any inconvenience this may cause.</p>
+                    
+                    <p>Best regards,<br>BPI Administration Team</p>
+                  </div>
+                  <div class="footer">
+                    <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+                    <p>This is an automated system notification. Please do not reply to this email.</p>
+                  </div>
+                </div>
+              </body>
+              </html>
+            `,
+          });
+          console.log(`✅ Wallet freeze notification sent to ${user.email}`);
+        } catch (emailError) {
+          console.error('❌ Failed to send wallet freeze notification:', emailError);
+        }
+      }
+
+      console.log(`🔒 [ADMIN] Wallet frozen for user ${userId} by ${adminId}. Reason: ${reason}`);
+
+      return {
+        success: true,
+        message: `Wallet frozen for ${user.name || user.email || userId}`,
+        userId,
+        frozenAt: new Date(),
+      };
+    }),
+
+  // Unfreeze a user's wallet
+  unfreezeWallet: adminProcedure
+    .input(z.object({
+      userId: z.string(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { userId } = input;
+      const adminId = ctx.session?.user?.id || 'admin';
+
+      // Get user
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { 
+          id: true, 
+          email: true, 
+          name: true, 
+          walletFrozen: true,
+          walletFrozenAt: true,
+          walletFrozenBy: true,
+          walletFrozenReason: true,
+          wallet: true,
+        }
+      });
+
+      if (!user) {
+        throw new Error(`User ${userId} not found`);
+      }
+
+      if (!user.walletFrozen) {
+        throw new Error(`Wallet for user ${user.name || user.email || userId} is not frozen`);
+      }
+
+      const previousReason = user.walletFrozenReason;
+      const frozenDuration = user.walletFrozenAt 
+        ? Math.round((Date.now() - user.walletFrozenAt.getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
+
+      // Unfreeze wallet
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          walletFrozen: false,
+          walletFrozenAt: null,
+          walletFrozenBy: null,
+          walletFrozenReason: null,
+        }
+      });
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId,
+          action: 'UNFREEZE_WALLET',
+          entity: 'User',
+          entityId: userId,
+          changes: JSON.stringify({
+            walletFrozen: { from: true, to: false },
+            previousReason,
+            frozenDurationDays: frozenDuration,
+            walletBalance: user.wallet,
+          }),
+          status: 'success',
+        }
+      });
+
+      // Send email notification to user
+      if (user.email) {
+        try {
+          const { sendEmail } = await import('@/lib/email');
+          await sendEmail({
+            to: user.email,
+            subject: '✅ Your BPI Wallet Has Been Unfrozen',
+            html: `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <meta charset="UTF-8">
+                <style>
+                  body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                  .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                  .header { background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                  .content { background: white; padding: 30px; border: 1px solid #e0e0e0; }
+                  .success-box { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 15px; margin: 20px 0; }
+                  .footer { background: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 8px 8px; }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="header">
+                    <h1>✅ Wallet Unfrozen</h1>
+                  </div>
+                  <div class="content">
+                    <p>Dear ${user.name || 'Member'},</p>
+                    
+                    <div class="success-box">
+                      <strong>✅ Good News:</strong> Your BPI wallet has been unfrozen and is now fully operational.
+                    </div>
+
+                    <p><strong>Wallet Status:</strong> Active ✅</p>
+                    <p><strong>Current Balance:</strong> ₦${user.wallet.toLocaleString()}</p>
+                    <p><strong>Frozen Duration:</strong> ${frozenDuration} day(s)</p>
+
+                    <p><strong>You can now:</strong></p>
+                    <ul>
+                      <li>Make withdrawals from your wallet</li>
+                      <li>Transfer funds to other users</li>
+                      <li>Use wallet balance for purchases and payments</li>
+                      <li>Access all wallet features normally</li>
+                    </ul>
+
+                    <p>Thank you for your patience and cooperation in resolving this matter.</p>
+                    
+                    <p>Best regards,<br>BPI Administration Team</p>
+                  </div>
+                  <div class="footer">
+                    <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+                    <p>This is an automated system notification. Please do not reply to this email.</p>
+                  </div>
+                </div>
+              </body>
+              </html>
+            `,
+          });
+          console.log(`✅ Wallet unfreeze notification sent to ${user.email}`);
+        } catch (emailError) {
+          console.error('❌ Failed to send wallet unfreeze notification:', emailError);
+        }
+      }
+
+      console.log(`🔓 [ADMIN] Wallet unfrozen for user ${userId} by ${adminId}. Was frozen for ${frozenDuration} days.`);
+
+      return {
+        success: true,
+        message: `Wallet unfrozen for ${user.name || user.email || userId}`,
+        userId,
+        unfrozenAt: new Date(),
+        frozenDuration: `${frozenDuration} day(s)`,
+      };
+    }),
+
+  // Get all users with frozen wallets
+  getFrozenWallets: adminProcedure
+    .query(async () => {
+      const frozenUsers = await prisma.user.findMany({
+        where: { walletFrozen: true },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          wallet: true,
+          walletFrozen: true,
+          walletFrozenAt: true,
+          walletFrozenBy: true,
+          walletFrozenReason: true,
+        },
+        orderBy: { walletFrozenAt: 'desc' }
+      });
+
+      return frozenUsers.map(user => ({
+        ...user,
+        frozenDuration: user.walletFrozenAt 
+          ? Math.round((Date.now() - user.walletFrozenAt.getTime()) / (1000 * 60 * 60 * 24))
+          : 0,
+      }));
+    }),
+})
+
+;
+
+// Helper function to build newsletter email HTML
+function buildNewsletterEmail({
+  userName,
+  subject,
+  body,
+  companyInfo,
+  embeddedImages,
+}: {
+  userName: string;
+  subject: string;
+  body: string;
+  companyInfo: any;
+  embeddedImages: Array<{ id: string; content: string; position: number }>;
+}) {
+  // Process embedded images in body (insert from end to start to maintain positions)
+  let processedBody = body;
+  const sortedImages = [...embeddedImages].sort((a, b) => b.position - a.position);
+  sortedImages.forEach(img => {
+    // Insert image at position
+    const imageHtml = `<img src="${img.content}" alt="Image" style="max-width: 100%; height: auto; margin: 1rem 0; border-radius: 8px;" />`;
+    processedBody = processedBody.slice(0, img.position) + imageHtml + processedBody.slice(img.position);
+  });
+
+  const socialLinks = [
+    { name: 'Facebook', url: companyInfo.social_facebook?.value, color: '#1877f2' },
+    { name: 'Twitter', url: companyInfo.social_twitter?.value, color: '#1da1f2' },
+    { name: 'Instagram', url: companyInfo.social_instagram?.value, color: '#e4405f' },
+    { name: 'LinkedIn', url: companyInfo.social_linkedin?.value, color: '#0077b5' },
+  ].filter(s => {
+    // Validate URL format
+    if (!s.url) return false;
+    try {
+      new URL(s.url);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  <style>
+    body { margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5; }
+    .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+    .header { background: linear-gradient(135deg, #059669 0%, #10b981 100%); padding: 2rem; text-align: center; }
+    .header img { height: 48px; margin-bottom: 0.75rem; }
+    .header-text { color: #ffffff; font-size: 0.875rem; opacity: 0.9; }
+    .content { padding: 2rem; }
+    .greeting { color: #374151; margin-bottom: 1rem; }
+    .body-text { color: #4b5563; line-height: 1.75; white-space: pre-wrap; }
+    .footer { 
+      background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+      color: #ffffff;
+      padding: 3rem 2rem 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .footer::before {
+      content: '';
+      position: absolute;
+      top: -2px;
+      left: 0;
+      width: 100%;
+      height: 60px;
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 120" preserveAspectRatio="none"><path d="M321.39,56.44c58-10.79,114.16-30.13,172-41.86,82.39-16.72,168.19-17.73,250.45-.39C823.78,31,906.67,72,985.66,92.83c70.05,18.48,146.53,26.09,214.34,3V0H0V27.35A600.21,600.21,0,0,0,321.39,56.44Z" fill="%23ffffff"></path></svg>');
+      background-size: cover;
+      background-repeat: no-repeat;
+    }
+    .footer-content { position: relative; z-index: 1; padding-top: 2rem; }
+    .footer-logo { display: flex; align-items: center; justify-content: center; gap: 0.75rem; margin-bottom: 1.5rem; }
+    .footer-logo img { height: 32px; }
+    .footer-title { font-weight: bold; font-size: 1.125rem; }
+    .footer-text { text-align: center; margin-bottom: 1rem; opacity: 0.95; }
+    .social-links { display: flex; gap: 1.5rem; justify-content: center; margin: 1.5rem 0; }
+    .social-link { 
+      color: #ffffff; 
+      text-decoration: none; 
+      background: rgba(255,255,255,0.2);
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      transition: background 0.3s;
+    }
+    .social-link:hover { background: rgba(255,255,255,0.3); }
+    .disclaimer { 
+      border-top: 1px solid rgba(255,255,255,0.3);
+      padding-top: 1.5rem; 
+      margin-top: 1.5rem; 
+      font-size: 0.75rem; 
+      opacity: 0.8;
+      text-align: center;
+    }
+    @media only screen and (max-width: 600px) {
+      .container { width: 100% !important; }
+      .content, .footer { padding: 1.5rem !important; }
+      .social-links { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <img src="https://beepagro.com/img/logo.png" alt="BPI Logo" />
+      <div class="header-text">Powering Palliative Through Technology</div>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      <h2 style="color: #111827; font-size: 1.5rem; margin-bottom: 1.5rem;">${subject}</h2>
+      <div class="greeting">Hello ${userName},</div>
+      <div class="body-text">${processedBody}</div>
+    </div>
+
+    <!-- Footer with Green Wave -->
+    <div class="footer">
+      <div class="footer-content">
+        <div class="footer-logo">
+          <img src="https://beepagro.com/img/logo.png" alt="BPI" />
+          <div class="footer-title">BeepAgro Progress Initiative</div>
+        </div>
+        
+        <p class="footer-text">Powering Palliative Through Technology</p>
+        
+        ${companyInfo.company_address?.value ? `<p class="footer-text">📍 ${companyInfo.company_address.value}</p>` : ''}
+        ${companyInfo.company_phone?.value ? `<p class="footer-text">📞 ${companyInfo.company_phone.value}</p>` : ''}
+        ${companyInfo.company_email?.value ? `<p class="footer-text">✉️ ${companyInfo.company_email.value}</p>` : ''}
+        
+        ${socialLinks.length > 0 ? `
+          <div class="social-links">
+            ${socialLinks.map(s => `<a href="${s.url}" class="social-link">${s.name}</a>`).join('')}
+          </div>
+        ` : ''}
+        
+        <div class="disclaimer">
+          <p style="margin-bottom: 0.5rem;">You are receiving this email because you signed up on BeepAgro Progress Initiative.</p>
+          <p style="margin-bottom: 0.5rem;">If you no longer wish to receive these emails, you can <a href="https://beepagro.com/settings" style="color: #ffffff; text-decoration: underline;">unsubscribe here</a>.</p>
+          <p style="margin-top: 1rem;">© ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+}

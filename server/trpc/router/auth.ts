@@ -3,6 +3,7 @@ import { hash, compare } from "bcryptjs";
 import { createTRPCRouter, publicProcedure, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { randomUUID } from "crypto";
+import { sendWelcomeEmail } from "@/lib/email";
 
 const registerSchema = z.object({
   firstname: z.string().min(2, "First name must be at least 2 characters"),
@@ -132,6 +133,14 @@ export const authRouter = createTRPCRouter({
       }
       // TODO: Send welcome email
       // TODO: Create initial member profile
+
+      if (user.email) {
+        try {
+          await sendWelcomeEmail(user.email, user.firstname || user.name || "Member");
+        } catch (error) {
+          console.error("[auth.register] Failed to send welcome email:", error);
+        }
+      }
 
       return {
         success: true,

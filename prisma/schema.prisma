@@ -790,6 +790,7 @@ model MembershipPackage {
   name                  String   @unique
   price                 Float
   vat                   Float
+  baseMembershipPackageId String?
   cash_l1               Float    @default(0)
   bpt_l1                Float    @default(0)
   palliative_l1         Float    @default(0)
@@ -1674,6 +1675,10 @@ model User {
   empowermentSponsorReward                                             Float                        @default(0)
   retirement                                                           Float                        @default(0)
   travelTour                                                           Float                        @default(0)
+  walletFrozen                                                         Boolean                      @default(false)
+  walletFrozenAt                                                       DateTime?
+  walletFrozenBy                                                       String?
+  walletFrozenReason                                                   String?
   Account                                                              Account[]
   ActiveShelter                                                        ActiveShelter[]
   AuditLog                                                             AuditLog[]

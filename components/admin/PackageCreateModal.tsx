@@ -24,10 +24,14 @@ export default function PackageCreateModal({
 }: PackageCreateModalProps) {
   const utils = api.useContext();
 
+  // Get all packages for base package selection
+  const { data: existingPackages } = api.admin.getPackages.useQuery({});
+
   const [formData, setFormData] = useState({
     name: "",
     price: 0,
     vat: 0,
+    baseMembershipPackageId: "",
     packageType: "STANDARD",
     renewalFee: 0,
     isActive: true,
@@ -67,6 +71,7 @@ export default function PackageCreateModal({
       name: "",
       price: 0,
       vat: 0,
+      baseMembershipPackageId: "",
       packageType: "STANDARD",
       renewalFee: 0,
       isActive: true,
@@ -217,6 +222,28 @@ export default function PackageCreateModal({
                           <option value="PREMIUM">PREMIUM</option>
                           <option value="EMPOWERMENT">EMPOWERMENT</option>
                         </select>
+                      </div>
+
+                      {/* Base Membership Package (for feature bundles) */}
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Base Membership Package (Optional)
+                        </label>
+                        <select
+                          value={formData.baseMembershipPackageId}
+                          onChange={(e) =>
+                            setFormData((prev) => ({ ...prev, baseMembershipPackageId: e.target.value }))
+                          }
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                        >
+                          <option value="">None (Tier Upgrade)</option>
+                          {existingPackages?.map(pkg => (
+                            <option key={pkg.id} value={pkg.id}>{pkg.name}</option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          Select a base tier if this is a feature add-on/bundle. Leave empty for tier upgrades.
+                        </p>
                       </div>
 
                       {/* Price & VAT */}

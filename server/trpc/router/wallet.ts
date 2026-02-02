@@ -31,7 +31,8 @@ export const walletRouter = createTRPCRouter({
     .input(z.object({
       amount: z.number().positive("Amount must be greater than 0"),
       paymentGateway: z.enum(['paystack', 'flutterwave', 'bank-transfer', 'utility-token', 'crypto', 'mock']),
-      reference: z.string().optional()
+      reference: z.string().optional(),
+      proofOfPayment: z.string().optional(), // Base64 image for bank transfer
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = (ctx.session?.user as any)?.id;
@@ -44,7 +45,7 @@ export const walletRouter = createTRPCRouter({
 
       if (!user?.email) throw new Error("User email not found");
 
-      const { amount, paymentGateway, reference } = input;
+      const { amount, paymentGateway, reference, proofOfPayment } = input;
       const txReference = reference || `DEP-${Date.now()}`;
 
       // Calculate VAT (7.5% added on top)
@@ -94,6 +95,26 @@ export const walletRouter = createTRPCRouter({
             status: "pending",
             reference: txReference,
             walletType: 'main',
+          },
+        });
+
+        // Create pending payment record for admin tracking
+        await prisma.pendingPayment.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "DEPOSIT",
+            amount: totalAmount,
+            currency: "NGN",
+            paymentMethod: "paystack",
+            gatewayReference: txReference,
+            status: "pending",
+            metadata: {
+              depositAmount: amount,
+              vatAmount,
+              purpose: 'wallet_deposit'
+            },
+            updatedAt: new Date(),
           },
         });
 
@@ -157,6 +178,26 @@ export const walletRouter = createTRPCRouter({
           },
         });
 
+        // Create pending payment record for admin tracking
+        await prisma.pendingPayment.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "DEPOSIT",
+            amount: totalAmount,
+            currency: "NGN",
+            paymentMethod: "flutterwave",
+            gatewayReference: txReference,
+            status: "pending",
+            metadata: {
+              depositAmount: amount,
+              vatAmount,
+              purpose: 'wallet_deposit'
+            },
+            updatedAt: new Date(),
+          },
+        });
+
         await notifyDepositStatus(userId, "pending", amount, txReference);
 
         return {
@@ -164,6 +205,59 @@ export const walletRouter = createTRPCRouter({
           paymentUrl: paymentResult.paymentLink,
           reference: txReference,
           message: "Payment initialized. Please complete payment.",
+          depositedAmount: amount,
+          vatAmount,
+          totalPaid: totalAmount,
+        };
+      }
+
+      // Handle Bank Transfer deposits
+      if (paymentGateway === 'bank-transfer') {
+        if (!proofOfPayment) {
+          throw new Error("Proof of payment is required for bank transfers");
+        }
+
+        // Create pending transaction (awaiting admin approval)
+        await prisma.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "DEPOSIT",
+            amount: amount,
+            description: `Bank transfer deposit - Pending admin approval`,
+            status: "pending",
+            reference: txReference,
+            walletType: 'main',
+          },
+        });
+
+        // Create pending payment record with proof for admin review
+        await prisma.pendingPayment.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "DEPOSIT",
+            amount: totalAmount,
+            currency: "NGN",
+            paymentMethod: "bank-transfer",
+            gatewayReference: txReference,
+            status: "pending",
+            proofOfPayment,
+            metadata: {
+              depositAmount: amount,
+              vatAmount,
+              purpose: 'wallet_deposit'
+            },
+            updatedAt: new Date(),
+          },
+        });
+
+        await notifyDepositStatus(userId, "pending", amount, txReference);
+
+        return {
+          success: true,
+          reference: txReference,
+          message: "Bank transfer submitted for admin approval. You will be notified once approved.",
           depositedAmount: amount,
           vatAmount,
           totalPaid: totalAmount,
@@ -251,7 +345,9 @@ export const walletRouter = createTRPCRouter({
     .input(z.object({
       amount: z.number().positive("Amount must be greater than 0"),
       withdrawalType: z.enum(['cash', 'bpt']),
-      sourceWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business']),
+      sourceWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business', 'shelter']),
+      // Security validation
+      pin: z.string().length(4, "PIN must be 4 digits"),
       // Bank details (required for cash withdrawal)
       bankCode: z.string().optional(), // Flutterwave bank code
       accountNumber: z.string().optional(),
@@ -263,7 +359,7 @@ export const walletRouter = createTRPCRouter({
       const userId = (ctx.session?.user as any)?.id;
       if (!userId) throw new Error("UNAUTHORIZED");
 
-      const { amount, withdrawalType, sourceWallet, bankCode, accountNumber, accountName, bnbWalletAddress } = input;
+      const { amount, withdrawalType, sourceWallet, pin, bankCode, accountNumber, accountName, bnbWalletAddress } = input;
       const txReference = `WD-${withdrawalType.toUpperCase()}-${Date.now()}`;
 
       console.log("\n🔵 [WITHDRAWAL] Request initiated");
@@ -277,21 +373,62 @@ export const walletRouter = createTRPCRouter({
         reference: txReference
       });
 
-      // Get user data
+      // SECURITY: Verify PIN before processing withdrawal
       const user = await prisma.user.findUnique({
-        where: { id: userId }
+        where: { id: userId },
+        select: { 
+          userProfilePin: true, 
+          withdrawBan: true, 
+          name: true, 
+          email: true,
+          walletFrozen: true,
+          walletFrozenReason: true
+        }
       });
 
       if (!user) {
         console.error("❌ [WITHDRAWAL] User not found:", userId);
         throw new Error("User not found");
       }
+
+      if (!user.userProfilePin) {
+        throw new Error("Please set up a PIN in your security settings before making withdrawals");
+      }
+
+      const bcrypt = require('bcryptjs');
+      const isPinValid = await bcrypt.compare(pin, user.userProfilePin);
+      if (!isPinValid) {
+        console.error("❌ [WITHDRAWAL] Invalid PIN attempt for user:", userId);
+        throw new Error("Invalid PIN. Please try again.");
+      }
+
+      console.log("✅ [WITHDRAWAL] PIN verified for user:", user.name || user.email);
+
+      // WALLET FREEZE CHECK: Block withdrawals if wallet is frozen
+      if (user.walletFrozen) {
+        console.error("❌ [WITHDRAWAL] Wallet is frozen:", userId);
+        throw new Error(
+          `Your wallet is currently frozen and withdrawals are not permitted. ` +
+          `Reason: ${user.walletFrozenReason || 'Administrative hold'}. ` +
+          `Please contact support for assistance.`
+        );
+      }
+
       if (user.withdrawBan === 1) {
         console.error("❌ [WITHDRAWAL] User is banned from withdrawals:", userId);
         throw new Error("Your account is banned from withdrawals. Contact support.");
       }
       
-      console.log("✅ [WITHDRAWAL] User verified:", user.name || user.email);
+      console.log("✅ [WITHDRAWAL] PIN verified for user:", user.name || user.email);
+
+      if (user.withdrawBan === 1) {
+        console.error("❌ [WITHDRAWAL] User is banned from withdrawals:", userId);
+        throw new Error("Your account is banned from withdrawals. Contact support.");
+      }
+      
+      // Fetch full user data for balance checks
+      const fullUser = await prisma.user.findUnique({ where: { id: userId } });
+      if (!fullUser) throw new Error("User data not found");
 
       // EMPOWERMENT GATE: Block education & empowermentSponsorReward withdrawals until final admin confirmation
       if (sourceWallet === 'education' || sourceWallet === 'empowermentSponsorReward') {
@@ -317,8 +454,17 @@ export const walletRouter = createTRPCRouter({
       }
 
       // Check balance
-      const currentBalance = (user as any)[sourceWallet] || 0;
+      const currentBalance = (fullUser as any)[sourceWallet] || 0;
       console.log("💰 [WITHDRAWAL] Current balance:", currentBalance, "NGN in", sourceWallet);
+      
+      // THRESHOLD VALIDATION: Check minimum withdrawal amount
+      const MIN_CASH_WITHDRAWAL = await getAdminSetting('MIN_CASH_WITHDRAWAL', 1000);
+      const MIN_BPT_WITHDRAWAL = await getAdminSetting('MIN_BPT_WITHDRAWAL', 100);
+      const minWithdrawal = withdrawalType === 'cash' ? MIN_CASH_WITHDRAWAL : MIN_BPT_WITHDRAWAL;
+
+      if (amount < minWithdrawal) {
+        throw new Error(`Minimum withdrawal amount is ₦${minWithdrawal.toLocaleString()}. Requested: ₦${amount.toLocaleString()}`);
+      }
       
       // Get withdrawal fee from admin settings
       const withdrawalFee = withdrawalType === 'cash' 
@@ -627,17 +773,68 @@ export const walletRouter = createTRPCRouter({
   transferInterWallet: protectedProcedure
     .input(z.object({
       amount: z.number().positive("Amount must be greater than 0"),
-      fromWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business']),
-      toWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business'])
+      fromWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business', 'shelter']),
+      toWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business', 'shelter']),
+      pin: z.string().length(4, "PIN must be 4 digits")
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = (ctx.session?.user as any)?.id;
       if (!userId) throw new Error("UNAUTHORIZED");
 
-      const { amount, fromWallet, toWallet } = input;
+      const { amount, fromWallet, toWallet, pin } = input;
 
       if (fromWallet === toWallet) {
         throw new Error("Cannot transfer to the same wallet");
+      }
+
+      // SECURITY: Verify PIN before processing transfer
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { 
+          userProfilePin: true, 
+          name: true, 
+          email: true,
+          walletFrozen: true,
+          walletFrozenReason: true,
+          wallet: true,
+          bpiTokenWallet: true,
+          cashback: true,
+          palliative: true,
+          education: true,
+          empowermentSponsorReward: true,
+          car: true,
+          land: true,
+          business: true,
+          solar: true,
+          socialMedia: true,
+          retirement: true,
+          travelTour: true,
+          shelter: true,
+        }
+      });
+
+      if (!user) throw new Error("User not found");
+
+      const userEmail = user.email;
+      const userName = user.name;
+
+      if (!user.userProfilePin) {
+        throw new Error("Please set up a PIN in your security settings before making transfers");
+      }
+
+      const bcrypt = require('bcryptjs');
+      const isPinValid = await bcrypt.compare(pin, user.userProfilePin);
+      if (!isPinValid) {
+        throw new Error("Invalid PIN. Please try again.");
+      }
+
+      // WALLET FREEZE CHECK: Block transfers if wallet is frozen
+      if (user.walletFrozen) {
+        throw new Error(
+          `Your wallet is currently frozen and transfers are not permitted. ` +
+          `Reason: ${user.walletFrozenReason || 'Administrative hold'}. ` +
+          `Please contact support for assistance.`
+        );
       }
 
       // EMPOWERMENT GATE: Block transfers from education & empowermentSponsorReward until final admin confirmation
@@ -669,17 +866,7 @@ export const walletRouter = createTRPCRouter({
         throw new Error(`Transfer amount exceeds maximum limit of ₦${maxTransferAmount.toLocaleString()}`);
       }
 
-      // Get user's current balances
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          [fromWallet]: true,
-          [toWallet]: true
-        }
-      });
-
-      if (!user) throw new Error("User not found");
-
+      // Check user's current balance (already fetched above)
       const sourceBalance = (user as any)[fromWallet] || 0;
       
       if (sourceBalance < amount) {
@@ -696,6 +883,7 @@ export const walletRouter = createTRPCRouter({
       });
 
       // Create transaction record - store actual transfer amount for display
+      const txReference = `IWT-${Date.now()}`;
       await prisma.transaction.create({
         data: {
           id: randomUUID(),
@@ -704,9 +892,25 @@ export const walletRouter = createTRPCRouter({
           amount: amount, // Store the actual amount transferred for transaction history
           description: `Transfer from ${fromWallet} to ${toWallet} wallet`,
           status: "completed",
-          reference: `IWT-${Date.now()}`
+          reference: txReference
         }
       });
+
+      // EMAIL NOTIFICATION: Send transfer confirmation to user
+      try {
+        const { sendTransferConfirmationToUser } = await import('@/lib/email');
+        await sendTransferConfirmationToUser(
+          userEmail || '',
+          userName || 'User',
+          amount,
+          fromWallet,
+          toWallet,
+          txReference
+        );
+      } catch (emailError) {
+        console.error('❌ Failed to send inter-wallet transfer email:', emailError);
+        // Don't fail the transfer if email fails
+      }
 
       return {
         success: true,
@@ -724,14 +928,62 @@ export const walletRouter = createTRPCRouter({
     .input(z.object({
       amount: z.number().positive("Amount must be greater than 0"),
       recipientIdentifier: z.string().min(1, "Recipient username or email is required"),
-      sourceWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business']),
-      note: z.string().optional()
+      sourceWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business', 'shelter']),
+      note: z.string().optional(),
+      pin: z.string().length(4, "PIN must be 4 digits")
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = (ctx.session?.user as any)?.id;
       if (!userId) throw new Error("UNAUTHORIZED");
 
-      const { amount, recipientIdentifier, sourceWallet, note } = input;
+      const { amount, recipientIdentifier, sourceWallet, note, pin } = input;
+
+      // SECURITY: Verify PIN before processing transfer
+      const sender = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { 
+          userProfilePin: true, 
+          name: true, 
+          email: true, 
+          username: true,
+          walletFrozen: true,
+          walletFrozenReason: true,
+          wallet: true,
+          spendable: true,
+          shareholder: true,
+          cashback: true,
+          community: true,
+          education: true,
+          empowermentSponsorReward: true,
+          car: true,
+          business: true,
+          shelter: true,
+        }
+      });
+
+      if (!sender) throw new Error("User not found");
+
+      const senderEmail = sender.email;
+      const senderName = sender.name;
+
+      if (!sender.userProfilePin) {
+        throw new Error("Please set up a PIN in your security settings before making transfers");
+      }
+
+      const bcrypt = require('bcryptjs');
+      const isPinValid = await bcrypt.compare(pin, sender.userProfilePin);
+      if (!isPinValid) {
+        throw new Error("Invalid PIN. Please try again.");
+      }
+
+      // WALLET FREEZE CHECK: Block transfers if wallet is frozen
+      if (sender.walletFrozen) {
+        throw new Error(
+          `Your wallet is currently frozen and transfers are not permitted. ` +
+          `Reason: ${sender.walletFrozenReason || 'Administrative hold'}. ` +
+          `Please contact support for assistance.`
+        );
+      }
 
       // EMPOWERMENT GATE: Block transfers from education & empowermentSponsorReward until final admin confirmation
       if (sourceWallet === 'education' || sourceWallet === 'empowermentSponsorReward') {
@@ -786,17 +1038,7 @@ export const walletRouter = createTRPCRouter({
         throw new Error("Cannot transfer to yourself. Use inter-wallet transfer instead.");
       }
 
-      // Get sender's balance
-      const sender = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          [sourceWallet]: true,
-          name: true
-        }
-      });
-
-      if (!sender) throw new Error("User not found");
-
+      // Check sender's balance (already fetched above)
       const sourceBalance = (sender as any)[sourceWallet] || 0;
       
       if (sourceBalance < amount) {
@@ -822,6 +1064,7 @@ export const walletRouter = createTRPCRouter({
       ]);
 
       // Create transaction for sender
+      const senderTxReference = `TXF-SENT-${Date.now()}`;
       await prisma.transaction.create({
         data: {
           id: randomUUID(),
@@ -830,11 +1073,12 @@ export const walletRouter = createTRPCRouter({
           amount: -amount,
           description: `Transfer to ${recipient.name || recipient.username}${note ? `: ${note}` : ''}`,
           status: "completed",
-          reference: `TXF-SENT-${Date.now()}`
+          reference: senderTxReference
         }
       });
 
       // Create transaction for recipient
+      const receiverTxReference = `TXF-RCV-${Date.now()}`;
       await prisma.transaction.create({
         data: {
           id: randomUUID(),
@@ -843,9 +1087,37 @@ export const walletRouter = createTRPCRouter({
           amount: amount,
           description: `Transfer from ${sender.name || 'User'}${note ? `: ${note}` : ''}`,
           status: "completed",
-          reference: `TXF-RCV-${Date.now()}`
+          reference: receiverTxReference
         }
       });
+
+      // EMAIL NOTIFICATIONS: Send to both sender and receiver
+      try {
+        const { sendTransferToUserConfirmation } = await import('@/lib/email');
+        
+        // Send to sender
+        await sendTransferToUserConfirmation(
+          senderEmail || '',
+          senderName || 'User',
+          recipient.name || recipient.username || 'User',
+          amount,
+          senderTxReference,
+          true // isSender = true
+        );
+        
+        // Send to receiver
+        await sendTransferToUserConfirmation(
+          recipient.email || '',
+          recipient.name || recipient.username || 'User',
+          senderName || 'User',
+          amount,
+          receiverTxReference,
+          false // isSender = false
+        );
+      } catch (emailError) {
+        console.error('❌ Failed to send user-to-user transfer emails:', emailError);
+        // Don't fail the transfer if email fails
+      }
 
       return {
         success: true,

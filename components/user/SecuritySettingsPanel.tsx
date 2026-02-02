@@ -67,7 +67,7 @@ export default function UserSecuritySettingsPanel() {
   // Verify 2FA mutation
   const verify2FAMutation = api.security.verify2FA.useMutation({
     onSuccess: (data) => {
-      toast.success(data.message);
+      toast.success('2FA verified successfully');
       setShow2FASetup(false);
       setQrCodeUrl(null);
       setSecret(null);

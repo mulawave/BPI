@@ -440,6 +440,176 @@ export default function SettingsPage() {
               </div>
             </div>
 
+            {/* Company Information Section */}
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
+                Company Information
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                This information will appear in the app footer and email templates
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <SettingField
+                  label="Company Address"
+                  settingKey="company_address"
+                  description="Full company address"
+                  currentValue={systemSettings?.company_address?.value || ""}
+                  onSave={handleSaveGeneralSetting}
+                  multiline
+                />
+                <SettingField
+                  label="Company Phone"
+                  settingKey="company_phone"
+                  description="Contact phone number"
+                  currentValue={systemSettings?.company_phone?.value || ""}
+                  type="tel"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="Company Email"
+                  settingKey="company_email"
+                  description="Contact email address"
+                  currentValue={systemSettings?.company_email?.value || ""}
+                  type="email"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="Facebook URL"
+                  settingKey="social_facebook"
+                  description="Facebook page link"
+                  currentValue={systemSettings?.social_facebook?.value || ""}
+                  type="url"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="Twitter URL"
+                  settingKey="social_twitter"
+                  description="Twitter profile link"
+                  currentValue={systemSettings?.social_twitter?.value || ""}
+                  type="url"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="Instagram URL"
+                  settingKey="social_instagram"
+                  description="Instagram profile link"
+                  currentValue={systemSettings?.social_instagram?.value || ""}
+                  type="url"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="LinkedIn URL"
+                  settingKey="social_linkedin"
+                  description="LinkedIn page link"
+                  currentValue={systemSettings?.social_linkedin?.value || ""}
+                  type="url"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="YouTube URL"
+                  settingKey="social_youtube"
+                  description="YouTube channel link"
+                  currentValue={systemSettings?.social_youtube?.value || ""}
+                  type="url"
+                  onSave={handleSaveGeneralSetting}
+                />
+              </div>
+            </div>
+
+            {/* Bank Account Information Section */}
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
+                Bank Account for Deposits
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                Bank account details displayed to users for bank transfer deposits
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <SettingField
+                  label="Bank Name"
+                  settingKey="bank_name"
+                  description="Name of the bank"
+                  currentValue={systemSettings?.bank_name?.value || ""}
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="Account Number"
+                  settingKey="bank_account_number"
+                  description="Bank account number"
+                  currentValue={systemSettings?.bank_account_number?.value || ""}
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="Account Name"
+                  settingKey="bank_account_name"
+                  description="Account holder name"
+                  currentValue={systemSettings?.bank_account_name?.value || ""}
+                  onSave={handleSaveGeneralSetting}
+                />
+              </div>
+            </div>
+
+            {/* Original Company Info Fields (keeping for backward compatibility) */}
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm" style={{ display: 'none' }}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <SettingField
+                  label="Company Phone"
+                  settingKey="company_phone"
+                  description="Contact phone number"
+                  currentValue={systemSettings?.company_phone?.value || ""}
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="Company Email"
+                  settingKey="company_email"
+                  description="Public contact email"
+                  currentValue={systemSettings?.company_email?.value || ""}
+                  type="email"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="Facebook URL"
+                  settingKey="social_facebook"
+                  description="Facebook page URL"
+                  currentValue={systemSettings?.social_facebook?.value || ""}
+                  type="url"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="Twitter URL"
+                  settingKey="social_twitter"
+                  description="Twitter/X profile URL"
+                  currentValue={systemSettings?.social_twitter?.value || ""}
+                  type="url"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="Instagram URL"
+                  settingKey="social_instagram"
+                  description="Instagram profile URL"
+                  currentValue={systemSettings?.social_instagram?.value || ""}
+                  type="url"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="LinkedIn URL"
+                  settingKey="social_linkedin"
+                  description="LinkedIn page URL"
+                  currentValue={systemSettings?.social_linkedin?.value || ""}
+                  type="url"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
+                  label="YouTube URL"
+                  settingKey="social_youtube"
+                  description="YouTube channel URL"
+                  currentValue={systemSettings?.social_youtube?.value || ""}
+                  type="url"
+                  onSave={handleSaveGeneralSetting}
+                />
+              </div>
+            </div>
+
             <CommunityFeaturesPanel />
 
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
@@ -1252,6 +1422,7 @@ function SettingField({
   description,
   currentValue,
   type = "text",
+  multiline = false,
   onSave,
 }: {
   label: string;
@@ -1259,6 +1430,7 @@ function SettingField({
   description?: string;
   currentValue: string;
   type?: string;
+  multiline?: boolean;
   onSave: (key: string, value: string, description?: string) => void;
 }) {
   const [value, setValue] = useState(currentValue);
@@ -1287,20 +1459,32 @@ function SettingField({
       {description && (
         <p className="text-xs text-gray-500 dark:text-gray-400">{description}</p>
       )}
-      <div className="flex items-center gap-2">
-        <input
-          type={type}
-          value={isEditing ? value : currentValue}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setIsEditing(true);
-          }}
-          className="flex-1 px-4 py-2 bg-gray-50 dark:bg-green-900/30 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 text-gray-900 dark:text-white"
-        />
+      <div className="flex items-start gap-2">
+        {multiline ? (
+          <textarea
+            value={isEditing ? value : currentValue}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setIsEditing(true);
+            }}
+            rows={3}
+            className="flex-1 px-4 py-2 bg-gray-50 dark:bg-green-900/30 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 text-gray-900 dark:text-white resize-none"
+          />
+        ) : (
+          <input
+            type={type}
+            value={isEditing ? value : currentValue}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setIsEditing(true);
+            }}
+            className="flex-1 px-4 py-2 bg-gray-50 dark:bg-green-900/30 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 text-gray-900 dark:text-white"
+          />
+        )}
         {isEditing && (
           <button
             onClick={handleSave}
-            className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors mt-1"
           >
             <HiSave className="w-5 h-5" />
           </button>

@@ -1,4 +1,5 @@
 "use client";
+import React, { useState } from "react";
 import { api } from "@/client/trpc";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -7,7 +8,6 @@ import { useCurrency } from "@/contexts/CurrencyContext";
 import { Award, Check, TrendingUp, Users, Gift, Shield, Moon, Sun, LogOut, ChevronDown, ChevronUp, ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { signOut } from "next-auth/react";
 import LoadingScreen from "@/components/LoadingScreen";
 
@@ -29,18 +29,22 @@ export default function MembershipPage() {
       [packageId]: !prev[packageId]
     }));
   };
-
+  // Helper function to determine if a package is an addon (not a base tier upgrade)
+  const isAddonPackage = (packageName: string): boolean => {
+    const addonPackages = [
+      'Travel & Tour Agent',
+      'Basic Early Retirement',
+      'Child Educational/Vocational Support'
+    ];
+    return addonPackages.includes(packageName);
+  };
   const handleActivate = async (packageId: string, isUpgrade: boolean = false) => {
     // Set loading state immediately
     setActivatingId(packageId);
     
     // Navigate to payment page (both activation and upgrade use same payment gateway selection)
     if (isUpgrade && activeMembership?.package) {
-    if (activeMembership && activeMembership.package) {
       router.push(`/membership/activate/${packageId}?upgrade=true&from=${activeMembership.package.id}`);
-    } else {
-      router.push(`/membership/activate/${packageId}`);
-    }
     } else {
       router.push(`/membership/activate/${packageId}`);
     }
@@ -49,10 +53,248 @@ export default function MembershipPage() {
   // Sort packages by price (ascending order)
   const sortedPackages = packages ? [...packages].sort((a, b) => a.price - b.price) : [];
 
+  // Separate packages into tier upgrades and feature bundles using name-based detection
+  const tierUpgrades = sortedPackages.filter(pkg => !isAddonPackage(pkg.name));
+  const featureBundles = sortedPackages.filter(pkg => isAddonPackage(pkg.name));
+
   // Get current package index for comparison
   const currentPackageIndex = sortedPackages.findIndex(
     pkg => pkg.id === activeMembership?.package?.id
   );
+
+  // Render package card function
+  function renderPackageCard(pkg: any, context: 'tier' | 'bundle' | 'new') {
+    const isPopular = pkg.name === "Regular Plus";
+    const isExpanded = expandedPackages[pkg.id] || false;
+    const totalCost = pkg.price + pkg.vat;
+    
+    // Professional color scheme
+    const packageColors = {
+      "Regular": { gradient: 'from-slate-600 to-slate-800', accent: 'slate' },
+      "Regular Plus": { gradient: 'from-emerald-600 to-teal-700', accent: 'emerald' },
+      "Gold Plus": { gradient: 'from-amber-500 to-orange-600', accent: 'amber' },
+      "Platinum Plus": { gradient: 'from-purple-600 to-indigo-700', accent: 'purple' },
+      "Travel & Tour Agent": { gradient: 'from-cyan-600 to-blue-700', accent: 'cyan' },
+      "Basic Early Retirement": { gradient: 'from-rose-600 to-pink-700', accent: 'rose' }
+    };
+    
+    const colors = packageColors[pkg.name as keyof typeof packageColors] || { gradient: 'from-gray-600 to-gray-800', accent: 'gray' };
+
+    const pkgIndex = sortedPackages.indexOf(pkg);
+    const isCurrent = currentPackageIndex === pkgIndex;
+    
+    // For feature bundles, calculate cost differently
+    let displayCost = 0;
+    let costLabel = '';
+    const isBundle = isAddonPackage(pkg.name);
+    
+    if (context === 'bundle') {
+      const regularPlusPackage = packages?.find(p => p.name === "Regular Plus");
+      const regularPlusTotal = regularPlusPackage ? regularPlusPackage.price + regularPlusPackage.vat : 0;
+      const currentTotal = activeMembership?.package
+        ? activeMembership.package.price + activeMembership.package.vat
+        : 0;
+      const bundleTotal = pkg.price + pkg.vat;
+
+      if (regularPlusTotal > 0 && currentTotal >= regularPlusTotal) {
+        displayCost = Math.max(0, bundleTotal - regularPlusTotal);
+        costLabel = 'Add-on Cost';
+      } else {
+        displayCost = bundleTotal;
+        costLabel = 'Full Add-on Cost';
+      }
+    } else if (context === 'tier' && activeMembership?.package) {
+      // Tier upgrade: show difference
+      displayCost = (pkg.price + pkg.vat) - (activeMembership.package.price + activeMembership.package.vat);
+      costLabel = 'Upgrade Cost';
+    }
+
+    const isLower = currentPackageIndex > -1 && pkgIndex <= currentPackageIndex && !isBundle;
+
+    return (
+      <Card 
+        key={pkg.id} 
+        className="relative bg-white dark:bg-bpi-dark-card border border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden flex flex-col h-full"
+      >
+        {isPopular && (
+          <div className="absolute -top-1 -right-1 z-10">
+            <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3 py-1 text-xs font-bold rounded-bl-lg shadow-md">
+              MOST POPULAR
+            </div>
+          </div>
+        )}
+        
+        {/* Package Header */}
+        <div className={`bg-gradient-to-br ${colors.gradient} p-6 text-white`}>
+          <div className="text-center">
+            <h3 className="text-xl font-bold mb-3 tracking-wide">{pkg.name}</h3>
+            <div className="mb-2">
+              <span className="text-4xl font-extrabold">{formatAmount(pkg.price)}</span>
+            </div>
+            <p className="text-sm text-white/80">
+              + {formatAmount(pkg.vat)} VAT
+            </p>
+            <div className="mt-3 pt-3 border-t border-white/20">
+              <p className="text-lg font-semibold">
+                Total: {formatAmount(totalCost)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Package Body */}
+        <div className="p-6 flex-1 flex flex-col">
+          <div className="mb-4">
+            <button
+              onClick={() => togglePackageDetails(pkg.id)}
+              className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <span className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Gift className="w-4 h-4" />
+                {isExpanded ? 'Hide' : 'View'} Package Details
+              </span>
+              {isExpanded ? (
+                <ChevronUp className="w-5 h-5 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-muted-foreground" />
+              )}
+            </button>
+            
+            {isExpanded && (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">
+                    Referral Rewards
+                  </h4>
+                  <div className="space-y-2">
+                    {[
+                      { level: 'L1', cash: pkg.cash_l1, bpt: pkg.bpt_l1, palliative: pkg.palliative_l1, cashback: pkg.cashback_l1 },
+                      { level: 'L2', cash: pkg.cash_l2, bpt: pkg.bpt_l2, palliative: pkg.palliative_l2, cashback: pkg.cashback_l2 },
+                      { level: 'L3', cash: pkg.cash_l3, bpt: pkg.bpt_l3, palliative: pkg.palliative_l3, cashback: pkg.cashback_l3 },
+                      { level: 'L4', cash: pkg.cash_l4, bpt: pkg.bpt_l4, palliative: pkg.palliative_l4, cashback: pkg.cashback_l4 }
+                    ].map((reward) => (
+                      <div key={reward.level} className="p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+                        <p className="text-xs font-semibold text-foreground mb-1">{reward.level}</p>
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          {reward.cash > 0 && <span className="text-emerald-600 dark:text-emerald-400">Cash: {formatAmount(reward.cash)}</span>}
+                          {reward.palliative > 0 && <span className="text-blue-600 dark:text-blue-400">Pal: {formatAmount(reward.palliative)}</span>}
+                          {reward.bpt > 0 && <span className="text-purple-600 dark:text-purple-400">BPT: {formatAmount(reward.bpt)}</span>}
+                          {reward.cashback && reward.cashback > 0 && <span className="text-amber-600 dark:text-amber-400">CB: {formatAmount(reward.cashback)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {pkg.features && pkg.features.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                      Key Features
+                    </h4>
+                    <div className="space-y-1.5">
+                      {pkg.features.slice(0, 4).map((feature: string, i: number) => (
+                        <div key={i} className="flex items-start gap-2">
+                          <Check className="w-3.5 h-3.5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                          <span className="text-xs text-muted-foreground leading-tight">{feature}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {pkg.hasRenewal && (
+                  <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-semibold">Renewal:</span> Every 365 days at {formatAmount((pkg.renewalFee || 0) + ((pkg.renewalFee || 0) * 0.075))} (incl. VAT)
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Action Button */}
+          <div className="mt-auto">
+            {isCurrent && (
+              <div className="bg-green-100 dark:bg-green-900/30 border-2 border-green-500 dark:border-green-600 rounded-lg p-4 text-center">
+                <Check className="w-8 h-8 text-green-600 dark:text-green-400 mx-auto mb-2" />
+                <p className="font-bold text-green-800 dark:text-green-300">ACTIVE PLAN</p>
+                <p className="text-xs text-green-700 dark:text-green-400 mt-1">
+                  {activeMembership?.expiresAt && `Expires: ${new Date(activeMembership.expiresAt).toLocaleDateString()}`}
+                </p>
+              </div>
+            )}
+
+            {!isCurrent && isLower && !isBundle && (
+              <Button
+                disabled
+                className="w-full bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed opacity-60"
+                size="lg"
+              >
+                <Shield className="w-4 h-4 mr-2" />
+                Lower Tier
+              </Button>
+            )}
+
+            {!isCurrent && !isLower && (context === 'tier' || context === 'bundle') && activeMembership && (
+              <div className="space-y-2">
+                <div className={`${context === 'bundle' ? 'bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700' : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700'} rounded-lg p-2 text-center`}>
+                  <p className={`text-xs ${context === 'bundle' ? 'text-purple-700 dark:text-purple-300' : 'text-blue-700 dark:text-blue-300'} font-semibold`}>{costLabel}</p>
+                  <p className={`text-lg font-bold ${context === 'bundle' ? 'text-purple-800 dark:text-purple-200' : 'text-blue-800 dark:text-blue-200'}`}>
+                    {formatAmount(displayCost)}
+                  </p>
+                  {context === 'bundle' && (
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                      {costLabel === 'Add-on Cost' ? 'Extra features only' : 'Includes Regular Plus membership'}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  onClick={() => handleActivate(pkg.id, true)}
+                  className={`w-full bg-gradient-to-r ${context === 'bundle' ? 'from-purple-600 to-indigo-700 hover:from-purple-700 hover:to-indigo-800' : 'from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'} text-white border-0 shadow-md font-semibold`}
+                  disabled={activatingId !== null}
+                  size="lg"
+                >
+                  {activatingId === pkg.id ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      {context === 'bundle' ? <Gift className="w-4 h-4 mr-2" /> : <TrendingUp className="w-4 h-4 mr-2" />}
+                      {context === 'bundle' ? 'ACTIVATE ADDON' : 'UPGRADE MEMBERSHIP'}
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {!isCurrent && !isLower && !((context === 'tier' || context === 'bundle') && activeMembership) && (
+              <Button
+                onClick={() => handleActivate(pkg.id, false)}
+                className={`w-full bg-gradient-to-r ${colors.gradient} hover:opacity-90 text-white border-0 shadow-md font-semibold`}
+                disabled={activatingId !== null}
+                size="lg"
+              >
+                {activatingId === pkg.id ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Activating...
+                  </>
+                ) : (
+                  <>
+                    <Shield className="w-4 h-4 mr-2" />
+                    Activate Now
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   if (isLoading || loadingActive) {
     return (
@@ -180,238 +422,50 @@ export default function MembershipPage() {
             </Card>
           </div>
         ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-          {sortedPackages.map((pkg) => {
-            const isPopular = pkg.name === "Regular Plus";
-            const isExpanded = expandedPackages[pkg.id] || false;
-            const totalCost = pkg.price + pkg.vat;
-            
-            // Professional color scheme
-            const packageColors = {
-              "Regular": { gradient: 'from-slate-600 to-slate-800', accent: 'slate' },
-              "Regular Plus": { gradient: 'from-emerald-600 to-teal-700', accent: 'emerald' },
-              "Gold Plus": { gradient: 'from-amber-500 to-orange-600', accent: 'amber' },
-              "Platinum Plus": { gradient: 'from-purple-600 to-indigo-700', accent: 'purple' },
-              "Travel & Tour Agent": { gradient: 'from-cyan-600 to-blue-700', accent: 'cyan' },
-              "Basic Early Retirement": { gradient: 'from-rose-600 to-pink-700', accent: 'rose' }
-            };
-            
-            const colors = packageColors[pkg.name as keyof typeof packageColors] || { gradient: 'from-gray-600 to-gray-800', accent: 'gray' };
-            
-            return (
-              <Card 
-                key={pkg.id} 
-                className="relative bg-white dark:bg-bpi-dark-card border border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden flex flex-col h-full"
-              >
-                {isPopular && (
-                  <div className="absolute -top-1 -right-1 z-10">
-                    <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3 py-1 text-xs font-bold rounded-bl-lg shadow-md">
-                      MOST POPULAR
-                    </div>
-                  </div>
-                )}
-                
-                {/* Package Header - Fixed Height */}
-                <div className={`bg-gradient-to-br ${colors.gradient} p-6 text-white`}>
-                  <div className="text-center">
-                    <h3 className="text-xl font-bold mb-3 tracking-wide">{pkg.name}</h3>
-                    <div className="mb-2">
-                      <span className="text-4xl font-extrabold">{formatAmount(pkg.price)}</span>
-                    </div>
-                    <p className="text-sm text-white/80">
-                      + {formatAmount(pkg.vat)} VAT
-                    </p>
-                    <div className="mt-3 pt-3 border-t border-white/20">
-                      <p className="text-lg font-semibold">
-                        Total: {formatAmount(totalCost)}
-                      </p>
-                    </div>
-                  </div>
+          <>
+            {/* Membership Tier Upgrades Section */}
+            {activeMembership && tierUpgrades.length > 0 && (
+              <div className="mb-12">
+                <div className="text-center mb-8">
+                  <h2 className="text-3xl font-bold text-foreground mb-2 flex items-center justify-center gap-2">
+                    <TrendingUp className="w-8 h-8 text-bpi-primary" />
+                    Membership Tier Upgrades
+                  </h2>
+                  <p className="text-muted-foreground max-w-2xl mx-auto">
+                    Upgrade to a higher membership tier for enhanced benefits, larger referral bonuses, and exclusive features.
+                  </p>
                 </div>
-
-                {/* Package Body - Flexible Height */}
-                <div className="p-6 flex-1 flex flex-col">
-                  
-                  {/* Expandable Details Section */}
-                  <div className="mb-4">
-                    <button
-                      onClick={() => togglePackageDetails(pkg.id)}
-                      className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <span className="text-sm font-semibold text-foreground flex items-center gap-2">
-                        <Gift className="w-4 h-4" />
-                        {isExpanded ? 'Hide' : 'View'} Package Details
-                      </span>
-                      {isExpanded ? (
-                        <ChevronUp className="w-5 h-5 text-muted-foreground" />
-                      ) : (
-                        <ChevronDown className="w-5 h-5 text-muted-foreground" />
-                      )}
-                    </button>
-                    
-                    {/* Collapsible Content */}
-                    {isExpanded && (
-                      <div className="mt-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                        {/* Referral Rewards */}
-                        <div>
-                          <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">
-                            Referral Rewards
-                          </h4>
-                          <div className="space-y-2">
-                            {[
-                              { level: 'L1', cash: pkg.cash_l1, bpt: pkg.bpt_l1, palliative: pkg.palliative_l1, cashback: pkg.cashback_l1 },
-                              { level: 'L2', cash: pkg.cash_l2, bpt: pkg.bpt_l2, palliative: pkg.palliative_l2, cashback: pkg.cashback_l2 },
-                              { level: 'L3', cash: pkg.cash_l3, bpt: pkg.bpt_l3, palliative: pkg.palliative_l3, cashback: pkg.cashback_l3 },
-                              { level: 'L4', cash: pkg.cash_l4, bpt: pkg.bpt_l4, palliative: pkg.palliative_l4, cashback: pkg.cashback_l4 }
-                            ].map((reward) => (
-                              <div key={reward.level} className="p-2 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
-                                <p className="text-xs font-semibold text-foreground mb-1">{reward.level}</p>
-                                <div className="flex flex-wrap gap-2 text-xs">
-                                  {reward.cash > 0 && (
-                                    <span className="text-emerald-600 dark:text-emerald-400">Cash: {formatAmount(reward.cash)}</span>
-                                  )}
-                                  {reward.palliative > 0 && (
-                                    <span className="text-blue-600 dark:text-blue-400">Pal: {formatAmount(reward.palliative)}</span>
-                                  )}
-                                  {reward.bpt > 0 && (
-                                    <span className="text-purple-600 dark:text-purple-400">BPT: {formatAmount(reward.bpt)}</span>
-                                  )}
-                                  {reward.cashback && reward.cashback > 0 && (
-                                    <span className="text-amber-600 dark:text-amber-400">CB: {formatAmount(reward.cashback)}</span>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        
-                        {/* Features */}
-                        {pkg.features && pkg.features.length > 0 && (
-                          <div>
-                            <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
-                              Key Features
-                            </h4>
-                            <div className="space-y-1.5">
-                              {pkg.features.slice(0, 4).map((feature, i) => (
-                                <div key={i} className="flex items-start gap-2">
-                                  <Check className="w-3.5 h-3.5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-                                  <span className="text-xs text-muted-foreground leading-tight">{feature}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Renewal Info */}
-                        {pkg.hasRenewal && (
-                          <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
-                            <p className="text-xs text-muted-foreground">
-                              <span className="font-semibold">Renewal:</span> Every 365 days at {formatAmount((pkg.renewalFee || 0) + ((pkg.renewalFee || 0) * 0.075))} (incl. VAT)
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Action Button - Always at bottom */}
-                  <div className="mt-auto">
-                    {(() => {
-                      const pkgIndex = sortedPackages.indexOf(pkg);
-                      const isCurrent = currentPackageIndex === pkgIndex;
-                      const isLower = currentPackageIndex > -1 && pkgIndex <= currentPackageIndex;
-                      const isUpgrade = currentPackageIndex > -1 && pkgIndex > currentPackageIndex;
-                      const upgradeCost = isUpgrade && activeMembership?.package 
-                        ? (pkg.price + pkg.vat) - (activeMembership.package.price + activeMembership.package.vat)
-                        : 0;
-
-                      if (isCurrent) {
-                        return (
-                          <div className="bg-green-100 dark:bg-green-900/30 border-2 border-green-500 dark:border-green-600 rounded-lg p-4 text-center">
-                            <Check className="w-8 h-8 text-green-600 dark:text-green-400 mx-auto mb-2" />
-                            <p className="font-bold text-green-800 dark:text-green-300">ACTIVE PLAN</p>
-                            <p className="text-xs text-green-700 dark:text-green-400 mt-1">
-                              {activeMembership?.expiresAt && `Expires: ${new Date(activeMembership.expiresAt).toLocaleDateString()}`}
-                            </p>
-                          </div>
-                        );
-                      }
-
-                      if (isLower) {
-                        return (
-                          <Button
-                            disabled
-                            className="w-full bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed opacity-60"
-                            size="lg"
-                          >
-                            <Shield className="w-4 h-4 mr-2" />
-                            Lower Tier
-                          </Button>
-                        );
-                      }
-
-                      if (isUpgrade) {
-                        return (
-                          <div className="space-y-2">
-                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-2 text-center">
-                              <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold">Upgrade Cost</p>
-                              <p className="text-lg font-bold text-blue-800 dark:text-blue-200">
-                                {formatAmount(upgradeCost)}
-                              </p>
-                              <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                {activeMembership?.package && `(${formatAmount(pkg.price + pkg.vat)} - ${formatAmount(activeMembership.package.price + activeMembership.package.vat)})`}
-                              </p>
-                            </div>
-                            <Button
-                              onClick={() => handleActivate(pkg.id, true)}
-                              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white border-0 shadow-md font-semibold"
-                              disabled={activatingId !== null}
-                              size="lg"
-                            >
-                              {activatingId === pkg.id ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                                  Processing...
-                                </>
-                              ) : (
-                                <>
-                                  <TrendingUp className="w-4 h-4 mr-2" />
-                                  UPGRADE MEMBERSHIP
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                        );
-                      }
-
-                      // No active membership - show normal activate button
-                      return (
-                        <Button
-                          onClick={() => handleActivate(pkg.id, false)}
-                          className={`w-full bg-gradient-to-r ${colors.gradient} hover:opacity-90 text-white border-0 shadow-md font-semibold`}
-                          disabled={activatingId !== null}
-                          size="lg"
-                        >
-                          {activatingId === pkg.id ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                              Activating...
-                            </>
-                          ) : (
-                            <>
-                              <Shield className="w-4 h-4 mr-2" />
-                              Activate Now
-                            </>
-                          )}
-                        </Button>
-                      );
-                    })()}
-                  </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
+                  {tierUpgrades.map((pkg) => renderPackageCard(pkg, 'tier'))}
                 </div>
-              </Card>
-            );
-          })}
-        </div>
+              </div>
+            )}
+
+            {/* Feature Bundles/Add-ons Section */}
+            {activeMembership && featureBundles.length > 0 && (
+              <div className="mb-12">
+                <div className="text-center mb-8">
+                  <h2 className="text-3xl font-bold text-foreground mb-2 flex items-center justify-center gap-2">
+                    <Gift className="w-8 h-8 text-purple-600" />
+                    Add-on Features
+                  </h2>
+                  <p className="text-muted-foreground max-w-2xl mx-auto">
+                    Enhance your membership with specialized features. Pay only for the additional benefits on top of your current plan.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
+                  {featureBundles.map((pkg) => renderPackageCard(pkg, 'bundle'))}
+                </div>
+              </div>
+            )}
+
+            {/* All Packages for non-members */}
+            {!activeMembership && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
+                {sortedPackages.map((pkg) => renderPackageCard(pkg, 'new'))}
+              </div>
+            )}
+          </>
         )}
 
         {/* Info Section */}

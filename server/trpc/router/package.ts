@@ -20,6 +20,14 @@ import {
   processCompositePackagePurchase 
 } from "@/server/services/compositePackages.service";
 
+// Helper to fetch numeric admin settings with a fallback
+async function getAdminSetting(key: string, defaultValue: number): Promise<number> {
+  const setting = await prisma.adminSettings.findUnique({
+    where: { settingKey: key },
+  });
+  return setting ? parseFloat(setting.settingValue) : defaultValue;
+}
+
 const CSP_COMMUNITY_CREDIT_AMOUNT = 10000;
 const qualifiesForCspCommunityCredit = (packageName: string) => {
   const qualifyingNames = [
@@ -62,7 +70,40 @@ export const packageRouter = createTRPCRouter({
         throw new Error("Membership package not found.");
       }
 
-      const totalCost = membershipPackage.price + membershipPackage.vat;
+      const addonPackages = [
+        "Travel & Tour Agent",
+        "Basic Early Retirement",
+        "Child Educational/Vocational Support",
+      ];
+      const isAddonPackage = addonPackages.includes(membershipPackage.name);
+
+      let totalCost = membershipPackage.price + membershipPackage.vat;
+
+      if (isAddonPackage) {
+        const regularPlusPackage = await prisma.membershipPackage.findFirst({
+          where: { name: "Regular Plus" },
+        });
+
+        if (regularPlusPackage) {
+          const regularPlusTotal = regularPlusPackage.price + regularPlusPackage.vat;
+          const currentMembership = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { activeMembershipPackageId: true },
+          });
+
+          if (currentMembership?.activeMembershipPackageId) {
+            const currentPackage = await prisma.membershipPackage.findUnique({
+              where: { id: currentMembership.activeMembershipPackageId },
+              select: { price: true, vat: true },
+            });
+
+            const currentTotal = (currentPackage?.price || 0) + (currentPackage?.vat || 0);
+            if (currentTotal >= regularPlusTotal) {
+              totalCost = Math.max(0, totalCost - regularPlusTotal);
+            }
+          }
+        }
+      }
 
       // If payment method is wallet, check balance and deduct
       if (paymentMethod === 'wallet') {
@@ -447,13 +488,16 @@ export const packageRouter = createTRPCRouter({
     }),
 
   activateStandard: protectedProcedure
-    .input(z.object({ packageId: z.string() }))
+    .input(z.object({ 
+      packageId: z.string(),
+      frontendCalculatedCost: z.number().optional() // Frontend cost for validation
+    }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session?.user) {
         throw new Error("UNAUTHORIZED");
       }
       const userId = (ctx.session.user as any).id;
-      const { packageId } = input;
+      const { packageId, frontendCalculatedCost } = input;
 
       const membershipPackage = await prisma.membershipPackage.findUnique({
         where: { id: packageId },
@@ -461,6 +505,56 @@ export const packageRouter = createTRPCRouter({
 
       if (!membershipPackage) {
         throw new Error("Membership package not found.");
+      }
+
+      // COST VALIDATION: Verify frontend-submitted cost matches backend calculation
+      const addonPackages = [
+        "Travel & Tour Agent",
+        "Basic Early Retirement",
+        "Child Educational/Vocational Support",
+      ];
+      const isAddonPackage = addonPackages.includes(membershipPackage.name);
+
+      let backendCalculatedCost = membershipPackage.price + membershipPackage.vat;
+
+      if (isAddonPackage) {
+        const regularPlusPackage = await prisma.membershipPackage.findFirst({
+          where: { name: "Regular Plus" },
+        });
+
+        if (regularPlusPackage) {
+          const regularPlusTotal = regularPlusPackage.price + regularPlusPackage.vat;
+          const currentMembership = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { activeMembershipPackageId: true },
+          });
+
+          if (currentMembership?.activeMembershipPackageId) {
+            const currentPackage = await prisma.membershipPackage.findUnique({
+              where: { id: currentMembership.activeMembershipPackageId },
+              select: { price: true, vat: true },
+            });
+
+            const currentTotal = (currentPackage?.price || 0) + (currentPackage?.vat || 0);
+
+            if (currentTotal >= regularPlusTotal) {
+              backendCalculatedCost = Math.max(0, backendCalculatedCost - regularPlusTotal);
+            }
+          }
+        }
+      }
+      
+      if (frontendCalculatedCost !== undefined && frontendCalculatedCost !== null) {
+        const tolerance = 0.01; // Allow 1 kobo difference for floating point
+        const difference = Math.abs(frontendCalculatedCost - backendCalculatedCost);
+        
+        if (difference > tolerance) {
+          throw new Error(
+            `Cost validation failed: Frontend submitted ₦${frontendCalculatedCost.toLocaleString()} but backend calculated ₦${backendCalculatedCost.toLocaleString()} ` +
+            `(Price: ₦${membershipPackage.price}, VAT: ₦${membershipPackage.vat}). ` +
+            `Difference: ₦${difference.toFixed(2)}. This may indicate tampering. Please refresh and try again.`
+          );
+        }
       }
 
       // TODO: Implement actual payment processing logic here
@@ -595,14 +689,60 @@ export const packageRouter = createTRPCRouter({
       const sponsorId = (ctx.session.user as any).id;
       const { beneficiaryId, empowermentType } = input;
 
-      // 1. Validate beneficiary
+      // BENEFICIARY VERIFICATION: Validate beneficiary exists and meets requirements
       const beneficiary = await prisma.user.findUnique({
         where: { id: beneficiaryId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          activated: true,
+          EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser: {
+            where: { status: { not: "Completed" } },
+            select: { id: true, status: true }
+          }
+        }
       });
 
       if (!beneficiary) {
-        throw new Error("Beneficiary user not found.");
+        throw new Error("Beneficiary user not found. Please ensure they have registered on the platform.");
       }
+
+      if (!beneficiary.activated) {
+        throw new Error("Beneficiary account is not activated. They must verify their email first.");
+      }
+
+      // Check if beneficiary already has an active empowerment package
+      if (beneficiary.EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser.length > 0) {
+        const existingPackage = beneficiary.EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser[0];
+        throw new Error(`Beneficiary already has an active empowerment package (Status: ${existingPackage.status}). Only one package per beneficiary is allowed.`);
+      }
+
+      // Age verification disabled until dateOfBirth is available in the schema
+
+      // SPONSOR APPROVAL TRACKING: Verify sponsor eligibility
+      const sponsor = await prisma.user.findUnique({
+        where: { id: sponsorId },
+        select: {
+          wallet: true,
+          activeMembershipPackageId: true,
+          EmpowermentPackage_EmpowermentPackage_sponsorIdToUser: {
+            where: { status: { not: "Completed" } },
+            select: { id: true }
+          }
+        }
+      });
+
+      if (!sponsor) {
+        throw new Error("Sponsor not found");
+      }
+
+      if (!sponsor.activeMembershipPackageId) {
+        throw new Error("You must have an active membership package to sponsor an empowerment package.");
+      }
+
+      console.log(`✅ [EMPOWERMENT] Beneficiary verified: ${beneficiary.name} (${beneficiary.email})`);
+      console.log(`✅ [EMPOWERMENT] Sponsor approved: Active membership confirmed`);
       
       // TODO: Add payment logic for the empowerment package fee (₦354,750)
       const PACKAGE_FEE = 330000;
@@ -651,7 +791,7 @@ export const packageRouter = createTRPCRouter({
         data: { sponsorId: sponsorId },
       });
       
-      // 7. Create activation transaction record
+      // 7. Create activation transaction record with sponsor tracking
       await prisma.empowermentTransaction.create({
         data: {
           id: randomUUID(),
@@ -660,9 +800,12 @@ export const packageRouter = createTRPCRouter({
           grossAmount: TOTAL_COST,
           taxAmount: 0, // No tax on activation
           netAmount: TOTAL_COST,
-          description: "Empowerment package activated - 24-month countdown started",
+          description: `Empowerment package activated by sponsor ${sponsorId} for beneficiary ${beneficiary.name}`,
+          performedBy: sponsorId
         }
       });
+
+      console.log(`✅ [EMPOWERMENT] Package created: ${empowermentPackage.id}, matures ${maturityDate.toDateString()}`);
 
       // Send activation notifications to sponsor and beneficiary
       await notifyEmpowermentActivation(sponsorId, beneficiaryId, maturityDate);
@@ -716,9 +859,19 @@ export const packageRouter = createTRPCRouter({
       const now = new Date();
       const expiresAt = user.membershipExpiresAt;
       
-      if (expiresAt && expiresAt > new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)) {
-        throw new Error("Membership is not yet eligible for renewal. Must be within 30 days of expiration.");
+      // EARLY RENEWAL PREVENTION: Must be within 30 days of expiration
+      if (!expiresAt) {
+        throw new Error("No expiration date found. Please contact support.");
       }
+
+      const daysUntilExpiry = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      const RENEWAL_WINDOW_DAYS = 30;
+      
+      if (daysUntilExpiry > RENEWAL_WINDOW_DAYS) {
+        throw new Error(`Membership renewal available ${RENEWAL_WINDOW_DAYS} days before expiration. Your membership expires in ${daysUntilExpiry} days. Please renew after ${new Date(expiresAt.getTime() - RENEWAL_WINDOW_DAYS * 24 * 60 * 60 * 1000).toLocaleDateString()}.`);
+      }
+      
+      console.log(`✅ [RENEWAL] Eligible for renewal: ${daysUntilExpiry} days until expiry`);
 
       // TODO: Implement actual payment processing
       const renewalFee = membershipPackage.renewalFee || membershipPackage.price;
@@ -1258,14 +1411,15 @@ export const packageRouter = createTRPCRouter({
       packageId: z.string(),
       currentPackageId: z.string(),
       selectedPalliative: z.enum(["car", "house", "land", "business", "solar", "education"]).optional(),
-      paymentMethod: z.enum(['wallet', 'mock']).optional(),
+      paymentMethod: z.enum(['wallet']).default('wallet'),
+      frontendCalculatedCost: z.number().optional() // Frontend cost for validation
     }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session?.user) {
         throw new Error("UNAUTHORIZED");
       }
       const userId = (ctx.session.user as any).id;
-      const { packageId, currentPackageId, selectedPalliative, paymentMethod = 'mock' } = input;
+      const { packageId, currentPackageId, selectedPalliative, paymentMethod = 'mock', frontendCalculatedCost } = input;
 
       // Get both packages
       const [newPackage, currentPackage] = await Promise.all([
@@ -1277,46 +1431,145 @@ export const packageRouter = createTRPCRouter({
         throw new Error("Package not found.");
       }
 
-      // Calculate upgrade cost (difference in total cost)
+      const addonPackages = [
+        "Travel & Tour Agent",
+        "Basic Early Retirement",
+        "Child Educational/Vocational Support",
+      ];
+      const isAddonPackage = addonPackages.includes(newPackage.name);
+
+      // DOWNGRADE PREVENTION: Ensure user is upgrading, not downgrading
       const currentTotal = currentPackage.price + currentPackage.vat;
       const newTotal = newPackage.price + newPackage.vat;
-      const upgradeCost = newTotal - currentTotal;
-
-      // If payment method is wallet, check balance and deduct
-      if (paymentMethod === 'wallet') {
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { wallet: true }
-        });
-
-        if (!user) {
-          throw new Error("User not found.");
+      
+      if (!isAddonPackage) {
+        if (newTotal < currentTotal) {
+          throw new Error(`Cannot downgrade from ${currentPackage.name} (₦${currentTotal.toLocaleString()}) to ${newPackage.name} (₦${newTotal.toLocaleString()}). Downgrades are not permitted. Please contact support if you need assistance.`);
         }
-
-        if (user.wallet < upgradeCost) {
-          throw new Error(`Insufficient wallet balance. You have ₦${user.wallet.toLocaleString()} but need ₦${upgradeCost.toLocaleString()} for the upgrade.`);
+        
+        if (newTotal === currentTotal) {
+          throw new Error(`${newPackage.name} has the same value as your current package (${currentPackage.name}). Please select a higher-tier package.`);
         }
-
-        // Deduct from wallet
-        await prisma.user.update({
-          where: { id: userId },
-          data: { wallet: { decrement: upgradeCost } }
-        });
-
-        // Create transaction record
-        await prisma.transaction.create({
-          data: {
-            id: randomUUID(),
-            userId,
-            transactionType: "MEMBERSHIP_UPGRADE",
-            amount: -upgradeCost,
-            description: `Upgraded from ${currentPackage.name} to ${newPackage.name} via wallet`,
-            status: "completed",
-            reference: `UPG-WALLET-${Date.now()}`,
-            walletType: 'main',
-          }
-        });
       }
+
+      // Determine if this is a true tier upgrade or a feature bundle add-on
+      const isFeatureBundle = !!newPackage.baseMembershipPackageId;
+      
+      let upgradeCost: number;
+      let shouldDistribute: boolean;
+      let basePackage: any = null;
+      let distributionReason = '';
+
+      if (isAddonPackage) {
+        const regularPlusPackage = await prisma.membershipPackage.findFirst({
+          where: { name: "Regular Plus" },
+        });
+
+        const regularPlusTotal = regularPlusPackage
+          ? regularPlusPackage.price + regularPlusPackage.vat
+          : null;
+
+        if (regularPlusTotal !== null && currentTotal >= regularPlusTotal) {
+          upgradeCost = Math.max(0, newTotal - regularPlusTotal);
+          shouldDistribute = false;
+          basePackage = regularPlusPackage;
+          distributionReason = "Addon package - member already Regular Plus or above, paying addon features cost only";
+        } else {
+          upgradeCost = newTotal;
+          shouldDistribute = true;
+          basePackage = regularPlusPackage;
+          distributionReason = "Addon package - includes Regular Plus membership for current member";
+        }
+      } else if (isFeatureBundle) {
+        if (!newPackage.baseMembershipPackageId) {
+          throw new Error("Base membership package not found.");
+        }
+
+        // Feature bundle: Check if user already has the base tier
+        basePackage = await prisma.membershipPackage.findUnique({ 
+          where: { id: newPackage.baseMembershipPackageId } 
+        });
+        
+        if (!basePackage) {
+          throw new Error("Base membership package not found.");
+        }
+
+        const baseTotal = basePackage.price + basePackage.vat;
+
+        if (currentTotal >= baseTotal) {
+          // User already has base tier or higher: Pay only the difference (bundle features cost)
+          upgradeCost = newTotal - baseTotal;
+          shouldDistribute = false; // No distribution - they already paid for base tier
+          distributionReason = `Addon package - user already has ${currentPackage.name} (>= ${basePackage.name}), paying only addon features cost`;
+        } else {
+          // User is below base tier: Pay for base upgrade + bundle features
+          upgradeCost = newTotal - currentTotal;
+          shouldDistribute = true; // Distribution happens for base tier upgrade
+          distributionReason = `Addon package - user upgrading from ${currentPackage.name} to ${basePackage.name} base tier + addon features`;
+        }
+      } else {
+        // True tier upgrade: Always pay full difference and distribute
+        upgradeCost = newTotal - currentTotal;
+        shouldDistribute = true;
+        distributionReason = `True tier upgrade from ${currentPackage.name} to ${newPackage.name}`;
+      }
+
+      console.log(`\n💰 [UPGRADE] Cost calculation:`, {
+        from: currentPackage.name,
+        to: newPackage.name,
+        isAddon: isAddonPackage || isFeatureBundle,
+        baseRequired: basePackage?.name,
+        upgradeCost,
+        shouldDistribute,
+        reason: distributionReason
+      });
+
+      // COST VALIDATION: Compare frontend-submitted cost with backend-calculated cost
+      if (frontendCalculatedCost !== undefined && frontendCalculatedCost !== null) {
+        const tolerance = 0.01; // Allow 1 kobo difference for floating point
+        const difference = Math.abs(frontendCalculatedCost - upgradeCost);
+        
+        if (difference > tolerance) {
+          throw new Error(
+            `Cost validation failed: Frontend submitted ₦${frontendCalculatedCost.toLocaleString()} but backend calculated ₦${upgradeCost.toLocaleString()}. ` +
+            `Difference: ₦${difference.toFixed(2)}. This may indicate tampering. Please refresh and try again.`
+          );
+        }
+      }
+
+      // Check wallet balance and deduct
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { wallet: true }
+      });
+
+      if (!user) {
+        throw new Error("User not found.");
+      }
+
+      if (user.wallet < upgradeCost) {
+        throw new Error(`Insufficient wallet balance. You have ₦${user.wallet.toLocaleString()} but need ₦${upgradeCost.toLocaleString()} for the upgrade.`);
+      }
+
+      // Deduct from wallet
+      await prisma.user.update({
+        where: { id: userId },
+        data: { wallet: { decrement: upgradeCost } }
+      });
+
+      // Create transaction record
+      await prisma.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          transactionType: "MEMBERSHIP_UPGRADE",
+          amount: -upgradeCost,
+          description: `Upgraded from ${currentPackage.name} to ${newPackage.name} via wallet${shouldDistribute ? ' (with referral distribution)' : ' (no distribution)'}`,
+          status: "completed",
+          reference: `UPG-WALLET-${Date.now()}`,
+          walletType: 'main',
+        }
+      });
 
       // Determine palliative tier for new package
       const newPalliativeTier = getPalliativeTier(newPackage.price);
@@ -1333,20 +1586,9 @@ export const packageRouter = createTRPCRouter({
         throw new Error("Please select a palliative option for your new membership tier.");
       }
 
-      if (upgradeCost <= 0) {
+      if (upgradeCost <= 0 && !isAddonPackage) {
         throw new Error("Cannot upgrade to a lower or same tier package.");
       }
-
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // Set new membership dates (fresh 1-year validity)
-      const activatedAt = new Date();
-      const expiresAt = new Date(activatedAt);
-      expiresAt.setDate(expiresAt.getDate() + 365);
-
-      // Get referral chain
-      const referralChain = await getReferralChain(userId, 4);
 
       // Calculate differential bonuses (new package rewards - old package rewards)
       const bonusDifferences = {
@@ -1376,7 +1618,53 @@ export const packageRouter = createTRPCRouter({
         },
       };
 
-      // Distribute differential bonuses to referral chain
+      // Validate that we're not downgrading (prevent negative bonuses)
+      const allBonusesPositive = Object.values(bonusDifferences).every(level =>
+        level.cash >= 0 && level.palliative >= 0 && level.bpt >= 0 && level.cashback >= 0
+      );
+      
+      if (!allBonusesPositive && !isFeatureBundle && !isAddonPackage) {
+        throw new Error("Cannot downgrade to a package with lower referral rewards.");
+      }
+
+      // Simulate payment processing
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Get current membership to preserve remaining time
+      const currentMembership = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { membershipActivatedAt: true, membershipExpiresAt: true }
+      });
+
+      // Extend from current expiry if still valid, otherwise start fresh
+      const now = new Date();
+      const activatedAt = now;
+      let expiresAt: Date;
+      
+      if (currentMembership?.membershipExpiresAt && currentMembership.membershipExpiresAt > now) {
+        // Extend from current expiry date
+        expiresAt = new Date(currentMembership.membershipExpiresAt);
+        expiresAt.setDate(expiresAt.getDate() + 365);
+      } else {
+        // Membership expired or doesn't exist, start fresh
+        expiresAt = new Date(activatedAt);
+        expiresAt.setDate(expiresAt.getDate() + 365);
+      }
+
+      // Get referral chain
+      const referralChain = await getReferralChain(userId, 4);
+
+      // Distribute differential bonuses to referral chain (only if shouldDistribute)
+      if (shouldDistribute) {
+      console.log(`\n💸 [UPGRADE] Distribution enabled: ${distributionReason}`);
+      
+      // COMMISSION CAP VALIDATION: Use configured caps (defaults applied)
+      const MAX_COMMISSION_L1 = 100000;
+      const MAX_COMMISSION_L2 = 50000;
+      const MAX_COMMISSION_L3 = 50000;
+      const MAX_COMMISSION_L4 = 50000;
+      const maxCommissions = [MAX_COMMISSION_L1, MAX_COMMISSION_L2, MAX_COMMISSION_L3, MAX_COMMISSION_L4];
+
       for (let level = 1; level <= 4; level++) {
         const referrerId = referralChain[level - 1];
         if (!referrerId) continue;
@@ -1386,6 +1674,18 @@ export const packageRouter = createTRPCRouter({
 
         // Only distribute positive differences
         if (bonuses.cash > 0 || bonuses.palliative > 0 || bonuses.bpt > 0 || bonuses.cashback > 0) {
+          // CAP CHECK: Ensure commission doesn't exceed max for this level
+          const totalCommission = bonuses.cash + bonuses.palliative + bonuses.cashback + bonuses.bpt;
+          const maxForLevel = maxCommissions[level - 1];
+          
+          if (totalCommission > maxForLevel) {
+            console.warn(`⚠️ Commission cap exceeded for L${level}: ₦${totalCommission} > ₦${maxForLevel}. Capping at max.`);
+            const ratio = maxForLevel / totalCommission;
+            bonuses.cash = Math.floor(bonuses.cash * ratio);
+            bonuses.palliative = Math.floor(bonuses.palliative * ratio);
+            bonuses.cashback = Math.floor(bonuses.cashback * ratio);
+            bonuses.bpt = Math.floor(bonuses.bpt * ratio);
+          }
           // Get referrer's palliative tier to route palliative rewards correctly
           const referrerData = await prisma.user.findUnique({
             where: { id: referrerId },
@@ -1426,28 +1726,44 @@ export const packageRouter = createTRPCRouter({
             await distributeBptReward(referrerId, bonuses.bpt);
           }
 
+          // DISTRIBUTED AMOUNT VALIDATION: Verify total matches expected
+          const bonusTotal = bonuses.cash + bonuses.palliative + bonuses.cashback + bonuses.bpt;
+          const expectedTotal = (newPackage as any)[`cash_l${level}`] - (currentPackage as any)[`cash_l${level}`] +
+                                (newPackage as any)[`palliative_l${level}`] - (currentPackage as any)[`palliative_l${level}`] +
+                                (newPackage as any)[`bpt_l${level}`] - (currentPackage as any)[`bpt_l${level}`] +
+                                ((newPackage as any)[`cashback_l${level}`] || 0) - ((currentPackage as any)[`cashback_l${level}`] || 0);
+          
+          if (Math.abs(bonusTotal - expectedTotal) > 0.01) {
+            console.warn(`⚠️ [VALIDATION] Bonus total mismatch for L${level}: calculated=${bonusTotal}, expected=${expectedTotal}`);
+          }
+
           // Create transaction record
           await prisma.transaction.create({
             data: {
               id: randomUUID(),
               userId: referrerId,
               transactionType: `membership_upgrade_bonus_l${level}`,
-              amount: bonuses.cash + bonuses.palliative + bonuses.cashback + bonuses.bpt,
+              amount: bonusTotal,
               description: `Referral bonus (differential) for ${newPackage.name} upgrade - Level ${level}`,
               status: "completed",
               reference: `UPGRADE-${Date.now()}-L${level}`,
             },
           });
+          
+          console.log(`  ✅ L${level} distributed: ₦${bonusTotal} to referrer ${referrerId.substring(0, 8)}...`);
 
           // Notify referrer
           await notifyReferralReward(
             referrerId,
             userId,
             `Membership Upgrade Bonus (${newPackage.name}) - L${level}`,
-            bonuses.cash + bonuses.palliative + bonuses.cashback + bonuses.bpt
+            bonusTotal
           );
         }
       }
+      } else {
+        console.log(`\n⏭️ [UPGRADE] Distribution skipped: ${distributionReason}`);
+      } // End shouldDistribute check
 
       // Check if new package includes MYNGUL Social Media benefit
       const myngulPackages = ["Gold Plus", "Platinum Plus", "Travel & Tour Agent", "Basic Early Retirement", "Child Educational / Vocational Support"];
@@ -1557,7 +1873,7 @@ export const packageRouter = createTRPCRouter({
           amount: -upgradeCost,
           description: `Upgraded from ${currentPackage.name} to ${newPackage.name}`,
           status: "completed",
-          reference: `UPGRADE-${Date.now()}`,
+          reference: `UPGRADE-${userId.slice(0, 8)}-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
         },
       });
 

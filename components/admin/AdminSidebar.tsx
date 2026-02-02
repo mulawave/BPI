@@ -32,6 +32,7 @@ import {
   Image,
   GraduationCap,
   Activity,
+  Mail,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -144,6 +145,12 @@ const navigation = [
     href: "/admin/community", 
     icon: Bell,
     description: "Updates & deals"
+  },
+  { 
+    name: "Newsletter", 
+    href: "/admin/newsletter", 
+    icon: Mail,
+    description: "Email campaigns"
   },
   { 
     name: "Blog & News", 

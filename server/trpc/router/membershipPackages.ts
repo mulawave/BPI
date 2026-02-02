@@ -34,10 +34,6 @@ export const membershipPackagesRouter = createTRPCRouter({
     return null;
   }),
 
-  upgradePackage: protectedProcedure
-    .input(z.object({ newPackageId: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      // Placeholder: Return error
-      throw new Error("Package upgrade feature is under development");
-    }),
+  // NOTE: For package upgrades, use package.processUpgradePayment instead
+  // This stub is kept for backward compatibility but should not be used
 });

@@ -29,6 +29,7 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
   // Bank account selection
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
   const [bnbWallet, setBnbWallet] = useState<string>('');
+  const [pin, setPin] = useState<string>('');
 
   // Fetch user's bank accounts
   const { data: bankAccounts } = api.bank.getUserBankRecords.useQuery();
@@ -102,6 +103,11 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
       }
     }
 
+    if (!/^[0-9]{4}$/.test(pin)) {
+      setError('Please enter your 4-digit PIN');
+      return;
+    }
+
     setError('');
     setCurrentStep('summary');
   };
@@ -117,12 +123,14 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
           bankCode: selectedBankAccount?.bank?.bankCode || '',
           accountNumber: selectedBankAccount?.accountNumber || '',
           accountName: selectedBankAccount?.accountName || '',
+          pin,
         }
       : {
           withdrawalType: 'bpt' as const,
           amount: numAmount,
           sourceWallet: 'wallet' as const,
           bnbWalletAddress: bnbWallet,
+          pin,
         };
 
     withdrawalMutation.mutate(payload);
@@ -133,6 +141,7 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
     setAmount('');
     setSelectedBankAccountId(null);
     setBnbWallet('');
+    setPin('');
     setError('');
     setSuccessData(null);
   };
@@ -367,6 +376,19 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
                   </div>
                 </div>
               )}
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Transaction PIN</label>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="Enter 4-digit PIN"
+                />
+              </div>
 
               {/* Fee Display */}
               {numAmount > 0 && (
