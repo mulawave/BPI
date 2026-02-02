@@ -1394,6 +1394,26 @@ export default function DashboardContent({ session, customContent }: DashboardCo
                   <span className="font-mono">{currentTime.toLocaleTimeString()}</span>
                 </div>
 
+                {/* Refresh Button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    utils.user.getDetails.invalidate();
+                    utils.dashboard.getOverview.invalidate();
+                    utils.referral.getReferralStats.invalidate();
+                    utils.leadership.getMyProgress.invalidate();
+                    utils.notification.getMyNotifications.invalidate();
+                    utils.community.getStats.invalidate();
+                    toast.success('Dashboard refreshed!');
+                  }}
+                  className="gap-2 bg-white dark:bg-green-900/40 hover:bg-accent border-gray-300 dark:border-green-700/50"
+                  title="Refresh dashboard data"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span className="hidden lg:inline">Refresh</span>
+                </Button>
+
                 {/* Theme Toggle */}
                 <Button
                   variant="outline"
