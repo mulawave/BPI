@@ -48,6 +48,7 @@ export function PalliativeJourneyCard({
   membershipName,
   membershipAmount 
 }: PalliativeJourneyCardProps) {
+  const [isActivating, setIsActivating] = React.useState(false);
   const { formatAmount } = useCurrency();
   const { data: journey, isLoading, error } = api.palliative.getPalliativeJourney.useQuery();
 
@@ -223,10 +224,23 @@ export function PalliativeJourneyCard({
         <Button 
           className="w-full bg-gradient-to-r from-green-700 to-green-800 hover:from-green-800 hover:to-green-900 text-white font-semibold"
           size="lg"
-          onClick={onActivateClick}
+          onClick={() => {
+            setIsActivating(true);
+            onActivateClick?.();
+          }}
+          disabled={isActivating}
         >
-          <CheckCircle2 className="w-4 h-4 mr-2" />
-          Activate Your Palliative Choice
+          {isActivating ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              Loading...
+            </>
+          ) : (
+            <>
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Activate Your Palliative Choice
+            </>
+          )}
         </Button>
       ) : (
         <Button 

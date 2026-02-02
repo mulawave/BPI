@@ -258,6 +258,9 @@ export default function DashboardContent({ session, customContent }: DashboardCo
   
   // Community Stats Modal State
   const [showCommunityStatsModal, setShowCommunityStatsModal] = useState(false);
+  
+  // Navigation Loading State
+  const [isMembershipNavigating, setIsMembershipNavigating] = useState(false);
 
   const currentPath = pathname || "";
   const isActive = (href: string) => currentPath === href || currentPath.startsWith(`${href}/`);
@@ -2902,14 +2905,24 @@ export default function DashboardContent({ session, customContent }: DashboardCo
                        "🏆 Keep Rising to the Top!"}
                     </h3>
                     <p className="text-white/90 text-sm mb-4">{message}</p>
-                    <Link href="/membership">
-                      <Button 
-                        className="bg-white text-gray-900 hover:bg-gray-100 font-semibold"
-                        size="lg"
-                      >
-                        {buttonText}
-                      </Button>
-                    </Link>
+                    <Button 
+                      className="bg-white text-gray-900 hover:bg-gray-100 font-semibold"
+                      size="lg"
+                      onClick={() => {
+                        setIsMembershipNavigating(true);
+                        router.push('/membership');
+                      }}
+                      disabled={isMembershipNavigating}
+                    >
+                      {isMembershipNavigating ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                          Loading...
+                        </>
+                      ) : (
+                        buttonText
+                      )}
+                    </Button>
                   </div>
                   <div className="hidden md:block ml-6">
                     <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center">
