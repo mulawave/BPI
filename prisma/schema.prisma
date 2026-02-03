@@ -2253,7 +2253,7 @@ model RevenueTransaction {
   amount          Decimal        @db.Decimal(18, 2)
   currency        String         @default("NGN")
   description     String?
-  referenceId     String?        // Original transaction/payment ID
+  sourceId        String?        // Original transaction/payment ID
   userId          String?        // User who generated the revenue (if applicable)
   createdAt       DateTime       @default(now())
   allocatedAt     DateTime?
@@ -2334,6 +2334,7 @@ model StrategyPool {
   name            String
   description     String?
   percentage      Decimal         @db.Decimal(5, 2) @default(4.00) // 4% each
+  balance         Decimal         @db.Decimal(18, 2) @default(0) // Current pool balance
   isActive        Boolean         @default(true)
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt

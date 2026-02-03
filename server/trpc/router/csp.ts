@@ -2,6 +2,7 @@ import { z } from "zod";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { recordRevenue } from "@/server/services/revenue.service";
 import {
   notifyCspBroadcastExtended,
   notifyCspContributionReceived,
@@ -437,6 +438,15 @@ export const cspRouter = createTRPCRouter({
 
       await notifyCspContributionSent(contributorId, input.amount, input.walletType);
       await notifyCspContributionReceived(request.userId, input.amount);
+
+      // Record revenue from CSP contribution (system wallet share)
+      await recordRevenue(prisma, {
+        source: "COMMUNITY_SUPPORT",
+        amount: splitPool, // The 20% that went to system wallets
+        currency: "NGN",
+        sourceId: result.contribution.id,
+        description: `CSP system share from contribution ${result.contribution.id}`,
+      });
 
       return {
         success: true,

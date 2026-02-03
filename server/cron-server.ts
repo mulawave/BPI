@@ -11,6 +11,9 @@
 import cron from "node-cron";
 import { PrismaClient } from "@prisma/client";
 
+// Set timezone to Nigeria (WAT = UTC+1)
+process.env.TZ = 'Africa/Lagos';
+
 const prisma = new PrismaClient();
 
 /**
@@ -56,10 +59,11 @@ async function distributeExecutivePool() {
     // Get all executive shareholders with assigned users
     const shareholders = await prisma.executiveShareholder.findMany({
       where: {
+        isActive: true,
         userId: { not: null },
       },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             name: true,
@@ -79,73 +83,103 @@ async function distributeExecutivePool() {
 
     console.log(`👥 Active Shareholders: ${shareholders.length}`);
 
-    // Calculate and distribute to each shareholder
-    const distributions = [];
-    for (const shareholder of shareholders) {
-      if (!shareholder.user) continue;
+    // Use transaction for atomicity
+    const result = await prisma.$transaction(async (tx) => {
+      const distributions = [];
 
-      // Calculate shareholder's share
-      const shareAmount = (totalAmount * shareholder.percentage) / 100;
+      // Process each allocation
+      for (const allocation of pendingAllocations) {
+        // Distribute to each shareholder
+        for (const shareholder of shareholders) {
+          if (!shareholder.User) continue;
 
-      // Credit shareholder wallet
-      await prisma.user.update({
-        where: { id: shareholder.userId! },
-        data: {
-          shareholder: {
-            increment: shareAmount,
+          // Calculate shareholder's share of this allocation
+          const shareAmount = (Number(allocation.amount) * Number(shareholder.percentage)) / 100;
+
+          // Credit shareholder wallet
+          await tx.user.update({
+            where: { id: shareholder.userId! },
+            data: {
+              shareholder: {
+                increment: shareAmount,
+              },
+            },
+          });
+
+          // Record distribution with all required fields
+          await tx.executiveDistribution.create({
+            data: {
+              allocationId: allocation.id,
+              shareholderId: shareholder.id,
+              amount: shareAmount,
+              percentage: shareholder.percentage,
+              status: "COMPLETED",
+              distributedAt: new Date(),
+            },
+          });
+
+          distributions.push({
+            role: shareholder.role,
+            name: shareholder.User.name,
+            email: shareholder.User.email,
+            percentage: shareholder.percentage,
+            amount: shareAmount,
+          });
+
+          console.log(
+            `  ✅ ${shareholder.role}: ₦${shareAmount.toLocaleString()} (${shareholder.percentage}%) → ${shareholder.User.name || shareholder.User.email}`
+          );
+        }
+      }
+
+      // Mark allocations as distributed
+      await tx.revenueAllocation.updateMany({
+        where: {
+          id: {
+            in: pendingAllocations.map((a: any) => a.id),
           },
         },
-      });
-
-      // Record distribution
-      await prisma.executiveDistribution.create({
         data: {
-          shareholderId: shareholder.id,
-          amount: shareAmount,
-          distributionDate: new Date(),
-          status: "COMPLETED",
+          status: "DISTRIBUTED",
+          distributedAt: new Date(),
         },
       });
 
-      distributions.push({
-        role: shareholder.role,
-        name: shareholder.user.name,
-        email: shareholder.user.email,
-        percentage: shareholder.percentage,
-        amount: shareAmount,
-      });
-
-      console.log(
-        `  ✅ ${shareholder.role}: ₦${shareAmount.toLocaleString()} (${shareholder.percentage}%) → ${shareholder.user.name || shareholder.user.email}`
-      );
-    }
-
-    // Mark allocations as distributed
-    await prisma.revenueAllocation.updateMany({
-      where: {
-        id: {
-          in: pendingAllocations.map((a: any) => a.id),
-        },
-      },
-      data: {
-        status: "DISTRIBUTED",
-      },
+      return { distributions, totalAmount };
     });
 
     console.log(`\n✅ [EXECUTIVE DISTRIBUTION] Completed successfully!`);
     console.log(`📊 Summary:`);
-    console.log(`   Total Distributed: ₦${totalAmount.toLocaleString()}`);
-    console.log(`   Recipients: ${distributions.length}`);
+    console.log(`   Total Distributed: ₦${result.totalAmount.toLocaleString()}`);
+    console.log(`   Recipients: ${result.distributions.length}`);
     console.log(`   Allocations Processed: ${pendingAllocations.length}`);
 
     return {
       success: true,
-      totalAmount,
-      distributed: distributions.length,
+      totalAmount: result.totalAmount,
+      distributed: result.distributions.length,
       allocationsProcessed: pendingAllocations.length,
     };
   } catch (error) {
     console.error("\n❌ [EXECUTIVE DISTRIBUTION] Error:", error);
+    
+    // Log error for admin review
+    try {
+      await prisma.revenueAdminAction.create({
+        data: {
+          adminId: "system", // System user
+          actionType: "DISTRIBUTION_ERROR",
+          description: `Executive distribution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          metadata: {
+            error: error instanceof Error ? error.stack : String(error),
+            timestamp: new Date().toISOString(),
+          },
+        },
+      });
+    } catch (logError) {
+      console.error("Failed to log error:", logError);
+    }
+
     throw error;
   }
 }
@@ -158,15 +192,17 @@ function startCronJobs() {
   console.log(`📅 Server Time: ${new Date().toLocaleString()}`);
   console.log(`🌍 Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`);
 
-  // Daily Executive Pool Distribution at 8:00 AM
+  // Daily Executive Pool Distribution at 8:00 AM WAT (Nigeria Time)
   cron.schedule("0 8 * * *", async () => {
     console.log("\n⏰ [CRON] Triggered: Daily Executive Pool Distribution");
     try {
       await distributeExecutivePool();
     } catch (error) {
       console.error("❌ [CRON] Distribution failed:", error);
-      // TODO: Send alert to admin about failed distribution
+      // Error is already logged in distributeExecutivePool
     }
+  }, {
+    timezone: "Africa/Lagos"
   });
 
   console.log("\n✅ Cron jobs scheduled:");

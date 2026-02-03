@@ -602,6 +602,20 @@ export const storeRouter = createTRPCRouter({
         });
       }
 
+      // Record revenue from store purchase
+      const breakdown = paymentBreakdown as any;
+      const fiatAmount = breakdown?.fiat_amount || breakdown?.total_fiat || 0;
+      
+      if (fiatAmount > 0) {
+        await recordRevenue(ctx.prisma, {
+          source: "STORE_PURCHASE",
+          amount: fiatAmount,
+          currency: "NGN",
+          sourceId: updated.id,
+          description: `Store purchase: ${updated.product?.name || 'Product'}`,
+        });
+      }
+
       return mapOrder(updated);
     }),
 

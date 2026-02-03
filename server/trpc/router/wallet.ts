@@ -557,11 +557,11 @@ export const walletRouter = createTRPCRouter({
 
           // Record withdrawal fee as revenue
           await recordRevenue(prisma, {
-            source: withdrawalType === 'cash' ? "WITHDRAWAL_FEE_CASH" : "WITHDRAWAL_FEE_BPT",
+            source: "WITHDRAWAL_FEE",
             amount: withdrawalFee,
             currency: "NGN",
             sourceId: feeTransaction.id,
-            description: `Withdrawal fee from ${sourceWallet} wallet`,
+            description: `Withdrawal fee from ${sourceWallet} wallet (${withdrawalType})`,
           });
         }
 

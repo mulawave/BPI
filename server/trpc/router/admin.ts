@@ -909,7 +909,7 @@ export const adminRouter = createTRPCRouter({
 
           // Record revenue for membership purchase
           await recordRevenue(prisma, {
-            source: "MEMBERSHIP_PURCHASE",
+            source: "MEMBERSHIP_REGISTRATION",
             amount: payment.amount,
             currency: "NGN",
             sourceId: payment.id,
@@ -934,7 +934,7 @@ export const adminRouter = createTRPCRouter({
 
           // Record revenue for membership upgrade  
           await recordRevenue(prisma, {
-            source: "MEMBERSHIP_PURCHASE",
+            source: "MEMBERSHIP_REGISTRATION",
             amount: payment.amount,
             currency: "NGN",
             sourceId: payment.id,
