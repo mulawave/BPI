@@ -18,8 +18,10 @@ import {
   Tag,
   Layers,
   FileText,
+  BarChart3,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 const pill = "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold";
 
@@ -355,6 +357,96 @@ export default function AdminBlogPage() {
           </button>
         </div>
       </div>
+
+      {/* User Guide */}
+      <AdminPageGuide
+        title="Blog & News Management Guide"
+        sections={[
+          {
+            title: "Blog Management Overview",
+            icon: <BookOpen className="w-5 h-5 text-blue-600" />,
+            items: [
+              "Create and manage <strong>blog posts</strong> and <strong>news articles</strong>",
+              "<strong>No direct database access needed</strong> - all operations via admin UI",
+              "Organize content with <strong>categories</strong> and <strong>tags</strong>",
+              "Track <strong>views, comments, and engagement</strong> metrics",
+              "<strong>Feature posts</strong> to highlight important content",
+              "Support for <strong>draft, published, and archived</strong> statuses"
+            ]
+          },
+          {
+            title: "Creating & Publishing Posts",
+            icon: <Plus className="w-5 h-5 text-green-600" />,
+            type: "ol",
+            items: [
+              "<strong>Click 'New Post'</strong> - Opens post editor modal",
+              "<strong>Enter title</strong> - Auto-generates URL slug (can customize)",
+              "<strong>Write content</strong> - Full markdown/HTML support for rich formatting",
+              "<strong>Add excerpt</strong> - Short summary for post previews (optional)",
+              "<strong>Upload image</strong> - Featured image for post (auto-internalized)",
+              "<strong>Select category</strong> - Choose from existing or create new",
+              "<strong>Add tags</strong> - Comma-separated keywords for SEO",
+              "<strong>Set status</strong> - Draft (private), Published (live), or Archived",
+              "<strong>Toggle featured</strong> - Make post appear in featured section"
+            ]
+          },
+          {
+            title: "Post Status Types",
+            icon: <FileText className="w-5 h-5 text-orange-600" />,
+            items: [
+              { label: "Published", text: "Live and visible to all users, indexed by search engines" },
+              { label: "Draft", text: "Work in progress, only visible to admins" },
+              { label: "Archived", text: "Hidden from public but preserved in database" }
+            ]
+          },
+          {
+            title: "Category Management",
+            icon: <Layers className="w-5 h-5 text-purple-600" />,
+            items: [
+              "<strong>Create categories</strong> in post editor - auto-generates slug",
+              "<strong>Filter posts</strong> by category for easy navigation",
+              "Use categories for <strong>content organization</strong> (News, Tutorials, Updates, etc.)",
+              "Categories appear in <strong>blog navigation</strong> for users",
+              "Each post can belong to <strong>one category</strong>"
+            ]
+          },
+          {
+            title: "Image Upload & Internalization",
+            icon: <UploadCloud className="w-5 h-5 text-blue-600" />,
+            items: [
+              "<strong>Upload images</strong> - Click upload button, select file (JPG, PNG, GIF)",
+              "<strong>Auto-internalization</strong> - Images stored securely on BPI servers",
+              "<strong>Progress tracking</strong> - See upload percentage in real-time",
+              "<strong>Image optimization</strong> - Automatic compression for faster loading",
+              "Supports <strong>external URLs</strong> - Paste image URL as alternative"
+            ]
+          },
+          {
+            title: "Analytics & Engagement",
+            icon: <BarChart3 className="w-5 h-5 text-green-600" />,
+            items: [
+              "<strong>View count</strong> - Total page views for each post",
+              "<strong>Comment count</strong> - Number of user comments",
+              "<strong>14-day trends</strong> - Engagement graph shows daily views",
+              "<strong>Top posts</strong> - Identify most popular content",
+              "<strong>Unique readers</strong> - Distinct users who viewed content",
+              "Use metrics to <strong>optimize content strategy</strong>"
+            ]
+          }
+        ]}
+        features={[
+          "Create/edit/delete blog posts",
+          "Category & tag management",
+          "Featured post highlighting",
+          "Image upload & internalization",
+          "Draft/published/archived statuses",
+          "View & comment analytics",
+          "Search & filter posts",
+          "SEO-friendly URL slugs"
+        ]}
+        proTip="For <strong>maximum SEO impact</strong>, use descriptive titles (50-60 characters), add relevant tags, and include <strong>featured images</strong>. Publish <strong>consistently</strong> (2-3 posts/week) to keep audience engaged. Feature your <strong>best-performing posts</strong> to increase visibility."
+        warning="<strong>Published posts are immediately visible</strong> to all users and search engines. Always <strong>preview content</strong> before publishing. Deleting posts removes all associated comments and analytics - consider <strong>archiving instead</strong> to preserve data."
+      />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {summaryCards.map((card) => (

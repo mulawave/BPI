@@ -29,6 +29,7 @@ import {
   Tags,
   X,
 } from "lucide-react";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 // Prisma-backed types inferred from tRPC router
 export type RouterOutputs = inferRouterOutputs<AppRouter>;
@@ -308,6 +309,84 @@ export default function AdminStorePage() {
           </Button>
         </div>
       </div>
+
+      {/* User Guide */}
+      <AdminPageGuide
+        title="BPI Store Management Guide"
+        sections={[
+          {
+            title: "Store Management Features",
+            icon: <Package className="w-5 h-5 text-blue-600" />,
+            items: [
+              "Manage product listings (physical, digital, licenses, services, utilities)",
+              "Set hybrid pricing: fiat (NGN) + token (BPT) payment options",
+              "Configure token payment limits per product",
+              "Define reward structures (cash, cashback, BPT, utility tokens)",
+              "Control inventory (unlimited, limited, or out of stock)",
+              "Assign products to pickup or reward centers"
+            ]
+          },
+          {
+            title: "Product Management",
+            icon: <Pencil className="w-5 h-5 text-green-600" />,
+            items: [
+              { label: "Add Product", text: "Click 'Add Product' to create new listings" },
+              { label: "Edit Product", text: "Click pencil icon to modify existing products" },
+              { label: "Product Types", text: "Physical, Digital, License, Service, Utility" },
+              { label: "Pricing", text: "Set base price in NGN and token payment caps" },
+              { label: "Images", text: "Upload product images (drag & drop or click)" },
+              { label: "Status", text: "Active (visible), Paused (hidden), or Retired" }
+            ]
+          },
+          {
+            title: "Hybrid Payment System",
+            icon: <Coins className="w-5 h-5 text-purple-600" />,
+            items: [
+              "<strong>Token Payment Limits</strong> - Set max % of price payable in tokens",
+              "<strong>Example:</strong> ₦10,000 product with 20% BPT limit = Up to ₦2,000 in tokens",
+              "Remaining balance must be paid in fiat (NGN)",
+              "Token rates are snapshot at checkout time",
+              "System automatically calculates split at purchase"
+            ]
+          },
+          {
+            title: "Reward Configuration",
+            icon: <Gift className="w-5 h-5 text-orange-600" />,
+            items: [
+              "Define rewards users earn when purchasing products",
+              "<strong>Cash rewards</strong> - Direct NGN credited to wallet",
+              "<strong>Cashback</strong> - Percentage of purchase returned",
+              "<strong>BPT rewards</strong> - Token rewards",
+              "<strong>Utility tokens</strong> - Special purpose tokens",
+              "Multiple reward types can be combined per product"
+            ]
+          },
+          {
+            title: "Order Management",
+            icon: <Shield className="w-5 h-5 text-red-600" />,
+            items: [
+              "View all customer orders in real-time",
+              "Filter by status: Pending, Confirmed, Shipped, Delivered, Cancelled",
+              "Search orders by customer name or order ID",
+              "Update order status as fulfillment progresses",
+              "Track pickup center assignments",
+              "Monitor payment split (fiat vs token)"
+            ]
+          }
+        ]}
+        features={[
+          "Hybrid fiat/token payments",
+          "Product image uploads",
+          "Inventory management",
+          "Reward configurations",
+          "Pickup/Reward center assignment",
+          "Order tracking & fulfillment",
+          "Token rate snapshots",
+          "Search & filter products"
+        ]}
+        proTip="Use <strong>token payment limits</strong> strategically to encourage token usage while maintaining fiat revenue. A 20-30% token limit is optimal for most products. Remember to set <strong>reward configs</strong> to incentivize purchases and build loyalty."
+        warning="Product changes affect <strong>future orders only</strong>. Existing orders use the snapshot of pricing and rewards at the time of purchase. Always verify <strong>token rates</strong> and <strong>payment limits</strong> before activating new products."
+      />
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="p-4 space-y-2 border-emerald-100 dark:border-emerald-900/40">

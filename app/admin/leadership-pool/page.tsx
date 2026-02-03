@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
 import { motion } from "framer-motion";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 import {
   FiSettings,
   FiUsers,
@@ -143,6 +144,94 @@ export default function AdminLeadershipPoolPage() {
             Configure pool settings and manage participants
           </p>
         </div>
+
+        {/* User Guide */}
+        <AdminPageGuide
+          title="Leadership Pool Guide"
+          sections={[
+            {
+              title: "Leadership Pool Overview",
+              icon: <FiUsers className="w-5 h-5 text-blue-600" />,
+              items: [
+                "<strong>Reward top performers</strong> who achieve leadership qualifications",
+                "Participants share a <strong>monthly pool amount</strong> distributed equally",
+                "Qualification via <strong>earned performance</strong> or <strong>sponsor sponsorship class</strong>",
+                "<strong>Auto-qualify</strong> users who meet criteria or manually add participants",
+                "<strong>Disqualify</strong> users who no longer meet requirements",
+                "Track <strong>earned vs sponsored</strong> qualifications for transparency"
+              ]
+            },
+            {
+              title: "Configuring Pool Settings",
+              icon: <FiSettings className="w-5 h-5 text-green-600" />,
+              type: "ol",
+              items: [
+                "<strong>Set Pool Amount</strong> - Enter monthly budget to distribute (e.g., ₦1,000,000)",
+                "<strong>Max Participants</strong> - Limit number of qualified members (e.g., 50)",
+                "<strong>Enable/Disable Pool</strong> - Toggle pool on/off without changing settings",
+                "<strong>Save Changes</strong> - Click 'Update Settings' to apply configuration",
+                "<strong>Distribution logic</strong> - Pool Amount ÷ Total Qualified = Per-Person Share",
+                "Settings update <strong>immediately</strong> - next payout uses new values"
+              ]
+            },
+            {
+              title: "Qualification Types",
+              icon: <FiCheckCircle className="w-5 h-5 text-orange-600" />,
+              items: [
+                { label: "Earned", text: "User achieved qualification through performance metrics" },
+                { label: "Sponsored", text: "Added to sponsorship class by sponsor (manual approval)" }
+              ]
+            },
+            {
+              title: "Adding Participants",
+              icon: <FiPlusCircle className="w-5 h-5 text-purple-600" />,
+              items: [
+                "Click <strong>'Add to Sponsorship Class'</strong> button",
+                "<strong>Search user</strong> by name, email, or ID",
+                "<strong>Confirm selection</strong> - User added to qualified pool",
+                "Sponsored participants receive <strong>same share as earned qualifiers</strong>",
+                "Use for <strong>special recognition</strong> or manual override of criteria",
+                "Changes reflect <strong>immediately</strong> in stats and distribution calculations"
+              ]
+            },
+            {
+              title: "Disqualifying Participants",
+              icon: <FiXCircle className="w-5 h-5 text-red-600" />,
+              items: [
+                "Click <strong>'Disqualify'</strong> button next to participant name",
+                "<strong>Confirm action</strong> - User removed from qualified pool",
+                "Disqualification is <strong>immediate</strong> - affects current month's payout",
+                "Use when users <strong>no longer meet criteria</strong> or violate policies",
+                "<strong>Audit trail</strong> - All disqualifications are logged",
+                "Can re-add later if user re-qualifies"
+              ]
+            },
+            {
+              title: "Participant Management & Filters",
+              icon: <FiFilter className="w-5 h-5 text-blue-600" />,
+              items: [
+                "<strong>View all qualified</strong> - See complete list of pool participants",
+                "<strong>Filter by type</strong> - Show earned only, sponsored only, or all",
+                "<strong>Search participants</strong> - Find specific users by name/email",
+                "<strong>Pagination</strong> - Browse large lists (20 participants per page)",
+                "<strong>Sort options</strong> - Order by qualification date, type, or name",
+                "<strong>Export list</strong> - Download participant data for reporting"
+              ]
+            }
+          ]}
+          features={[
+            "Configure monthly pool amount",
+            "Set maximum participants",
+            "Enable/disable pool",
+            "Add to sponsorship class",
+            "Disqualify participants",
+            "Track earned vs sponsored qualifications",
+            "Search & filter participants",
+            "Real-time stats dashboard"
+          ]}
+          proTip="Set <strong>Max Participants</strong> to create exclusivity and drive competition. For example, <strong>top 50 performers only</strong> creates urgency. Use <strong>sponsored slots sparingly</strong> (10-20% of total) to maintain earned qualification prestige. <strong>Review qualifications monthly</strong> to ensure all participants still meet criteria. Communicate pool amount and distribution clearly to <strong>motivate performance</strong>."
+          warning="<strong>Disqualifying a participant is immediate</strong> and removes them from the current month's payout - ensure you've verified they no longer meet criteria. <strong>Changing pool amount mid-month</strong> affects current cycle's distribution. <strong>Max participants limit</strong> blocks new qualifications once reached - increase if needed. All actions are <strong>logged and auditable</strong> - use responsibly."
+        />
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

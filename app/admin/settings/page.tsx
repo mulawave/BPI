@@ -23,6 +23,7 @@ import BackupRestorePanel from "@/components/admin/BackupRestorePanel";
 import SecuritySettingsPanel from "@/components/admin/SecuritySettingsPanel";
 import CommunityFeaturesPanel from "@/components/admin/CommunityFeaturesPanel";
 import StatsCard from "@/components/admin/StatsCard";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 type TabType = "general" | "payments" | "notifications" | "security" | "integrations" | "backup";
 
@@ -257,6 +258,100 @@ export default function SettingsPage() {
             </motion.button>
           </div>
         </motion.div>
+
+        {/* User Guide */}
+        <AdminPageGuide
+          title="System Settings Guide"
+          sections={[
+            {
+              title: "System Settings Overview",
+              icon: <HiCog className="w-5 h-5 text-blue-600" />,
+              items: [
+                "Configure <strong>global system behavior</strong> and preferences",
+                "Manage <strong>payment gateway integrations</strong> (Paystack, Flutterwave)",
+                "Control <strong>notification settings</strong> for user alerts",
+                "Set <strong>security policies</strong> (passwords, sessions, 2FA)",
+                "Configure <strong>third-party integrations</strong> (Firebase, email providers)",
+                "<strong>Backup and restore</strong> database and configuration"
+              ]
+            },
+            {
+              title: "General Settings Configuration",
+              icon: <HiDatabase className="w-5 h-5 text-green-600" />,
+              items: [
+                "<strong>Site Name</strong> - Public-facing application name",
+                "<strong>Site URL</strong> - Base URL for all links and redirects",
+                "<strong>Support Email</strong> - Contact email for user inquiries",
+                "<strong>Max Referral Levels</strong> - Depth of referral network (default 10)",
+                "<strong>Default Currency</strong> - Primary currency for transactions (NGN, USD, etc.)",
+                "<strong>Min/Max Withdrawal</strong> - Withdrawal limits in default currency",
+                "Changes take effect <strong>immediately</strong> across the system"
+              ]
+            },
+            {
+              title: "Payment Gateway Management",
+              icon: <HiCreditCard className="w-5 h-5 text-orange-600" />,
+              type: "ol",
+              items: [
+                "<strong>Paystack</strong> - Nigerian payment processor (cards, bank transfers, USSD)",
+                "<strong>Flutterwave</strong> - Multi-currency payment gateway (Africa-focused)",
+                "<strong>Enable/disable gateways</strong> - Toggle availability without losing config",
+                "<strong>Set API keys</strong> - Public and secret keys from gateway dashboard",
+                "<strong>Test mode</strong> - Use test keys for sandbox testing before live",
+                "<strong>Webhook URLs</strong> - Configure payment confirmation callbacks",
+                "Always <strong>verify keys</strong> before saving - invalid keys break payments"
+              ]
+            },
+            {
+              title: "Notification Settings",
+              icon: <HiBell className="w-5 h-5 text-purple-600" />,
+              items: [
+                "<strong>Email notifications</strong> - Configure SMTP server and sender",
+                "<strong>Push notifications</strong> - Set up Firebase Cloud Messaging (FCM)",
+                "<strong>SMS notifications</strong> - Integrate SMS provider (Twilio, etc.)",
+                "<strong>Notification templates</strong> - Customize message content",
+                "<strong>User preferences</strong> - Allow users to control notification types",
+                "<strong>Initialize defaults</strong> - Click to set up standard notification rules"
+              ]
+            },
+            {
+              title: "Security & Integrations",
+              icon: <HiShieldCheck className="w-5 h-5 text-red-600" />,
+              items: [
+                "<strong>Password policies</strong> - Minimum length, complexity requirements",
+                "<strong>Session timeout</strong> - Auto-logout after inactivity period",
+                "<strong>2FA settings</strong> - Enable two-factor authentication",
+                "<strong>Firebase config</strong> - Push notifications and analytics",
+                "<strong>Email provider</strong> - SMTP or service (SendGrid, Mailgun)",
+                "<strong>Backup settings</strong> - Schedule automatic database backups"
+              ]
+            },
+            {
+              title: "Backup & Restore",
+              icon: <HiCloud className="w-5 h-5 text-blue-600" />,
+              items: [
+                "<strong>Create backup</strong> - Export full database snapshot",
+                "<strong>Download backup</strong> - Save .sql file locally",
+                "<strong>Restore from backup</strong> - Upload and restore previous state",
+                "<strong>Schedule backups</strong> - Daily/weekly automated backups",
+                "<strong>Backup retention</strong> - Keep last 7/30 days",
+                "Always <strong>test backups</strong> periodically to ensure they work"
+              ]
+            }
+          ]}
+          features={[
+            "General system configuration",
+            "Payment gateway integration",
+            "Notification management",
+            "Security policy settings",
+            "Third-party integrations (Firebase, SMTP)",
+            "Database backup & restore",
+            "API key management",
+            "Currency & withdrawal limits"
+          ]}
+          proTip="For <strong>production environments</strong>, always use <strong>live API keys</strong> (not test keys) for payment gateways. Set up <strong>daily automated backups</strong> and store them <strong>off-site</strong>. Use <strong>strong SMTP credentials</strong> and enable <strong>2FA for admin accounts</strong>. Test all settings in <strong>staging environment first</strong> before applying to live systems. Keep a <strong>settings change log</strong> to track modifications."
+          warning="<strong>Changing payment gateway keys affects all transactions immediately</strong> - invalid keys will break checkout. <strong>Restoring from backup overwrites all data</strong> - confirm you have the correct backup file before proceeding. <strong>Security settings apply globally</strong> - overly strict policies may lock out legitimate users. <strong>Firebase config changes</strong> require app restart to take effect. Always keep <strong>backup copies of settings</strong> before major changes."
+        />
 
         {/* Summary Cards */}
         <motion.div

@@ -19,6 +19,7 @@ import {
   MdClose,
 } from "react-icons/md";
 import { format } from "date-fns";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 type Material = {
   id: string;
@@ -117,6 +118,85 @@ export default function PromotionalMaterialsAdminPage() {
             Add Material
           </button>
         </div>
+
+        {/* User Guide */}
+        <AdminPageGuide
+          title="Promotional Materials Guide"
+          sections={[
+            {
+              title: "Promotional Materials Overview",
+              icon: <MdImage className="w-5 h-5 text-blue-600" />,
+              items: [
+                "Provide <strong>downloadable marketing assets</strong> for members",
+                "Support <strong>images, videos, PDFs</strong>, and other file types",
+                "Track <strong>download and share counts</strong> for engagement metrics",
+                "<strong>Categorize materials</strong> by type and use case",
+                "<strong>Activate/deactivate</strong> materials without deleting",
+                "Members use materials to <strong>promote BPI</strong> on social media and websites"
+              ]
+            },
+            {
+              title: "Adding New Materials",
+              icon: <MdAdd className="w-5 h-5 text-green-600" />,
+              type: "ol",
+              items: [
+                "<strong>Click 'Add Material'</strong> - Opens material creation modal",
+                "<strong>Enter title</strong> - Clear, descriptive name (e.g., 'BPI Facebook Cover Photo')",
+                "<strong>Add description</strong> - How to use the material, dimensions, etc. (optional)",
+                "<strong>Select type</strong> - Image, Video, PDF, or Other",
+                "<strong>Choose category</strong> - Social Media, Banners, Flyers, Presentations, etc.",
+                "<strong>Upload file</strong> - Select promotional asset from device",
+                "<strong>Upload thumbnail</strong> - Preview image for non-image files (optional)",
+                "<strong>Set active status</strong> - Toggle on to make available for download"
+              ]
+            },
+            {
+              title: "Material Types & Categories",
+              icon: <MdVideoLibrary className="w-5 h-5 text-orange-600" />,
+              items: [
+                { label: "Image", text: "JPG, PNG, GIF - social media graphics, banners, logos" },
+                { label: "Video", text: "MP4, MOV - promotional videos, explainer clips, testimonials" },
+                { label: "PDF", text: "Brochures, flyers, presentations, training documents" },
+                { label: "Other", text: "Zip files, templates, design files (PSD, AI)" }
+              ]
+            },
+            {
+              title: "Tracking Engagement",
+              icon: <MdDownload className="w-5 h-5 text-purple-600" />,
+              items: [
+                "<strong>Download count</strong> - How many users downloaded the material",
+                "<strong>Share count</strong> - How many times users shared the material",
+                "<strong>Popular materials</strong> - Identify most effective assets",
+                "Use metrics to <strong>optimize material library</strong>",
+                "<strong>Archive low-performing materials</strong> to keep library focused"
+              ]
+            },
+            {
+              title: "Best Practices",
+              icon: <MdCloudUpload className="w-5 h-5 text-blue-600" />,
+              items: [
+                "<strong>File naming</strong> - Use descriptive names with dimensions (e.g., 'BPI-Banner-1920x1080.jpg')",
+                "<strong>Optimize file size</strong> - Compress images/videos before upload",
+                "<strong>Provide templates</strong> - Editable files (PSD, Canva links) for customization",
+                "<strong>Include guidelines</strong> - Add description with usage instructions",
+                "<strong>Update regularly</strong> - Refresh materials seasonally or for campaigns",
+                "<strong>Test downloads</strong> - Verify files work before making active"
+              ]
+            }
+          ]}
+          features={[
+            "Upload promotional materials (images, videos, PDFs)",
+            "Type & category classification",
+            "Thumbnail support for non-image files",
+            "Download & share tracking",
+            "Active/inactive status toggle",
+            "File size display",
+            "Creation date tracking",
+            "Edit/delete materials"
+          ]}
+          proTip="For <strong>maximum adoption</strong>, create <strong>ready-to-use templates</strong> that members can customize with their referral links. Provide materials in <strong>multiple sizes</strong> (e.g., Facebook, Instagram, Twitter dimensions). Use <strong>clear categorization</strong> to help members find assets quickly. <strong>Update materials quarterly</strong> to keep branding fresh. Include <strong>both editable and ready-made versions</strong> for different skill levels."
+          warning="<strong>Uploaded files are publicly accessible</strong> once active - ensure no sensitive information is included. <strong>Large files (>10MB) may slow downloads</strong> - compress before uploading. <strong>Deleting materials is permanent</strong> - download count and share history are lost. <strong>Copyright compliance</strong> is critical - only upload materials you have rights to distribute. <strong>Inappropriate content damages BPI's brand</strong> - review carefully before activation."
+        />
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

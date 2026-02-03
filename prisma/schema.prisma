@@ -464,13 +464,25 @@ model Contact {
 }
 
 model CurrencyManagement {
-  id      String  @id
-  name    String
-  symbol  String
-  rate    Float
-  default Int?
-  sign    String?
-  country String?
+  id        String   @id
+  name      String
+  symbol    String
+  rate      Float
+  default   Int?
+  sign      String?
+  country   String?
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model BPTokenPrice {
+  id        String   @id @default(cuid())
+  price     Float    // Price in NGN
+  updatedBy String?
+  updatedAt DateTime @default(now()) @updatedAt
+  createdAt DateTime @default(now())
+  active    Boolean  @default(true)
+
+  @@index([active])
 }
 
 model DealClaim {

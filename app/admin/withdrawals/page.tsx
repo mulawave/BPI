@@ -15,6 +15,7 @@ import {
 import { format } from "date-fns";
 import toast from "react-hot-toast";
 import StatsCard from "@/components/admin/StatsCard";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 export default function WithdrawalsPage() {
   const [page, setPage] = useState(1);
@@ -118,6 +119,69 @@ export default function WithdrawalsPage() {
             </motion.button>
           </div>
         </motion.div>
+
+        {/* User Guide */}
+        <AdminPageGuide
+          title="Withdrawal Management Guide"
+          sections={[
+            {
+              title: "Withdrawal Approval Process",
+              icon: <MdCheckCircle className="w-5 h-5 text-green-600" />,
+              items: [
+                "Review pending withdrawal requests from users",
+                "Verify user has sufficient balance for the withdrawal",
+                "Check withdrawal type: <strong>Cash</strong> (NGN) or <strong>BPToken</strong>",
+                "Validate bank account details for cash withdrawals",
+                "Approve legitimate requests to process the withdrawal",
+                "Reject fraudulent or invalid requests with a reason"
+              ]
+            },
+            {
+              title: "Withdrawal Information",
+              icon: <MdAccountBalance className="w-5 h-5 text-blue-600" />,
+              items: [
+                { label: "User Details", text: "Name, email, and account information" },
+                { label: "Amount", text: "Withdrawal amount in NGN or BPToken" },
+                { label: "Type", text: "WITHDRAWAL_CASH or WITHDRAWAL_BPTOKEN" },
+                { label: "Bank Details", text: "Bank name, account number, and account name" },
+                { label: "Request Date", text: "When the withdrawal was initiated" },
+                { label: "Status", text: "Pending, Approved, or Rejected" }
+              ]
+            },
+            {
+              title: "Approval Actions",
+              icon: <MdCheckCircle className="w-5 h-5 text-green-600" />,
+              items: [
+                "Click <strong>Approve</strong> on a withdrawal row to process it",
+                "Add optional notes for record-keeping",
+                "Upon approval, funds are transferred to user's bank account",
+                "User receives notification of successful withdrawal",
+                "Transaction is recorded in the system ledger"
+              ]
+            },
+            {
+              title: "Rejection Actions",
+              icon: <MdCancel className="w-5 h-5 text-red-600" />,
+              items: [
+                "Click <strong>Reject</strong> if withdrawal is invalid or fraudulent",
+                "MUST provide a reason for rejection",
+                "Funds are automatically refunded to user's wallet",
+                "User is notified with the rejection reason",
+                "User can correct issues and resubmit"
+              ]
+            }
+          ]}
+          features={[
+            "Real-time withdrawal queue",
+            "Search by user name or email",
+            "Pagination for large datasets",
+            "Bank account verification",
+            "Approval/rejection tracking",
+            "Auto-refund on rejection"
+          ]}
+          proTip="Always <strong>verify bank account details</strong> carefully before approving cash withdrawals. Incorrect bank details can result in failed transfers. Use the search function to quickly find specific users or withdrawal amounts."
+          warning="<strong>Approved withdrawals are immediately processed</strong> and funds are transferred. This action cannot be easily reversed. Always verify the user has sufficient balance and the bank details are correct before approval."
+        />
 
         {/* Summary Cards */}
         <motion.div

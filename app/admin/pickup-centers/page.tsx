@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import type { AppRouter } from "@/server/trpc/router/_app";
 import type { inferRouterOutputs } from "@trpc/server";
 import toast from "react-hot-toast";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 import {
   Building2,
   CheckCircle2,
@@ -261,6 +262,90 @@ export default function PickupCentersAdminPage() {
           </Button>
         </div>
       </div>
+
+      {/* User Guide */}
+      <AdminPageGuide
+        title="Pickup Centers Guide"
+        sections={[
+          {
+            title: "Pickup Centers Overview",
+            icon: <Building2 className="w-5 h-5 text-blue-600" />,
+            items: [
+              "Manage <strong>physical locations</strong> where users collect store orders",
+              "Add <strong>complete address details</strong> (street, city, state, country)",
+              "Store <strong>contact information</strong> for each center",
+              "Upload <strong>center logos</strong> for branding",
+              "<strong>Activate/deactivate</strong> centers without deleting data",
+              "Users select pickup center during <strong>checkout process</strong>"
+            ]
+          },
+          {
+            title: "Adding New Pickup Centers",
+            icon: <Plus className="w-5 h-5 text-green-600" />,
+            type: "ol",
+            items: [
+              "<strong>Click 'Add Pickup Center'</strong> - Opens center creation form",
+              "<strong>Enter center name</strong> - e.g., 'Lagos Island Office', 'Abuja Hub'",
+              "<strong>Address Line 1</strong> - Street address with building number",
+              "<strong>Address Line 2</strong> - Apartment, suite, or additional directions (optional)",
+              "<strong>Select country</strong> - Choose from dropdown (loads states)",
+              "<strong>Select state</strong> - Choose state/province (loads cities)",
+              "<strong>Select city</strong> - Choose city from loaded options",
+              "<strong>Contact name</strong> - Person in charge at center",
+              "<strong>Contact phone</strong> - Direct phone line for inquiries",
+              "<strong>Upload logo</strong> - Center/branch logo image (optional)",
+              "<strong>Set active status</strong> - Toggle on to make available for orders"
+            ]
+          },
+          {
+            title: "Location Selection Workflow",
+            icon: <MapPin className="w-5 h-5 text-orange-600" />,
+            items: [
+              "<strong>Step 1: Country</strong> - Select country (Nigeria, USA, UK, etc.)",
+              "<strong>Step 2: State</strong> - Dropdown populates with states from selected country",
+              "<strong>Step 3: City</strong> - Dropdown populates with cities from selected state",
+              "<strong>Cascading dropdowns</strong> ensure accurate location data",
+              "If location not found, <strong>type manually</strong> as fallback"
+            ]
+          },
+          {
+            title: "Logo Upload & Branding",
+            icon: <Building2 className="w-5 h-5 text-purple-600" />,
+            items: [
+              "<strong>Click upload button</strong> - Select logo from device",
+              "<strong>Supported formats</strong> - JPG, JPEG, PNG (max 2MB)",
+              "<strong>Recommended size</strong> - 300x300px for best display",
+              "<strong>Upload progress</strong> - Real-time percentage indicator",
+              "<strong>Auto-optimization</strong> - Images compressed for fast loading",
+              "Logo displays on <strong>user checkout page</strong> for center recognition"
+            ]
+          },
+          {
+            title: "Editing & Managing Centers",
+            icon: <Pencil className="w-5 h-5 text-blue-600" />,
+            items: [
+              "<strong>Click Edit</strong> - Modify any center details",
+              "<strong>Update address</strong> - Change location if center relocates",
+              "<strong>Change contact info</strong> - Update person in charge or phone number",
+              "<strong>Toggle active/inactive</strong> - Hide from checkout without deleting",
+              "<strong>View details</strong> - See full center information",
+              "<strong>Inactive centers</strong> remain in database but aren't available for new orders"
+            ]
+          }
+        ]}
+        features={[
+          "Add/edit pickup center locations",
+          "Complete address management",
+          "Country/State/City cascading selection",
+          "Contact information storage",
+          "Logo upload for centers",
+          "Active/inactive status toggle",
+          "Search & filter centers",
+          "Real-time location validation"
+        ]}
+        proTip="For <strong>optimal user experience</strong>, add centers in <strong>high-traffic areas</strong> (city centers, shopping districts). Keep <strong>contact phone numbers updated</strong> - users often call before pickup. Use <strong>clear, recognizable names</strong> like 'Lagos Island - Marina Office' instead of vague codes. <strong>Upload logos</strong> to build brand familiarity. Review inactive centers quarterly and <strong>delete</strong> if permanently closed."
+        warning="<strong>Deactivating a center hides it from new orders</strong> but existing orders with that center remain valid - ensure fulfillment for pending pickups. <strong>Deleting a center is permanent</strong> and may affect historical order records - use deactivation instead unless absolutely necessary. <strong>Always verify address accuracy</strong> - wrong addresses frustrate users and damage trust."
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card className="p-4 space-y-1 border-emerald-100 dark:border-emerald-900/40">

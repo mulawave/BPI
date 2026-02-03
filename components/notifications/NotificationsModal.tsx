@@ -237,7 +237,7 @@ export default function NotificationsModal({
           {/* Main Content */}
           <div className="flex-1 flex overflow-hidden">
             {/* Left Sidebar - Categories */}
-            <div className="w-64 border-r border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30 p-4 overflow-y-auto">
+            <div className="w-56 border-r border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30 p-4 overflow-y-auto">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase mb-3">Categories</h3>
               <div className="space-y-1">
                 {[
@@ -399,7 +399,7 @@ export default function NotificationsModal({
 
                           {/* Content */}
                           <div
-                            className="flex-1 min-w-0"
+                            className="flex-1 min-w-0 cursor-pointer"
                             onClick={() => {
                               setSelectedNotificationId(notification.id);
                               setShowAnalytics(false);
@@ -414,9 +414,6 @@ export default function NotificationsModal({
                               </h4>
                               {getPriorityBadge(notification.priority)}
                             </div>
-                            <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
-                              {notification.message}
-                            </p>
                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
@@ -441,7 +438,7 @@ export default function NotificationsModal({
             </div>
 
             {/* Right Column - Analytics or Reading Pane */}
-            <div className="w-96 border-l border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30 overflow-y-auto">
+            <div className="w-[500px] border-l border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30 overflow-y-auto">
               {showAnalytics && !selectedNotification ? (
                 /* Analytics Dashboard */
                 <div className="p-6 space-y-6">
@@ -597,20 +594,24 @@ export default function NotificationsModal({
 
                     {/* Actions */}
                     <div className="flex flex-col gap-2">
+                      {!selectedNotification.isRead && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMarkAsRead([selectedNotification.id]);
+                          }}
+                          className="w-full px-4 py-3 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-xl hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors font-medium flex items-center justify-center gap-2"
+                        >
+                          <Check className="w-4 h-4" />
+                          Mark as Read
+                        </button>
+                      )}
                       <button
-                        onClick={() => {
-                          onMarkAsRead([selectedNotification.id]);
-                          setSelectedNotificationId(null);
-                        }}
-                        className="w-full px-4 py-3 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-xl hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors font-medium flex items-center justify-center gap-2"
-                      >
-                        <Check className="w-4 h-4" />
-                        Mark as Read
-                      </button>
-                      <button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           onArchive([selectedNotification.id]);
                           setSelectedNotificationId(null);
+                          setShowAnalytics(true);
                         }}
                         className="w-full px-4 py-3 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-xl hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors font-medium flex items-center justify-center gap-2"
                       >
@@ -618,9 +619,11 @@ export default function NotificationsModal({
                         Archive
                       </button>
                       <button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           onDelete([selectedNotification.id]);
                           setSelectedNotificationId(null);
+                          setShowAnalytics(true);
                         }}
                         className="w-full px-4 py-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-xl hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors font-medium flex items-center justify-center gap-2"
                       >

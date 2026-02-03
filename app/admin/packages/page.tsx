@@ -27,6 +27,7 @@ import PackageCreateModal from "@/components/admin/PackageCreateModal";
 import PackageAnalytics from "@/components/admin/PackageAnalytics";
 import ExportButton from "@/components/admin/ExportButton";
 import StatsCard from "@/components/admin/StatsCard";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 type Package = {
   id: string;

@@ -5,6 +5,7 @@ import { Plus, Edit2, Trash2, Power, PowerOff, ExternalLink, Image as ImageIcon,
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 export default function ThirdPartyPlatformsPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -261,6 +262,88 @@ export default function ThirdPartyPlatformsPage() {
           Add Platform
         </Button>
       </div>
+
+      {/* User Guide */}
+      <AdminPageGuide
+        title="Third-Party Opportunities Guide"
+        sections={[
+          {
+            title: "Third-Party Platform Overview",
+            icon: <ExternalLink className="w-5 h-5 text-blue-600" />,
+            items: [
+              "Promote <strong>external earning opportunities</strong> to BPI members",
+              "Integrate <strong>partner platforms</strong> (surveys, freelancing, affiliate programs)",
+              "Provide <strong>registration links</strong> with optional BPI tracking",
+              "<strong>Admin default links</strong> for platforms requiring admin accounts",
+              "<strong>Reorder platforms</strong> to prioritize best opportunities",
+              "<strong>Active/inactive</strong> status control without deleting data"
+            ]
+          },
+          {
+            title: "Adding New Platforms",
+            icon: <Plus className="w-5 h-5 text-green-600" />,
+            type: "ol",
+            items: [
+              "<strong>Click 'Add Platform'</strong> - Opens platform creation modal",
+              "<strong>Enter platform name</strong> - Clear, recognizable name (e.g., 'Fiverr', 'Survey Junkie')",
+              "<strong>Add description</strong> - Brief explanation of earning opportunity (2-3 sentences)",
+              "<strong>Registration URL</strong> - Direct link for users to sign up (include referral code if applicable)",
+              "<strong>Admin default link</strong> - Admin portal URL or dashboard (optional)",
+              "<strong>Select category</strong> - Classify platform (Surveys, Freelancing, Crypto, etc.)",
+              "<strong>Upload logo</strong> - Platform logo image (PNG/JPG, recommended 200x200px)",
+              "<strong>Set active status</strong> - Toggle on to make visible to users immediately"
+            ]
+          },
+          {
+            title: "Platform Categories",
+            icon: <ImageIcon className="w-5 h-5 text-orange-600" />,
+            items: [
+              "<strong>Surveys</strong> - Paid survey platforms (Swagbucks, InboxDollars)",
+              "<strong>Freelancing</strong> - Skill-based work (Fiverr, Upwork, Freelancer)",
+              "<strong>Crypto</strong> - Cryptocurrency earning/trading platforms",
+              "<strong>Affiliate Marketing</strong> - Referral-based income opportunities",
+              "<strong>E-commerce</strong> - Online selling platforms (eBay, Etsy, Amazon)",
+              "<strong>Other</strong> - Miscellaneous opportunities not fitting above categories"
+            ]
+          },
+          {
+            title: "Platform Reordering",
+            icon: <MoveUp className="w-5 h-5 text-purple-600" />,
+            items: [
+              "<strong>Move Up/Down</strong> - Click arrow buttons to adjust display order",
+              "<strong>Top positions</strong> - Most visible to users, highest engagement",
+              "<strong>Strategic ordering</strong> - Place best-paying/easiest platforms first",
+              "<strong>Seasonal adjustments</strong> - Reorder based on platform availability",
+              "<strong>Test performance</strong> - Track which positions get most clicks",
+              "Order changes are <strong>immediate</strong> - reflect instantly on user dashboards"
+            ]
+          },
+          {
+            title: "Logo Upload & Branding",
+            icon: <Upload className="w-5 h-5 text-blue-600" />,
+            items: [
+              "<strong>Click upload button</strong> - Select logo image from device",
+              "<strong>Supported formats</strong> - JPG, JPEG, PNG (max 2MB)",
+              "<strong>Recommended size</strong> - 200x200px square for best display",
+              "<strong>Upload progress</strong> - Real-time percentage shown",
+              "<strong>Auto-optimization</strong> - Images compressed for fast loading",
+              "<strong>Remove/replace</strong> - Click X to delete, re-upload to change"
+            ]
+          }
+        ]}
+        features={[
+          "Add/edit/delete third-party platforms",
+          "Logo upload & display",
+          "Category classification",
+          "Registration URL tracking",
+          "Admin portal links",
+          "Platform reordering (priority)",
+          "Active/inactive status toggle",
+          "Description & branding management"
+        ]}
+        proTip="For <strong>maximum user engagement</strong>, add <strong>5-10 high-quality platforms</strong> with <strong>clear earning potential</strong>. Include your <strong>BPI referral code</strong> in registration URLs to earn commissions. Order platforms by <strong>ease of use</strong> (easiest first) to reduce user drop-off. Update descriptions regularly with <strong>current payout rates</strong> to maintain trust. Test all links monthly to ensure they're <strong>not broken</strong>."
+        warning="Always <strong>verify platform legitimacy</strong> before adding - scam platforms damage BPI's credibility. <strong>Registration URLs with referral codes</strong> should comply with both platform's and BPI's terms of service. <strong>Deleting a platform is permanent</strong> - consider deactivating instead to preserve click history. <strong>Admin default links</strong> should never contain sensitive credentials."
+      />
 
       {/* Platforms List */}
       <div className="grid gap-4">

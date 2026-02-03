@@ -17,6 +17,7 @@ import {
 } from "react-icons/md";
 import { format } from "date-fns";
 import StatsCard from "@/components/admin/StatsCard";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 export default function AuditLogsPage() {
   const [page, setPage] = useState(1);
@@ -93,6 +94,86 @@ export default function AuditLogsPage() {
             </button>
           </div>
         </div>
+
+        {/* User Guide */}
+        <AdminPageGuide
+          title="Audit Logs Guide"
+          sections={[
+            {
+              title: "Audit Logs Overview",
+              icon: <MdInfo className="w-5 h-5 text-blue-600" />,
+              items: [
+                "Track <strong>all admin actions and system changes</strong>",
+                "<strong>Complete activity history</strong> for accountability",
+                "View <strong>who did what, when</strong> with detailed context",
+                "<strong>Filter by action type</strong> (create, update, delete, approve)",
+                "<strong>Search logs</strong> by keyword, user, or entity",
+                "<strong>Pagination support</strong> for large audit trails (50 logs per page)"
+              ]
+            },
+            {
+              title: "Action Types",
+              icon: <MdCheckCircle className="w-5 h-5 text-green-600" />,
+              items: [
+                { label: "CREATE", text: "New records created (users, packages, posts, etc.)" },
+                { label: "UPDATE / EDIT", text: "Existing records modified or updated" },
+                { label: "DELETE", text: "Records permanently removed from system" },
+                { label: "APPROVE / ACTIVATE", text: "Approval actions (payments, withdrawals, packages)" },
+                { label: "REJECT / DEACTIVATE", text: "Denial or deactivation actions" }
+              ]
+            },
+            {
+              title: "Using Audit Logs",
+              icon: <MdSearch className="w-5 h-5 text-orange-600" />,
+              type: "ol",
+              items: [
+                "<strong>Search by keyword</strong> - Enter user email, entity name, or action description",
+                "<strong>Filter by action</strong> - Select specific action type from dropdown",
+                "<strong>Filter by entity</strong> - Choose entity type (User, Payment, Package, etc.)",
+                "<strong>Review log details</strong> - Click on log entry to see full JSON payload",
+                "<strong>Navigate pages</strong> - Use pagination controls to browse historical logs",
+                "<strong>Export logs</strong> - Download filtered results for compliance reporting"
+              ]
+            },
+            {
+              title: "Audit Log Information",
+              icon: <MdInfo className="w-5 h-5 text-purple-600" />,
+              items: [
+                "<strong>Action</strong> - What operation was performed",
+                "<strong>Entity</strong> - Type of record affected (User, Payment, etc.)",
+                "<strong>Actor</strong> - Admin user who performed the action",
+                "<strong>Timestamp</strong> - Exact date and time of action",
+                "<strong>Changes</strong> - Before/after values for updates",
+                "<strong>IP Address</strong> - Source IP of the admin (if logged)",
+                "<strong>Status</strong> - Success or failure of the action"
+              ]
+            },
+            {
+              title: "Security & Compliance",
+              icon: <MdError className="w-5 h-5 text-red-600" />,
+              items: [
+                "<strong>Accountability</strong> - Every admin action is tracked and attributed",
+                "<strong>Compliance</strong> - Meet regulatory requirements for audit trails",
+                "<strong>Dispute resolution</strong> - Verify what happened in user disputes",
+                "<strong>Security investigations</strong> - Identify unauthorized access or changes",
+                "<strong>Performance review</strong> - Analyze admin efficiency and patterns",
+                "<strong>Data retention</strong> - Logs stored indefinitely for historical analysis"
+              ]
+            }
+          ]}
+          features={[
+            "Complete admin action logging",
+            "Action type filtering (create/update/delete)",
+            "Entity type filtering (users/payments/packages)",
+            "Keyword search across logs",
+            "Pagination (50 logs per page)",
+            "Detailed log view with JSON payload",
+            "Timestamp and actor tracking",
+            "Export filtered results"
+          ]}
+          proTip="For <strong>security audits</strong>, filter by <strong>DELETE actions</strong> to review all data removals. Use <strong>date range filters</strong> (if available) to investigate specific incidents. <strong>Search by admin email</strong> to review individual performance. <strong>Export logs monthly</strong> for compliance archives. Set up <strong>anomaly detection</strong> to alert on unusual action patterns (e.g., mass deletions)."
+          warning="Audit logs are <strong>read-only and cannot be deleted</strong> to maintain integrity. <strong>High log volume</strong> may slow page loads - use specific filters to narrow results. <strong>Sensitive data may appear in logs</strong> (passwords are masked, but other PII may be visible) - restrict access to authorized admins only. <strong>Logs do not capture database-level changes</strong> made outside the app - use database audit logs for full coverage."
+        />
 
         {/* Summary Cards */}
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-6">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/server/trpc/router/_app";
@@ -14,6 +14,9 @@ import {
   MdEvent,
   MdCheckCircle,
   MdCancel,
+  MdInfo,
+  MdExpandMore,
+  MdExpandLess,
 } from "react-icons/md";
 import { format } from "date-fns";
 import ExportButton from "@/components/admin/ExportButton";
@@ -38,6 +41,7 @@ export default function PaymentsPage() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [currentPaymentId, setCurrentPaymentId] = useState<string | null>(null);
+  const [showUserGuide, setShowUserGuide] = useState(false);
 
   const { data, isLoading, refetch } = api.admin.getAllPayments.useQuery({
     page,
@@ -138,6 +142,185 @@ export default function PaymentsPage() {
               </motion.button>
             </div>
           </div>
+        </motion.div>
+
+        {/* User Guide */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.03 }}
+          className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-2xl shadow-lg border-2 border-blue-200 dark:border-blue-800 overflow-hidden"
+        >
+          <button
+            onClick={() => setShowUserGuide(!showUserGuide)}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-blue-100/50 dark:hover:bg-blue-900/20 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-500 rounded-lg">
+                <MdInfo className="w-6 h-6 text-white" />
+              </div>
+              <div className="text-left">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Payment Management Guide
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Click to {showUserGuide ? "hide" : "view"} payment verification instructions
+                </p>
+              </div>
+            </div>
+            {showUserGuide ? (
+              <MdExpandLess className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+            ) : (
+              <MdExpandMore className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+            )}
+          </button>
+
+          <AnimatePresence>
+            {showUserGuide && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="border-t border-blue-200 dark:border-blue-800"
+              >
+                <div className="px-6 py-6 space-y-6">
+                  {/* Overview */}
+                  <div>
+                    <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                      <MdAttachMoney className="w-5 h-5 text-blue-600" />
+                      Payment Ledger Overview
+                    </h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300 ml-6">
+                      <li><span className="font-semibold">Ledger Tab</span> - View all payment transactions from the live database ledger</li>
+                      <li><span className="font-semibold">Pending Tab</span> - Review and approve/reject pending payments</li>
+                      <li>Searchable by user name, email, or transaction reference</li>
+                      <li>Filter by payment status (pending, approved, rejected, expired)</li>
+                      <li>Export payments data to CSV or Excel</li>
+                    </ul>
+                  </div>
+
+                  {/* Payment Review Process */}
+                  <div>
+                    <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                      <MdCheckCircle className="w-5 h-5 text-green-600" />
+                      Payment Review Process
+                    </h4>
+                    <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700 dark:text-gray-300 ml-6">
+                      <li>
+                        <span className="font-semibold">Click on a payment row</span> to open the review modal
+                      </li>
+                      <li>
+                        <span className="font-semibold">View payment details</span>:
+                        <ul className="list-disc list-inside ml-6 mt-1">
+                          <li>User information and contact details</li>
+                          <li>Package/membership being purchased</li>
+                          <li>Payment amount and currency</li>
+                          <li>Transaction reference number</li>
+                          <li>Payment date and time</li>
+                          <li>Proof of payment (if uploaded)</li>
+                        </ul>
+                      </li>
+                      <li>
+                        <span className="font-semibold">Verify the payment</span> against your payment gateway records
+                      </li>
+                      <li>
+                        <span className="font-semibold">Approve</span> if legitimate or <span className="font-semibold">Reject</span> if fraudulent/invalid
+                      </li>
+                      <li>
+                        Upon approval, user's package is activated and wallet is credited
+                      </li>
+                    </ol>
+                  </div>
+
+                  {/* Payment Statuses */}
+                  <div>
+                    <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                      <MdPending className="w-5 h-5 text-orange-600" />
+                      Payment Status Types
+                    </h4>
+                    <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 rounded text-xs font-medium">Pending</span>
+                        <span>- Awaiting admin verification</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded text-xs font-medium">Approved</span>
+                        <span>- Verified and processed successfully</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 rounded text-xs font-medium">Rejected</span>
+                        <span>- Invalid or fraudulent payment</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-1 bg-gray-100 dark:bg-gray-900/30 text-gray-800 dark:text-gray-300 rounded text-xs font-medium">Expired</span>
+                        <span>- Payment window has expired</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bulk Actions */}
+                  <div>
+                    <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                      <MdFilterList className="w-5 h-5 text-purple-600" />
+                      Bulk Actions
+                    </h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300 ml-6">
+                      <li>Select multiple payments using checkboxes</li>
+                      <li><span className="font-semibold">Bulk Approve</span> - Approve multiple legitimate payments at once</li>
+                      <li><span className="font-semibold">Bulk Reject</span> - Reject multiple invalid payments</li>
+                      <li>Bulk actions appear in the action bar when items are selected</li>
+                    </ul>
+                  </div>
+
+                  {/* Features */}
+                  <div className="pt-4 border-t border-blue-200 dark:border-blue-700">
+                    <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3">
+                      ✨ Key Features
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Real-time payment ledger
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Proof of payment viewer
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Bulk approve/reject
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Export capabilities
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Search & filter
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Status indicators
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Warning */}
+                  <div className="bg-yellow-50 dark:bg-yellow-950/50 rounded-lg p-4 border border-yellow-200 dark:border-yellow-800">
+                    <h5 className="font-semibold text-yellow-900 dark:text-yellow-200 mb-2 flex items-center gap-2">
+                      ⚠️ Important
+                    </h5>
+                    <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                      <span className="font-bold">Always verify payment proofs</span> carefully before approval. 
+                      Approving a payment credits the user's wallet and activates their package, which cannot be easily reversed. 
+                      When in doubt, cross-check with your payment gateway records.
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* Tabs */}

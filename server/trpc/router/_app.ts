@@ -48,6 +48,7 @@ import { cspRouter } from "./csp";
 import { adminBlogRouter } from "./adminBlog";
 import { storeRouter } from "./store";
 import { helpRouter } from "./help";
+import { adminCurrencyRouter } from "./admin-currency";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -98,6 +99,7 @@ export const appRouter = createTRPCRouter({
   csp: cspRouter,
   store: storeRouter,
   help: helpRouter,
+  adminCurrency: adminCurrencyRouter,
 
   // Legacy router, to be deprecated
 });

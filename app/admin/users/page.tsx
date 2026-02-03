@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
 import {
   MdSearch,
@@ -16,6 +16,9 @@ import {
   MdPeople,
   MdSync,
   MdCardMembership,
+  MdInfo,
+  MdExpandMore,
+  MdExpandLess,
 } from "react-icons/md";
 import {
   useReactTable,
@@ -68,6 +71,7 @@ export default function UsersPage() {
   const [showSyncReferralModal, setShowSyncReferralModal] = useState(false);
   const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
   const [selectAllMode, setSelectAllMode] = useState<'page' | 'all' | 'none'>('none');
+  const [showUserGuide, setShowUserGuide] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = api.admin.getUsers.useQuery({
     page,
@@ -372,6 +376,160 @@ export default function UsersPage() {
               </motion.button>
             </div>
           </div>
+        </motion.div>
+
+        {/* User Guide */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.03 }}
+          className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-2xl shadow-lg border-2 border-blue-200 dark:border-blue-800 overflow-hidden"
+        >
+          <button
+            onClick={() => setShowUserGuide(!showUserGuide)}
+            className="w-full px-6 py-4 flex items-center justify-between hover:bg-blue-100/50 dark:hover:bg-blue-900/20 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-500 rounded-lg">
+                <MdInfo className="w-6 h-6 text-white" />
+              </div>
+              <div className="text-left">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  User Management Guide
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Click to {showUserGuide ? "hide" : "view"} features & instructions
+                </p>
+              </div>
+            </div>
+            {showUserGuide ? (
+              <MdExpandLess className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+            ) : (
+              <MdExpandMore className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+            )}
+          </button>
+
+          <AnimatePresence>
+            {showUserGuide && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="border-t border-blue-200 dark:border-blue-800"
+              >
+                <div className="px-6 py-6 space-y-6">
+                  {/* User Management Features */}
+                  <div>
+                    <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                      <MdPeople className="w-5 h-5 text-blue-600" />
+                      User Management Features
+                    </h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300 ml-6">
+                      <li>View all registered users with detailed information</li>
+                      <li>Search users by name, email, or username</li>
+                      <li>Filter by role (User, Admin, Super Admin)</li>
+                      <li>Filter by activation status</li>
+                      <li>Export user data to CSV or Excel</li>
+                      <li>Paginated view for optimal performance</li>
+                    </ul>
+                  </div>
+
+                  {/* User Actions */}
+                  <div>
+                    <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                      <MdEdit className="w-5 h-5 text-green-600" />
+                      User Actions
+                    </h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300 ml-6">
+                      <li><span className="font-semibold">View Details</span> - Click any row to see full user profile</li>
+                      <li><span className="font-semibold">Edit User</span> - Modify user information, role, or status</li>
+                      <li><span className="font-semibold">Delete User</span> - Permanently remove a user from the system</li>
+                      <li><span className="font-semibold">Activate/Deactivate</span> - Enable or disable user accounts</li>
+                      <li><span className="font-semibold">Assign Membership</span> - Grant membership packages to users</li>
+                      <li><span className="font-semibold">Sync Referrals</span> - Update referral tree connections</li>
+                    </ul>
+                  </div>
+
+                  {/* Bulk Operations */}
+                  <div>
+                    <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                      <MdCardMembership className="w-5 h-5 text-purple-600" />
+                      Bulk Operations
+                    </h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300 ml-6">
+                      <li>Select multiple users using checkboxes</li>
+                      <li><span className="font-semibold">Bulk Assign</span> - Assign membership packages to selected users</li>
+                      <li><span className="font-semibold">Bulk Activate</span> - Activate multiple users at once</li>
+                      <li><span className="font-semibold">Bulk Delete</span> - Remove multiple users simultaneously</li>
+                      <li>Select all on current page or all matching filter criteria</li>
+                    </ul>
+                  </div>
+
+                  {/* Displayed Information */}
+                  <div>
+                    <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                      <MdSearch className="w-5 h-5 text-orange-600" />
+                      User Information Displayed
+                    </h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300 ml-6">
+                      <li>Name, email, username</li>
+                      <li>Role and activation status</li>
+                      <li>Wallet balances (NGN & BPTokens)</li>
+                      <li>Spendable balance</li>
+                      <li>Referral network size (Level 1, 2, 3 counts)</li>
+                      <li>Current rank/level</li>
+                      <li>Registration date and last login</li>
+                    </ul>
+                  </div>
+
+                  {/* Features */}
+                  <div className="pt-4 border-t border-blue-200 dark:border-blue-700">
+                    <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3">
+                      ✨ Advanced Features
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Real-time search & filtering
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Export to CSV/Excel
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Paginated data loading
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Bulk operations
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Detailed user modals
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        Dark mode support
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Pro Tip */}
+                  <div className="bg-white dark:bg-bpi-dark-card rounded-lg p-4">
+                    <h5 className="font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                      💡 Pro Tip
+                    </h5>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      Use the <span className="font-bold">search bar</span> for quick lookups, and combine <span className="font-bold">multiple filters</span> to narrow down specific user groups. 
+                      The <span className="font-bold">Export button</span> respects your active filters, so you can export exactly the data you need.
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* Summary Cards */}

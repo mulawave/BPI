@@ -14,6 +14,7 @@ import {
   MdRefresh,
 } from "react-icons/md";
 import { useState } from "react";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 export default function AnalyticsPage() {
   const [refreshKey, setRefreshKey] = useState(0);
@@ -74,6 +75,85 @@ export default function AnalyticsPage() {
             </button>
           </div>
         </motion.div>
+
+        {/* User Guide */}
+        <AdminPageGuide
+          title="System Analytics Guide"
+          sections={[
+            {
+              title: "System Analytics Overview",
+              icon: <MdTrendingUp className="w-5 h-5 text-blue-600" />,
+              items: [
+                "Monitor <strong>real-time system performance</strong> and health",
+                "Track <strong>user growth, revenue, and engagement</strong> metrics",
+                "View <strong>membership package distribution</strong> and performance",
+                "Monitor <strong>payment and withdrawal activity</strong>",
+                "<strong>Auto-refreshes every 60 seconds</strong> for live data",
+                "Click <strong>Refresh</strong> button for manual update"
+              ]
+            },
+            {
+              title: "Key Metrics Explained",
+              icon: <MdPeople className="w-5 h-5 text-green-600" />,
+              items: [
+                "<strong>Total Users</strong> - All registered users (active + inactive)",
+                "<strong>Active Users</strong> - Users who logged in recently",
+                "<strong>New (30d)</strong> - User signups in the last 30 days",
+                "<strong>Total Revenue</strong> - Sum of all approved payments (in millions)",
+                "<strong>Approved Payments</strong> - Number of successful payment transactions",
+                "<strong>Pending Payments</strong> - Awaiting admin approval",
+                "<strong>Total Subscriptions</strong> - Active membership packages purchased",
+                "<strong>Pending Withdrawals</strong> - Withdrawal requests needing review"
+              ]
+            },
+            {
+              title: "Membership Package Analytics",
+              icon: <MdCardMembership className="w-5 h-5 text-orange-600" />,
+              items: [
+                "View <strong>subscription counts per package</strong> (Freemium, Premium, Enterprise)",
+                "Track <strong>revenue generated per package</strong>",
+                "Identify <strong>most/least popular packages</strong>",
+                "Use insights to <strong>optimize pricing strategy</strong>",
+                "Monitor <strong>conversion rates</strong> between package tiers"
+              ]
+            },
+            {
+              title: "Payment & Withdrawal Tracking",
+              icon: <MdAttachMoney className="w-5 h-5 text-purple-600" />,
+              items: [
+                "<strong>Payment breakdown</strong> - Approved, pending, rejected counts",
+                "<strong>Revenue trends</strong> - Daily/weekly/monthly growth",
+                "<strong>Withdrawal queue</strong> - Pending vs approved vs rejected",
+                "<strong>Cash flow monitoring</strong> - Incoming payments vs outgoing withdrawals",
+                "<strong>Alert thresholds</strong> - High pending queues indicate bottlenecks"
+              ]
+            },
+            {
+              title: "Using Analytics for Decisions",
+              icon: <MdAssignment className="w-5 h-5 text-blue-600" />,
+              items: [
+                "<strong>User growth decline?</strong> - Review marketing/referral programs",
+                "<strong>High pending payments?</strong> - Allocate more admin time to approvals",
+                "<strong>Low package conversions?</strong> - Adjust pricing or features",
+                "<strong>High withdrawal queue?</strong> - Ensure adequate cash reserves",
+                "<strong>Inactive users spike?</strong> - Launch re-engagement campaigns",
+                "Export analytics data for <strong>board meetings and reporting</strong>"
+              ]
+            }
+          ]}
+          features={[
+            "Real-time system metrics dashboard",
+            "User growth tracking (total, active, new)",
+            "Revenue analytics (total, trends, breakdown)",
+            "Membership package distribution",
+            "Payment & withdrawal queue monitoring",
+            "Auto-refresh every 60 seconds",
+            "Manual refresh button",
+            "Visual charts and graphs"
+          ]}
+          proTip="Use <strong>System Analytics as your daily dashboard</strong> - check it <strong>first thing each morning</strong> to identify urgent issues (high pending queues, revenue drops). Set up <strong>custom alerts</strong> if metrics exceed thresholds (e.g., >100 pending payments). Compare <strong>week-over-week trends</strong> to spot patterns early. Export data monthly for <strong>executive reports</strong>."
+          warning="Analytics data is <strong>cached for 60 seconds</strong> - critical decisions should use manual refresh for latest data. <strong>High pending payment counts</strong> can indicate payment gateway issues - verify integrations. <strong>Sudden user growth spikes</strong> may indicate bot attacks - review recent signups. <strong>Revenue drops</strong> require immediate investigation of payment gateways and user feedback."
+        />
 
         {/* Key Metrics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

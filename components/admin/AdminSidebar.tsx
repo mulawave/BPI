@@ -129,6 +129,12 @@ const navigation = [
     description: "Inflows & outflows"
   },
   { 
+    name: "Currency Manager", 
+    href: "/admin/currency", 
+    icon: TrendingUp,
+    description: "Exchange rates & BPToken price"
+  },
+  { 
     name: "DB Maintenance", 
     href: "/admin/database", 
     icon: Database,

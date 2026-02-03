@@ -19,6 +19,7 @@ import {
   MdImage,
 } from "react-icons/md";
 import { format } from "date-fns";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 type Course = {
   id: string;
@@ -156,6 +157,87 @@ export default function TrainingAdminPage() {
             Add Course
           </button>
         </div>
+
+        {/* User Guide */}
+        <AdminPageGuide
+          title="Training Center Guide"
+          sections={[
+            {
+              title: "Training Center Overview",
+              icon: <MdSchool className="w-5 h-5 text-blue-600" />,
+              items: [
+                "Create <strong>comprehensive training courses</strong> for BPI members",
+                "Organize content into <strong>courses with multiple lessons</strong>",
+                "Support <strong>video, documents, and text-based</strong> learning",
+                "Track <strong>student progress and completions</strong>",
+                "<strong>Categorize by difficulty</strong> (Beginner, Intermediate, Advanced)",
+                "<strong>Activate/deactivate</strong> courses to control visibility"
+              ]
+            },
+            {
+              title: "Creating Training Courses",
+              icon: <MdAdd className="w-5 h-5 text-green-600" />,
+              type: "ol",
+              items: [
+                "<strong>Click 'Add Course'</strong> - Opens course creation modal",
+                "<strong>Enter course title</strong> - Clear, descriptive name (e.g., 'BPI Affiliate Marketing 101')",
+                "<strong>Write description</strong> - Brief overview of what students will learn",
+                "<strong>Select category</strong> - Business, Marketing, Technology, Personal Development, etc.",
+                "<strong>Set difficulty</strong> - Beginner, Intermediate, or Advanced",
+                "<strong>Upload thumbnail</strong> - Course cover image (optional)",
+                "<strong>Estimate hours</strong> - Total time to complete course",
+                "<strong>Set display order</strong> - Lower numbers appear first in course list"
+              ]
+            },
+            {
+              title: "Adding Lessons to Courses",
+              icon: <MdPlayCircleOutline className="w-5 h-5 text-orange-600" />,
+              items: [
+                "<strong>Expand course</strong> - Click expand icon to view lessons",
+                "<strong>Click 'Add Lesson'</strong> - Opens lesson creation modal",
+                "<strong>Lesson title</strong> - Specific topic or skill covered",
+                "<strong>Lesson content</strong> - Written material, instructions, explanations",
+                "<strong>Video URL</strong> - YouTube, Vimeo, or direct video link (optional)",
+                "<strong>Document URL</strong> - PDF, slides, or downloadable resources (optional)",
+                "<strong>Lesson order</strong> - Sequence within the course",
+                "<strong>Estimated minutes</strong> - Time required to complete lesson"
+              ]
+            },
+            {
+              title: "Course Categories & Difficulty",
+              icon: <MdSchool className="w-5 h-5 text-purple-600" />,
+              items: [
+                { label: "Categories", text: "Business, Marketing, Technology, Leadership, Finance, etc." },
+                { label: "Beginner", text: "No prior knowledge required, foundational concepts" },
+                { label: "Intermediate", text: "Some experience needed, builds on basics" },
+                { label: "Advanced", text: "Expert-level content, complex topics" }
+              ]
+            },
+            {
+              title: "Managing Student Progress",
+              icon: <MdSchool className="w-5 h-5 text-blue-600" />,
+              items: [
+                "<strong>Enrollment tracking</strong> - See how many students registered per course",
+                "<strong>Progress monitoring</strong> - Track lesson completions",
+                "<strong>Course analytics</strong> - Identify most/least popular courses",
+                "<strong>Completion rates</strong> - Monitor drop-off points",
+                "Use insights to <strong>improve content quality</strong> and engagement"
+              ]
+            }
+          ]}
+          features={[
+            "Create/edit/delete training courses",
+            "Add lessons with video/document support",
+            "Category & difficulty classification",
+            "Thumbnail upload for courses",
+            "Display order management",
+            "Student enrollment tracking",
+            "Progress monitoring",
+            "Active/inactive status toggle"
+          ]}
+          proTip="For <strong>maximum student engagement</strong>, structure courses with <strong>5-10 bite-sized lessons</strong> (10-20 min each) instead of long lectures. Start each course with a <strong>quick win lesson</strong> to build confidence. Use <strong>video lessons for demonstrations</strong> and text for reference materials. Update <strong>display order</strong> to feature new/popular courses first."
+          warning="<strong>Deleting a course removes all lessons and student progress data</strong> - this action is permanent and cannot be undone. Consider <strong>deactivating</strong> instead to preserve data while hiding from students. <strong>Reordering lessons affects all enrolled students</strong> - communicate major changes via notifications."
+        />
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

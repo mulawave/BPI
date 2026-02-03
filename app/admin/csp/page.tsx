@@ -20,6 +20,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type AdminQueue = RouterOutputs["csp"]["adminListRequests"];
@@ -147,6 +148,83 @@ export default function CspAdminQueuePage() {
           </div>
         </div>
       </motion.div>
+
+      {/* User Guide */}
+      <AdminPageGuide
+        title="CSP Management Guide"
+        sections={[
+          {
+            title: "Community Support Program (CSP) Overview",
+            icon: <RadioTower className="w-5 h-5 text-blue-600" />,
+            items: [
+              "CSP allows users to request financial support from the community",
+              "Community members contribute to support requests that are approved",
+              "Only <strong>Community Wallet</strong> and <strong>Cash Wallet</strong> funds can be used",
+              "Approved requests are broadcast for a limited time",
+              "You can extend broadcast time for successful fundraising"
+            ]
+          },
+          {
+            title: "Request Approval Process",
+            icon: <CheckCircle2 className="w-5 h-5 text-green-600" />,
+            type: "ol",
+            items: [
+              "<strong>Review pending requests</strong> - Check member details, category, amount, and purpose",
+              "<strong>Verify eligibility</strong> - Ensure request meets CSP criteria",
+              "<strong>Approve or Reject</strong> - Click approve to start broadcast or reject if invalid",
+              "<strong>Broadcast begins</strong> - Approved requests are live for community contributions",
+              "<strong>Monitor progress</strong> - Track raised amount vs threshold"
+            ]
+          },
+          {
+            title: "CSP Request Statuses",
+            icon: <AlertCircle className="w-5 h-5 text-orange-600" />,
+            items: [
+              { label: "Pending", text: "Awaiting admin approval" },
+              { label: "Approved", text: "Approved but broadcast not yet started" },
+              { label: "Broadcasting", text: "Live and accepting contributions" },
+              { label: "Closed", text: "Broadcast ended (goal met or time expired)" },
+              { label: "Rejected", text: "Request denied by admin" }
+            ]
+          },
+          {
+            title: "Broadcast Extension",
+            icon: <TimerReset className="w-5 h-5 text-purple-600" />,
+            items: [
+              "Click <strong>Extend</strong> on broadcasting requests to add more time",
+              "<strong>Paid Extension</strong> - User pays to extend broadcast period",
+              "<strong>Referral Extension</strong> - User earns extension via referrals",
+              "Set extension hours (default 24 hours)",
+              "Extensions help requests that are close to reaching their goal"
+            ]
+          },
+          {
+            title: "Request Information",
+            icon: <Users className="w-5 h-5 text-blue-600" />,
+            items: [
+              "<strong>Member</strong> - User requesting support",
+              "<strong>Category</strong> - Type of support needed (medical, education, etc.)",
+              "<strong>Amount</strong> - Target amount to raise",
+              "<strong>Purpose</strong> - Detailed explanation of need",
+              "<strong>Progress</strong> - Amount raised / Threshold amount",
+              "<strong>Contributors</strong> - Number of community members who contributed",
+              "<strong>Countdown</strong> - Time remaining in broadcast"
+            ]
+          }
+        ]}
+        features={[
+          "Approve/reject support requests",
+          "Start broadcast campaigns",
+          "Extend broadcast periods",
+          "Track contribution progress",
+          "Filter by status",
+          "Search requests",
+          "Real-time countdown timers",
+          "Community wallet integration"
+        ]}
+        proTip="Monitor <strong>broadcasting requests</strong> that are close to their goal but running out of time - these are great candidates for <strong>extension</strong>. Use the <strong>status filters</strong> to focus on pending approvals during peak review times."
+        warning="Once a request is <strong>approved and broadcast starts</strong>, it immediately becomes visible to all community members. Ensure you've verified the legitimacy and urgency of the request before approval. Fraudulent requests damage community trust."
+      />
 
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard icon={Sparkles} label="Total in scope" value={aggregates.total} tone="from-emerald-500 to-emerald-600" />

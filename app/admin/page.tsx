@@ -14,8 +14,12 @@ import {
   MdAttachMoney,
   MdRefresh,
   MdCallReceived,
+  MdInfo,
+  MdExpandMore,
+  MdExpandLess,
 } from "react-icons/md";
 import { HiSparkles, HiLightningBolt } from "react-icons/hi";
+import { AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import StatsCard from "@/components/admin/StatsCard";
@@ -30,6 +34,7 @@ import AdminActivityTracker from "@/components/admin/AdminActivityTracker";
 
 export default function AdminDashboardPage() {
   const { formatAmount } = useCurrency();
+  const [showUserGuide, setShowUserGuide] = React.useState(false);
 
   // Get dashboard statistics
   const { data: stats, isLoading, error: statsError, refetch: refetchStats } = api.admin.getDashboardStats.useQuery();
@@ -136,6 +141,172 @@ export default function AdminDashboardPage() {
               <GlobalSearch />
             </div>
         </div>
+      </motion.div>
+
+      {/* User Guide */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.02 }}
+        className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-2xl shadow-lg border-2 border-blue-200 dark:border-blue-800 overflow-hidden"
+      >
+        <button
+          onClick={() => setShowUserGuide(!showUserGuide)}
+          className="w-full px-6 py-4 flex items-center justify-between hover:bg-blue-100/50 dark:hover:bg-blue-900/20 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-500 rounded-lg">
+              <MdInfo className="w-6 h-6 text-white" />
+            </div>
+            <div className="text-left">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                Admin Dashboard Guide
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Click to {showUserGuide ? "hide" : "view"} dashboard overview & features
+              </p>
+            </div>
+          </div>
+          {showUserGuide ? (
+            <MdExpandLess className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+          ) : (
+            <MdExpandMore className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+          )}
+        </button>
+
+        <AnimatePresence>
+          {showUserGuide && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="border-t border-blue-200 dark:border-blue-800"
+            >
+              <div className="px-6 py-6 space-y-6">
+                {/* Dashboard Overview */}
+                <div>
+                  <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <HiLightningBolt className="w-5 h-5 text-blue-600" />
+                    Dashboard Overview
+                  </h4>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+                    The Command Center provides real-time platform intelligence and administrative control over all system operations.
+                  </p>
+                  <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300 ml-6">
+                    <li>Monitor key performance indicators (KPIs) at a glance</li>
+                    <li>Track user growth, revenue, and system activity</li>
+                    <li>View critical alerts and pending actions</li>
+                    <li>Access quick actions for common administrative tasks</li>
+                    <li>Analyze trends with interactive charts and graphs</li>
+                  </ul>
+                </div>
+
+                {/* Key Statistics */}
+                <div>
+                  <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <MdTrendingUp className="w-5 h-5 text-green-600" />
+                    Key Statistics
+                  </h4>
+                  <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300 ml-6">
+                    <li><span className="font-semibold">Total Users</span> - Total registered members with growth percentage</li>
+                    <li><span className="font-semibold">Pending Payments</span> - Payments awaiting verification (click to review)</li>
+                    <li><span className="font-semibold">Pending Withdrawals</span> - Withdrawal requests requiring approval</li>
+                    <li><span className="font-semibold">Total Revenue</span> - Platform earnings with trend indicator</li>
+                    <li><span className="font-semibold">Active Packages</span> - Currently active membership packages</li>
+                  </ul>
+                </div>
+
+                {/* Alerts & Monitoring */}
+                <div>
+                  <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <MdNotifications className="w-5 h-5 text-orange-600" />
+                    Alerts & Monitoring
+                  </h4>
+                  <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300 ml-6">
+                    <li>Critical system alerts appear at the top of the dashboard</li>
+                    <li>Color-coded urgency levels (red = critical, orange = warning, green = info)</li>
+                    <li>Click on alerts for more details or quick actions</li>
+                    <li>Dismiss alerts once resolved</li>
+                  </ul>
+                </div>
+
+                {/* Recent Activity */}
+                <div>
+                  <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <MdPeople className="w-5 h-5 text-purple-600" />
+                    Recent Activity Stream
+                  </h4>
+                  <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300 ml-6">
+                    <li>Real-time feed of user actions and system events</li>
+                    <li>Includes registrations, payments, withdrawals, package activations</li>
+                    <li>Paginated for performance - load more as needed</li>
+                    <li>Timestamps show relative time (e.g., "2 hours ago")</li>
+                  </ul>
+                </div>
+
+                {/* Quick Actions */}
+                <div>
+                  <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                    <MdCheckCircle className="w-5 h-5 text-green-600" />
+                    Quick Actions
+                  </h4>
+                  <ul className="list-disc list-inside space-y-1 text-sm text-gray-700 dark:text-gray-300 ml-6">
+                    <li>One-click access to frequently used admin functions</li>
+                    <li>Review pending payments and withdrawals</li>
+                    <li>Manage users, packages, and community content</li>
+                    <li>Access reports and analytics</li>
+                  </ul>
+                </div>
+
+                {/* Features */}
+                <div className="pt-4 border-t border-blue-200 dark:border-blue-700">
+                  <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3">
+                    ✨ Dashboard Features
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      Real-time data refresh
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      Interactive analytics charts
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      Performance metrics tracking
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      Global search functionality
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      Activity tracking & audit logs
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      Dark mode support
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pro Tip */}
+                <div className="bg-white dark:bg-bpi-dark-card rounded-lg p-4">
+                  <h5 className="font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                    <HiSparkles className="w-4 h-4 text-yellow-500" />
+                    Pro Tip
+                  </h5>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    Use the <span className="font-bold">Refresh button</span> in the header to update all dashboard data at once. 
+                    The <span className="font-bold">Global Search</span> lets you quickly find users, transactions, or any content across the platform.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
 
       {/* Alerts */}

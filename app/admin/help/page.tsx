@@ -3,6 +3,7 @@
 import { api } from "@/client/trpc";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 export default function AdminHelpPage() {
   const { data, isLoading, error } = api.admin.getAdminWiringStatus.useQuery();
@@ -65,6 +66,81 @@ export default function AdminHelpPage() {
           Generated: {data?.generatedAt ? new Date(data.generatedAt).toLocaleString() : "..."}
         </p>
       </div>
+
+      {/* User Guide */}
+      <AdminPageGuide
+        title="Admin Wiring Status Guide"
+        sections={[
+          {
+            title: "Wiring Status Overview",
+            icon: <span className="w-5 h-5 text-blue-600">🔌</span>,
+            items: [
+              "View <strong>implementation status</strong> of all admin features",
+              "Track <strong>wired, partial, and pending</strong> feature states",
+              "Identify <strong>completed vs in-progress</strong> admin functionality",
+              "Access <strong>tRPC procedure names</strong> and router paths",
+              "Monitor <strong>last update timestamps</strong> for each feature",
+              "<strong>Database-driven</strong> live status from system signals"
+            ]
+          },
+          {
+            title: "Status Categories",
+            icon: <span className="w-5 h-5 text-green-600">✅</span>,
+            items: [
+              { label: "Wired", text: "Fully implemented with complete backend and frontend integration" },
+              { label: "Partial", text: "Backend exists but missing UI, or UI exists without full backend" },
+              { label: "Pending", text: "Planned feature not yet implemented" }
+            ]
+          },
+          {
+            title: "Using Wiring Status",
+            icon: <span className="w-5 h-5 text-orange-600">🔧</span>,
+            items: [
+              "<strong>Check feature readiness</strong> before assigning admin tasks",
+              "<strong>Copy tRPC procedures</strong> - Click to copy API endpoint names for development",
+              "<strong>Copy router path</strong> - Get file location of backend implementation",
+              "<strong>Open route</strong> - Navigate directly to feature's admin page",
+              "<strong>View stats</strong> - See feature-specific metrics (user count, last update, etc.)",
+              "<strong>Prioritize partial features</strong> - Complete these for full functionality"
+            ]
+          },
+          {
+            title: "Feature Statistics",
+            icon: <span className="w-5 h-5 text-purple-600">📊</span>,
+            items: [
+              "<strong>Last Updated</strong> - When feature was last modified",
+              "<strong>Route</strong> - Admin panel URL path (e.g., /admin/users)",
+              "<strong>Component</strong> - React component file name",
+              "<strong>Router Path</strong> - Backend tRPC router file location",
+              "<strong>Procedures</strong> - List of API endpoints for this feature",
+              "<strong>Custom Stats</strong> - Feature-specific metrics (e.g., total users, pending count)"
+            ]
+          },
+          {
+            title: "Developer Actions",
+            icon: <span className="w-5 h-5 text-blue-600">👨‍💻</span>,
+            items: [
+              "<strong>Copy tRPC</strong> - Get procedure names for API calls in code",
+              "<strong>Copy Router Path</strong> - Locate backend file for modifications",
+              "<strong>Open Route</strong> - Test feature UI directly",
+              "<strong>Review Stats</strong> - Identify performance or data issues",
+              "Use this page as <strong>development roadmap</strong> to track progress"
+            ]
+          }
+        ]}
+        features={[
+          "Live feature implementation status",
+          "Wired/Partial/Pending categorization",
+          "tRPC procedure name display",
+          "Router path and component info",
+          "Copy-to-clipboard helpers",
+          "Direct route navigation",
+          "Feature-specific statistics",
+          "Database-driven live updates"
+        ]}
+        proTip="Use this page as your <strong>admin feature inventory</strong> - bookmark it for quick reference. When assigning tasks to admins, <strong>verify feature is 'Wired'</strong> before creating workflows. For developers, <strong>copy tRPC procedure names</strong> to speed up API integration. <strong>Prioritize 'Partial' features</strong> for completion - they're closest to being production-ready. <strong>Export feature list</strong> for project planning and sprint tracking."
+        warning="<strong>Pending features may have no UI</strong> - avoid assigning admin tasks until status changes to Wired. <strong>Partial features may have bugs</strong> or incomplete functionality - test thoroughly before production use. <strong>Router paths are code file locations</strong> - only useful for developers with codebase access. <strong>Stats may be cached</strong> - manually refresh page for latest status if you just deployed code changes."
+      />
 
       {error && (
         <div className="rounded-2xl border border-destructive bg-destructive/10 p-4 text-sm text-destructive">

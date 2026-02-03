@@ -31,6 +31,7 @@ import toast from "react-hot-toast";
 import { format } from "date-fns";
 import StatsCard from "@/components/admin/StatsCard";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 type TabType = "updates" | "deals";
 type TrendPoint = { label: string; value: number };
@@ -307,6 +308,87 @@ export default function CommunityManagementPage() {
             </button>
           </div>
         </div>
+
+        {/* User Guide */}
+        <AdminPageGuide
+          title="Community Management Guide"
+          sections={[
+            {
+              title: "Community Management Overview",
+              icon: <HiSpeakerphone className="w-5 h-5 text-blue-600" />,
+              items: [
+                "Manage <strong>Community Updates</strong> to keep members informed about BPI news",
+                "Create <strong>Best Deals</strong> to promote special offers and member perks",
+                "Use <strong>Broadcast</strong> to send push notifications to all users",
+                "Track engagement with views, reads, and claim statistics",
+                "Schedule content or publish immediately"
+              ]
+            },
+            {
+              title: "Community Updates Management",
+              icon: <HiBell className="w-5 h-5 text-green-600" />,
+              type: "ol",
+              items: [
+                "<strong>Create Update</strong> - Click <strong>+ New</strong> to compose announcement",
+                "<strong>Set category</strong> - Choose from Events, News, Alerts, Opportunities",
+                "<strong>Add content</strong> - Write title, description, and optional image/link",
+                "<strong>Set priority</strong> - Normal, Important, or Critical (affects notification style)",
+                "<strong>Publish</strong> - Make active or save as draft for later",
+                "<strong>Monitor engagement</strong> - Track views and read status"
+              ]
+            },
+            {
+              title: "Best Deals Management",
+              icon: <HiTag className="w-5 h-5 text-orange-600" />,
+              type: "ol",
+              items: [
+                "<strong>Create Deal</strong> - Click <strong>+ New Deal</strong> button",
+                "<strong>Add details</strong> - Title, description, discount percentage, original/final price",
+                "<strong>Set availability</strong> - Total claims allowed, time limit",
+                "<strong>Upload image</strong> - Product/service image for visual appeal",
+                "<strong>Activate deal</strong> - Make visible to members",
+                "<strong>Track claims</strong> - Monitor how many users claimed the deal",
+                "<strong>Deactivate when expired</strong> - Manually close or wait for auto-expiry"
+              ]
+            },
+            {
+              title: "Broadcast Notifications",
+              icon: <HiSpeakerphone className="w-5 h-5 text-purple-600" />,
+              items: [
+                "Click <strong>Broadcast</strong> button to send system-wide notification",
+                "<strong>Title & Message</strong> - Craft clear, actionable notification text",
+                "<strong>Priority level</strong> - Info, Success, Warning, or Error",
+                "<strong>Target users</strong> - All users, activated only, or specific segments",
+                "Broadcasts appear in <strong>all user dashboards</strong> instantly",
+                "Use for urgent announcements, maintenance alerts, or major updates"
+              ]
+            },
+            {
+              title: "Content Moderation & Analytics",
+              icon: <HiInformationCircle className="w-5 h-5 text-blue-600" />,
+              items: [
+                "<strong>View details</strong> - Click on any update/deal to see full analytics",
+                "<strong>Read distribution</strong> - Graph showing when users read content",
+                "<strong>Claim trends</strong> - For deals, see claim patterns over time",
+                "<strong>Edit anytime</strong> - Update content, change status, or extend deadlines",
+                "<strong>Delete carefully</strong> - Removes all associated data permanently",
+                "<strong>Audit log</strong> - Track all admin actions and changes"
+              ]
+            }
+          ]}
+          features={[
+            "Create/edit community updates",
+            "Manage best deals & promotions",
+            "Broadcast push notifications",
+            "Track views & engagement",
+            "Category & priority filters",
+            "Search updates & deals",
+            "Claim tracking for deals",
+            "Analytics dashboards"
+          ]}
+          proTip="For <strong>maximum engagement</strong>, publish community updates during <strong>peak hours (8-10 AM, 6-9 PM)</strong>. Use <strong>Critical priority</strong> sparingly to maintain its effectiveness. Best deals with <strong>limited claims (10-50)</strong> create urgency and drive faster action."
+          warning="<strong>Broadcast notifications</strong> are sent to all users immediately and cannot be recalled. Always double-check content before broadcasting. Deleting active deals that users have claimed can cause confusion - consider deactivating instead."
+        />
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-6">
           <StatsCard title="Updates" value={updatesData?.total || 0} icon={HiBell} color="green" />

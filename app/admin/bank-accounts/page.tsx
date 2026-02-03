@@ -5,6 +5,7 @@ import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 import {
   Banknote,
   Loader2,
@@ -157,6 +158,98 @@ export default function BankAccountsPage() {
           </button>
         </div>
       </div>
+
+      {/* User Guide */}
+      <AdminPageGuide
+        title="Bank Records Management Guide"
+        sections={[
+          {
+            title: "Bank Records Overview",
+            icon: <Banknote className="w-5 h-5 text-blue-600" />,
+            items: [
+              "Manage <strong>user bank account information</strong> for withdrawals",
+              "<strong>Audit payout readiness</strong> - verify all users have bank details",
+              "Set <strong>default bank accounts</strong> for automatic withdrawals",
+              "<strong>Fill gaps</strong> - add bank records for users without them",
+              "<strong>Map bank codes to banks</strong> - link legacy data to bank database",
+              "<strong>Masked account numbers</strong> for security (show first 2 + last 4 digits)"
+            ]
+          },
+          {
+            title: "Adding Bank Records",
+            icon: <UserPlus className="w-5 h-5 text-green-600" />,
+            type: "ol",
+            items: [
+              "<strong>Identify users without banks</strong> - Check 'Users without Bank Records' card",
+              "<strong>Click 'Add Bank Record'</strong> - Opens form for new bank account",
+              "<strong>Select user</strong> - Choose from users missing bank records",
+              "<strong>Select bank</strong> - Choose from bank dropdown (Nigeria banks)",
+              "<strong>Enter account name</strong> - Full name matching bank account",
+              "<strong>Enter account number</strong> - 10-digit NUBAN account number",
+              "<strong>BVN (optional)</strong> - Bank Verification Number for verification",
+              "<strong>Set as default</strong> - Toggle to make this the primary withdrawal account"
+            ]
+          },
+          {
+            title: "Editing Bank Records",
+            icon: <Pencil className="w-5 h-5 text-orange-600" />,
+            items: [
+              "<strong>Click Edit</strong> - Opens bank record editing form",
+              "<strong>Update bank</strong> - Change bank if user switched accounts",
+              "<strong>Correct account details</strong> - Fix typos in name or number",
+              "<strong>Add BVN</strong> - Include BVN if initially missing",
+              "<strong>Changes save immediately</strong> - Affects future withdrawals only",
+              "<strong>Cannot edit account number</strong> - Delete and recreate if wrong"
+            ]
+          },
+          {
+            title: "Setting Default Accounts",
+            icon: <Star className="w-5 h-5 text-purple-600" />,
+            items: [
+              "<strong>Default account</strong> used for <strong>automatic withdrawals</strong>",
+              "Users can have <strong>multiple bank accounts</strong>, only one default",
+              "<strong>Click 'Set as Default'</strong> button on bank record",
+              "<strong>Previous default</strong> automatically unmarked",
+              "Users without default account <strong>cannot withdraw</strong> - prompt them to set one"
+            ]
+          },
+          {
+            title: "Bank Mapping & Legacy Data",
+            icon: <Wand2 className="w-5 h-5 text-blue-600" />,
+            items: [
+              "<strong>Records Missing Bank Link</strong> - Old records with bank codes but no bank ID",
+              "<strong>Map codes to banks</strong> - Match legacy bank codes (e.g., '044') to database banks",
+              "Use <strong>'Missing bank mapping only'</strong> filter to find unmapped records",
+              "<strong>Bulk mapping</strong> - Update multiple records at once (if available)",
+              "<strong>Improves data quality</strong> for accurate withdrawal processing"
+            ]
+          },
+          {
+            title: "Security & Compliance",
+            icon: <ShieldCheck className="w-5 h-5 text-red-600" />,
+            items: [
+              "<strong>Account numbers masked</strong> in UI (XX***XXXX) for privacy",
+              "<strong>BVN verification</strong> recommended for high-value withdrawals",
+              "<strong>Audit trail</strong> - All changes logged in system",
+              "<strong>Restrict access</strong> - Only authorized admins should manage bank records",
+              "<strong>Verify account ownership</strong> before adding records to prevent fraud",
+              "<strong>Compliance</strong> with Nigerian banking regulations"
+            ]
+          }
+        ]}
+        features={[
+          "View all user bank records",
+          "Add bank records for users",
+          "Edit existing bank details",
+          "Set/change default accounts",
+          "Search by user, email, account number",
+          "Filter by bank",
+          "Missing bank mapping detection",
+          "Masked account numbers for security"
+        ]}
+        proTip="For <strong>withdrawal readiness</strong>, focus on filling gaps for <strong>active users first</strong> - check 'Users without Bank Records' card. Use <strong>bank filter</strong> to audit specific banks (e.g., 'GTBank only'). <strong>Verify account names match user names</strong> to prevent withdrawal failures. Set up <strong>BVN verification</strong> for amounts above ₦50,000 to reduce fraud. <strong>Export bank records monthly</strong> for compliance reporting."
+        warning="<strong>Never add fake bank accounts</strong> - this enables withdrawal fraud and damages user trust. <strong>Deleting bank records is permanent</strong> and may affect historical withdrawal data - only delete duplicates or confirmed fraudulent accounts. <strong>Account number typos</strong> cause withdrawal failures - double-check before saving. <strong>BVN is sensitive data</strong> - handle with extreme care and encrypt in database. <strong>Default account changes</strong> affect immediate next withdrawal - notify users if you change their default."
+      />
 
       {/* Summary */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

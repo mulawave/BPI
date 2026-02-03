@@ -19,6 +19,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { api } from "@/client/trpc";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 interface ReferralFilter {
   rootUserId?: string;
@@ -414,6 +415,84 @@ export default function AdminReferralsPage() {
           </div>
         </div>
       </motion.div>
+
+      {/* User Guide */}
+      <AdminPageGuide
+        title="Referral Command Center Guide"
+        sections={[
+          {
+            title: "Referral Network Overview",
+            icon: <ShieldCheck className="w-5 h-5 text-blue-600" />,
+            items: [
+              "Visualize <strong>multi-level referral hierarchies</strong> (up to 10 levels deep)",
+              "Track <strong>lineage cascades</strong> and identify broken sponsor chains",
+              "<strong>Reassign sponsors</strong> to repair incorrect referral structures",
+              "Resolve <strong>missing sponsor</strong> issues with live recalculation",
+              "Filter by package type, registration dates, and specific users"
+            ]
+          },
+          {
+            title: "Navigating the Referral Network",
+            icon: <Users className="w-5 h-5 text-green-600" />,
+            type: "ol",
+            items: [
+              "<strong>Search root user</strong> - Enter email or legacy ID to find starting point",
+              "<strong>Set depth</strong> - Adjust slider (1-10 levels) to explore downline hierarchy",
+              "<strong>Apply filters</strong> - Filter by membership package, registration dates",
+              "<strong>Expand levels</strong> - Click on user nodes to drill down into their downline",
+              "<strong>View details</strong> - See user info, package, registration date for each node",
+              "<strong>Identify issues</strong> - Red flags indicate missing sponsors or broken chains"
+            ]
+          },
+          {
+            title: "Repairing Referral Chains",
+            icon: <AlertTriangle className="w-5 h-5 text-orange-600" />,
+            items: [
+              "<strong>Missing Sponsors Tab</strong> - View all users with unassigned sponsors",
+              "<strong>Reassign Sponsor</strong> - Click reassign button, search for correct sponsor",
+              "<strong>Resolve by Email</strong> - Enter sponsor's email to auto-link missing users",
+              "<strong>Lineage Guardrails</strong> - System prevents circular references and invalid assignments",
+              "<strong>Live Recalculation</strong> - All referral counts and levels update automatically",
+              "Changes are <strong>immediate and permanent</strong> - verify before confirming"
+            ]
+          },
+          {
+            title: "Referral Edges Management",
+            icon: <ArrowRight className="w-5 h-5 text-purple-600" />,
+            items: [
+              "<strong>Edges represent</strong> direct sponsor-to-referred user relationships",
+              "View <strong>all referral connections</strong> in chronological order",
+              "Track <strong>when users joined</strong> through specific sponsors",
+              "Identify <strong>top recruiters</strong> by counting edges from single users",
+              "Paginated view for <strong>large networks</strong> (50 edges per page)"
+            ]
+          },
+          {
+            title: "Network Analytics & Insights",
+            icon: <Sparkles className="w-5 h-5 text-blue-600" />,
+            items: [
+              "<strong>Package distribution</strong> - See which packages are most referred",
+              "<strong>Growth trends</strong> - Track referral activity over time",
+              "<strong>Depth analysis</strong> - Identify how deep networks extend",
+              "<strong>Orphaned users</strong> - Find users without valid sponsor chains",
+              "<strong>Sort options</strong> - Order by registration date or package type",
+              "Use insights to <strong>incentivize top referrers</strong> and optimize programs"
+            ]
+          }
+        ]}
+        features={[
+          "10-level deep network visualization",
+          "Missing sponsor resolution",
+          "Sponsor reassignment",
+          "Live lineage recalculation",
+          "Package-based filtering",
+          "Date range filters",
+          "Referral edge tracking",
+          "Network analytics"
+        ]}
+        proTip="When resolving <strong>missing sponsors</strong>, always check the user's <strong>registration date</strong> to find sponsors who joined <strong>before them</strong>. Use the <strong>depth slider strategically</strong> - start at 3-5 levels for quick overviews, then expand to 10 for deep investigations. <strong>Export edges</strong> to Excel for advanced network analysis."
+        warning="<strong>Sponsor reassignments are permanent and immediate</strong> - all downline calculations, earnings, and referral counts will be recalculated. This can affect user rankings, bonuses, and leadership qualifications. Always <strong>verify the new sponsor ID</strong> before confirming. Circular references (A refers B, B refers A) are blocked by guardrails but still be careful."
+      />
 
       <div className="grid gap-4 rounded-2xl border border-border bg-card/70 p-4 shadow-lg backdrop-blur-lg">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

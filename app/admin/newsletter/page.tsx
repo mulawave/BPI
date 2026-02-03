@@ -9,6 +9,7 @@ import {
   Settings, BarChart3, Loader2, CheckCircle, XCircle, Clock, Eye
 } from "lucide-react";
 import toast from "react-hot-toast";
+import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 type PreviewMode = "desktop" | "tablet" | "mobile";
 type FilterType = "all" | "activated" | "non-activated" | "membership";
@@ -282,6 +283,88 @@ export default function NewsletterPage() {
           </div>
         </div>
       </motion.div>
+
+      {/* User Guide */}
+      <AdminPageGuide
+        title="Newsletter Campaign Guide"
+        sections={[
+          {
+            title: "Newsletter System Overview",
+            icon: <Mail className="w-5 h-5 text-blue-600" />,
+            items: [
+              "Send <strong>professional HTML emails</strong> to all users or targeted segments",
+              "<strong>Attach files</strong> (PDF, images) or <strong>embed images</strong> in email body",
+              "<strong>Preview emails</strong> on desktop, tablet, and mobile devices",
+              "<strong>Throttle sending rate</strong> to avoid spam filters (50 emails/10 seconds default)",
+              "Track <strong>send progress</strong> in real-time with success/failure counts"
+            ]
+          },
+          {
+            title: "Creating a Newsletter Campaign",
+            icon: <FileText className="w-5 h-5 text-green-600" />,
+            type: "ol",
+            items: [
+              "<strong>Select Recipients</strong> - Choose All Users, Activated Only, Non-Activated, or By Membership",
+              "<strong>Set sender details</strong> - From email (uses system default if empty), Reply-To email",
+              "<strong>Compose subject</strong> - Clear, compelling subject line (avoid spam trigger words)",
+              "<strong>Write email body</strong> - Use HTML formatting, personalization tokens, professional tone",
+              "<strong>Add attachments</strong> - PDF, JPG, JPEG, PNG files (optional)",
+              "<strong>Embed images</strong> - Insert images directly in email body (optional)",
+              "<strong>Preview</strong> - Check desktop/tablet/mobile views before sending",
+              "<strong>Send campaign</strong> - Click Send to start throttled distribution"
+            ]
+          },
+          {
+            title: "Recipient Filtering",
+            icon: <Filter className="w-5 h-5 text-orange-600" />,
+            items: [
+              "<strong>All Users</strong> - Send to entire user base (highest reach)",
+              "<strong>Activated Only</strong> - Target users who completed account activation",
+              "<strong>Non-Activated</strong> - Re-engage users who haven't activated yet",
+              "<strong>By Membership</strong> - Filter by specific membership package (Freemium, Premium, Enterprise)",
+              "Recipient count updates <strong>live</strong> as you change filters",
+              "Zero recipients? Check filter selection and user database"
+            ]
+          },
+          {
+            title: "Email Delivery & Throttling",
+            icon: <Send className="w-5 h-5 text-purple-600" />,
+            items: [
+              "<strong>Default rate:</strong> 50 emails every 10 seconds (300/minute)",
+              "Throttling prevents <strong>spam filter triggers</strong> and IP blacklisting",
+              "<strong>Monitor progress</strong> - Live updates show sent/failed/total counts",
+              "<strong>Pause/Resume</strong> - Control sending if needed (feature in UI)",
+              "<strong>Failed emails</strong> tracked separately - review for invalid addresses",
+              "Large campaigns (1000+ users) may take several minutes"
+            ]
+          },
+          {
+            title: "Best Practices",
+            icon: <Settings className="w-5 h-5 text-blue-600" />,
+            items: [
+              "<strong>Subject lines:</strong> Keep under 50 characters for mobile visibility",
+              "<strong>Preview text:</strong> First 100 characters show in inbox - make them count",
+              "<strong>HTML formatting:</strong> Use semantic HTML, avoid excessive images",
+              "<strong>Attachments:</strong> Limit to 2-3 files, keep total size under 5MB",
+              "<strong>Testing:</strong> Send test email to yourself before full campaign",
+              "<strong>Timing:</strong> Send during business hours for higher open rates",
+              "<strong>Mobile-first:</strong> 60%+ users read on mobile - always preview mobile view"
+            ]
+          }
+        ]}
+        features={[
+          "Segment recipient targeting",
+          "HTML email composer",
+          "File attachments & image embedding",
+          "Multi-device preview (desktop/tablet/mobile)",
+          "Throttled sending (spam prevention)",
+          "Real-time progress tracking",
+          "Success/failure analytics",
+          "Membership-based filtering"
+        ]}
+        proTip="To <strong>maximize open rates</strong>, send newsletters on <strong>Tuesday-Thursday between 10 AM - 2 PM</strong>. Use <strong>personalized subject lines</strong> and keep emails under <strong>500 words</strong>. Always send a <strong>test email to yourself</strong> first to catch formatting issues!"
+        warning="Newsletter campaigns are <strong>sent immediately</strong> and cannot be recalled once started. Always <strong>preview all device sizes</strong> and <strong>verify recipient count</strong> before clicking Send. Typos, broken links, or wrong recipients can damage credibility."
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
