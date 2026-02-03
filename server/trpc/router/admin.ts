@@ -319,7 +319,7 @@ export const adminRouter = createTRPCRouter({
             : Promise.resolve(null),
         ]);
 
-      const level1Ids = level1Referrals.map((r) => r.referredId);
+      const level1Ids = level1Referrals.map((r: any) => r.referredId);
       const level2Referrals =
         level1Ids.length > 0
           ? await prisma.referral.findMany({
@@ -328,7 +328,7 @@ export const adminRouter = createTRPCRouter({
             })
           : [];
 
-      const level2Ids = level2Referrals.map((r) => r.referredId);
+      const level2Ids = level2Referrals.map((r: any) => r.referredId);
       const level3Referrals =
         level2Ids.length > 0
           ? await prisma.referral.findMany({
@@ -337,7 +337,7 @@ export const adminRouter = createTRPCRouter({
             })
           : [];
 
-      const level3Ids = level3Referrals.map((r) => r.referredId);
+      const level3Ids = level3Referrals.map((r: any) => r.referredId);
       const level4Referrals =
         level3Ids.length > 0
           ? await prisma.referral.findMany({
@@ -347,7 +347,7 @@ export const adminRouter = createTRPCRouter({
           : [];
 
       const referrals = directReferralRows
-        .map((r) => {
+        .map((r: any) => {
           const u = r.User_Referral_referredIdToUser;
           return u
             ? {
@@ -681,7 +681,7 @@ export const adminRouter = createTRPCRouter({
       // In production, integrate with email service (SendGrid, AWS SES, etc.)
       return {
         sent: users.length,
-        recipients: users.map((u) => u.email),
+        recipients: users.map((u: any) => u.email),
       };
     }),
 
@@ -1986,7 +1986,7 @@ export const adminRouter = createTRPCRouter({
 
       // Get activation counts for each package
       const packagesWithStats = await Promise.all(
-        packages.map(async (pkg) => {
+        packages.map(async (pkg: any) => {
           const activeCount = await prisma.user.count({
             where: { activeMembershipPackageId: pkg.id },
           });
@@ -2290,7 +2290,7 @@ export const adminRouter = createTRPCRouter({
     });
 
     const packageRevenue = await Promise.all(
-      revenueByPackage.map(async (item) => {
+      revenueByPackage.map(async (item: any) => {
         const pkg = await prisma.membershipPackage.findUnique({
           where: { id: item.activeMembershipPackageId! },
           select: { name: true, price: true, vat: true },
@@ -2463,7 +2463,7 @@ export const adminRouter = createTRPCRouter({
       };
 
       const usersByBucket: Record<string, { registrations: number; activations: number }> = {};
-      users.forEach((user) => {
+      users.forEach((user: any) => {
         const regBucket = formatBucket(user.createdAt);
         if (!usersByBucket[regBucket]) {
           usersByBucket[regBucket] = { registrations: 0, activations: 0 };
@@ -2490,7 +2490,7 @@ export const adminRouter = createTRPCRouter({
       return {
         chartData,
         totalRegistrations: users.length,
-        totalActivations: users.filter((u) => u.membershipActivatedAt).length,
+        totalActivations: users.filter((u: any) => u.membershipActivatedAt).length,
         granularity: input.granularity,
       };
     }),
@@ -3758,16 +3758,16 @@ export const adminRouter = createTRPCRouter({
       `;
 
       const toTruncate = tables.filter(
-        (t) => !keepTables.has(t.tablename.toLowerCase()) && t.tablename !== "_prisma_migrations"
+        (t: any) => !keepTables.has(t.tablename.toLowerCase()) && t.tablename !== "_prisma_migrations"
       );
       const now = new Date();
 
       const passwordHash = await hash(input.superAdminPassword, 10);
 
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx: any) => {
         if (toTruncate.length) {
           const quoted = toTruncate
-            .map((t) => `"${t.schemaname}".${t.quoted_name}`)
+            .map((t: any) => `"${t.schemaname}".${t.quoted_name}`)
             .join(", ");
           await tx.$executeRawUnsafe(`TRUNCATE TABLE ${quoted} RESTART IDENTITY CASCADE;`);
         }
@@ -3823,7 +3823,7 @@ export const adminRouter = createTRPCRouter({
       ]);
 
       return {
-        truncatedTables: toTruncate.map((t) => t.tablename),
+        truncatedTables: toTruncate.map((t: any) => t.tablename),
         keptTables: Array.from(keepTables),
         superAdminEmail: result.superAdmin.email,
         confirmationPhrase: requiredPhrase,
@@ -3859,7 +3859,7 @@ export const adminRouter = createTRPCRouter({
       ORDER BY t.tablename;
     `;
 
-    return tables.map((table) => ({
+    return tables.map((table: any) => ({
       schema: table.schemaname,
       name: table.tablename,
       quotedName: table.quoted_name,
@@ -3965,7 +3965,7 @@ export const adminRouter = createTRPCRouter({
     `;
 
     const withCounts = await Promise.all(
-      tables.map(async (t) => {
+      tables.map(async (t: any) => {
         const tableIdent = `"${t.schemaname}".${t.quoted_name}`;
         const result = await prisma.$queryRawUnsafe<
           Array<{ row_count: bigint | number | string }>
@@ -4027,7 +4027,7 @@ export const adminRouter = createTRPCRouter({
     `;
 
     const withCounts = await Promise.all(
-      tables.map(async (t) => {
+      tables.map(async (t: any) => {
         const tableIdent = `"${t.schemaname}".${t.quoted_name}`;
         const result = await prisma.$queryRawUnsafe<
           Array<{ row_count: bigint | number | string }>
@@ -4037,8 +4037,8 @@ export const adminRouter = createTRPCRouter({
       })
     );
 
-    const wipeableTables = withCounts.filter((t) => t.rowCount === 0).map((t) => t.tablename);
-    const protectedTables = withCounts.filter((t) => t.rowCount > 0).map((t) => t.tablename);
+    const wipeableTables = withCounts.filter((t: any) => t.rowCount === 0).map((t: any) => t.tablename);
+    const protectedTables = withCounts.filter((t: any) => t.rowCount > 0).map((t: any) => t.tablename);
     const capturedAt = new Date().toISOString();
 
     await prisma.adminSettings.upsert({
@@ -4107,14 +4107,14 @@ export const adminRouter = createTRPCRouter({
     `;
 
     const requested = new Set(wipeableTables.map((t) => t.toLowerCase()));
-    const candidates = tables.filter((t) => requested.has(t.tablename.toLowerCase()));
+    const candidates = tables.filter((t: any) => requested.has(t.tablename.toLowerCase()));
     const missing = wipeableTables.filter(
-      (t) => !candidates.some((c) => c.tablename.toLowerCase() === t.toLowerCase())
+      (t: any) => !candidates.some((c: any) => c.tablename.toLowerCase() === t.toLowerCase())
     );
 
     if (candidates.length) {
       const quoted = candidates
-        .map((t) => `"${t.schemaname}".${t.quoted_name}`)
+        .map((t: any) => `"${t.schemaname}".${t.quoted_name}`)
         .join(", ");
       await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${quoted} RESTART IDENTITY CASCADE;`);
     }
@@ -4128,14 +4128,14 @@ export const adminRouter = createTRPCRouter({
           entity: "Database",
           entityId: "wipe-stored",
           status: "success",
-          changes: JSON.stringify({ wiped: candidates.map((t) => t.tablename), missing }),
+          changes: JSON.stringify({ wiped: candidates.map((t: any) => t.tablename), missing }),
           createdAt: now,
         },
       });
     } catch (_) {}
 
     return {
-      wipedTables: candidates.map((t) => t.tablename),
+      wipedTables: candidates.map((t: any) => t.tablename),
       missingTables: missing,
       totalRequested: wipeableTables.length,
     };
@@ -4401,12 +4401,12 @@ export const adminRouter = createTRPCRouter({
     return {
       totalRewards: totalShelterRewards,
       totalAmount: totalShelterAmount._sum.amount || 0,
-      byLevel: levelDistribution.map((r) => ({
+      byLevel: levelDistribution.map((r: any) => ({
         level: r.level,
         count: r._count,
         total: r._sum.amount || 0,
       })),
-      byPackage: rewardsByPackage.map((r) => ({
+      byPackage: rewardsByPackage.map((r: any) => ({
         packageType: r.packageType,
         count: r._count,
         total: r._sum.amount || 0,
@@ -4773,7 +4773,7 @@ export const adminRouter = createTRPCRouter({
       totalEnrollments,
       completedEnrollments,
       completionRate: totalEnrollments > 0 ? (completedEnrollments / totalEnrollments) * 100 : 0,
-      topCourses: topCourses.map(c => ({
+      topCourses: topCourses.map((c: any) => ({
         id: c.id,
         title: c.title,
         enrollments: c._count.TrainingProgress,
@@ -5320,7 +5320,7 @@ export const adminRouter = createTRPCRouter({
     });
 
     // Convert to key-value object with boolean conversion for toggles, string for others
-    const settingsMap = settings.reduce((acc, setting) => {
+    const settingsMap = settings.reduce((acc: any, setting: any) => {
       // Boolean settings
       if (['enableEpcEpp', 'enableSolarAssessment', 'enableBestDeals', 'enableBpiCalculator', 'enableDigitalFarm', 'enableTrainingCenter', 'enablePromotionalMaterials', 'enableLatestUpdates'].includes(setting.settingKey)) {
         acc[setting.settingKey] = setting.settingValue === 'true';
@@ -6453,7 +6453,7 @@ export const adminRouter = createTRPCRouter({
         "Last Login",
       ];
 
-      const rows = users.map((user) => [
+      const rows = users.map((user: any) => [
         user.id,
         user.email || "",
         user.name || "",
@@ -6469,8 +6469,8 @@ export const adminRouter = createTRPCRouter({
 
       const csvContent = [
         headers.join(","),
-        ...rows.map((row) =>
-          row.map((cell) => `"${cell.toString().replace(/"/g, '""')}"`).join(","),
+        ...rows.map((row: any) =>
+          row.map((cell: any) => `"${cell.toString().replace(/"/g, '""')}"`).join(","),
         ),
       ].join("\n");
 
@@ -6589,7 +6589,7 @@ export const adminRouter = createTRPCRouter({
       "Created At",
     ];
 
-    const rows = packages.map((pkg) => [
+    const rows = packages.map((pkg: any) => [
       pkg.id,
       pkg.name,
       pkg.price.toString(),
@@ -6606,8 +6606,8 @@ export const adminRouter = createTRPCRouter({
 
     const csvContent = [
       headers.join(","),
-      ...rows.map((row) =>
-        row.map((cell) => `"${cell.toString().replace(/"/g, '""')}"`).join(","),
+      ...rows.map((row: any) =>
+        row.map((cell: any) => `"${cell.toString().replace(/"/g, '""')}"`).join(","),
       ),
     ].join("\n");
 
@@ -6687,7 +6687,7 @@ export const adminRouter = createTRPCRouter({
 
       const csvContent = [
         headers.join(","),
-        ...rows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")),
+        ...rows.map((row: any) => row.map((cell: any) => `"${cell.replace(/"/g, '""')}"`).join(",")),
       ].join("\n");
 
       return {
@@ -6770,7 +6770,7 @@ export const adminRouter = createTRPCRouter({
 
       const csvContent = [
         headers.join(","),
-        ...rows.map((row) => row.map((cell) => `"${cell.toString().replace(/"/g, '""')}"`).join(",")),
+        ...rows.map((row: any) => row.map((cell: any) => `"${cell.toString().replace(/"/g, '""')}"`).join(",")),
       ].join("\n");
 
       return {
@@ -6951,9 +6951,9 @@ export const adminRouter = createTRPCRouter({
     });
 
     return {
-      amount: parseInt(settings.find(s => s.settingKey === 'leadershipPoolAmount')?.settingValue || '50000000'),
-      enabled: settings.find(s => s.settingKey === 'leadershipPoolEnabled')?.settingValue === 'true',
-      maxParticipants: parseInt(settings.find(s => s.settingKey === 'leadershipPoolMaxParticipants')?.settingValue || '100'),
+      amount: parseInt(settings.find((s: any) => s.settingKey === 'leadershipPoolAmount')?.settingValue || '50000000'),
+      enabled: settings.find((s: any) => s.settingKey === 'leadershipPoolEnabled')?.settingValue === 'true',
+      maxParticipants: parseInt(settings.find((s: any) => s.settingKey === 'leadershipPoolMaxParticipants')?.settingValue || '100'),
     };
   }),
 
@@ -7085,8 +7085,8 @@ export const adminRouter = createTRPCRouter({
       const packageIds = Array.from(
         new Set(
           participants
-            .map(p => p.User.activeMembershipPackageId)
-            .filter((id): id is string => Boolean(id))
+            .map((p: any) => p.User.activeMembershipPackageId)
+            .filter((id: any): id is string => Boolean(id))
         )
       );
 
@@ -7096,10 +7096,10 @@ export const adminRouter = createTRPCRouter({
             select: { id: true, name: true },
           })
         : [];
-      const packageNameById = new Map(membershipPackages.map(p => [p.id, p.name] as const));
+      const packageNameById = new Map(membershipPackages.map((p: any) => [p.id, p.name] as const));
 
       return {
-        participants: participants.map(p => ({
+        participants: participants.map((p: any) => ({
           id: p.id,
           userId: p.userId,
           userName: p.User.name,
@@ -8500,7 +8500,7 @@ export const adminRouter = createTRPCRouter({
       // Get company info for email template
       const companySettings = await prisma.adminSettings.findMany();
       const companyInfo = Object.fromEntries(
-        companySettings.map((s) => [s.settingKey, { value: s.settingValue, description: s.description }])
+        companySettings.map((s: any) => [s.settingKey, { value: s.settingValue, description: s.description }])
       );
 
       // Build email HTML with template
@@ -8575,7 +8575,7 @@ export const adminRouter = createTRPCRouter({
       });
 
       // Filter out recipients without valid emails
-      const validRecipients = recipients.filter((r): r is typeof r & { email: string } => !!r.email);
+      const validRecipients = recipients.filter((r: any): r is typeof r & { email: string } => !!r.email);
 
       const total = validRecipients.length;
       let sent = 0;
@@ -8586,7 +8586,7 @@ export const adminRouter = createTRPCRouter({
       // Get company info for email template
       const companySettings = await prisma.adminSettings.findMany();
       const companyInfo = Object.fromEntries(
-        companySettings.map((s) => [s.settingKey, { value: s.settingValue, description: s.description }])
+        companySettings.map((s: any) => [s.settingKey, { value: s.settingValue, description: s.description }])
       );
 
       // Process in batches based on send rate
@@ -9332,7 +9332,7 @@ export const adminRouter = createTRPCRouter({
         orderBy: { walletFrozenAt: 'desc' }
       });
 
-      return frozenUsers.map(user => ({
+      return frozenUsers.map((user: any) => ({
         ...user,
         frozenDuration: user.walletFrozenAt 
           ? Math.round((Date.now() - user.walletFrozenAt.getTime()) / (1000 * 60 * 60 * 24))

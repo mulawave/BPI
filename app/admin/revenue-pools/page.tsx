@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { trpc } from "@/client/trpc";
+import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
 import {
   Users,
@@ -22,52 +22,52 @@ export default function RevenuePoolsPage() {
   const [selectedPool, setSelectedPool] = useState<string | null>(null);
 
   // Queries
-  const { data: stats, refetch: refetchStats } = trpc.revenue.getDashboardStats.useQuery();
-  const { data: shareholders, refetch: refetchShareholders } = trpc.revenue.getExecutiveShareholders.useQuery();
-  const { data: pools, refetch: refetchPools } = trpc.revenue.getStrategicPools.useQuery();
-  const { data: searchResults } = trpc.revenue.searchUsers.useQuery(
+  const { data: stats, refetch: refetchStats } = api.revenue.getDashboardStats.useQuery();
+  const { data: shareholders, refetch: refetchShareholders } = api.revenue.getExecutiveShareholders.useQuery();
+  const { data: pools, refetch: refetchPools } = api.revenue.getStrategicPools.useQuery();
+  const { data: searchResults } = api.revenue.searchUsers.useQuery(
     { query: searchQuery },
     { enabled: searchQuery.length >= 2 }
   );
 
   // Mutations
-  const assignExecutive = trpc.revenue.assignExecutiveRole.useMutation({
+  const assignExecutive = api.revenue.assignExecutiveRole.useMutation({
     onSuccess: () => {
       toast.success("Executive role assigned successfully");
       refetchShareholders();
       setSelectedRole(null);
       setSearchQuery("");
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
-  const removeExecutive = trpc.revenue.removeExecutiveRole.useMutation({
+  const removeExecutive = api.revenue.removeExecutiveRole.useMutation({
     onSuccess: () => {
       toast.success("Executive removed successfully");
       refetchShareholders();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
-  const addPoolMember = trpc.revenue.addPoolMember.useMutation({
+  const addPoolMember = api.revenue.addPoolMember.useMutation({
     onSuccess: () => {
       toast.success("Member added to pool successfully");
       refetchPools();
       setSelectedPool(null);
       setSearchQuery("");
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
-  const removePoolMember = trpc.revenue.removePoolMember.useMutation({
+  const removePoolMember = api.revenue.removePoolMember.useMutation({
     onSuccess: () => {
       toast.success("Member removed from pool");
       refetchPools();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
-  const distributePool = trpc.revenue.distributePool.useMutation({
+  const distributePool = api.revenue.distributePool.useMutation({
     onSuccess: (data) => {
       toast.success(
         `Distributed ₦${data.totalAmount.toLocaleString()} to ${data.memberCount} members`
@@ -75,7 +75,7 @@ export default function RevenuePoolsPage() {
       refetchPools();
       refetchStats();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
   const executiveRoles = [
@@ -151,7 +151,7 @@ export default function RevenuePoolsPage() {
                 <p className="text-2xl font-bold mt-1">
                   ₦
                   {stats?.strategicPools
-                    .reduce((sum, p) => sum + p.balance, 0)
+                    .reduce((sum: any, p: any) => sum + p.balance, 0)
                     .toLocaleString() || "0"}
                 </p>
               </div>
@@ -174,7 +174,7 @@ export default function RevenuePoolsPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {executiveRoles.map((role) => {
-              const assigned = shareholders?.find((s) => s.role === role.role);
+              const assigned = shareholders?.find((s: any) => s.role === role.role);
               return (
                 <div
                   key={role.role}
@@ -238,7 +238,7 @@ export default function RevenuePoolsPage() {
           </div>
 
           <div className="space-y-4">
-            {pools?.map((pool) => (
+            {pools?.map((pool: any) => (
               <div
                 key={pool.id}
                 className="border border-slate-200 dark:border-slate-700 rounded-lg p-4"
@@ -270,7 +270,7 @@ export default function RevenuePoolsPage() {
                         onClick={() =>
                           distributePool.mutate({ poolType: pool.type as any })
                         }
-                        disabled={distributePool.isLoading}
+                        disabled={distributePool.isPending}
                         className="px-4 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-sm transition-colors disabled:opacity-50"
                       >
                         <ArrowRight className="w-4 h-4 inline mr-1" />
@@ -282,7 +282,7 @@ export default function RevenuePoolsPage() {
 
                 {pool.members.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {pool.members.map((member) => (
+                    {pool.members.map((member: any) => (
                       <div
                         key={member.id}
                         className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-lg p-2"
@@ -333,7 +333,7 @@ export default function RevenuePoolsPage() {
 
               {searchResults && searchResults.length > 0 ? (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {searchResults.map((user) => (
+                  {searchResults.map((user: any) => (
                     <button
                       key={user.id}
                       onClick={() => {

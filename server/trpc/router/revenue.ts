@@ -4,7 +4,6 @@ import {
   createTRPCRouter,
   protectedProcedure,
 } from "../trpc";
-import { Prisma } from "@prisma/client";
 
 /**
  * Revenue Allocation Router
@@ -109,7 +108,7 @@ export const revenueRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       // Admin check
-      if (!ctx.session?.user?.isAdmin) {
+      if ((ctx.session?.user as any)?.role !== 'admin') {
         throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
       }
 
@@ -149,7 +148,7 @@ export const revenueRouter = createTRPCRouter({
       // Log admin action
       await ctx.prisma.revenueAdminAction.create({
         data: {
-          adminId: ctx.session.user.id,
+          adminId: ctx.session!.user.id,
           action: "ASSIGN_EXECUTIVE",
           targetRole: input.role,
           targetUserId: input.userId,
@@ -182,7 +181,7 @@ export const revenueRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       // Admin check
-      if (!ctx.session?.user?.isAdmin) {
+      if ((ctx.session?.user as any)?.role !== 'admin') {
         throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
       }
 
@@ -194,7 +193,7 @@ export const revenueRouter = createTRPCRouter({
       // Log admin action
       await ctx.prisma.revenueAdminAction.create({
         data: {
-          adminId: ctx.session.user.id,
+          adminId: ctx.session!.user.id,
           action: "REMOVE_EXECUTIVE",
           targetRole: input.role,
           metadata: { role: input.role },
@@ -209,7 +208,7 @@ export const revenueRouter = createTRPCRouter({
    */
   getStrategicPools: protectedProcedure.query(async ({ ctx }) => {
     // Admin check
-    if (!ctx.session?.user?.isAdmin) {
+    if ((ctx.session?.user as any)?.role !== 'admin') {
       throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
     }
 
@@ -269,7 +268,7 @@ export const revenueRouter = createTRPCRouter({
       }
 
       const alreadyMember = pool.Members.some(
-        (m) => m.userId === input.userId && m.isActive
+        (m: any) => m.userId === input.userId && m.isActive
       );
       if (alreadyMember) {
         throw new TRPCError({
@@ -283,7 +282,7 @@ export const revenueRouter = createTRPCRouter({
         data: {
           poolId: pool.id,
           userId: input.userId,
-          addedBy: ctx.session.user.id,
+          addedBy: ctx.session!.user.id,
         },
         include: {
           User: {
@@ -301,7 +300,7 @@ export const revenueRouter = createTRPCRouter({
       await ctx.prisma.poolAdminAction.create({
         data: {
           poolId: pool.id,
-          adminId: ctx.session.user.id,
+          adminId: ctx.session!.user.id,
           actionType: "MEMBER_ADDED",
           description: `Added user ${input.userId} to ${input.poolType} pool`,
           metadata: {
@@ -351,7 +350,7 @@ export const revenueRouter = createTRPCRouter({
       await ctx.prisma.poolAdminAction.create({
         data: {
           poolId: member.Pool.id,
-          adminId: ctx.session.user.id,
+          adminId: ctx.session!.user.id,
           actionType: "MEMBER_REMOVED",
           description: `Removed user ${member.userId} from ${member.Pool.type} pool`,
           metadata: {
@@ -420,7 +419,7 @@ export const revenueRouter = createTRPCRouter({
       });
 
       const totalAmount = pendingAllocations.reduce(
-        (sum, alloc) => sum + Number(alloc.amount),
+        (sum: number, alloc: any) => sum + Number(alloc.amount),
         0
       );
 
@@ -435,7 +434,7 @@ export const revenueRouter = createTRPCRouter({
       const sharePerMember = totalAmount / pool.Members.length;
 
       // Use transaction for atomicity
-      const result = await ctx.prisma.$transaction(async (tx) => {
+      const result = await ctx.prisma.$transaction(async (tx: any) => {
         const distributions = [];
 
         // Create pool distributions for each allocation
@@ -449,7 +448,7 @@ export const revenueRouter = createTRPCRouter({
               amountPerMember: Number(allocation.amount) / pool.Members.length,
               status: "COMPLETED",
               distributedAt: new Date(),
-              distributedBy: ctx.session.user.id,
+              distributedBy: ctx.session!.user.id,
             },
           });
           distributions.push(poolDist);
@@ -470,7 +469,7 @@ export const revenueRouter = createTRPCRouter({
         // Mark allocations as distributed
         await tx.revenueAllocation.updateMany({
           where: {
-            id: { in: pendingAllocations.map((a) => a.id) },
+            id: { in: pendingAllocations.map((a: any) => a.id) },
           },
           data: {
             status: "DISTRIBUTED",
@@ -491,7 +490,7 @@ export const revenueRouter = createTRPCRouter({
       await ctx.prisma.poolAdminAction.create({
         data: {
           poolId: pool.id,
-          adminId: ctx.session.user.id,
+          adminId: ctx.session!.user.id,
           actionType: "POOL_DISTRIBUTED",
           description: `Distributed ₦${result.totalAmount.toLocaleString()} to ${pool.Members.length} members`,
           metadata: {
@@ -573,16 +572,16 @@ export const revenueRouter = createTRPCRouter({
       companyTotalReceived: Number(companyReserve?.totalReceived) || 0,
       companyTotalSpent: Number(companyReserve?.totalSpent) || 0,
       executivePoolPending: Number(executivePool._sum.amount) || 0,
-      strategicPools: strategicPools.map((p) => ({
+      strategicPools: strategicPools.map((p: any) => ({
         type: p.type,
         name: p.name,
         balance: Number(p.balance),
       })),
-      recentTransactions: recentTransactions.map((t) => ({
+      recentTransactions: recentTransactions.map((t: any) => ({
         ...t,
         amount: Number(t.amount),
       })),
-      recentDistributions: recentDistributions.map((d) => ({
+      recentDistributions: recentDistributions.map((d: any) => ({
         ...d,
         amount: Number(d.amount),
         percentage: Number(d.percentage),
@@ -620,7 +619,7 @@ export const revenueRouter = createTRPCRouter({
         where,
       });
 
-      return breakdown.map((item) => ({
+      return breakdown.map((item: any) => ({
         source: item.source,
         totalAmount: item._sum.amount || 0,
         transactionCount: item._count,
@@ -638,7 +637,7 @@ export const revenueRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       // Admin check
-      if (!ctx.session?.user?.isAdmin) {
+      if ((ctx.session?.user as any)?.role !== 'admin') {
         throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
       }
 

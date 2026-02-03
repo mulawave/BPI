@@ -301,7 +301,7 @@ export default function BankAccountsPage() {
             className="rounded-lg border border-border bg-background/60 px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
           >
             <option value="">All Banks</option>
-            {bankOptions.map((b) => (
+            {bankOptions.map((b: any) => (
               <option key={b.id} value={b.id}>{b.bankName} ({b.bankCode})</option>
             ))}
           </select>
@@ -347,7 +347,7 @@ export default function BankAccountsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {records.data?.records.map((r) => (
+              {records.data?.records.map((r: any) => (
                 <tr key={r.id} className="hover:bg-background/50">
                   <td className="px-3 py-2">
                     <div className="font-medium text-foreground">{r.user?.name || r.user?.email || r.user?.username || "Unknown"}</div>
@@ -460,7 +460,7 @@ export default function BankAccountsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {missingUsers.data?.users.map((u) => (
+              {missingUsers.data?.users.map((u: any) => (
                 <tr key={u.id} className="hover:bg-background/50">
                   <td className="px-3 py-2">
                     <div className="font-medium text-foreground">{u.name || u.email || u.username || "Unknown"}</div>
@@ -558,7 +558,7 @@ export default function BankAccountsPage() {
                     className="mt-1 w-full rounded-lg border border-border bg-background/60 px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                   >
                     <option value="">Unmapped / manual entry</option>
-                    {bankOptions.map((b) => (
+                    {bankOptions.map((b: any) => (
                       <option key={b.id} value={b.id}>{b.bankName} ({b.bankCode})</option>
                     ))}
                   </select>

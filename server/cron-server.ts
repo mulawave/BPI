@@ -9,12 +9,10 @@
  */
 
 import cron from "node-cron";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 
 // Set timezone to Nigeria (WAT = UTC+1)
 process.env.TZ = 'Africa/Lagos';
-
-const prisma = new PrismaClient();
 
 /**
  * Distribute Executive Pool to shareholders
@@ -84,7 +82,7 @@ async function distributeExecutivePool() {
     console.log(`👥 Active Shareholders: ${shareholders.length}`);
 
     // Use transaction for atomicity
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: any) => {
       const distributions = [];
 
       // Process each allocation

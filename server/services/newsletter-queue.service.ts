@@ -215,7 +215,7 @@ class NewsletterQueueService {
       });
 
       // Filter out invalid emails
-      const recipients = users.filter((u) => u.email && u.email.includes('@'));
+      const recipients = users.filter((u: any) => u.email && u.email.includes('@'));
       const total = recipients.length;
 
       console.log(`👥 [NEWSLETTER-QUEUE] Recipients: ${total} users`);
@@ -293,7 +293,7 @@ class NewsletterQueueService {
         console.log(`\n📦 [NEWSLETTER-QUEUE] Processing batch ${batchNum + 1}/${totalBatches} (${batch.length} emails)`);
 
         // Send all emails in this batch
-        const batchPromises = batch.map(async (recipient) => {
+        const batchPromises = batch.map(async (recipient: any) => {
           try {
             const emailHtml = buildNewsletterEmail({
               userFirstName: recipient.firstname || '',

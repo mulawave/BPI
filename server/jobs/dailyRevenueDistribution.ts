@@ -3,10 +3,8 @@
  * Runs daily at 8:00 AM to distribute Executive Pool (30%) to shareholders
  */
 
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import cron from "node-cron";
-
-const prisma = new PrismaClient();
 
 /**
  * Distribute Executive Pool to shareholders
@@ -43,7 +41,7 @@ async function distributeExecutivePool() {
 
     // Calculate total pending amount
     const totalAmount = pendingAllocations.reduce(
-      (sum, alloc) => sum + alloc.amount,
+      (sum: any, alloc: any) => sum + alloc.amount,
       0
     );
     console.log(`💰 Total Executive Pool Amount: ₦${totalAmount.toLocaleString()}`);
@@ -119,7 +117,7 @@ async function distributeExecutivePool() {
     await prisma.revenueAllocation.updateMany({
       where: {
         id: {
-          in: pendingAllocations.map((a) => a.id),
+          in: pendingAllocations.map((a: any) => a.id),
         },
       },
       data: {

@@ -191,7 +191,7 @@ export const adminCurrencyRouter = createTRPCRouter({
   // Get currency statistics
   getCurrencyStats: adminProcedure.query(async () => {
     const currencies = await prisma.currencyManagement.findMany();
-    const defaultCurrency = currencies.find((c) => c.default === 1);
+    const defaultCurrency = currencies.find((c: any) => c.default === 1);
     
     const bpTokenPrice = await prisma.bPTokenPrice.findFirst({
       where: { active: true },
@@ -203,7 +203,7 @@ export const adminCurrencyRouter = createTRPCRouter({
       defaultCurrency: defaultCurrency?.symbol || 'NGN',
       bpTokenPrice: bpTokenPrice?.price || 0,
       lastBPTokenUpdate: bpTokenPrice?.updatedAt,
-      currencies: currencies.map((c) => ({
+      currencies: currencies.map((c: any) => ({
         symbol: c.symbol,
         name: c.name,
         rate: c.rate,

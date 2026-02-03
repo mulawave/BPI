@@ -3,9 +3,7 @@
  * Run: npx ts-node scripts/seedRevenuePools.ts
  */
 
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "../lib/prisma";
 
 async function seedRevenuePools() {
   console.log("🌱 [SEED] Starting revenue pools initialization...\n");

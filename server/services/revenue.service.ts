@@ -3,7 +3,8 @@
  * Centralized service for recording revenue from all sources
  */
 
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import type { PrismaClient } from "@prisma/client";
 
 export type RevenueSource =
   | "COMMUNITY_SUPPORT"
@@ -36,7 +37,7 @@ export async function recordRevenue(
   const { source, amount, currency = "NGN", sourceId, description } = params;
 
   // Use transaction for atomicity
-  return await prisma.$transaction(async (tx) => {
+  return await prisma.$transaction(async (tx: any) => {
     // Check for duplicate by sourceId
     if (sourceId) {
       const existing = await tx.revenueTransaction.findFirst({
@@ -193,7 +194,7 @@ export async function getRevenueStats(prisma: PrismaClient) {
     companyTotalReceived: companyReserve?.totalReceived || 0,
     companyTotalSpent: companyReserve?.totalSpent || 0,
     executivePoolPending: executivePoolPending._sum.amount || 0,
-    strategicPools: strategicPools.map((p) => ({
+    strategicPools: strategicPools.map((p: any) => ({
       type: p.type,
       name: p.name,
       balance: p.balance,
