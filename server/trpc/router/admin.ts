@@ -18,6 +18,7 @@ import { initiateBankTransfer } from "@/lib/flutterwave";
 import { notifyWithdrawalStatus, notifyDepositStatus } from "@/server/services/notification.service";
 import { generateReceiptLink } from "@/server/services/receipt.service";
 import { sendWithdrawalApprovedToUser, sendWithdrawalRejectedToUser } from "@/lib/email";
+import { recordRevenue } from "@/server/services/revenue.service";
 
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.session?.user) {
@@ -905,6 +906,15 @@ export const adminRouter = createTRPCRouter({
             paymentMethodLabel: "Bank Transfer",
             activatorName: payment.User?.name || payment.User?.email || "New Member",
           });
+
+          // Record revenue for membership purchase
+          await recordRevenue(prisma, {
+            source: "MEMBERSHIP_PURCHASE",
+            amount: payment.amount,
+            currency: "NGN",
+            sourceId: payment.id,
+            description: `Membership purchase: Package ${pkgId}`,
+          });
         } else if (purpose === "UPGRADE") {
           const pkgId = metadata.packageId as string | undefined;
           const fromId = metadata.fromPackageId as string | undefined;
@@ -920,6 +930,15 @@ export const adminRouter = createTRPCRouter({
             selectedPalliative: metadata.selectedPalliative,
             paymentReference: paymentRef,
             paymentMethodLabel: "Bank Transfer",
+          });
+
+          // Record revenue for membership upgrade  
+          await recordRevenue(prisma, {
+            source: "MEMBERSHIP_PURCHASE",
+            amount: payment.amount,
+            currency: "NGN",
+            sourceId: payment.id,
+            description: `Membership upgrade: From ${fromId} to ${pkgId}`,
           });
         } else if (purpose === "TOPUP" || purpose === "DEPOSIT") {
           // Extract deposit amount and VAT from metadata

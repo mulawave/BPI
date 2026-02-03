@@ -5,6 +5,7 @@ import { getReferralChain } from "@/server/services/referral.service";
 import { distributeBptReward } from "@/server/services/rewards.service";
 import { randomUUID } from "crypto";
 import { getPalliativeTier, isHighTierPackage, getWalletFieldName } from "@/lib/palliative";
+import { recordRevenue } from "@/server/services/revenue.service";
 import {
   notifyMembershipActivation,
   notifyMembershipRenewal,
@@ -960,6 +961,15 @@ export const packageRouter = createTRPCRouter({
           mealDistributed: totalMeal,
           securityDistributed: totalSecurity,
         },
+      });
+
+      // Record revenue from membership renewal
+      await recordRevenue(prisma, {
+        source: "MEMBERSHIP_RENEWAL",
+        amount: renewalFee,
+        currency: "NGN",
+        sourceId: packageId,
+        description: `Membership renewal: ${membershipPackage.name}`,
       });
 
       // Send renewal notification

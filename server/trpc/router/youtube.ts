@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { verifyChannelCode } from "@/lib/youtubeApi";
 import { notifyYoutubeReferralEarning } from "@/server/services/notification.service";
 import { randomUUID } from "crypto";
+import { recordRevenue } from "@/server/services/revenue.service";
 
 export const youtubeRouter = createTRPCRouter({
   // Get available YouTube subscription plans from database
@@ -119,6 +120,15 @@ export const youtubeRouter = createTRPCRouter({
           description: `VAT - YouTube ${plan.name}`,
           status: "completed"
         }
+      });
+
+      // Record revenue from YouTube plan purchase
+      await recordRevenue(prisma, {
+        source: "YOUTUBE_SUBSCRIPTION",
+        amount: Number(plan.amount),
+        currency: "NGN",
+        sourceId: plan.id,
+        description: `YouTube plan purchase: ${plan.name}`,
       });
 
       // Create YoutubeProvider record with subscription balance

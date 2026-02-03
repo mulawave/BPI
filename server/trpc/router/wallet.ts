@@ -7,6 +7,7 @@ import { randomUUID } from "crypto";
 import { initiateBankTransfer, initializeFlutterwavePayment, verifyFlutterwavePayment } from "@/lib/flutterwave";
 import { initializePaystackPayment, verifyPaystackPayment } from "@/lib/paystack";
 import { sendWithdrawalRequestToAdmins } from "@/lib/email";
+import { recordRevenue } from "@/server/services/revenue.service";
 
 // Default admin settings (will be overridden by DB settings)
 const DEFAULT_CASH_WITHDRAWAL_FEE = 100;
@@ -542,7 +543,7 @@ export const walletRouter = createTRPCRouter({
 
         // Create fee transaction
         if (withdrawalFee > 0) {
-          await prisma.transaction.create({
+          const feeTransaction = await prisma.transaction.create({
             data: {
               id: randomUUID(),
               userId,
@@ -552,6 +553,15 @@ export const walletRouter = createTRPCRouter({
               status: "completed",
               reference: `FEE-WD-${Date.now()}`
             }
+          });
+
+          // Record withdrawal fee as revenue
+          await recordRevenue(prisma, {
+            source: withdrawalType === 'cash' ? "WITHDRAWAL_FEE_CASH" : "WITHDRAWAL_FEE_BPT",
+            amount: withdrawalFee,
+            currency: "NGN",
+            sourceId: feeTransaction.id,
+            description: `Withdrawal fee from ${sourceWallet} wallet`,
           });
         }
 

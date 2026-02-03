@@ -1762,6 +1762,16 @@ model User {
   YoutubeProvider                                                      YoutubeProvider?
   bankRecords                                                          UserBankRecord[]
   PickupExperienceRatings                                              PickupExperienceRating[]
+  
+  // Revenue & Pools Relations
+  RevenueFromUser                                                      RevenueTransaction[]         @relation("RevenueFromUser")
+  ExecutiveShareholderUser                                             ExecutiveShareholder?        @relation("ExecutiveShareholderUser")
+  ExecutiveAssignedBy                                                  ExecutiveShareholder[]       @relation("ExecutiveAssignedBy")
+  PoolMemberUser                                                       PoolMember[]                 @relation("PoolMemberUser")
+  PoolMemberAddedBy                                                    PoolMember[]                 @relation("PoolMemberAddedBy")
+  PoolDistributedBy                                                    PoolDistribution[]           @relation("PoolDistributedBy")
+  RevenueAdminActions                                                  RevenueAdminAction[]         @relation("RevenueAdminActions")
+  PoolAdminActions                                                     PoolAdminAction[]            @relation("PoolAdminActions")
 
   @@index([cityId])
   @@index([stateId])
@@ -2184,4 +2194,240 @@ model ImpersonationToken {
   @@index([token])
   @@index([adminId])
   @@index([targetUserId])
+}
+
+// ============================================
+// REVENUE TRACKING & ALLOCATION SYSTEM
+// ============================================
+
+enum RevenueSource {
+  COMMUNITY_SUPPORT      // CSP payments
+  MEMBERSHIP_REGISTRATION // New member payments
+  MEMBERSHIP_RENEWAL     // Membership renewals
+  STORE_PURCHASE         // BPI Store orders
+  WITHDRAWAL_FEE         // Withdrawal processing fees
+  YOUTUBE_SUBSCRIPTION   // YouTube plan subscriptions
+  THIRD_PARTY_SERVICES   // Third-party integrations
+  PALLIATIVE_PROGRAM     // Palliative related
+  LEADERSHIP_POOL_FEE    // Leadership pool entries
+  TRAINING_CENTER        // Training center fees
+  OTHER                  // Other revenue streams
+}
+
+enum AllocationStatus {
+  PENDING       // Revenue recorded, allocation not yet done
+  ALLOCATED     // Split into Company/Executive/Pools
+  DISTRIBUTED   // Executive shares distributed to wallets
+  COMPLETED     // All processing done
+  FAILED        // Allocation/distribution failed
+}
+
+enum ExecutiveRole {
+  CEO                // 30% of executive pool
+  CTO                // 20% of executive pool
+  HEAD_OF_TRAVEL     // 20% of executive pool
+  CMO                // 10% of executive pool
+  OLIVER             // 5% of executive pool
+  MORRISON           // 5% of executive pool
+  ANNIE              // 10% of executive pool
+}
+
+enum PoolType {
+  LEADERSHIP    // 4% of total revenue
+  STATE         // 4% of total revenue
+  DIRECTORS     // 4% of total revenue
+  TECHNOLOGY    // 4% of total revenue
+  INVESTORS     // 4% of total revenue
+}
+
+enum DistributionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model RevenueTransaction {
+  id              String         @id @default(cuid())
+  source          RevenueSource
+  amount          Decimal        @db.Decimal(18, 2)
+  currency        String         @default("NGN")
+  description     String?
+  referenceId     String?        // Original transaction/payment ID
+  userId          String?        // User who generated the revenue (if applicable)
+  createdAt       DateTime       @default(now())
+  allocatedAt     DateTime?
+  allocationStatus AllocationStatus @default(PENDING)
+  
+  User            User?          @relation("RevenueFromUser", fields: [userId], references: [id])
+  Allocations     RevenueAllocation[]
+  AdminActions    RevenueAdminAction[]
+
+  @@index([source])
+  @@index([userId])
+  @@index([allocationStatus])
+  @@index([createdAt])
+}
+
+model RevenueAllocation {
+  id                    String            @id @default(cuid())
+  revenueTransactionId  String
+  destinationType       String            // "COMPANY_RESERVE" | "EXECUTIVE_POOL" | "STRATEGIC_POOL"
+  destinationId         String?           // Pool ID for strategic pools
+  amount                Decimal           @db.Decimal(18, 2)
+  percentage            Decimal           @db.Decimal(5, 2) // e.g., 50.00 for 50%
+  status                AllocationStatus  @default(ALLOCATED)
+  createdAt             DateTime          @default(now())
+  distributedAt         DateTime?
+
+  RevenueTransaction    RevenueTransaction @relation(fields: [revenueTransactionId], references: [id], onDelete: Cascade)
+  ExecutiveDistributions ExecutiveDistribution[]
+  PoolDistributions      PoolDistribution[]
+
+  @@index([revenueTransactionId])
+  @@index([destinationType])
+  @@index([status])
+}
+
+model ExecutiveShareholder {
+  id              String          @id @default(cuid())
+  role            ExecutiveRole   @unique
+  userId          String?         @unique
+  percentage      Decimal         @db.Decimal(5, 2) // % of executive pool (30% total)
+  isActive        Boolean         @default(true)
+  assignedAt      DateTime?
+  assignedBy      String?         // Admin user ID
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  User            User?           @relation("ExecutiveShareholderUser", fields: [userId], references: [id])
+  AssignedByUser  User?           @relation("ExecutiveAssignedBy", fields: [assignedBy], references: [id])
+  Distributions   ExecutiveDistribution[]
+
+  @@index([userId])
+  @@index([role])
+  @@index([isActive])
+}
+
+model ExecutiveDistribution {
+  id                    String              @id @default(cuid())
+  allocationId          String
+  shareholderId         String
+  amount                Decimal             @db.Decimal(18, 2)
+  percentage            Decimal             @db.Decimal(5, 2)
+  status                DistributionStatus  @default(PENDING)
+  distributedAt         DateTime?
+  createdAt             DateTime            @default(now())
+  
+  Allocation            RevenueAllocation   @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+  Shareholder           ExecutiveShareholder @relation(fields: [shareholderId], references: [id], onDelete: Cascade)
+
+  @@index([allocationId])
+  @@index([shareholderId])
+  @@index([status])
+  @@index([distributedAt])
+}
+
+model StrategyPool {
+  id              String          @id @default(cuid())
+  type            PoolType        @unique
+  name            String
+  description     String?
+  percentage      Decimal         @db.Decimal(5, 2) @default(4.00) // 4% each
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  Members         PoolMember[]
+  Distributions   PoolDistribution[]
+  AdminActions    PoolAdminAction[]
+
+  @@index([type])
+  @@index([isActive])
+}
+
+model PoolMember {
+  id              String          @id @default(cuid())
+  poolId          String
+  userId          String
+  customPercentage Decimal?       @db.Decimal(5, 2) // If null, split equally
+  isActive        Boolean         @default(true)
+  joinedAt        DateTime        @default(now())
+  addedBy         String          // Admin user ID
+  leftAt          DateTime?
+  
+  Pool            StrategyPool    @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  User            User            @relation("PoolMemberUser", fields: [userId], references: [id])
+  AddedByUser     User            @relation("PoolMemberAddedBy", fields: [addedBy], references: [id])
+
+  @@unique([poolId, userId])
+  @@index([poolId])
+  @@index([userId])
+  @@index([isActive])
+}
+
+model PoolDistribution {
+  id                    String              @id @default(cuid())
+  allocationId          String
+  poolId                String
+  totalAmount           Decimal             @db.Decimal(18, 2)
+  memberCount           Int
+  amountPerMember       Decimal             @db.Decimal(18, 2)
+  status                DistributionStatus  @default(PENDING)
+  distributedAt         DateTime?
+  distributedBy         String?             // Admin user ID
+  createdAt             DateTime            @default(now())
+  
+  Allocation            RevenueAllocation   @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+  Pool                  StrategyPool        @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  DistributedByUser     User?               @relation("PoolDistributedBy", fields: [distributedBy], references: [id])
+
+  @@index([allocationId])
+  @@index([poolId])
+  @@index([status])
+  @@index([distributedAt])
+}
+
+model CompanyReserve {
+  id              String          @id @default(cuid())
+  balance         Decimal         @db.Decimal(18, 2) @default(0)
+  totalReceived   Decimal         @db.Decimal(18, 2) @default(0)
+  totalSpent      Decimal         @db.Decimal(18, 2) @default(0)
+  currency        String          @default("NGN")
+  updatedAt       DateTime        @updatedAt
+  createdAt       DateTime        @default(now())
+}
+
+model RevenueAdminAction {
+  id                    String          @id @default(cuid())
+  adminId               String
+  actionType            String          // "ALLOCATION_RUN" | "DISTRIBUTION_RUN" | "POOL_EDIT" | etc
+  description           String
+  revenueTransactionId  String?
+  metadata              Json?
+  createdAt             DateTime        @default(now())
+
+  Admin                 User            @relation("RevenueAdminActions", fields: [adminId], references: [id])
+  RevenueTransaction    RevenueTransaction? @relation(fields: [revenueTransactionId], references: [id])
+
+  @@index([adminId])
+  @@index([actionType])
+  @@index([createdAt])
+}
+
+model PoolAdminAction {
+  id              String          @id @default(cuid())
+  poolId          String
+  adminId         String
+  actionType      String          // "MEMBER_ADDED" | "MEMBER_REMOVED" | "PERCENTAGE_CHANGED" | etc
+  description     String
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+
+  Pool            StrategyPool    @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  Admin           User            @relation("PoolAdminActions", fields: [adminId], references: [id])
+
+  @@index([poolId])
+  @@index([adminId])
+  @@index([createdAt])
 }
