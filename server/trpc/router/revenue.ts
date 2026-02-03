@@ -3,7 +3,6 @@ import { TRPCError } from "@trpc/server";
 import {
   createTRPCRouter,
   protectedProcedure,
-  adminProcedure,
 } from "../trpc";
 import { Prisma } from "@prisma/client";
 
@@ -11,6 +10,17 @@ import { Prisma } from "@prisma/client";
  * Revenue Allocation Router
  * Handles all revenue tracking, allocation (50/30/20), and distribution
  */
+
+// Helper to check if user is admin
+function requireAdmin(session: any) {
+  const userRole = (session?.user as any)?.role;
+  if (userRole !== "admin") {
+    throw new TRPCError({ 
+      code: "FORBIDDEN", 
+      message: "Admin access required" 
+    });
+  }
+}
 
 export const revenueRouter = createTRPCRouter({
   /**
@@ -65,7 +75,12 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Get executive shareholders with their assignments
    */
-  getExecutiveShareholders: adminProcedure.query(async ({ ctx }) => {
+  getExecutiveShareholders: protectedProcedure.query(async ({ ctx }) => {
+    // Admin check
+    if (!ctx.session?.user?.isAdmin) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+    }
+
     return ctx.prisma.executiveShareholder.findMany({
       include: {
         user: {
@@ -84,7 +99,7 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Assign user to executive role
    */
-  assignExecutiveRole: adminProcedure
+  assignExecutiveRole: protectedProcedure
     .input(
       z.object({
         role: z.enum([
@@ -100,6 +115,11 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Admin check
+      if (!ctx.session?.user?.isAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+      }
+
       // Check if role is already assigned
       const existing = await ctx.prisma.executiveShareholder.findUnique({
         where: { role: input.role },
@@ -153,7 +173,7 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Remove user from executive role
    */
-  removeExecutiveRole: adminProcedure
+  removeExecutiveRole: protectedProcedure
     .input(
       z.object({
         role: z.enum([
@@ -168,6 +188,11 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Admin check
+      if (!ctx.session?.user?.isAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+      }
+
       await ctx.prisma.executiveShareholder.update({
         where: { role: input.role },
         data: { userId: null },
@@ -189,7 +214,12 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Get all strategic pools with members
    */
-  getStrategicPools: adminProcedure.query(async ({ ctx }) => {
+  getStrategicPools: protectedProcedure.query(async ({ ctx }) => {
+    // Admin check
+    if (!ctx.session?.user?.isAdmin) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+    }
+
     return ctx.prisma.strategyPool.findMany({
       include: {
         members: {
@@ -216,7 +246,7 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Add member to strategic pool
    */
-  addPoolMember: adminProcedure
+  addPoolMember: protectedProcedure
     .input(
       z.object({
         poolType: z.enum([
@@ -230,6 +260,11 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Admin check
+      if (!ctx.session?.user?.isAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+      }
+
       // Check if user is already in this pool
       const pool = await ctx.prisma.strategyPool.findUnique({
         where: { type: input.poolType },
@@ -291,13 +326,18 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Remove member from strategic pool
    */
-  removePoolMember: adminProcedure
+  removePoolMember: protectedProcedure
     .input(
       z.object({
         memberId: z.string(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Admin check
+      if (!ctx.session?.user?.isAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+      }
+
       const member = await ctx.prisma.poolMember.findUnique({
         where: { id: input.memberId },
         include: { pool: true },
@@ -334,7 +374,7 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Distribute strategic pool to members
    */
-  distributePool: adminProcedure
+  distributePool: protectedProcedure
     .input(
       z.object({
         poolType: z.enum([
@@ -347,6 +387,11 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Admin check
+      if (!ctx.session?.user?.isAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+      }
+
       const pool = await ctx.prisma.strategyPool.findUnique({
         where: { type: input.poolType },
         include: {
@@ -453,7 +498,12 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Get revenue dashboard stats
    */
-  getDashboardStats: adminProcedure.query(async ({ ctx }) => {
+  getDashboardStats: protectedProcedure.query(async ({ ctx }) => {
+    // Admin check
+    if (!ctx.session?.user?.isAdmin) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+    }
+
     const [
       totalRevenue,
       companyReserve,
@@ -524,7 +574,7 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Get revenue breakdown by source
    */
-  getRevenueBreakdown: adminProcedure
+  getRevenueBreakdown: protectedProcedure
     .input(
       z.object({
         startDate: z.date().optional(),
@@ -532,7 +582,12 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const where: Prisma.RevenueTransactionWhereInput = {
+      // Admin check
+      if (!ctx.session?.user?.isAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+      }
+
+      const where: any = {
         status: "COMPLETED",
       };
 
@@ -559,13 +614,18 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Search users for pool assignment
    */
-  searchUsers: adminProcedure
+  searchUsers: protectedProcedure
     .input(
       z.object({
         query: z.string().min(2),
       })
     )
     .query(async ({ ctx, input }) => {
+      // Admin check
+      if (!ctx.session?.user?.isAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+      }
+
       return ctx.prisma.user.findMany({
         where: {
           OR: [
@@ -587,13 +647,18 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Get admin action history
    */
-  getAdminActions: adminProcedure
+  getAdminActions: protectedProcedure
     .input(
       z.object({
         limit: z.number().default(50),
       })
     )
     .query(async ({ ctx, input }) => {
+      // Admin check
+      if (!ctx.session?.user?.isAdmin) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+      }
+
       return ctx.prisma.revenueAdminAction.findMany({
         include: {
           admin: {

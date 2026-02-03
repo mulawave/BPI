@@ -25,6 +25,9 @@
     "smoke:cleanup-demo-pendings": "npx tsx scripts/cleanupDemoPendingPayments.ts",
     "youtube:verify": "npx tsx scripts/verifyYoutubeSubscriptions.ts",
     "youtube:scheduler": "npx tsx server/jobs/youtubeScheduler.ts",
+    "cron:server": "npx tsx server/cron-server.ts",
+    "cron:distribute": "npx tsx -e \"import('./server/cron-server.js').then(m => m.distributeExecutivePool())\"",
+    "seed:revenue-pools": "npx tsx scripts/seedRevenuePools.ts",
     "db:export": "npx tsx scripts/exportDatabaseToSeed.ts",
     "db:backup": "npx tsx scripts/exportDatabaseToSeed.ts",
     "db:restore": "npx tsx prisma/seedFromBackup.ts",
@@ -34,7 +37,6 @@
     "backup:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scheduleGitAutoBackup.ps1",
     "migrate:legacy-blogs": "npx tsx scripts/migrateLegacyBlogs.ts",
     "lint": "next lint"
- 
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
@@ -62,6 +64,7 @@
     "framer-motion": "^11.18.2",
     "googleapis": "^169.0.0",
     "lucide-react": "^0.454.0",
+    "mysql2": "^3.11.3",
     "next": "^14.2.5",
     "next-auth": "^4.22.1",
     "node-cron": "^4.2.1",
@@ -74,7 +77,6 @@
     "react-markdown": "^9.1.0",
     "react-syntax-highlighter": "^16.1.0",
     "recharts": "^3.6.0",
-    "mysql2": "^3.11.3",
     "remark-gfm": "^4.0.1",
     "speakeasy": "^2.0.0",
     "superjson": "^2.2.2",
