@@ -251,4 +251,46 @@ export const userRouter = createTRPCRouter({
 
       return { success: true };
     }),
+
+  // Search users by email, name, or screen name
+  searchUsers: protectedProcedure
+    .input(z.object({
+      term: z.string().min(2),
+      limit: z.number().int().positive().optional().default(10),
+    }))
+    .query(async ({ ctx, input }) => {
+      const searchTerm = input.term.toLowerCase();
+
+      const users = await prisma.user.findMany({
+        where: {
+          OR: [
+            { email: { contains: searchTerm, mode: 'insensitive' } },
+            { name: { contains: searchTerm, mode: 'insensitive' } },
+            { firstname: { contains: searchTerm, mode: 'insensitive' } },
+            { lastname: { contains: searchTerm, mode: 'insensitive' } },
+            { username: { contains: searchTerm, mode: 'insensitive' } },
+          ],
+          activated: true,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          username: true,
+          image: true,
+        },
+        take: input.limit,
+        orderBy: [
+          { email: 'asc' },
+        ],
+      });
+
+      return users.map((user) => ({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        screenName: user.username,
+        image: user.image,
+      }));
+    }),
 });

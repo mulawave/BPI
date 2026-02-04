@@ -36,20 +36,16 @@ export async function recordRevenue(
 ) {
   const { source, amount, currency = "NGN", sourceId, description } = params;
 
-  // Use transaction for atomicity
-  return await prisma.$transaction(async (tx: any) => {
-    // Check for duplicate by sourceId
-    if (sourceId) {
-      const existing = await tx.revenueTransaction.findFirst({
-        where: { sourceId },
-      });
-      if (existing) {
-        throw new Error(`Revenue already recorded for sourceId: ${sourceId}`);
-      }
-    }
+  // Validate amount
+  if (amount <= 0) {
+    throw new Error("Amount must be greater than 0");
+  }
 
-    // Record revenue transaction
-    const revenueTransaction = await tx.revenueTransaction.create({
+  try {
+    // Use transaction for atomicity
+    return await prisma.$transaction(async (tx: any) => {
+      // Record revenue transaction (unique constraint on sourceId prevents duplicates)
+      const revenueTransaction = await tx.revenueTransaction.create({
       data: {
         source,
         amount,
@@ -72,8 +68,25 @@ export async function recordRevenue(
       },
     });
 
-    return revenueTransaction;
-  });
+      return revenueTransaction;
+    });
+  } catch (error: any) {
+    console.error("[REVENUE SERVICE] Error recording revenue:", {
+      source,
+      amount,
+      currency,
+      sourceId,
+      error: error.message,
+      stack: error.stack,
+    });
+    
+    // Handle duplicate sourceId error from unique constraint
+    if (error.code === "P2002" && sourceId) {
+      throw new Error(`Revenue already recorded for sourceId: ${sourceId}`);
+    }
+    
+    throw error;
+  }
 }
 
 /**
@@ -87,84 +100,95 @@ async function allocateRevenue(
   transactionId: string,
   amount: number
 ) {
-  // 50% to Company Reserve
-  const companyAmount = amount * 0.5;
-  await prisma.revenueAllocation.create({
-    data: {
-      revenueTransactionId: transactionId,
-      destinationType: "COMPANY_RESERVE",
-      amount: companyAmount,
-      percentage: 50,
-      status: "ALLOCATED",
-    },
-  });
-  await prisma.companyReserve.upsert({
-    where: { id: 1 },
-    update: { 
-      balance: { increment: companyAmount },
-      totalReceived: { increment: companyAmount },
-    },
-    create: { 
-      id: 1, 
-      balance: companyAmount,
-      totalReceived: companyAmount,
-    },
-  });
-
-  // 30% to Executive Pool (pending daily distribution)
-  const executiveAmount = amount * 0.3;
-  await prisma.revenueAllocation.create({
-    data: {
-      revenueTransactionId: transactionId,
-      destinationType: "EXECUTIVE_POOL",
-      amount: executiveAmount,
-      percentage: 30,
-      status: "PENDING",
-    },
-  });
-
-  // 20% split among 5 strategic pools (4% each)
-  const poolAmount = amount * 0.04;
-  const poolConfigs = [
-    { type: "LEADERSHIP", name: "Leadership Pool" },
-    { type: "STATE", name: "State Pool" },
-    { type: "DIRECTORS", name: "Directors Pool" },
-    { type: "TECHNOLOGY", name: "Technology Pool" },
-    { type: "INVESTORS", name: "Investors Pool" },
-  ] as const;
-
-  for (const { type: poolType, name } of poolConfigs) {
-    // Get or create pool
-    const pool = await prisma.strategyPool.upsert({
-      where: { type: poolType },
-      update: { balance: { increment: poolAmount } },
-      create: {
-        type: poolType,
-        name,
-        balance: poolAmount,
-      },
-    });
-
-    // Record allocation
+  try {
+    console.log(`[REVENUE SERVICE] Allocating revenue: ₦${amount.toLocaleString()} for transaction ${transactionId}`);
+    
+    // 50% to Company Reserve
+    const companyAmount = amount * 0.5;
     await prisma.revenueAllocation.create({
       data: {
         revenueTransactionId: transactionId,
-        destinationType: "STRATEGY_POOL",
-        destinationId: pool.id,
-        amount: poolAmount,
-        percentage: 4,
+        destinationType: "COMPANY_RESERVE",
+        amount: companyAmount,
+        percentage: 50,
+        status: "ALLOCATED",
+      },
+    });
+    await prisma.companyReserve.upsert({
+      where: { id: 1 },
+      update: { 
+        balance: { increment: companyAmount },
+        totalReceived: { increment: companyAmount },
+      },
+      create: { 
+        id: 1, 
+        balance: companyAmount,
+        totalReceived: companyAmount,
+      },
+    });
+
+    // 30% to Executive Pool (pending daily distribution)
+    const executiveAmount = amount * 0.3;
+    await prisma.revenueAllocation.create({
+      data: {
+        revenueTransactionId: transactionId,
+        destinationType: "EXECUTIVE_POOL",
+        amount: executiveAmount,
+        percentage: 30,
         status: "PENDING",
       },
     });
+
+    // 20% split among 5 strategic pools (4% each)
+    const poolAmount = amount * 0.04;
+    const poolConfigs = [
+      { type: "LEADERSHIP", name: "Leadership Pool" },
+      { type: "STATE", name: "State Pool" },
+      { type: "DIRECTORS", name: "Directors Pool" },
+      { type: "TECHNOLOGY", name: "Technology Pool" },
+      { type: "INVESTORS", name: "Investors Pool" },
+    ] as const;
+
+    for (const { type: poolType, name } of poolConfigs) {
+      // Get or create pool
+      const pool = await prisma.strategyPool.upsert({
+        where: { type: poolType },
+        update: { balance: { increment: poolAmount } },
+        create: {
+          type: poolType,
+          name,
+          balance: poolAmount,
+        },
+      });
+
+      // Record allocation
+      await prisma.revenueAllocation.create({
+        data: {
+          revenueTransactionId: transactionId,
+          destinationType: "STRATEGY_POOL",
+          destinationId: pool.id,
+          amount: poolAmount,
+          percentage: 4,
+          status: "PENDING",
+        },
+      });
+    }
+
+    console.log(`[REVENUE SERVICE] Allocation complete: Company ₦${companyAmount.toLocaleString()}, Executive ₦${(amount * 0.3).toLocaleString()}, Strategic ₦${(amount * 0.2).toLocaleString()}`);
+  } catch (error: any) {
+    console.error("[REVENUE SERVICE] Error in allocation:", {
+      transactionId,
+      amount,
+      error: error.message,
+    });
+    throw error;
   }
 }
 
-/**
- * Get revenue stats for dashboard
- */
 export async function getRevenueStats(prisma: PrismaClient) {
-  const [totalRevenue, companyReserve, executivePoolPending, strategicPools] =
-    await Promise.all([
+  try {
+    const [totalRevenue, companyReserve, executivePoolPending, strategicPools] =
+      await Promise.all([
       prisma.revenueTransaction.aggregate({
         _sum: { amount: true },
         where: { allocationStatus: "ALLOCATED" },
@@ -199,5 +223,9 @@ export async function getRevenueStats(prisma: PrismaClient) {
       name: p.name,
       balance: p.balance,
     })),
-  };
+    };
+  } catch (error: any) {
+    console.error("[REVENUE SERVICE] Error getting stats:", error.message);
+    throw error;
+  }
 }

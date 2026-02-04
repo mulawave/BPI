@@ -40,12 +40,14 @@ export default function LoginForm() {
 
     if (result.error) {
       setLoading(false);
-      if (result.error.toLowerCase().includes("account")) {
+      if (result.error.toLowerCase().includes("credentialssignin")) {
+        setAlert({ type: "warning", message: "Invalid email or password. Please check your credentials and try again." });
+      } else if (result.error.toLowerCase().includes("account")) {
         setAlert({ type: "failed", message: "Account Not Found" });
       } else if (result.error.toLowerCase().includes("combination") || result.error.toLowerCase().includes("invalid")) {
         setAlert({ type: "warning", message: "Invalid Email and Password Combination" });
       } else {
-        setAlert({ type: "failed", message: result.error });
+        setAlert({ type: "failed", message: "Login failed. Please try again." });
       }
       return;
     }
@@ -76,8 +78,8 @@ export default function LoginForm() {
       {/* Email */}
       <div className="relative">
         <div className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center">
-          <span className="flex items-center justify-center w-7 h-7 rounded-full border border-[#888] border-[1px]">
-            <Mail size={16} className="text-[#888]" />
+          <span className="flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] border-[1px]">
+            <Mail size={16} className="text-[#4a4a4a]" />
           </span>
         </div>
         <Input
@@ -87,21 +89,21 @@ export default function LoginForm() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="h-12 w-[260px] md:w-[320px] rounded-full pl-10 pr-10 bg-[#f4f4f4] border border-[#a6a6a6] focus:border-[#0d3b29] placeholder:text-[#888] text-[1.25rem] font-sans font-light text-[#888]"
+          className="h-12 w-[260px] md:w-[320px] rounded-full pl-10 pr-10 bg-[#f4f4f4] border border-[#a6a6a6] focus:border-[#0d3b29] placeholder:text-[#4a4a4a] text-[1.25rem] font-sans font-light text-[#232323]"
         />
       </div>
 
       {/* Password */}
       <div className="relative">
         <div className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center">
-          <span className="flex items-center justify-center w-7 h-7 rounded-full border border-[#888] border-[1px]">
-            {/* Larger padlock icon, lighter color */}
-            <svg width="30" height="30" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-[#888]">
-              <rect x="5.5" y="7.5" width="9" height="9" rx="3" stroke="#888" strokeWidth="1"/>
-              <rect x="8" y="4.5" width="4" height="4" rx="1.5" stroke="#888" strokeWidth="1"/>
-              <circle cx="10" cy="13" r="1.2" stroke="#888" strokeWidth="1.2"/>
-              <circle cx="10" cy="13" r="0.6" fill="#888" />
-              <rect x="9.4" y="13" width="1.2" height="2.2" rx="0.4" fill="#888" />
+          <span className="flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] border-[1px]">
+            {/* Larger padlock icon, darker color */}
+            <svg width="30" height="30" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-[#4a4a4a]">
+              <rect x="5.5" y="7.5" width="9" height="9" rx="3" stroke="#4a4a4a" strokeWidth="1"/>
+              <rect x="8" y="4.5" width="4" height="4" rx="1.5" stroke="#4a4a4a" strokeWidth="1"/>
+              <circle cx="10" cy="13" r="1.2" stroke="#4a4a4a" strokeWidth="1.2"/>
+              <circle cx="10" cy="13" r="0.6" fill="#4a4a4a" />
+              <rect x="9.4" y="13" width="1.2" height="2.2" rx="0.4" fill="#4a4a4a" />
             </svg>
           </span>
         </div>
@@ -112,7 +114,7 @@ export default function LoginForm() {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="h-12 w-[260px] md:w-[320px] rounded-full pl-10 pr-10 bg-[#f4f4f4] border border-[#a6a6a6] focus:border-[#0d3b29] placeholder:text-[#888] text-[1.25rem] font-sans font-light text-[#888]"
+          className="h-12 w-[260px] md:w-[320px] rounded-full pl-10 pr-10 bg-[#f4f4f4] border border-[#a6a6a6] focus:border-[#0d3b29] placeholder:text-[#4a4a4a] text-[1.25rem] font-sans font-light text-[#232323]"
         />
         <button
           type="button"
@@ -120,8 +122,8 @@ export default function LoginForm() {
           onClick={() => setShow((s) => !s)}
           className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center"
         >
-          <span className="flex items-center justify-center w-7 h-7 rounded-full border border-[#888] border-[1px]">
-            {show ? <EyeOff size={16} className="text-[#888]" /> : <Eye size={16} className="text-[#888]" />}
+          <span className="flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] border-[1px]">
+            {show ? <EyeOff size={16} className="text-[#4a4a4a]" /> : <Eye size={16} className="text-[#4a4a4a]" />}
           </span>
         </button>
       </div>

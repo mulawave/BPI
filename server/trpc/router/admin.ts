@@ -8453,6 +8453,153 @@ export const adminRouter = createTRPCRouter({
       };
     }),
 
+  // SMTP Test Endpoint
+  testSmtpConnection: adminProcedure
+    .input(z.object({
+      testEmail: z.string().email(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { testEmail } = input;
+
+      try {
+        const { sendEmail } = await import('@/lib/email');
+        
+        const testHtml = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: linear-gradient(135deg, #0d3b29 0%, #1a5c3f 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+                .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+                .success-box { background: #d1fae5; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0; border-radius: 5px; }
+                .info-grid { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; }
+                .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
+                .info-label { font-weight: 600; color: #6b7280; }
+                .info-value { color: #111827; font-weight: 500; }
+                .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1>✅ SMTP Test Email</h1>
+                </div>
+                <div class="content">
+                  <div class="success-box">
+                    <strong>🎉 Success! Your SMTP configuration is working correctly.</strong>
+                  </div>
+
+                  <p>This is a test email from your BPI admin panel to verify your SMTP settings.</p>
+
+                  <div class="info-grid">
+                    <div class="info-row">
+                      <span class="info-label">Test Initiated By:</span>
+                      <span class="info-value">${ctx.session?.user?.name || ctx.session?.user?.email || 'Admin'}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">Test Date:</span>
+                      <span class="info-value">${new Date().toLocaleString('en-US', { 
+                        weekday: 'long', 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        timeZoneName: 'short'
+                      })}</span>
+                    </div>
+                    <div class="info-row">
+                      <span class="info-label">Status:</span>
+                      <span class="info-value" style="color: #10b981;">✅ Email Delivery Successful</span>
+                    </div>
+                  </div>
+
+                  <p><strong>What this means:</strong></p>
+                  <ul>
+                    <li>Your SMTP server credentials are correct</li>
+                    <li>The server can successfully connect and authenticate</li>
+                    <li>Email delivery is functioning properly</li>
+                    <li>Your system is ready to send user notifications</li>
+                  </ul>
+
+                  <p>You can now safely use this configuration for:</p>
+                  <ul>
+                    <li>Password reset emails</li>
+                    <li>Email verification codes</li>
+                    <li>Withdrawal notifications</li>
+                    <li>Newsletter campaigns</li>
+                    <li>System alerts and notifications</li>
+                  </ul>
+
+                  <p>If you received this email, your SMTP setup is complete and operational!</p>
+                  
+                  <p>Best regards,<br>The BPI System</p>
+                </div>
+                <div class="footer">
+                  <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+                  <p style="margin-top: 10px; color: #999;">This is an automated test email sent from your admin panel.</p>
+                </div>
+              </div>
+            </body>
+          </html>
+        `;
+
+        await sendEmail({
+          to: testEmail,
+          subject: '✅ SMTP Test Email - Configuration Successful',
+          html: testHtml,
+        });
+
+        // Log the test
+        await prisma.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: ctx.session?.user?.id || 'admin',
+            action: 'SMTP_TEST',
+            entity: 'system',
+            entityId: 'smtp-config',
+            metadata: {
+              testEmail,
+              timestamp: new Date().toISOString(),
+              result: 'success'
+            }
+          },
+        });
+
+        console.log(`✅ [SMTP TEST] Test email sent successfully to ${testEmail}`);
+        return { 
+          success: true, 
+          message: `Test email sent successfully to ${testEmail}. Please check your inbox.` 
+        };
+      } catch (error: any) {
+        console.error('❌ [SMTP TEST] Failed to send test email:', error);
+        
+        // Log the failed test
+        await prisma.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: ctx.session?.user?.id || 'admin',
+            action: 'SMTP_TEST_FAILED',
+            entity: 'system',
+            entityId: 'smtp-config',
+            status: 'failed',
+            errorMessage: error.message || 'Unknown error',
+            metadata: {
+              testEmail,
+              timestamp: new Date().toISOString(),
+              error: error.message || 'Unknown error',
+              code: error.code || 'N/A',
+              command: error.command || 'N/A'
+            }
+          },
+        });
+
+        throw new Error(`SMTP Test Failed: ${error.message || 'Unknown error'}. Please check your SMTP configuration.`);
+      }
+    }),
+
   // Newsletter System
   getNewsletterRecipientCount: adminProcedure
     .input(z.object({

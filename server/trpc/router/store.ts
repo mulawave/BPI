@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { sendEmail } from "@/lib/email";
+import { recordRevenue } from "@/server/services/revenue.service";
 
 const mapRewardConfig = (rc?: any) => {
   if (!rc) return [] as any[];

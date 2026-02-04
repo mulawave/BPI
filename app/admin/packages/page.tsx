@@ -468,7 +468,7 @@ export default function PackagesPage() {
                     </span>
                   </div>
                   <div className="space-y-1">
-                    {pkg.features.slice(0, 3).map((feature, i) => (
+                    {pkg.features.slice(0, 3).map((feature: string, i: number) => (
                       <div key={i} className="text-xs text-gray-700 dark:text-gray-300 truncate">
                         • {feature}
                       </div>

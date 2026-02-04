@@ -36,6 +36,8 @@ type QueueItem = {
   createdAt: Date;
   broadcastExpiresAt: Date | null;
   status: StatusKey;
+  isAdminDefault?: boolean;
+  isActive?: boolean;
   User?: { id: string; name: string | null; email: string | null } | null;
 };
 
@@ -77,12 +79,31 @@ export default function CspAdminQueuePage() {
   const [extendHours, setExtendHours] = useState(24);
   const [extendReason, setExtendReason] = useState<"paid" | "referrals">("paid");
   const [extendValue, setExtendValue] = useState<number | undefined>(undefined);
+  const [showCreateDefault, setShowCreateDefault] = useState(false);
+  const [detailTarget, setDetailTarget] = useState<QueueItem | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<QueueItem | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [userSearchTerm, setUserSearchTerm] = useState("");
+  const [selectedUser, setSelectedUser] = useState<{ id: string; name: string | null; email: string } | null>(null);
+  const [defaultForm, setDefaultForm] = useState({
+    category: "national" as "national" | "global",
+    amount: 10000,
+    purpose: "",
+    notes: "",
+  });
 
   const { data, isLoading, refetch } = api.csp.adminListRequests.useQuery({
     status: statuses,
     page,
     pageSize,
   });
+
+  const { data: defaultRequests, refetch: refetchDefaults } = api.csp.listAdminDefaultRequests.useQuery();
+
+  const { data: searchedUsers } = api.user.searchUsers.useQuery(
+    { term: userSearchTerm },
+    { enabled: userSearchTerm.length >= 2 }
+  );
 
   const approveMutation = api.csp.approveRequest.useMutation({
     onSuccess: (res) => {
@@ -101,6 +122,63 @@ export default function CspAdminQueuePage() {
     },
     onError: (err) => toast.error(err.message),
   });
+
+  const createDefaultMutation = api.csp.createAdminDefaultRequest.useMutation({
+    onSuccess: () => {
+      setSelectedUser(null);
+      setUserSearchTerm("");
+      toast.success("Default CSP request created and live");
+      setShowCreateDefault(false);
+      setDefaultForm({ category: "national", amount: 10000, purpose: "", notes: "" });
+      refetchDefaults();
+      refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const toggleDefaultMutation = api.csp.toggleAdminDefaultRequest.useMutation({
+    onSuccess: (res) => {
+      toast.success(res.isActive ? "Default request activated" : "Default request deactivated");
+      refetchDefaults();
+      refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const markCompleteMutation = api.csp.markAdminDefaultComplete.useMutation({
+    onSuccess: () => {
+      toast.success("Default request marked as complete");
+      refetchDefaults();
+      refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const rejectMutation = api.csp.rejectRequest.useMutation({
+    onSuccess: () => {
+      toast.success("Request rejected and user notified");
+      setRejectTarget(null);
+      setRejectReason("");
+      refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const handleReject = () => {
+    if (!rejectTarget) return;
+    if (!rejectReason.trim()) {
+      toast.error("Please provide a reason for rejection");
+      return;
+    }
+    if (rejectReason.trim().length < 10) {
+      toast.error("Reason must be at least 10 characters");
+      return;
+    }
+    rejectMutation.mutate({
+      requestId: rejectTarget.id,
+      reason: rejectReason.trim(),
+    });
+  };
 
   const items = (data?.items ?? []) as unknown as QueueItem[];
 
@@ -233,6 +311,100 @@ export default function CspAdminQueuePage() {
         <StatCard icon={CheckCircle2} label="Prepped (approved)" value={aggregates.approved} tone="from-indigo-500 to-purple-600" />
       </div>
 
+      {/* Default Requests Section */}
+      <div className="rounded-2xl border-2 border-emerald-500/30 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 p-6 shadow-lg">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-xl font-bold text-emerald-900 dark:text-emerald-100 flex items-center gap-2">
+              <Sparkles className="w-5 h-5" />
+              Admin Default Requests
+            </h2>
+            <p className="text-sm text-emerald-700 dark:text-emerald-300 mt-1">
+              Base requests that users can donate to for meeting CSP eligibility. No expiry, bypasses all criteria.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCreateDefault(true)}
+            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700"
+          >
+            <Sparkles className="h-4 w-4" /> Create Default Request
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {(!defaultRequests || defaultRequests.length === 0) && (
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-white/60 dark:bg-black/20 p-4 text-center text-sm text-muted-foreground">
+              No default requests yet. Create one to help users meet eligibility criteria.
+            </div>
+          )}
+
+          {defaultRequests && defaultRequests.map((req: any) => {
+            const raised = req.raisedAmount ?? 0;
+            const threshold = req.thresholdAmount;
+            const pct = Math.min(100, Math.round((raised / threshold) * 100));
+            return (
+              <div key={req.id} className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-white/80 dark:bg-black/30 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-full px-2 py-1 text-xs font-semibold uppercase ${
+                        req.isActive 
+                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-200"
+                          : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                      }`}>
+                        {req.isActive ? "Active" : "Inactive"}
+                      </span>
+                      <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold uppercase text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">
+                        {req.category}
+                      </span>
+                      <span className="text-sm font-bold text-foreground">₦{formatAmount(req.thresholdAmount)}</span>
+                    </div>
+                    <p className="text-sm font-medium text-foreground">{req.purpose}</p>
+                    {req.notes && <p className="text-xs text-muted-foreground">{req.notes}</p>}
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>₦{formatAmount(raised)} / ₦{formatAmount(threshold)}</span>
+                        <span>{pct}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted">
+                        <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
+                      </div>
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Users className="h-3 w-3" /> {req.contributorsCount} contributors
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    {req.isActive && req.raisedAmount >= req.thresholdAmount && (
+                      <button
+                        onClick={() => markCompleteMutation.mutate({ requestId: req.id })}
+                        disabled={markCompleteMutation.isPending}
+                        className="flex items-center gap-1 rounded-lg border border-green-500 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 transition hover:bg-green-100 dark:bg-green-900/20 dark:text-green-200 disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="h-4 w-4" /> Mark Complete
+                      </button>
+                    )}
+                    <button
+                      onClick={() => toggleDefaultMutation.mutate({ requestId: req.id, isActive: !req.isActive })}
+                      disabled={toggleDefaultMutation.isPending}
+                      className={`flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-semibold transition disabled:opacity-50 ${
+                        req.isActive
+                          ? "border-red-500 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-200"
+                          : "border-green-500 bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-200"
+                      }`}
+                    >
+                      {req.isActive ? "Deactivate" : "Activate"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card/70 p-4 shadow-sm backdrop-blur">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap gap-2">
@@ -295,8 +467,17 @@ export default function CspAdminQueuePage() {
                 <div key={item.id} className="grid grid-cols-12 items-center px-4 py-3 gap-2">
                   <div className="col-span-3 space-y-1">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                      <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                      {item.isAdminDefault ? (
+                        <Sparkles className="h-4 w-4 text-amber-500" aria-label="Admin Default Request" />
+                      ) : (
+                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                      )}
                       <span>{user?.name ?? "Unknown"}</span>
+                      {item.isAdminDefault && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                          Default
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">{user?.email ?? "No email"}</p>
                     <p className="text-[11px] text-muted-foreground">Created {created}</p>
@@ -339,12 +520,20 @@ export default function CspAdminQueuePage() {
 
                   <div className="col-span-2 flex items-center justify-end gap-2">
                     {item.status === "pending" && (
-                      <button
-                        onClick={() => setApproveTarget(item)}
-                        className="flex items-center gap-1 rounded-lg border border-emerald-500 px-3 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-emerald-900/20"
-                      >
-                        <Sparkles className="h-4 w-4" /> Approve
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setApproveTarget(item)}
+                          className="flex items-center gap-1 rounded-lg border border-emerald-500 px-3 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-emerald-900/20"
+                        >
+                          <Sparkles className="h-4 w-4" /> Approve
+                        </button>
+                        <button
+                          onClick={() => setRejectTarget(item)}
+                          className="flex items-center gap-1 rounded-lg border border-rose-500 px-3 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 dark:text-rose-200 dark:hover:bg-rose-900/20"
+                        >
+                          <AlertCircle className="h-4 w-4" /> Reject
+                        </button>
+                      </>
                     )}
                     {item.status === "broadcasting" && (
                       <button
@@ -355,7 +544,7 @@ export default function CspAdminQueuePage() {
                       </button>
                     )}
                     <button
-                      onClick={() => toast("Coming soon: export & detail view")}
+                      onClick={() => setDetailTarget(item)}
                       className="flex items-center gap-1 rounded-lg border border-border px-3 py-1 text-xs font-semibold text-foreground/80 transition hover:bg-muted"
                     >
                       <ArrowUpRight className="h-4 w-4" /> Open
@@ -474,6 +663,414 @@ export default function CspAdminQueuePage() {
             </button>
           </div>
         </ModalShell>
+      )}
+
+      {/* Create Default Request Modal */}
+      {showCreateDefault && (
+        <ModalShell onClose={() => setShowCreateDefault(false)}>
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-foreground">Create Admin Default Request</h3>
+            <p className="text-sm text-muted-foreground">
+              Create a base CSP request that users can donate to for meeting eligibility criteria. No timer, no criteria checks.
+            </p>
+
+            <div className="space-y-3">
+              {/* User Selection */}
+              <div>
+                <label className="text-sm font-semibold text-foreground">Recipient User (Optional)</label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Leave empty to create a system-wide default request, or select a specific user
+                </p>
+                
+                {selectedUser ? (
+                  <div className="flex items-center justify-between rounded-lg border border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{selectedUser.name || "Unnamed User"}</p>
+                      <p className="text-xs text-muted-foreground">{selectedUser.email}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedUser(null);
+                        setUserSearchTerm("");
+                      }}
+                      className="text-xs text-red-600 hover:text-red-700 font-medium"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search by email, name, or screen name..."
+                      value={userSearchTerm}
+                      onChange={(e) => setUserSearchTerm(e.target.value)}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm pr-10"
+                    />
+                    {userSearchTerm && (
+                      <button
+                        onClick={() => setUserSearchTerm("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        ✕
+                      </button>
+                    )}
+                    
+                    {/* Search Results Dropdown */}
+                    {searchedUsers && searchedUsers.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-card shadow-lg max-h-48 overflow-y-auto">
+                        {searchedUsers.map((user: any) => (
+                          <button
+                            key={user.id}
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setUserSearchTerm("");
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-muted transition border-b border-border last:border-0"
+                          >
+                            <p className="text-sm font-medium text-foreground">{user.name || "Unnamed User"}</p>
+                            <p className="text-xs text-muted-foreground">{user.email}</p>
+                            {user.screenName && (
+                              <p className="text-xs text-muted-foreground">@{user.screenName}</p>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {userSearchTerm.length >= 2 && searchedUsers && searchedUsers.length === 0 && (
+                      <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-card shadow-lg px-3 py-2">
+                        <p className="text-xs text-muted-foreground">No users found</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-foreground">Category</label>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  {(["national", "global"] as const).map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setDefaultForm((prev) => ({ ...prev, category: cat }))}
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition ${
+                        defaultForm.category === cat
+                          ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30"
+                          : "border-border"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-foreground">Target Amount (₦)</label>
+                <input
+                  type="number"
+                  min={10000}
+                  step={1000}
+                  value={defaultForm.amount}
+                  onChange={(e) => setDefaultForm((prev) => ({ ...prev, amount: parseInt(e.target.value) || 10000 }))}
+                  className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-foreground">Purpose</label>
+                <input
+                  type="text"
+                  placeholder="E.g., Emergency Medical Fund, Education Support"
+                  value={defaultForm.purpose}
+                  onChange={(e) => setDefaultForm((prev) => ({ ...prev, purpose: e.target.value }))}
+                  className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-foreground">Notes (Optional)</label>
+                <textarea
+                  placeholder="Additional details about this default request"
+                  rows={3}
+                  value={defaultForm.notes}
+                  onChange={(e) => setDefaultForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-none"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={() => createDefaultMutation.mutate({
+                ...defaultForm,
+                userId: selectedUser?.id,
+              })}
+              disabled={createDefaultMutation.isPending || !defaultForm.purpose.trim()}
+              className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700 disabled:opacity-60"
+            >
+              {createDefaultMutation.isPending ? "Creating..." : "Create Default Request"}
+            </button>
+            <button
+              onClick={() => setShowCreateDefault(false)}
+              className="w-full rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground/80"
+            >
+              Cancel
+            </button>
+          </div>
+        </ModalShell>
+      )}
+
+      {/* Detail Modal */}
+      {detailTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="absolute inset-0" onClick={() => setDetailTarget(null)} />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl max-h-[90vh] overflow-y-auto"
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card/95 backdrop-blur px-6 py-4">
+              <h3 className="text-lg font-bold text-foreground">CSP Request Details</h3>
+              <button
+                onClick={() => setDetailTarget(null)}
+                className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Member Info */}
+              <div>
+                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Member Information</h4>
+                <div className="bg-muted/30 rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Name:</span>
+                    <span className="text-sm font-medium text-foreground">{detailTarget.User?.name || "N/A"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Email:</span>
+                    <span className="text-sm font-medium text-foreground">{detailTarget.User?.email || "N/A"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">User ID:</span>
+                    <span className="text-xs font-mono text-muted-foreground">{detailTarget.userId}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Request Details */}
+              <div>
+                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Request Details</h4>
+                <div className="bg-muted/30 rounded-lg p-4 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Category:</span>
+                    <span className="text-sm font-semibold text-foreground uppercase">{detailTarget.category}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Target Amount:</span>
+                    <span className="text-sm font-bold text-foreground">₦{formatAmount(detailTarget.thresholdAmount)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Amount Raised:</span>
+                    <span className="text-sm font-semibold text-emerald-600">₦{formatAmount(detailTarget.raisedAmount)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Progress:</span>
+                    <span className="text-sm font-medium text-foreground">
+                      {detailTarget.thresholdAmount > 0 
+                        ? Math.round((detailTarget.raisedAmount / detailTarget.thresholdAmount) * 100) 
+                        : 0}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Contributors:</span>
+                    <span className="text-sm font-medium text-foreground">{detailTarget.contributorsCount}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Status:</span>
+                    <div>{statusBadge(detailTarget.status)}</div>
+                  </div>
+                  {detailTarget.isAdminDefault && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Type:</span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 dark:bg-amber-900/30 px-3 py-1 text-xs font-semibold text-amber-800 dark:text-amber-200">
+                        <Sparkles className="h-3 w-3" />
+                        Admin Default
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Purpose */}
+              <div>
+                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Purpose</h4>
+                <div className="bg-muted/30 rounded-lg p-4">
+                  <p className="text-sm text-foreground">{detailTarget.purpose}</p>
+                </div>
+              </div>
+
+              {/* Timeline */}
+              <div>
+                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Timeline</h4>
+                <div className="bg-muted/30 rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Created:</span>
+                    <span className="text-sm font-medium text-foreground">
+                      {format(new Date(detailTarget.createdAt), "MMM d, yyyy h:mm a")}
+                    </span>
+                  </div>
+                  {detailTarget.broadcastExpiresAt && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Expires:</span>
+                      <span className="text-sm font-medium text-foreground">
+                        {format(new Date(detailTarget.broadcastExpiresAt), "MMM d, yyyy h:mm a")}
+                      </span>
+                    </div>
+                  )}
+                  {detailTarget.isAdminDefault && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Expiry:</span>
+                      <span className="text-sm font-medium text-amber-600">No expiry (permanent)</span>
+                    </div>
+                  )}
+                  {detailTarget.status === "broadcasting" && detailTarget.broadcastExpiresAt && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Time Remaining:</span>
+                      <span className="text-sm font-medium text-foreground">{getCountdown(detailTarget)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-4 border-t border-border">
+                {detailTarget.status === "pending" && !detailTarget.isAdminDefault && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setApproveTarget(detailTarget);
+                        setDetailTarget(null);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                      Approve Request
+                    </button>
+                    <button
+                      onClick={() => {
+                        setRejectTarget(detailTarget);
+                        setDetailTarget(null);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700"
+                    >
+                      <AlertCircle className="h-4 w-4" />
+                      Reject Request
+                    </button>
+                  </>
+                )}
+                {detailTarget.status === "broadcasting" && !detailTarget.isAdminDefault && (
+                  <button
+                    onClick={() => {
+                      setExtendTarget(detailTarget);
+                      setDetailTarget(null);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+                  >
+                    <TimerReset className="h-4 w-4" />
+                    Extend Broadcast
+                  </button>
+                )}
+                <button
+                  onClick={() => setDetailTarget(null)}
+                  className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Reject Modal */}
+      {rejectTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="absolute inset-0" onClick={() => { setRejectTarget(null); setRejectReason(""); }} />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative w-full max-w-lg rounded-2xl border border-border bg-card shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+              <h3 className="text-lg font-bold text-foreground">Reject CSP Request</h3>
+              <button
+                onClick={() => { setRejectTarget(null); setRejectReason(""); }}
+                className="rounded-lg p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-rose-600 dark:text-rose-400 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-semibold text-rose-900 dark:text-rose-100">Reject Request</h4>
+                    <p className="text-xs text-rose-700 dark:text-rose-300 mt-1">
+                      This will permanently reject the request from <strong>{rejectTarget.User?.name || rejectTarget.User?.email}</strong> and send them an email notification with your reason.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-foreground mb-2">
+                  Reason for Rejection <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Explain why this request is being rejected (e.g., doesn't meet eligibility criteria, suspicious activity, incomplete information, etc.)"
+                  className="w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500/20 min-h-[120px] resize-y"
+                  maxLength={500}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {rejectReason.length}/500 characters • Minimum 10 characters required
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => { setRejectTarget(null); setRejectReason(""); }}
+                  className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReject}
+                  disabled={rejectMutation.isPending || !rejectReason.trim() || rejectReason.trim().length < 10}
+                  className="flex-1 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {rejectMutation.isPending ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Rejecting...
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-4 w-4" />
+                      Reject Request
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
       )}
     </div>
   );

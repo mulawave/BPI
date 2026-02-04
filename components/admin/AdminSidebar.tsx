@@ -129,6 +129,12 @@ const navigation = [
     description: "Inflows & outflows"
   },
   { 
+    name: "Revenue Pools", 
+    href: "/admin/revenue-pools", 
+    icon: Activity,
+    description: "50/30/20 allocation & distributions"
+  },
+  { 
     name: "Currency Manager", 
     href: "/admin/currency", 
     icon: TrendingUp,

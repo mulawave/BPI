@@ -96,47 +96,47 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
     <form onSubmit={onSubmit} className="space-y-4 w-full">
       <div className="flex gap-2">
         <div className="relative w-1/2">
-          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#b0b0b0] text-[#b0b0b0] text-xl pointer-events-none"><AiOutlineUser /></span>
+          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] text-[#4a4a4a] text-xl pointer-events-none"><AiOutlineUser /></span>
           <Input
             name="firstname"
             placeholder="First Name"
             value={form.firstname}
             onChange={handleChange}
             required
-            className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#3b3b3b] font-sans font-light focus:border-[#0d3b29] placeholder-[#3b3b3b] rounded-xl"
+            className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#232323] font-sans font-light focus:border-[#0d3b29] placeholder-[#4a4a4a] rounded-xl"
           />
         </div>
         <div className="relative w-1/2">
-          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#b0b0b0] text-[#b0b0b0] text-xl pointer-events-none"><AiOutlineUser /></span>
+          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] text-[#4a4a4a] text-xl pointer-events-none"><AiOutlineUser /></span>
           <Input
             name="lastname"
             placeholder="Last Name"
             value={form.lastname}
             onChange={handleChange}
             required
-            className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#b0b0b0] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] rounded-xl"
+            className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#232323] font-sans font-light focus:border-[#0d3b29] placeholder-[#4a4a4a] rounded-xl"
           />
         </div>
       </div>
       <div className="relative">
-        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#b0b0b0] text-[#b0b0b0] text-xl pointer-events-none"><AiOutlineIdcard /></span>
+        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] text-[#4a4a4a] text-xl pointer-events-none"><AiOutlineIdcard /></span>
         <Input
           name="screenname"
           placeholder="Screen Name"
           value={form.screenname}
           onChange={handleChange}
           required
-          className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#b0b0b0] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] rounded-xl"
+          className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#232323] font-sans font-light focus:border-[#0d3b29] placeholder-[#4a4a4a] rounded-xl"
         />
       </div>
       <div className="relative">
-        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#b0b0b0] text-[#b0b0b0] text-xl pointer-events-none"><AiOutlineMan /></span>
+        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] text-[#4a4a4a] text-xl pointer-events-none"><AiOutlineMan /></span>
         <select
           name="gender"
           value={form.gender}
           onChange={handleChange}
           required
-          className="block w-full pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#3b3b3b] font-sans font-light focus:border-[#0d3b29] placeholder-[#3b3b3b] rounded-xl"
+          className="block w-full pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#232323] font-sans font-light focus:border-[#0d3b29] placeholder-[#4a4a4a] rounded-xl"
         >
           <option value="" disabled>
             Select Gender
@@ -146,7 +146,7 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
         </select>
       </div>
       <div className="relative">
-        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#b0b0b0] text-[#b0b0b0] text-xl pointer-events-none"><AiOutlineMail /></span>
+        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] text-[#4a4a4a] text-xl pointer-events-none"><AiOutlineMail /></span>
         <Input
           name="email"
           type="email"
@@ -154,11 +154,11 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
           value={form.email}
           onChange={handleChange}
           required
-          className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#b0b0b0] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] rounded-xl"
+          className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#232323] font-sans font-light focus:border-[#0d3b29] placeholder-[#4a4a4a] rounded-xl"
         />
       </div>
       <div className="relative">
-        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#b0b0b0] text-[#b0b0b0] text-xl pointer-events-none"><AiOutlineLock /></span>
+        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] text-[#4a4a4a] text-xl pointer-events-none"><AiOutlineLock /></span>
         <Input
           name="password"
           type={showPassword ? "text" : "password"}
@@ -166,18 +166,18 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
           value={form.password}
           onChange={handleChange}
           required
-          className="pl-10 pr-12 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#b0b0b0] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] rounded-xl"
+          className="pl-10 pr-12 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#232323] font-sans font-light focus:border-[#0d3b29] placeholder-[#4a4a4a] rounded-xl"
         />
         <button
           type="button"
           onClick={() => setShowPassword(!showPassword)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#b0b0b0] hover:text-[#0d3b29] transition-colors"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4a4a4a] hover:text-[#0d3b29] transition-colors"
         >
           {showPassword ? <AiOutlineEyeInvisible className="w-5 h-5" /> : <AiOutlineEye className="w-5 h-5" />}
         </button>
       </div>
       <div className="relative">
-        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#b0b0b0] text-[#b0b0b0] text-xl pointer-events-none"><AiOutlineCheckCircle /></span>
+        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] text-[#4a4a4a] text-xl pointer-events-none"><AiOutlineCheckCircle /></span>
         <Input
           name="confirmPassword"
           type={showConfirmPassword ? "text" : "password"}
@@ -185,12 +185,12 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
           value={form.confirmPassword}
           onChange={handleChange}
           required
-          className="pl-10 pr-12 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#b0b0b0] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] rounded-xl"
+          className="pl-10 pr-12 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#232323] font-sans font-light focus:border-[#0d3b29] placeholder-[#4a4a4a] rounded-xl"
         />
         <button
           type="button"
           onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#b0b0b0] hover:text-[#0d3b29] transition-colors"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4a4a4a] hover:text-[#0d3b29] transition-colors"
         >
           {showConfirmPassword ? <AiOutlineEyeInvisible className="w-5 h-5" /> : <AiOutlineEye className="w-5 h-5" />}
         </button>
@@ -202,7 +202,7 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
         readOnly
       />
       <div className="relative">
-        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#b0b0b0] text-[#b0b0b0] text-xl pointer-events-none"><AiOutlineReload /></span>
+        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] text-[#4a4a4a] text-xl pointer-events-none"><AiOutlineReload /></span>
         <Input
           key={captchaKey}
           name="captcha"
@@ -211,7 +211,7 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
           value={form.captcha}
           onChange={handleChange}
           required
-          className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#b0b0b0] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] rounded-xl"
+          className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] py-4 text-[1.1rem] text-[#232323] font-sans font-light focus:border-[#0d3b29] placeholder-[#4a4a4a] rounded-xl"
         />
       </div>
       <label className="flex items-center gap-2 text-sm">

@@ -52,7 +52,7 @@ async function distributeExecutivePool() {
         userId: { not: null },
       },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             name: true,
@@ -72,13 +72,35 @@ async function distributeExecutivePool() {
 
     console.log(`👥 Active Shareholders: ${shareholders.length}`);
 
+    // Create a revenue transaction for this distribution
+    const revenueTransaction = await prisma.revenueTransaction.create({
+      data: {
+        source: "OTHER",
+        amount: totalAmount,
+        currency: "NGN",
+        description: `Daily executive pool distribution for ${new Date().toLocaleDateString()}`,
+      },
+    });
+
+    // Create a master allocation for this distribution
+    const masterAllocation = await prisma.revenueAllocation.create({
+      data: {
+        revenueTransactionId: revenueTransaction.id,
+        amount: totalAmount,
+        percentage: 30, // Executive pool is 30% of revenue
+        destinationType: "EXECUTIVE_POOL",
+        status: "DISTRIBUTED",
+        distributedAt: new Date(),
+      },
+    });
+
     // Calculate and distribute to each shareholder
     const distributions = [];
     for (const shareholder of shareholders) {
-      if (!shareholder.user) continue;
+      if (!shareholder.User) continue;
 
       // Calculate shareholder's share
-      const shareAmount = (totalAmount * shareholder.percentage) / 100;
+      const shareAmount = (totalAmount * Number(shareholder.percentage)) / 100;
 
       // Credit shareholder wallet
       await prisma.user.update({
@@ -93,23 +115,25 @@ async function distributeExecutivePool() {
       // Record distribution
       const distribution = await prisma.executiveDistribution.create({
         data: {
+          allocationId: masterAllocation.id,
           shareholderId: shareholder.id,
           amount: shareAmount,
-          distributionDate: new Date(),
+          percentage: shareholder.percentage,
+          distributedAt: new Date(),
           status: "COMPLETED",
         },
       });
 
       distributions.push({
         role: shareholder.role,
-        name: shareholder.user.name,
-        email: shareholder.user.email,
+        name: shareholder.User.name,
+        email: shareholder.User.email,
         percentage: shareholder.percentage,
         amount: shareAmount,
       });
 
       console.log(
-        `  ✅ ${shareholder.role}: ₦${shareAmount.toLocaleString()} (${shareholder.percentage}%) → ${shareholder.user.name || shareholder.user.email}`
+        `  ✅ ${shareholder.role}: ₦${shareAmount.toLocaleString()} (${shareholder.percentage}%) → ${shareholder.User.name || shareholder.User.email}`
       );
     }
 

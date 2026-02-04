@@ -28,7 +28,7 @@ async function getSmtpConfig() {
     config[setting.settingKey] = setting.settingValue;
   });
 
-  return {
+  const smtpConfig = {
     host: config.smtpHost || process.env.SMTP_HOST,
     port: parseInt(config.smtpPort || process.env.SMTP_PORT || '587'),
     secure: config.smtpSecure === 'true',
@@ -39,10 +39,33 @@ async function getSmtpConfig() {
     fromEmail: config.smtpFromEmail || process.env.SMTP_FROM_EMAIL || 'noreply@beepagroafrica.com',
     fromName: config.smtpFromName || process.env.SMTP_FROM_NAME || 'BPI Team',
   };
+
+  // Validate critical fields
+  if (!smtpConfig.host) {
+    throw new Error('SMTP_CONFIG_ERROR: SMTP host is not configured. Please set smtpHost in admin settings or SMTP_HOST in environment variables.');
+  }
+  if (!smtpConfig.auth.user) {
+    throw new Error('SMTP_CONFIG_ERROR: SMTP username is not configured. Please set smtpUser in admin settings or SMTP_USER in environment variables.');
+  }
+  if (!smtpConfig.auth.pass) {
+    throw new Error('SMTP_CONFIG_ERROR: SMTP password is not configured. Please set smtpPassword in admin settings or SMTP_PASSWORD in environment variables.');
+  }
+
+  console.log('📧 [SMTP CONFIG] Loaded configuration:', {
+    host: smtpConfig.host,
+    port: smtpConfig.port,
+    secure: smtpConfig.secure,
+    user: smtpConfig.auth.user,
+    fromEmail: smtpConfig.fromEmail,
+    fromName: smtpConfig.fromName,
+  });
+
+  return smtpConfig;
 }
 
 export async function sendEmail(options: EmailOptions) {
   try {
+    console.log('📧 [EMAIL] Preparing to send email to:', options.to);
     const config = await getSmtpConfig();
 
     // Create transporter
@@ -51,10 +74,25 @@ export async function sendEmail(options: EmailOptions) {
       port: config.port,
       secure: config.secure,
       auth: config.auth,
+      // Add connection debugging
+      debug: true,
+      logger: true,
     });
 
+    console.log('📧 [EMAIL] Verifying SMTP connection...');
+    
+    // Verify connection
+    try {
+      await transporter.verify();
+      console.log('✅ [EMAIL] SMTP connection verified successfully');
+    } catch (verifyError: any) {
+      console.error('❌ [EMAIL] SMTP verification failed:', verifyError);
+      throw new Error(`SMTP Connection Failed: ${verifyError.message}. Please check your SMTP credentials and server settings.`);
+    }
+
     // Send email
-    await transporter.sendMail({
+    console.log('📧 [EMAIL] Sending email...');
+    const info = await transporter.sendMail({
       from: options.from || `${config.fromName} <${config.fromEmail}>`,
       to: options.to,
       subject: options.subject,
@@ -63,9 +101,21 @@ export async function sendEmail(options: EmailOptions) {
       attachments: options.attachments,
     });
 
-    return { success: true };
-  } catch (error) {
-    console.error('Failed to send email:', error);
+    console.log('✅ [EMAIL] Email sent successfully:', {
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      response: info.response,
+    });
+
+    return { success: true, messageId: info.messageId };
+  } catch (error: any) {
+    console.error('❌ [EMAIL] Failed to send email:', {
+      error: error.message,
+      code: error.code,
+      command: error.command,
+      stack: error.stack,
+    });
     throw error;
   }
 }

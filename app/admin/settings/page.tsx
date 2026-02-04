@@ -1493,6 +1493,28 @@ export default function SettingsPage() {
                   </label>
                 </div>
               </div>
+
+            </div>
+
+            {/* Test SMTP Configuration - Standalone Card */}
+            <div 
+              className="bg-gradient-to-br from-blue-50 via-white to-indigo-50 dark:from-blue-950 dark:via-gray-800 dark:to-indigo-950 border-2 border-blue-300 dark:border-blue-700 rounded-2xl p-8 shadow-xl"
+              style={{ minHeight: "200px" }}
+            >
+              <div className="flex items-start gap-4 mb-6">
+                <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg">
+                  <HiBell className="w-7 h-7" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                    🧪 Test SMTP Configuration
+                  </h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                    Send a test email to verify your SMTP settings are working correctly. This will help you confirm that emails can be sent successfully before running campaigns or sending user notifications.
+                  </p>
+                </div>
+              </div>
+              <SmtpTestForm />
             </div>
           </motion.div>
         )}
@@ -1709,6 +1731,72 @@ function SecretSettingField({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+// SMTP Test Form Component
+function SmtpTestForm() {
+  const [testEmail, setTestEmail] = useState("");
+  const [isSending, setIsSending] = useState(false);
+
+  const testSmtpMutation = api.admin.testSmtpConnection.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message);
+      setTestEmail("");
+      setIsSending(false);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Failed to send test email");
+      setIsSending(false);
+    },
+  });
+
+  const handleSendTest = () => {
+    if (!testEmail || !testEmail.includes("@")) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    setIsSending(true);
+    testSmtpMutation.mutate({ testEmail });
+  };
+
+  return (
+    <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+      <div className="flex-1 w-full">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Test Email Address
+        </label>
+        <input
+          type="email"
+          value={testEmail}
+          onChange={(e) => setTestEmail(e.target.value)}
+          placeholder="Enter email to receive test message"
+          disabled={isSending}
+          className="w-full px-4 py-2 bg-white dark:bg-slate-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 text-gray-900 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+        />
+      </div>
+      <button
+        onClick={handleSendTest}
+        disabled={isSending || !testEmail}
+        className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors font-medium flex items-center gap-2 whitespace-nowrap disabled:cursor-not-allowed"
+      >
+        {isSending ? (
+          <>
+            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Sending...
+          </>
+        ) : (
+          <>
+            <HiBell className="w-5 h-5" />
+            Send Test Email
+          </>
+        )}
+      </button>
     </div>
   );
 }

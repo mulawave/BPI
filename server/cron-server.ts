@@ -15,6 +15,67 @@ import { prisma } from "@/lib/prisma";
 process.env.TZ = 'Africa/Lagos';
 
 /**
+ * Send error notification to admin
+ */
+async function notifyAdminOfError(error: any, context: string) {
+  try {
+    console.error(`\n🚨 [ADMIN ALERT] ${context}:`, error);
+    
+    // Log to database for admin dashboard
+    await prisma.revenueAdminAction.create({
+      data: {
+        adminId: "system",
+        actionType: "DISTRIBUTION_ERROR",
+        description: `Error in ${context}: ${error.message}`,
+        metadata: {
+          error: error.message,
+          stack: error.stack,
+          timestamp: new Date().toISOString(),
+        },
+      },
+    }).catch((err: any) => {
+      console.error("Failed to log error to database:", err);
+    });
+    
+    // TODO: Add email/SMS notification here
+    // await sendEmail({
+    //   to: process.env.ADMIN_EMAIL,
+    //   subject: `Revenue Distribution Error: ${context}`,
+    //   body: error.message,
+    // });
+  } catch (notifyError) {
+    console.error("Failed to send error notification:", notifyError);
+  }
+}
+
+/**
+ * Retry a function with exponential backoff
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  initialDelay = 1000
+): Promise<T> {
+  let lastError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      
+      if (attempt < maxRetries - 1) {
+        const delay = initialDelay * Math.pow(2, attempt);
+        console.log(`⏳ [RETRY] Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
+/**
  * Distribute Executive Pool to shareholders
  * Runs daily at 8:00 AM
  */
@@ -23,27 +84,20 @@ async function distributeExecutivePool() {
   console.log(`⏰ Time: ${new Date().toLocaleString()}`);
 
   try {
-    // Get all pending executive pool allocations from yesterday
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
+    // Get ALL pending executive pool allocations (not just yesterday's)
+    // This ensures that if the cron job misses a day, funds are still distributed
     const pendingAllocations = await prisma.revenueAllocation.findMany({
       where: {
         destinationType: "EXECUTIVE_POOL",
         status: "PENDING",
-        createdAt: {
-          gte: yesterday,
-          lt: today,
-        },
+      },
+      orderBy: {
+        createdAt: "asc", // Process oldest first
       },
     });
 
     if (pendingAllocations.length === 0) {
-      console.log("ℹ️  [EXECUTIVE DISTRIBUTION] No pending allocations for yesterday");
+      console.log("ℹ️  [EXECUTIVE DISTRIBUTION] No pending allocations to distribute");
       return { success: true, message: "No pending allocations", distributed: 0 };
     }
 
@@ -94,7 +148,7 @@ async function distributeExecutivePool() {
           // Calculate shareholder's share of this allocation
           const shareAmount = (Number(allocation.amount) * Number(shareholder.percentage)) / 100;
 
-          // Credit shareholder wallet
+          // Credit shareholder main wallet (User.shareholder field)
           await tx.user.update({
             where: { id: shareholder.userId! },
             data: {
@@ -104,8 +158,22 @@ async function distributeExecutivePool() {
             },
           });
 
+          // Credit executive shareholder wallet (new fields)
+          await tx.executiveShareholder.update({
+            where: { id: shareholder.id },
+            data: {
+              totalEarned: {
+                increment: shareAmount,
+              },
+              currentBalance: {
+                increment: shareAmount,
+              },
+              lastDistributionAt: new Date(),
+            },
+          });
+
           // Record distribution with all required fields
-          await tx.executiveDistribution.create({
+          const distribution = await tx.executiveDistribution.create({
             data: {
               allocationId: allocation.id,
               shareholderId: shareholder.id,
@@ -113,6 +181,17 @@ async function distributeExecutivePool() {
               percentage: shareholder.percentage,
               status: "COMPLETED",
               distributedAt: new Date(),
+            },
+          });
+
+          // Create wallet transaction record
+          await tx.executiveWalletTransaction.create({
+            data: {
+              shareholderId: shareholder.id,
+              amount: shareAmount,
+              type: "DISTRIBUTION",
+              distributionId: distribution.id,
+              description: `Daily executive pool distribution - ${shareholder.role}`,
             },
           });
 
@@ -151,11 +230,11 @@ async function distributeExecutivePool() {
     console.log(`   Total Distributed: ₦${result.totalAmount.toLocaleString()}`);
     console.log(`   Recipients: ${result.distributions.length}`);
     console.log(`   Allocations Processed: ${pendingAllocations.length}`);
-
+    
     return {
       success: true,
       totalAmount: result.totalAmount,
-      distributed: result.distributions.length,
+      recipientCount: result.distributions.length,
       allocationsProcessed: pendingAllocations.length,
     };
   } catch (error) {
@@ -194,10 +273,11 @@ function startCronJobs() {
   cron.schedule("0 8 * * *", async () => {
     console.log("\n⏰ [CRON] Triggered: Daily Executive Pool Distribution");
     try {
-      await distributeExecutivePool();
+      // Retry with exponential backoff (3 attempts, starting at 2s delay)
+      await retryWithBackoff(distributeExecutivePool, 3, 2000);
     } catch (error) {
-      console.error("❌ [CRON] Distribution failed:", error);
-      // Error is already logged in distributeExecutivePool
+      console.error("❌ [CRON] Distribution failed after retries:", error);
+      await notifyAdminOfError(error, "Daily Executive Pool Distribution");
     }
   }, {
     timezone: "Africa/Lagos"

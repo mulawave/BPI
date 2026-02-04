@@ -1772,6 +1772,7 @@ model User {
   PoolDistributedBy                                                    PoolDistribution[]           @relation("PoolDistributedBy")
   RevenueAdminActions                                                  RevenueAdminAction[]         @relation("RevenueAdminActions")
   PoolAdminActions                                                     PoolAdminAction[]            @relation("PoolAdminActions")
+  CompanyReserveApprovals                                              CompanyReserveTransaction[]  @relation("CompanyReserveApprovals")
 
   @@index([cityId])
   @@index([stateId])
@@ -2084,6 +2085,8 @@ model CspSupportRequest {
   broadcastExpiresAt DateTime?
   approvedBy         String?
   approvedAt         DateTime?
+  isAdminDefault     Boolean  @default(false) // Admin-created base requests
+  isActive           Boolean  @default(true)  // Admin can turn off default requests
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
   User               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2092,6 +2095,7 @@ model CspSupportRequest {
 
   @@index([userId, status])
   @@index([status, broadcastExpiresAt])
+  @@index([isAdminDefault, isActive])
 }
 
 model CspContribution {
@@ -2247,13 +2251,20 @@ enum DistributionStatus {
   FAILED
 }
 
+enum WalletTransactionType {
+  DISTRIBUTION
+  WITHDRAWAL
+  ADJUSTMENT
+  BONUS
+}
+
 model RevenueTransaction {
   id              String         @id @default(cuid())
   source          RevenueSource
   amount          Decimal        @db.Decimal(18, 2)
   currency        String         @default("NGN")
   description     String?
-  sourceId        String?        // Original transaction/payment ID
+  sourceId        String?        @unique // Original transaction/payment ID - unique to prevent duplicates
   userId          String?        // User who generated the revenue (if applicable)
   createdAt       DateTime       @default(now())
   allocatedAt     DateTime?
@@ -2267,6 +2278,9 @@ model RevenueTransaction {
   @@index([userId])
   @@index([allocationStatus])
   @@index([createdAt])
+  @@index([userId, source, createdAt])
+  @@index([allocationStatus, createdAt])
+  @@index([sourceId])
 }
 
 model RevenueAllocation {
@@ -2287,6 +2301,7 @@ model RevenueAllocation {
   @@index([revenueTransactionId])
   @@index([destinationType])
   @@index([status])
+  @@index([destinationType, status, createdAt])
 }
 
 model ExecutiveShareholder {
@@ -2295,6 +2310,9 @@ model ExecutiveShareholder {
   userId          String?         @unique
   percentage      Decimal         @db.Decimal(5, 2) // % of executive pool (30% total)
   isActive        Boolean         @default(true)
+  totalEarned     Decimal         @db.Decimal(18, 2) @default(0) // Lifetime total earned
+  currentBalance  Decimal         @db.Decimal(18, 2) @default(0) // Available wallet balance
+  lastDistributionAt DateTime?    // Last time they received distribution
   assignedAt      DateTime?
   assignedBy      String?         // Admin user ID
   createdAt       DateTime        @default(now())
@@ -2303,6 +2321,7 @@ model ExecutiveShareholder {
   User            User?           @relation("ExecutiveShareholderUser", fields: [userId], references: [id])
   AssignedByUser  User?           @relation("ExecutiveAssignedBy", fields: [assignedBy], references: [id])
   Distributions   ExecutiveDistribution[]
+  WalletTransactions ExecutiveWalletTransaction[]
 
   @@index([userId])
   @@index([role])
@@ -2321,11 +2340,32 @@ model ExecutiveDistribution {
   
   Allocation            RevenueAllocation   @relation(fields: [allocationId], references: [id], onDelete: Cascade)
   Shareholder           ExecutiveShareholder @relation(fields: [shareholderId], references: [id], onDelete: Cascade)
+  WalletTransactions    ExecutiveWalletTransaction[]
 
   @@index([allocationId])
   @@index([shareholderId])
   @@index([status])
   @@index([distributedAt])
+  @@index([shareholderId, status, distributedAt])
+}
+
+model ExecutiveWalletTransaction {
+  id              String   @id @default(cuid())
+  shareholderId   String
+  amount          Decimal  @db.Decimal(18, 2)
+  type            WalletTransactionType // "DISTRIBUTION" | "WITHDRAWAL" | "ADJUSTMENT"
+  distributionId  String?
+  description     String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  
+  Shareholder     ExecutiveShareholder @relation(fields: [shareholderId], references: [id], onDelete: Cascade)
+  Distribution    ExecutiveDistribution? @relation(fields: [distributionId], references: [id])
+  
+  @@index([shareholderId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([shareholderId, createdAt])
 }
 
 model StrategyPool {
@@ -2353,6 +2393,9 @@ model PoolMember {
   userId          String
   customPercentage Decimal?       @db.Decimal(5, 2) // If null, split equally
   isActive        Boolean         @default(true)
+  totalEarned     Decimal         @db.Decimal(18, 2) @default(0) // Lifetime total earned from this pool
+  currentBalance  Decimal         @db.Decimal(18, 2) @default(0) // Available wallet balance from this pool
+  lastDistributionAt DateTime?    // Last distribution received
   joinedAt        DateTime        @default(now())
   addedBy         String          // Admin user ID
   leftAt          DateTime?
@@ -2397,6 +2440,38 @@ model CompanyReserve {
   currency        String          @default("NGN")
   updatedAt       DateTime        @updatedAt
   createdAt       DateTime        @default(now())
+  
+  Transactions    CompanyReserveTransaction[]
+}
+
+model CompanyReserveTransaction {
+  id          String   @id @default(cuid())
+  reserveId   String
+  amount      Decimal  @db.Decimal(18, 2)
+  type        ReserveTransactionType // "REVENUE_ALLOCATION" | "OPERATIONAL_SPEND" | "ADJUSTMENT"
+  category    String?  // "SALARIES" | "INFRASTRUCTURE" | "MARKETING" | "LEGAL" | "OTHER"
+  description String
+  approvedBy  String   // Admin user ID
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  
+  Reserve     CompanyReserve @relation(fields: [reserveId], references: [id], onDelete: Cascade)
+  ApprovedBy  User @relation("CompanyReserveApprovals", fields: [approvedBy], references: [id])
+  
+  @@index([reserveId])
+  @@index([type])
+  @@index([category])
+  @@index([createdAt])
+  @@index([reserveId, type, createdAt])
+}
+
+enum ReserveTransactionType {
+  REVENUE_ALLOCATION
+  OPERATIONAL_SPEND
+  TRANSFER_TO_POOL
+  TRANSFER_FROM_POOL
+  ADJUSTMENT
+  BONUS
 }
 
 model RevenueAdminAction {
@@ -2431,4 +2506,44 @@ model PoolAdminAction {
   @@index([poolId])
   @@index([adminId])
   @@index([createdAt])
+}
+
+// Monthly snapshot for historical tracking
+model RevenueSnapshot {
+  id                        String   @id @default(cuid())
+  month                     Int      // 1-12
+  year                      Int      // 2024, 2025, etc
+  
+  // Total Revenue
+  totalRevenue              Decimal  @default(0)
+  
+  // Allocation Totals (50/30/20)
+  companyReserveTotal       Decimal  @default(0)
+  executivePoolTotal        Decimal  @default(0)
+  strategicPoolsTotal       Decimal  @default(0)
+  
+  // Revenue by Source Breakdown
+  communitySupport          Decimal  @default(0)
+  membershipRegistration    Decimal  @default(0)
+  membershipRenewal         Decimal  @default(0)
+  storePurchase             Decimal  @default(0)
+  withdrawalFee             Decimal  @default(0)
+  youtubeSubscription       Decimal  @default(0)
+  thirdPartyServices        Decimal  @default(0)
+  palliativeProgram         Decimal  @default(0)
+  leadershipPoolFee         Decimal  @default(0)
+  trainingCenter            Decimal  @default(0)
+  other                     Decimal  @default(0)
+  
+  // Distribution Stats
+  executivesDistributed     Decimal  @default(0)
+  poolsDistributed          Decimal  @default(0)
+  transactionCount          Int      @default(0)
+  
+  // Snapshot Metadata
+  createdAt                 DateTime @default(now())
+  createdBy                 String?
+  
+  @@unique([month, year])
+  @@index([year, month])
 }

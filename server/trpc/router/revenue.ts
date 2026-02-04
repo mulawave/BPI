@@ -134,7 +134,7 @@ export const revenueRouter = createTRPCRouter({
           percentage: getRolePercentage(input.role),
         },
         include: {
-          user: {
+          User: {
             select: {
               id: true,
               name: true,
@@ -149,9 +149,8 @@ export const revenueRouter = createTRPCRouter({
       await ctx.prisma.revenueAdminAction.create({
         data: {
           adminId: ctx.session!.user.id,
-          action: "ASSIGN_EXECUTIVE",
-          targetRole: input.role,
-          targetUserId: input.userId,
+          actionType: "ASSIGN_EXECUTIVE",
+          description: `Assigned ${input.role} to user ${shareholder.User?.name || shareholder.User?.email || input.userId}`,
           metadata: {
             role: input.role,
             userId: input.userId,
@@ -194,8 +193,8 @@ export const revenueRouter = createTRPCRouter({
       await ctx.prisma.revenueAdminAction.create({
         data: {
           adminId: ctx.session!.user.id,
-          action: "REMOVE_EXECUTIVE",
-          targetRole: input.role,
+          actionType: "REMOVE_EXECUTIVE",
+          description: `Removed ${input.role}`,
           metadata: { role: input.role },
         },
       });
@@ -206,34 +205,36 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Get all strategic pools with members
    */
-  getStrategicPools: protectedProcedure.query(async ({ ctx }) => {
-    // Admin check
-    if ((ctx.session?.user as any)?.role !== 'admin') {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
-    }
+  getStrategicPools: protectedProcedure
+    .input(
+      z.object({
+        limit: z.number().default(10),
+        offset: z.number().default(0),
+      }).optional()
+    )
+    .query(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+      const { limit = 10, offset = 0 } = input || {};
 
-    return ctx.prisma.strategyPool.findMany({
-      include: {
-        members: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                username: true,
+      return ctx.prisma.strategyPool.findMany({
+        include: {
+          Members: {
+            include: {
+              User: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  username: true,
+                },
               },
             },
+            take: limit,
+            skip: offset,
           },
         },
-        allocations: {
-          where: { status: "PENDING" },
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        },
-      },
-    });
-  }),
+      });
+    }),
 
   /**
    * Add member to strategic pool
@@ -430,8 +431,41 @@ export const revenueRouter = createTRPCRouter({
         });
       }
 
-      // Calculate share per member (equal split)
-      const sharePerMember = totalAmount / pool.Members.length;
+      // Calculate distribution based on custom percentages or equal split
+      const hasCustomPercentages = pool.Members.some((m: any) => m.customPercentage != null);
+      
+      let memberShares: { userId: string; amount: number; percentage: number }[] = [];
+      
+      if (hasCustomPercentages) {
+        // Use custom percentages
+        const totalCustomPercentage = pool.Members.reduce(
+          (sum: number, m: any) => sum + (Number(m.customPercentage) || 0),
+          0
+        );
+        
+        if (Math.abs(totalCustomPercentage - 100) > 0.01) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Custom percentages must sum to 100% (current: ${totalCustomPercentage}%)`,
+          });
+        }
+        
+        memberShares = pool.Members.map((m: any) => ({
+          userId: m.userId,
+          amount: (totalAmount * Number(m.customPercentage)) / 100,
+          percentage: Number(m.customPercentage),
+        }));
+      } else {
+        // Equal split
+        const sharePerMember = totalAmount / pool.Members.length;
+        const percentagePerMember = 100 / pool.Members.length;
+        
+        memberShares = pool.Members.map((m: any) => ({
+          userId: m.userId,
+          amount: sharePerMember,
+          percentage: percentagePerMember,
+        }));
+      }
 
       // Use transaction for atomicity
       const result = await ctx.prisma.$transaction(async (tx: any) => {
@@ -445,7 +479,7 @@ export const revenueRouter = createTRPCRouter({
               poolId: pool.id,
               totalAmount: Number(allocation.amount),
               memberCount: pool.Members.length,
-              amountPerMember: Number(allocation.amount) / pool.Members.length,
+              amountPerMember: totalAmount / pool.Members.length,
               status: "COMPLETED",
               distributedAt: new Date(),
               distributedBy: ctx.session!.user.id,
@@ -454,14 +488,33 @@ export const revenueRouter = createTRPCRouter({
           distributions.push(poolDist);
         }
 
-        // Distribute to each member's shareholder wallet
-        for (const member of pool.Members) {
+        // Distribute to each member's shareholder wallet based on shares
+        for (const share of memberShares) {
+          // Credit user's main shareholder wallet
           await tx.user.update({
-            where: { id: member.userId },
+            where: { id: share.userId },
             data: {
               shareholder: {
-                increment: sharePerMember,
+                increment: share.amount,
               },
+            },
+          });
+
+          // Credit pool member wallet balances
+          await tx.poolMember.updateMany({
+            where: {
+              poolId: pool.id,
+              userId: share.userId,
+              isActive: true,
+            },
+            data: {
+              totalEarned: {
+                increment: share.amount,
+              },
+              currentBalance: {
+                increment: share.amount,
+              },
+              lastDistributionAt: new Date(),
             },
           });
         }
@@ -483,7 +536,8 @@ export const revenueRouter = createTRPCRouter({
           data: { balance: { decrement: totalAmount } },
         });
 
-        return { distributions, totalAmount, sharePerMember };
+        const averageSharePerMember = totalAmount / memberShares.length;
+        return { distributions, totalAmount, sharePerMember: averageSharePerMember };
       });
 
       // Log admin action
@@ -629,6 +683,127 @@ export const revenueRouter = createTRPCRouter({
   /**
    * Search users for pool assignment
    */
+  /**
+   * Get company reserve details with transaction history
+   */
+  getCompanyReserve: protectedProcedure
+    .input(
+      z.object({
+        includeTransactions: z.boolean().default(false),
+        limit: z.number().default(50),
+      }).optional()
+    )
+    .query(async ({ ctx, input }): Promise<any> => {
+      requireAdmin(ctx.session);
+      const { includeTransactions = false, limit = 50 } = input || {};
+
+      if (includeTransactions) {
+        return await ctx.prisma.companyReserve.findFirst({
+          orderBy: { updatedAt: "desc" },
+          include: {
+            Transactions: {
+              include: {
+                ApprovedBy: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+              orderBy: { createdAt: "desc" },
+              take: limit,
+            },
+          },
+        });
+      }
+
+      return await ctx.prisma.companyReserve.findFirst({
+        orderBy: { updatedAt: "desc" },
+      });
+    }),
+
+  /**
+   * Record a spend from company reserve
+   */
+  spendFromReserve: protectedProcedure
+    .input(
+      z.object({
+        amount: z.number().positive(),
+        category: z.enum([
+          "SALARIES",
+          "INFRASTRUCTURE",
+          "MARKETING",
+          "LEGAL",
+          "OPERATIONS",
+          "OTHER",
+        ]),
+        description: z.string().min(5),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const reserve = await ctx.prisma.companyReserve.findFirst({
+        orderBy: { updatedAt: "desc" },
+      });
+
+      if (!reserve) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Company reserve not found",
+        });
+      }
+
+      if (Number(reserve.balance) < input.amount) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Insufficient balance. Available: ₦${Number(reserve.balance).toLocaleString()}`,
+        });
+      }
+
+      const result = await ctx.prisma.$transaction(async (tx: any) => {
+        // Deduct from reserve
+        const updated = await tx.companyReserve.update({
+          where: { id: reserve.id },
+          data: {
+            balance: { decrement: input.amount },
+            totalSpent: { increment: input.amount },
+          },
+        });
+
+        // Record transaction
+        const transaction = await tx.companyReserveTransaction.create({
+          data: {
+            reserveId: reserve.id,
+            amount: input.amount,
+            type: "OPERATIONAL_SPEND",
+            category: input.category,
+            description: input.description,
+            approvedBy: ctx.session!.user.id,
+          },
+        });
+
+        return { reserve: updated, transaction };
+      });
+
+      // Log admin action
+      await ctx.prisma.revenueAdminAction.create({
+        data: {
+          adminId: ctx.session!.user.id,
+          actionType: "SPEND_FROM_RESERVE",
+          description: `Spent ₦${input.amount.toLocaleString()} on ${input.category}: ${input.description}`,
+          metadata: {
+            amount: input.amount,
+            category: input.category,
+            transactionId: result.transaction.id,
+          },
+        },
+      });
+
+      return result;
+    }),
+
   searchUsers: protectedProcedure
     .input(
       z.object({
@@ -636,10 +811,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      // Admin check
-      if ((ctx.session?.user as any)?.role !== 'admin') {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
-      }
+      requireAdmin(ctx.session);
 
       return ctx.prisma.user.findMany({
         where: {
@@ -684,6 +856,773 @@ export const revenueRouter = createTRPCRouter({
         orderBy: { createdAt: "desc" },
         take: input.limit,
       });
+    }),
+
+  /**
+   * Get revenue breakdown by source for charts
+   */
+  getRevenueBySource: protectedProcedure
+    .input(
+      z.object({
+        days: z.number().default(30),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - input.days);
+
+      const transactions = await ctx.prisma.revenueTransaction.groupBy({
+        by: ["source"],
+        where: {
+          createdAt: {
+            gte: startDate,
+          },
+        },
+        _sum: {
+          amount: true,
+        },
+        _count: {
+          id: true,
+        },
+      });
+
+      return transactions.map((t) => ({
+        source: t.source,
+        amount: Number(t._sum.amount || 0),
+        count: t._count.id,
+      }));
+    }),
+
+  /**
+   * Get revenue trend over time (last N days)
+   */
+  getRevenueTrend: protectedProcedure
+    .input(
+      z.object({
+        days: z.number().default(30),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - input.days);
+
+      // Get allocations
+      const allocations = await ctx.prisma.revenueAllocation.findMany({
+        where: {
+          createdAt: {
+            gte: startDate,
+          },
+        },
+        select: {
+          createdAt: true,
+          amount: true,
+          destinationType: true,
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      });
+
+      // Group by date and destination type
+      const dailyData = new Map<string, {
+        total: number;
+        companyReserve: number;
+        executivePool: number;
+        strategicPools: number;
+      }>();
+
+      allocations.forEach((allocation) => {
+        const dateKey = allocation.createdAt.toISOString().split("T")[0];
+        const existing = dailyData.get(dateKey!) || {
+          total: 0,
+          companyReserve: 0,
+          executivePool: 0,
+          strategicPools: 0,
+        };
+
+        const amount = Number(allocation.amount);
+        existing.total += amount;
+
+        if (allocation.destinationType === "COMPANY_RESERVE") {
+          existing.companyReserve += amount;
+        } else if (allocation.destinationType === "EXECUTIVE_POOL") {
+          existing.executivePool += amount;
+        } else if (allocation.destinationType === "STRATEGIC_POOL") {
+          existing.strategicPools += amount;
+        }
+
+        dailyData.set(dateKey!, existing);
+      });
+
+      // Fill in missing dates with zeros
+      const result: Array<{
+        date: Date;
+        total: number;
+        companyReserve: number;
+        executivePool: number;
+        strategicPools: number;
+      }> = [];
+
+      for (let i = input.days - 1; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dateKey = date.toISOString().split("T")[0];
+        const data = dailyData.get(dateKey!) || {
+          total: 0,
+          companyReserve: 0,
+          executivePool: 0,
+          strategicPools: 0,
+        };
+
+        result.push({
+          date,
+          ...data,
+        });
+      }
+
+      return result;
+    }),
+
+  /**
+   * Get all allocations for timeline
+   */
+  getAllocations: protectedProcedure
+    .input(
+      z.object({
+        limit: z.number().default(50),
+        source: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      // Get allocations with transaction info
+      const allocations = await ctx.prisma.revenueAllocation.findMany({
+        where: input.source
+          ? {
+              RevenueTransaction: {
+                source: input.source as any,
+              },
+            }
+          : undefined,
+        include: {
+          RevenueTransaction: {
+            select: {
+              source: true,
+              description: true,
+              amount: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: input.limit,
+      });
+
+      // Transform to expected format with split amounts
+      return allocations.map((alloc) => ({
+        id: alloc.id,
+        createdAt: alloc.createdAt,
+        totalAmount: Number(alloc.RevenueTransaction?.amount || 0),
+        companyReserveAmount:
+          alloc.destinationType === "COMPANY_RESERVE" ? Number(alloc.amount) : 0,
+        executivePoolAmount:
+          alloc.destinationType === "EXECUTIVE_POOL" ? Number(alloc.amount) : 0,
+        strategicPoolsAmount:
+          alloc.destinationType === "STRATEGIC_POOL" ? Number(alloc.amount) : 0,
+        source: alloc.RevenueTransaction?.source || "OTHER",
+        Transaction: {
+          description: alloc.RevenueTransaction?.description,
+        },
+      }));
+    }),
+
+  /**
+   * Create monthly snapshot (manually or via cron)
+   */
+  createSnapshot: protectedProcedure
+    .input(
+      z.object({
+        month: z.number().min(1).max(12),
+        year: z.number().min(2020),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      // Check if snapshot already exists
+      const existing = await ctx.prisma.revenueSnapshot.findUnique({
+        where: {
+          month_year: {
+            month: input.month,
+            year: input.year,
+          },
+        },
+      });
+
+      if (existing) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Snapshot for ${input.month}/${input.year} already exists`,
+        });
+      }
+
+      // Calculate start and end dates for the month
+      const startDate = new Date(input.year, input.month - 1, 1);
+      const endDate = new Date(input.year, input.month, 0, 23, 59, 59);
+
+      // Get all transactions for the month
+      const transactions = await ctx.prisma.revenueTransaction.findMany({
+        where: {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+      });
+
+      // Calculate totals by source
+      const bySource = {
+        COMMUNITY_SUPPORT: 0,
+        MEMBERSHIP_REGISTRATION: 0,
+        MEMBERSHIP_RENEWAL: 0,
+        STORE_PURCHASE: 0,
+        WITHDRAWAL_FEE: 0,
+        YOUTUBE_SUBSCRIPTION: 0,
+        THIRD_PARTY_SERVICES: 0,
+        PALLIATIVE_PROGRAM: 0,
+        LEADERSHIP_POOL_FEE: 0,
+        TRAINING_CENTER: 0,
+        OTHER: 0,
+      };
+
+      let totalRevenue = 0;
+      transactions.forEach((t) => {
+        const amount = Number(t.amount);
+        totalRevenue += amount;
+        bySource[t.source as keyof typeof bySource] += amount;
+      });
+
+      // Get allocations for the month
+      const allocations = await ctx.prisma.revenueAllocation.findMany({
+        where: {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+      });
+
+      // Calculate totals by destination type
+      const companyReserveTotal = allocations
+        .filter((a) => a.destinationType === "COMPANY_RESERVE")
+        .reduce((sum, a) => sum + Number(a.amount), 0);
+      const executivePoolTotal = allocations
+        .filter((a) => a.destinationType === "EXECUTIVE_POOL")
+        .reduce((sum, a) => sum + Number(a.amount), 0);
+      const strategicPoolsTotal = allocations
+        .filter((a) => a.destinationType === "STRATEGIC_POOL")
+        .reduce((sum, a) => sum + Number(a.amount), 0);
+
+      // Get distributions
+      const execDistributions = await ctx.prisma.executiveDistribution.findMany({
+        where: {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+      });
+
+      const poolDistributions = await ctx.prisma.poolDistribution.findMany({
+        where: {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+      });
+
+      const executivesDistributed = execDistributions.reduce(
+        (sum, d) => sum + Number(d.amount),
+        0
+      );
+      const poolsDistributed = poolDistributions.reduce((sum, d) => sum + Number(d.totalAmount), 0);
+
+      // Create snapshot
+      const snapshot = await ctx.prisma.revenueSnapshot.create({
+        data: {
+          month: input.month,
+          year: input.year,
+          totalRevenue,
+          companyReserveTotal,
+          executivePoolTotal,
+          strategicPoolsTotal,
+          communitySupport: bySource.COMMUNITY_SUPPORT,
+          membershipRegistration: bySource.MEMBERSHIP_REGISTRATION,
+          membershipRenewal: bySource.MEMBERSHIP_RENEWAL,
+          storePurchase: bySource.STORE_PURCHASE,
+          withdrawalFee: bySource.WITHDRAWAL_FEE,
+          youtubeSubscription: bySource.YOUTUBE_SUBSCRIPTION,
+          thirdPartyServices: bySource.THIRD_PARTY_SERVICES,
+          palliativeProgram: bySource.PALLIATIVE_PROGRAM,
+          leadershipPoolFee: bySource.LEADERSHIP_POOL_FEE,
+          trainingCenter: bySource.TRAINING_CENTER,
+          other: bySource.OTHER,
+          executivesDistributed,
+          poolsDistributed,
+          transactionCount: transactions.length,
+          createdBy: (ctx.session!.user as any).id,
+        },
+      });
+
+      // Log action
+      await ctx.prisma.revenueAdminAction.create({
+        data: {
+          adminId: (ctx.session!.user as any).id,
+          actionType: "CREATE_SNAPSHOT",
+          description: `Created revenue snapshot for ${input.month}/${input.year}`,
+          metadata: { snapshotId: snapshot.id, totalRevenue },
+        },
+      });
+
+      return snapshot;
+    }),
+
+  /**
+   * Get all snapshots
+   */
+  getSnapshots: protectedProcedure
+    .input(
+      z.object({
+        limit: z.number().default(12),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      return ctx.prisma.revenueSnapshot.findMany({
+        orderBy: [{ year: "desc" }, { month: "desc" }],
+        take: input.limit,
+      });
+    }),
+
+  /**
+   * Get detailed revenue source breakdown
+   */
+  getRevenueSourceDetails: protectedProcedure
+    .input(
+      z.object({
+        source: z.enum([
+          "COMMUNITY_SUPPORT",
+          "MEMBERSHIP_REGISTRATION",
+          "MEMBERSHIP_RENEWAL",
+          "STORE_PURCHASE",
+          "WITHDRAWAL_FEE",
+          "YOUTUBE_SUBSCRIPTION",
+          "THIRD_PARTY_SERVICES",
+          "PALLIATIVE_PROGRAM",
+          "LEADERSHIP_POOL_FEE",
+          "TRAINING_CENTER",
+          "OTHER",
+        ]),
+        days: z.number().default(30),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - input.days);
+
+      const transactions = await ctx.prisma.revenueTransaction.findMany({
+        where: {
+          source: input.source,
+          createdAt: {
+            gte: startDate,
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 100,
+      });
+
+      const total = transactions.reduce((sum, t) => sum + Number(t.amount), 0);
+      const count = transactions.length;
+      const average = count > 0 ? total / count : 0;
+
+      return {
+        source: input.source,
+        total,
+        count,
+        average,
+        transactions,
+      };
+    }),
+
+  /**
+   * Manual Revenue Allocation
+   * Allows admin to manually allocate revenue from Company Reserve to Executive or Pool
+   */
+  manualAllocation: protectedProcedure
+    .input(
+      z.object({
+        destinationType: z.enum(["EXECUTIVE", "POOL"]),
+        destinationId: z.string(), // Executive shareholder ID or Pool ID
+        amount: z.number().positive(),
+        reason: z.string().min(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const userId = (ctx.session?.user as any)?.id;
+
+      // Deduct from company reserve
+      await ctx.prisma.companyReserveTransaction.create({
+        data: {
+          reserveId: "1",
+          amount: -input.amount, // Negative = spending
+          type: "OPERATIONAL_SPEND",
+          category: "MANUAL_ALLOCATION",
+          description: `Manual allocation to ${input.destinationType}: ${input.reason}`,
+          approvedBy: userId,
+          metadata: {
+            destinationType: input.destinationType,
+            destinationId: input.destinationId,
+          },
+        },
+      });
+
+      // Add to destination
+      if (input.destinationType === "EXECUTIVE") {
+        const shareholder = await ctx.prisma.executiveShareholder.update({
+          where: { id: input.destinationId },
+          data: {
+            currentBalance: { increment: input.amount },
+            totalEarned: { increment: input.amount },
+          },
+        });
+
+        await ctx.prisma.executiveWalletTransaction.create({
+          data: {
+            shareholderId: input.destinationId,
+            amount: input.amount,
+            type: "ADJUSTMENT",
+            description: `Manual allocation: ${input.reason}`,
+            metadata: { approvedBy: userId },
+          },
+        });
+
+        return {
+          success: true,
+          message: `₦${input.amount.toLocaleString()} allocated to executive`,
+        };
+      } else {
+        // Pool allocation
+        const pool = await ctx.prisma.strategyPool.update({
+          where: { id: input.destinationId },
+          data: {
+            balance: { increment: input.amount },
+          },
+        });
+
+        return {
+          success: true,
+          message: `₦${input.amount.toLocaleString()} allocated to ${pool.name}`,
+        };
+      }
+    }),
+
+  /**
+   * Inter-Pool Transfer
+   * Transfer funds between Company Reserve and Strategic Pools
+   */
+  poolTransfer: protectedProcedure
+    .input(
+      z.object({
+        from: z.string(), // "COMPANY_RESERVE" or pool ID
+        to: z.string(), // "COMPANY_RESERVE" or pool ID
+        amount: z.number().positive(),
+        reason: z.string().min(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const userId = (ctx.session?.user as any)?.id;
+
+      // Handle transfers
+      if (input.from === "COMPANY_RESERVE") {
+        // From reserve to pool
+        await ctx.prisma.companyReserveTransaction.create({
+          data: {
+            reserveId: "1",
+            amount: -input.amount,
+            type: "TRANSFER_TO_POOL",
+            category: "POOL_TRANSFER",
+            description: `Transfer to pool: ${input.reason}`,
+            approvedBy: userId,
+            metadata: { to: input.to },
+          },
+        });
+
+        await ctx.prisma.strategyPool.update({
+          where: { id: input.to },
+          data: { balance: { increment: input.amount } },
+        });
+      } else if (input.to === "COMPANY_RESERVE") {
+        // From pool to reserve
+        await ctx.prisma.strategyPool.update({
+          where: { id: input.from },
+          data: { balance: { decrement: input.amount } },
+        });
+
+        await ctx.prisma.companyReserveTransaction.create({
+          data: {
+            reserveId: "1",
+            amount: input.amount,
+            type: "TRANSFER_FROM_POOL",
+            category: "POOL_TRANSFER",
+            description: `Transfer from pool: ${input.reason}`,
+            approvedBy: userId,
+            metadata: { from: input.from },
+          },
+        });
+      } else {
+        // Between pools
+        await ctx.prisma.strategyPool.update({
+          where: { id: input.from },
+          data: { balance: { decrement: input.amount } },
+        });
+
+        await ctx.prisma.strategyPool.update({
+          where: { id: input.to },
+          data: { balance: { increment: input.amount } },
+        });
+      }
+
+      return {
+        success: true,
+        message: `₦${input.amount.toLocaleString()} transferred successfully`,
+      };
+    }),
+
+  /**
+   * Adjust Executive Percentages
+   * Update percentage allocations for executive roles
+   */
+  adjustExecutivePercentages: protectedProcedure
+    .input(
+      z.object({
+        percentages: z.array(
+          z.object({
+            role: z.enum([
+              "CEO",
+              "CTO",
+              "HEAD_OF_TRAVEL",
+              "CMO",
+              "OLIVER",
+              "MORRISON",
+              "ANNIE",
+            ]),
+            percentage: z.number().min(0).max(100),
+          })
+        ),
+        reason: z.string().min(10),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const userId = (ctx.session?.user as any)?.id;
+
+      // Validate that percentages sum to 100
+      const total = input.percentages.reduce((sum, p) => sum + p.percentage, 0);
+      if (Math.abs(total - 100) > 0.01) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Executive percentages must sum to 100%. Current total: ${total}%`,
+        });
+      }
+
+      // Update each shareholder's percentage
+      for (const { role, percentage } of input.percentages) {
+        await ctx.prisma.executiveShareholder.updateMany({
+          where: { role },
+          data: { percentage },
+        });
+      }
+
+      // Log admin action
+      await ctx.prisma.revenueAdminAction.create({
+        data: {
+          adminId: userId,
+          actionType: "ADJUST_PERCENTAGES",
+          description: `Adjusted executive percentages: ${input.reason}`,
+          metadata: {
+            percentages: input.percentages,
+            reason: input.reason,
+          },
+        },
+      });
+
+      return {
+        success: true,
+        message: "Executive percentages updated successfully",
+      };
+    }),
+
+  /**
+   * Executive Wallet Withdrawal
+   * Allow executives to withdraw from their current balance
+   */
+  requestWithdrawal: protectedProcedure
+    .input(
+      z.object({
+        shareholderId: z.string(),
+        amount: z.number().positive(),
+        reason: z.string().min(10),
+        bankDetails: z.object({
+          bankName: z.string(),
+          accountNumber: z.string(),
+          accountName: z.string(),
+        }).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id;
+
+      // Get shareholder
+      const shareholder = await ctx.prisma.executiveShareholder.findUnique({
+        where: { id: input.shareholderId },
+        include: { User: true },
+      });
+
+      if (!shareholder) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Executive shareholder not found",
+        });
+      }
+
+      // Check if user is admin or the shareholder themselves
+      const isAdmin = (ctx.session?.user as any)?.role === "admin";
+      const isOwner = shareholder.userId === userId;
+
+      if (!isAdmin && !isOwner) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You can only withdraw from your own wallet",
+        });
+      }
+
+      // Check sufficient balance
+      if (Number(shareholder.currentBalance) < input.amount) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Insufficient balance. Available: ₦${Number(shareholder.currentBalance).toLocaleString()}`,
+        });
+      }
+
+      // Deduct from balance
+      await ctx.prisma.executiveShareholder.update({
+        where: { id: input.shareholderId },
+        data: {
+          currentBalance: { decrement: input.amount },
+        },
+      });
+
+      // Record withdrawal transaction
+      await ctx.prisma.executiveWalletTransaction.create({
+        data: {
+          shareholderId: input.shareholderId,
+          amount: -input.amount, // Negative for withdrawal
+          type: "WITHDRAWAL",
+          description: input.reason,
+          metadata: {
+            requestedBy: userId,
+            bankDetails: input.bankDetails,
+            status: input.amount >= 100000 ? "PENDING_APPROVAL" : "APPROVED",
+          },
+        },
+      });
+
+      // Log admin action
+      await ctx.prisma.revenueAdminAction.create({
+        data: {
+          adminId: userId,
+          actionType: "EXECUTIVE_WITHDRAWAL",
+          description: `Withdrawal request: ₦${input.amount.toLocaleString()} by ${shareholder.User?.name || shareholder.role}`,
+          metadata: {
+            shareholderId: input.shareholderId,
+            amount: input.amount,
+            reason: input.reason,
+          },
+        },
+      });
+
+      return {
+        success: true,
+        message: input.amount >= 100000
+          ? `Withdrawal request of ₦${input.amount.toLocaleString()} submitted for admin approval`
+          : `₦${input.amount.toLocaleString()} withdrawn successfully`,
+        requiresApproval: input.amount >= 100000,
+      };
+    }),
+
+  /**
+   * Get executive wallet transactions (for the logged-in executive or admin)
+   */
+  getMyWalletTransactions: protectedProcedure
+    .input(
+      z.object({
+        limit: z.number().default(50),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id;
+      const isAdmin = (ctx.session?.user as any)?.role === "admin";
+
+      // Find shareholder for this user
+      const shareholder = await ctx.prisma.executiveShareholder.findUnique({
+        where: { userId },
+      });
+
+      if (!shareholder && !isAdmin) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "You are not an executive shareholder",
+        });
+      }
+
+      // If admin, return all transactions; otherwise only user's transactions
+      const transactions = await ctx.prisma.executiveWalletTransaction.findMany({
+        where: isAdmin ? {} : { shareholderId: shareholder!.id },
+        include: {
+          Shareholder: {
+            include: {
+              User: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: input.limit,
+      });
+
+      return transactions;
     }),
 });
 

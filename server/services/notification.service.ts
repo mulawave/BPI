@@ -28,6 +28,7 @@ export type NotificationType =
   | "WITHDRAWAL_FAILED"
   | "CSP_REQUEST_SUBMITTED"
   | "CSP_REQUEST_APPROVED"
+  | "CSP_REQUEST_REJECTED"
   | "CSP_BROADCAST_EXTENDED"
   | "CSP_CONTRIBUTION_RECEIVED"
   | "CSP_CONTRIBUTION_SENT";
@@ -87,6 +88,16 @@ export async function notifyCspBroadcastExtended(userId: string, hours: number) 
     type: "CSP_BROADCAST_EXTENDED",
     title: "Broadcast extended",
     message: `Your CSP broadcast was extended by ${hours} hour(s).`,
+    actionUrl: "/csp",
+  });
+}
+
+export async function notifyCspRequestRejected(userId: string, category: string, reason: string) {
+  await sendNotification({
+    userId,
+    type: "CSP_REQUEST_REJECTED",
+    title: "CSP Request Rejected",
+    message: `Your ${category} CSP request was rejected. Reason: ${reason}`,
     actionUrl: "/csp",
   });
 }

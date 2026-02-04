@@ -41,7 +41,7 @@ export const authConfig: NextAuthOptions = {
           id: user.id, 
           email: user.email ?? undefined, 
           name: user.name ?? undefined,
-          role: user.role ?? "user"
+          role: user.userType ?? "user"
         };
       },
     }),
@@ -82,6 +82,8 @@ export const authConfig: NextAuthOptions = {
 
           (token as any).hasActiveMembership = hasActiveStandardPackage;
           (token as any).hasActiveEmpowerment = hasActiveEmpowermentPackage;
+          // Update role from database userType to keep it fresh
+          token.role = dbUser?.userType ?? "user";
         }
       } catch (e) {
         // On error, default to no active packages to remain conservative

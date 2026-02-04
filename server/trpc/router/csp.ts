@@ -8,6 +8,7 @@ import {
   notifyCspContributionReceived,
   notifyCspContributionSent,
   notifyCspRequestApproved,
+  notifyCspRequestRejected,
   notifyCspRequestSubmitted,
 } from "@/server/services/notification.service";
 
@@ -250,12 +251,18 @@ export const cspRouter = createTRPCRouter({
 
       const [items, total] = await prisma.$transaction([
         prisma.cspSupportRequest.findMany({
-          where: { status: { in: statusFilter } },
+          where: { 
+            status: { in: statusFilter },
+            // Include both user requests and active admin defaults
+          },
           include: {
             User: { select: { id: true, name: true, email: true, activeMembershipPackageId: true } },
             Contributions: { select: { amount: true } },
           },
-          orderBy: { createdAt: "desc" },
+          orderBy: [
+            { isAdminDefault: "desc" }, // Admin defaults first
+            { createdAt: "desc" }
+          ],
           skip,
           take: pageSize,
         }),
@@ -345,10 +352,13 @@ export const cspRouter = createTRPCRouter({
 
       if (!request) throw new Error("Support request not found");
       if (request.status !== "broadcasting") throw new Error("This request is not currently accepting contributions");
-      if (request.broadcastExpiresAt && request.broadcastExpiresAt.getTime() < Date.now()) {
+      
+      // Admin default requests don't have expiry, regular requests do
+      if (!request.isAdminDefault && request.broadcastExpiresAt && request.broadcastExpiresAt.getTime() < Date.now()) {
         await prisma.cspSupportRequest.update({ where: { id: request.id }, data: { status: "closed" } });
         throw new Error("Broadcast window has expired");
       }
+      
       if (request.userId === contributorId) {
         throw new Error("You cannot contribute to your own support request");
       }
@@ -485,5 +495,165 @@ export const cspRouter = createTRPCRouter({
       await notifyCspBroadcastExtended(updated.userId, input.hours);
 
       return { requestId: updated.id, broadcastExpiresAt: updated.broadcastExpiresAt, reason: input.reason, value: input.value };
+    }),
+
+  // Admin-only: Create default/base CSP requests that bypass all criteria
+  createAdminDefaultRequest: protectedProcedure
+    .input(z.object({
+      userId: z.string().optional(), // Can use system user or specific user
+      category: z.enum(["national", "global"]),
+      amount: z.number().int().positive(),
+      purpose: z.string().min(3),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+
+      // Use provided userId or create a system CSP user
+      let targetUserId = input.userId;
+      if (!targetUserId) {
+        // Check if system CSP user exists
+        let systemUser = await prisma.user.findFirst({
+          where: { email: "csp-system@beepagroafrica.com" },
+        });
+
+        if (!systemUser) {
+          // Create system CSP user
+          systemUser = await prisma.user.create({
+            data: {
+              id: randomUUID(),
+              email: "csp-system@beepagroafrica.com",
+              name: "CSP System",
+              userType: "user",
+              activated: true,
+            },
+          });
+        }
+        targetUserId = systemUser.id;
+      }
+
+      const rule = CATEGORY_RULES[input.category];
+      const thresholdAmount = Math.max(input.amount, rule.minThreshold);
+
+      const request = await prisma.cspSupportRequest.create({
+        data: {
+          userId: targetUserId,
+          category: input.category,
+          amount: thresholdAmount,
+          purpose: input.purpose,
+          notes: input.notes,
+          status: "broadcasting", // Auto-approved
+          thresholdAmount,
+          raisedAmount: 0,
+          contributorsCount: 0,
+          isAdminDefault: true,
+          isActive: true,
+          approvedBy: (ctx.session?.user as any)?.id ?? "admin",
+          approvedAt: new Date(),
+          // No broadcast expiry - remains until goal met or admin turns off
+          broadcastExpiresAt: null,
+        },
+      });
+
+      return { requestId: request.id, status: request.status };
+    }),
+
+  // Admin-only: Toggle active status of default requests
+  toggleAdminDefaultRequest: protectedProcedure
+    .input(z.object({
+      requestId: z.string(),
+      isActive: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+
+      const request = await prisma.cspSupportRequest.findUnique({
+        where: { id: input.requestId },
+      });
+
+      if (!request) throw new Error("Request not found");
+      if (!request.isAdminDefault) throw new Error("Only admin default requests can be toggled");
+
+      const updated = await prisma.cspSupportRequest.update({
+        where: { id: input.requestId },
+        data: {
+          isActive: input.isActive,
+          status: input.isActive ? "broadcasting" : "closed",
+        },
+      });
+
+      return { requestId: updated.id, isActive: updated.isActive, status: updated.status };
+    }),
+
+  // Admin-only: Mark default request as complete
+  markAdminDefaultComplete: protectedProcedure
+    .input(z.object({
+      requestId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+
+      const request = await prisma.cspSupportRequest.findUnique({
+        where: { id: input.requestId },
+      });
+
+      if (!request) throw new Error("Request not found");
+      if (!request.isAdminDefault) throw new Error("Only admin default requests can be marked complete");
+
+      const updated = await prisma.cspSupportRequest.update({
+        where: { id: input.requestId },
+        data: {
+          status: "closed",
+          isActive: false,
+        },
+      });
+
+      return { requestId: updated.id, status: updated.status };
+    }),
+
+  // Reject a CSP request with reason
+  rejectRequest: protectedProcedure
+    .input(z.object({ requestId: z.string().uuid(), reason: z.string().min(10).max(500) }))
+    .mutation(async ({ input, ctx }) => {
+      assertAdmin(ctx.session);
+
+      const request = await prisma.cspSupportRequest.findUnique({
+        where: { id: input.requestId },
+        include: { User: true },
+      });
+
+      if (!request) throw new Error("Request not found");
+      if (request.status !== "pending") throw new Error("Only pending requests can be rejected");
+
+      // Delete the request from database
+      await prisma.cspSupportRequest.delete({
+        where: { id: input.requestId },
+      });
+
+      // Send email and notification to user
+      await notifyCspRequestRejected(
+        request.userId,
+        request.category,
+        input.reason
+      );
+
+      return { success: true };
+    }),
+
+  // List all admin default requests
+  listAdminDefaultRequests: protectedProcedure
+    .query(async ({ ctx }) => {
+      assertAdmin(ctx.session);
+
+      const requests = await prisma.cspSupportRequest.findMany({
+        where: { isAdminDefault: true },
+        include: {
+          User: { select: { id: true, name: true, email: true } },
+          Contributions: { select: { amount: true, contributorId: true, createdAt: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      return requests;
     }),
 });
