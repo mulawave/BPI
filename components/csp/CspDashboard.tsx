@@ -493,7 +493,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
           )}
 
           <div className="grid lg:grid-cols-2 gap-3">
-            {broadcastColumns.map((col, idx) => (
+            {broadcastColumns.map((col = [], idx) => (
               <div key={idx} className="space-y-3">
                 {col.map((item) => {
                   const percent = Math.min(100, Math.floor((item.raisedAmount / item.thresholdAmount) * 100));
