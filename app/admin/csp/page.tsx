@@ -41,12 +41,14 @@ type QueueItem = {
   User?: { id: string; name: string | null; email: string | null } | null;
 };
 
-type StatusKey = "pending" | "approved" | "broadcasting" | "closed" | "rejected";
+type StatusKey = "pending" | "approved" | "broadcasting" | "ready_for_release" | "released" | "closed" | "rejected";
 
 const statusChip: Record<StatusKey, { label: string; tone: string }> = {
   pending: { label: "Pending", tone: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200" },
   approved: { label: "Approved", tone: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200" },
   broadcasting: { label: "Broadcasting", tone: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200" },
+  ready_for_release: { label: "Ready for Release", tone: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200" },
+  released: { label: "Released", tone: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200" },
   closed: { label: "Closed", tone: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100" },
   rejected: { label: "Rejected", tone: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-200" },
 };
@@ -72,7 +74,7 @@ function getCountdown(request: QueueItem) {
 export default function CspAdminQueuePage() {
   const [page, setPage] = useState(1);
   const pageSize = 15;
-  const [statuses, setStatuses] = useState<StatusKey[]>(["pending", "approved", "broadcasting"]);
+  const [statuses, setStatuses] = useState<StatusKey[]>(["pending", "approved", "broadcasting", "ready_for_release"]);
   const [search, setSearch] = useState("");
   const [approveTarget, setApproveTarget] = useState<QueueItem | null>(null);
   const [extendTarget, setExtendTarget] = useState<QueueItem | null>(null);
@@ -119,6 +121,16 @@ export default function CspAdminQueuePage() {
       toast.success("Broadcast extended");
       setExtendTarget(null);
       refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const releaseMutation = api.csp.releaseFunds.useMutation({
+    onSuccess: () => {
+      toast.success("Funds released with 80/20 split");
+      refetch();
+      refetchDefaults();
+      setDetailTarget(null);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -408,7 +420,7 @@ export default function CspAdminQueuePage() {
       <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card/70 p-4 shadow-sm backdrop-blur">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap gap-2">
-            {(["pending", "approved", "broadcasting", "closed"] as StatusKey[]).map((status) => {
+            {(["pending", "approved", "broadcasting", "ready_for_release", "released", "closed"] as StatusKey[]).map((status) => {
               const active = statuses.includes(status);
               return (
                 <button
@@ -981,6 +993,16 @@ export default function CspAdminQueuePage() {
                   >
                     <TimerReset className="h-4 w-4" />
                     Extend Broadcast
+                  </button>
+                )}
+                {detailTarget.raisedAmount > 0 && (
+                  <button
+                    onClick={() => releaseMutation.mutate({ requestId: detailTarget.id })}
+                    disabled={releaseMutation.isPending}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-60"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    {releaseMutation.isPending ? "Releasing..." : "Release funds"}
                   </button>
                 )}
                 <button

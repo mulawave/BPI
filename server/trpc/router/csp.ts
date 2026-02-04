@@ -14,6 +14,7 @@ import {
 
 const MIN_PER_CONTRIBUTION = 500;
 const MIN_CUMULATIVE_CONTRIBUTION = 10000;
+const MIN_DISTINCT_REQUESTS = 10;
 
 const CATEGORY_RULES = {
   national: { label: "National", minMembership: "regular plus", minDirects: 10, minThreshold: 10000, broadcastHours: 48 },
@@ -22,7 +23,7 @@ const CATEGORY_RULES = {
 
 type CategoryKey = keyof typeof CATEGORY_RULES;
 
-const MEMBERSHIP_ORDER = ["basic", "regular", "regular plus", "gold", "platinum", "platinum plus"] as const;
+const MEMBERSHIP_ORDER = ["basic", "regular", "regular plus", "gold", "gold plus", "platinum", "platinum plus"] as const;
 
 type MembershipOrder = typeof MEMBERSHIP_ORDER[number];
 
@@ -34,10 +35,9 @@ function assertAdmin(session: any) {
 }
 
 const SYSTEM_WALLET_SPLITS: Array<{ name: string; pct: number; walletType: string }> = [
-  { name: "CSP Admin Wallet", pct: 0.05, walletType: "CSP_ADMIN" },
-  { name: "CSP Sponsor Wallet", pct: 0.01, walletType: "CSP_SPONSOR" },
-  { name: "CSP State Wallet", pct: 0.02, walletType: "CSP_STATE" },
-  { name: "CSP Management Wallet", pct: 0.05, walletType: "CSP_MANAGEMENT" },
+  { name: "CSP Admin Wallet", pct: 0.05, walletType: "EXECUTIVE_POOL" }, // executives revenue pool
+  { name: "CSP State Wallet", pct: 0.02, walletType: "STATE_REVENUE_POOL" },
+  { name: "CSP Management Wallet", pct: 0.05, walletType: "CSP_MANAGEMENT_RESERVE" },
   { name: "CSP Reserve Wallet", pct: 0.07, walletType: "CSP_RESERVE" },
 ];
 
@@ -57,7 +57,7 @@ function meetsMembership(current: MembershipOrder | null, required: MembershipOr
 async function ensureSystemWallet(tx: any, name: string, walletType: string) {
   return tx.systemWallet.upsert({
     where: { name },
-    update: {},
+    update: { updatedAt: new Date() },
     create: {
       id: randomUUID(),
       name,
@@ -65,6 +65,7 @@ async function ensureSystemWallet(tx: any, name: string, walletType: string) {
       balanceNgn: 0,
       balanceUsd: 0,
       balanceBpt: 0,
+      updatedAt: new Date(),
     },
   });
 }
@@ -75,14 +76,16 @@ function computeEligibilityFlags(params: {
   membershipActive: boolean;
   directReferrals: number;
   cumulativeContributions: number;
+  requestsContributed: number;
 }) {
-  const { category, membership, membershipActive, directReferrals, cumulativeContributions } = params;
+  const { category, membership, membershipActive, directReferrals, cumulativeContributions, requestsContributed } = params;
   const rules = CATEGORY_RULES[category];
   const hasMembership = membershipActive && meetsMembership(membership, rules.minMembership as MembershipOrder);
   const hasDirects = directReferrals >= rules.minDirects;
   const hasContrib = cumulativeContributions >= MIN_CUMULATIVE_CONTRIBUTION;
-  const eligible = hasMembership && hasDirects && hasContrib;
-  return { eligible, hasMembership, hasDirects, hasContrib, rules };
+  const hasDistinct = requestsContributed >= MIN_DISTINCT_REQUESTS;
+  const eligible = hasMembership && hasDirects && hasContrib && hasDistinct;
+  return { eligible, hasMembership, hasDirects, hasContrib, hasDistinct, rules };
 }
 
 export const cspRouter = createTRPCRouter({
@@ -95,6 +98,8 @@ export const cspRouter = createTRPCRouter({
       select: {
         activeMembershipPackageId: true,
         membershipActivatedAt: true,
+        wallet: true,
+        community: true,
       },
     });
 
@@ -109,15 +114,17 @@ export const cspRouter = createTRPCRouter({
     const membershipActive = Boolean(user?.membershipActivatedAt && membershipName);
 
     const directReferrals = await prisma.referral.count({ where: { referrerId: userId } });
-    const contributionAggregate = await prisma.cspContribution.aggregate({
+    const contributionGroups = await prisma.cspContribution.groupBy({
+      by: ["requestId"],
       where: { contributorId: userId },
       _sum: { amount: true },
     });
-    const cumulativeContributions = contributionAggregate._sum.amount ?? 0;
+    const cumulativeContributions = contributionGroups.reduce((sum, row) => sum + (row._sum.amount ?? 0), 0);
+    const requestsContributed = contributionGroups.length;
 
     const categories = {
-      national: computeEligibilityFlags({ category: "national", membership, membershipActive, directReferrals, cumulativeContributions }),
-      global: computeEligibilityFlags({ category: "global", membership, membershipActive, directReferrals, cumulativeContributions }),
+      national: computeEligibilityFlags({ category: "national", membership, membershipActive, directReferrals, cumulativeContributions, requestsContributed }),
+      global: computeEligibilityFlags({ category: "global", membership, membershipActive, directReferrals, cumulativeContributions, requestsContributed }),
     } as const;
 
     return {
@@ -127,8 +134,12 @@ export const cspRouter = createTRPCRouter({
       directReferrals,
       cumulativeContributions,
       minContributionRequired: MIN_CUMULATIVE_CONTRIBUTION,
+      minDistinctRequests: MIN_DISTINCT_REQUESTS,
       minPerContribution: MIN_PER_CONTRIBUTION,
+      requestsContributed,
       categories,
+      walletBalance: user?.wallet ?? 0,
+      communityBalance: user?.community ?? 0,
     };
   }),
 
@@ -156,8 +167,13 @@ export const cspRouter = createTRPCRouter({
       const membershipActive = Boolean(eligibility?.membershipActivatedAt && membershipName);
 
       const directReferrals = await prisma.referral.count({ where: { referrerId: userId } });
-      const contributionAggregate = await prisma.cspContribution.aggregate({ where: { contributorId: userId }, _sum: { amount: true } });
-      const cumulativeContributions = contributionAggregate._sum.amount ?? 0;
+      const contributionGroups = await prisma.cspContribution.groupBy({
+        by: ["requestId"],
+        where: { contributorId: userId },
+        _sum: { amount: true },
+      });
+      const cumulativeContributions = contributionGroups.reduce((sum, row) => sum + (row._sum.amount ?? 0), 0);
+      const requestsContributed = contributionGroups.length;
 
       const eligibilityFlags = computeEligibilityFlags({
         category: input.category,
@@ -165,6 +181,7 @@ export const cspRouter = createTRPCRouter({
         membershipActive,
         directReferrals,
         cumulativeContributions,
+        requestsContributed,
       });
 
       if (!eligibilityFlags.eligible) {
@@ -235,7 +252,7 @@ export const cspRouter = createTRPCRouter({
     .input(
       z
         .object({
-          status: z.array(z.enum(["pending", "approved", "broadcasting", "closed", "rejected"])).optional(),
+          status: z.array(z.enum(["pending", "approved", "broadcasting", "ready_for_release", "released", "closed", "rejected"])).optional(),
           page: z.number().int().positive().optional(),
           pageSize: z.number().int().positive().max(100).optional(),
         })
@@ -247,7 +264,7 @@ export const cspRouter = createTRPCRouter({
       const page = input?.page ?? 1;
       const pageSize = input?.pageSize ?? 20;
       const skip = (page - 1) * pageSize;
-      const statusFilter = input?.status ?? ["pending", "approved", "broadcasting"];
+      const statusFilter = input?.status ?? ["pending", "approved", "broadcasting", "ready_for_release"];
 
       const [items, total] = await prisma.$transaction([
         prisma.cspSupportRequest.findMany({
@@ -329,6 +346,43 @@ export const cspRouter = createTRPCRouter({
       return { items, total, page, pageSize };
     }),
 
+  listBroadcasts: protectedProcedure.query(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id as string | undefined;
+    if (!userId) throw new Error("UNAUTHORIZED");
+
+    const requests = await prisma.cspSupportRequest.findMany({
+      where: {
+        OR: [
+          { status: "broadcasting" },
+          { isAdminDefault: true, isActive: true },
+        ],
+      },
+      orderBy: [{ isAdminDefault: "desc" }, { createdAt: "desc" }],
+      include: {
+        User: {
+          select: { id: true, name: true, email: true, image: true, username: true },
+        },
+      },
+    });
+
+    return requests.map((req) => ({
+      id: req.id,
+      userId: req.userId,
+      category: req.category,
+      amount: req.amount,
+      purpose: req.purpose,
+      notes: req.notes,
+      status: req.status,
+      thresholdAmount: req.thresholdAmount,
+      raisedAmount: req.raisedAmount,
+      contributorsCount: req.contributorsCount,
+      broadcastExpiresAt: req.broadcastExpiresAt,
+      isAdminDefault: req.isAdminDefault,
+      isActive: req.isActive,
+      user: req.User,
+    }));
+  }),
+
   contribute: protectedProcedure
     .input(
       z.object({
@@ -374,8 +428,7 @@ export const cspRouter = createTRPCRouter({
         throw new Error("Insufficient balance in selected wallet");
       }
 
-      const recipientShare = Math.floor(input.amount * 0.8);
-      const splitPool = input.amount - recipientShare;
+      const holdingWalletName = `CSP Holding - ${request.id}`;
 
       const result = await prisma.$transaction(async (tx) => {
         await tx.user.update({
@@ -383,10 +436,7 @@ export const cspRouter = createTRPCRouter({
           data: { [input.walletType]: { decrement: input.amount } },
         });
 
-        await tx.user.update({
-          where: { id: request.userId },
-          data: { community: { increment: recipientShare } },
-        });
+        const holdingWallet = await ensureSystemWallet(tx, holdingWalletName, "CSP_HOLDING");
 
         const contribution = await tx.cspContribution.create({
           data: {
@@ -402,7 +452,13 @@ export const cspRouter = createTRPCRouter({
           data: {
             raisedAmount: { increment: input.amount },
             contributorsCount: { increment: 1 },
+            status: request.raisedAmount + input.amount >= request.thresholdAmount ? "ready_for_release" : request.status,
           },
+        });
+
+        await tx.systemWallet.update({
+          where: { id: holdingWallet.id },
+          data: { balanceNgn: { increment: input.amount } },
         });
 
         await tx.transaction.create({
@@ -421,27 +477,13 @@ export const cspRouter = createTRPCRouter({
           data: {
             id: randomUUID(),
             userId: request.userId,
-            transactionType: "CSP_SUPPORT_INFLOW",
-            amount: recipientShare,
-            description: `CSP support received from contributor ${contributorId}`,
-            status: "completed",
-            walletType: "community",
+            transactionType: "CSP_SUPPORT_INFLOW_HOLDING",
+            amount: input.amount,
+            description: `CSP support held for request ${request.id}`,
+            status: "pending",
+            walletType: "holding",
           },
         });
-
-        for (const split of SYSTEM_WALLET_SPLITS) {
-          const share = Math.floor(splitPool * split.pct);
-          if (share <= 0) continue;
-          const systemWallet = await ensureSystemWallet(tx, split.name, split.walletType);
-          await tx.systemWallet.update({
-            where: { id: systemWallet.id },
-            data: { balanceNgn: { increment: share } },
-          });
-        }
-
-        if (updatedRequest.raisedAmount >= updatedRequest.thresholdAmount) {
-          await tx.cspSupportRequest.update({ where: { id: updatedRequest.id }, data: { status: "closed" } });
-        }
 
         return { contribution, updatedRequest };
       });
@@ -449,20 +491,122 @@ export const cspRouter = createTRPCRouter({
       await notifyCspContributionSent(contributorId, input.amount, input.walletType);
       await notifyCspContributionReceived(request.userId, input.amount);
 
-      // Record revenue from CSP contribution (system wallet share)
-      await recordRevenue(prisma, {
-        source: "COMMUNITY_SUPPORT",
-        amount: splitPool, // The 20% that went to system wallets
-        currency: "NGN",
-        sourceId: result.contribution.id,
-        description: `CSP system share from contribution ${result.contribution.id}`,
-      });
-
       return {
         success: true,
         contributionId: result.contribution.id,
         requestId: request.id,
       };
+    }),
+
+  releaseFunds: protectedProcedure
+    .input(z.object({ requestId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+
+      const request = await prisma.cspSupportRequest.findUnique({
+        where: { id: input.requestId },
+        include: { User: { select: { id: true, sponsorId: true } } },
+      });
+
+      if (!request) throw new Error("Support request not found");
+      if (request.raisedAmount <= 0) {
+        throw new Error("No funds available to release yet");
+      }
+
+      const holdingWalletName = `CSP Holding - ${request.id}`;
+      const holdingWallet = await ensureSystemWallet(prisma, holdingWalletName, "CSP_HOLDING");
+      if (holdingWallet.balanceNgn <= 0) {
+        throw new Error("No funds available in holding wallet");
+      }
+
+      const total = Math.min(holdingWallet.balanceNgn, request.raisedAmount);
+      if (total <= 0) throw new Error("No funds to release");
+
+      const shares = {
+        recipient: Math.floor(total * 0.8),
+        admin: Math.floor(total * 0.05),
+        sponsor: Math.floor(total * 0.01),
+        state: Math.floor(total * 0.02),
+        management: Math.floor(total * 0.05),
+        reserve: Math.floor(total * 0.07),
+      };
+      const allocated = shares.recipient + shares.admin + shares.sponsor + shares.state + shares.management + shares.reserve;
+      const remainder = total - allocated;
+      shares.recipient += remainder; // push rounding remainder to recipient
+
+      await prisma.$transaction(async (tx) => {
+        const holding = await ensureSystemWallet(tx, holdingWalletName, "CSP_HOLDING");
+
+        await tx.systemWallet.update({
+          where: { id: holding.id },
+          data: { balanceNgn: { decrement: total } },
+        });
+
+        await tx.user.update({
+          where: { id: request.userId },
+          data: { wallet: { increment: shares.recipient } },
+        });
+
+        if (request.User?.sponsorId && shares.sponsor > 0) {
+          await tx.user.update({
+            where: { id: request.User.sponsorId },
+            data: { wallet: { increment: shares.sponsor } },
+          });
+        }
+
+        const adminWallet = await ensureSystemWallet(tx, "CSP Admin Wallet", "EXECUTIVE_POOL");
+        await tx.systemWallet.update({ where: { id: adminWallet.id }, data: { balanceNgn: { increment: shares.admin } } });
+
+        const stateWallet = await ensureSystemWallet(tx, "CSP State Wallet", "STATE_REVENUE_POOL");
+        await tx.systemWallet.update({ where: { id: stateWallet.id }, data: { balanceNgn: { increment: shares.state } } });
+
+        const managementWallet = await ensureSystemWallet(tx, "CSP Management Wallet", "CSP_MANAGEMENT_RESERVE");
+        await tx.systemWallet.update({ where: { id: managementWallet.id }, data: { balanceNgn: { increment: shares.management } } });
+
+        const reserveWallet = await ensureSystemWallet(tx, "CSP Reserve Wallet", "CSP_RESERVE");
+        await tx.systemWallet.update({ where: { id: reserveWallet.id }, data: { balanceNgn: { increment: shares.reserve } } });
+
+        await tx.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId: request.userId,
+            transactionType: "CSP_PAYOUT",
+            amount: shares.recipient,
+            description: `CSP payout for request ${request.id}`,
+            status: "completed",
+            walletType: "wallet",
+          },
+        });
+
+        if (request.User?.sponsorId && shares.sponsor > 0) {
+          await tx.transaction.create({
+            data: {
+              id: randomUUID(),
+              userId: request.User.sponsorId,
+              transactionType: "CSP_SPONSOR_REWARD",
+              amount: shares.sponsor,
+              description: `Sponsor reward from request ${request.id}`,
+              status: "completed",
+              walletType: "wallet",
+            },
+          });
+        }
+
+        await tx.cspSupportRequest.update({
+          where: { id: request.id },
+          data: { status: "released" },
+        });
+      });
+
+      await recordRevenue(prisma, {
+        source: "COMMUNITY_SUPPORT",
+        amount: shares.admin + shares.state + shares.management + shares.reserve,
+        currency: "NGN",
+        sourceId: request.id,
+        description: `CSP release system share for request ${request.id}`,
+      });
+
+      return { success: true, released: total, shares };
     }),
 
   extendBroadcast: protectedProcedure

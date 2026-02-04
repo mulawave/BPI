@@ -62,10 +62,10 @@ async function seedRevenuePools() {
     // 3. Initialize Company Reserve
     console.log("\n💰 [SEED] Initializing company reserve...");
     const reserve = await prisma.companyReserve.upsert({
-      where: { id: "1" },
+      where: { id: "company-reserve" },
       update: {},
       create: {
-        id: "1",
+        id: "company-reserve",
         balance: 0,
       },
     });

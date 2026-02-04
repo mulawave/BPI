@@ -100,6 +100,7 @@ async function allocateRevenue(
   transactionId: string,
   amount: number
 ) {
+  const COMPANY_RESERVE_ID = "company-reserve";
   try {
     console.log(`[REVENUE SERVICE] Allocating revenue: ₦${amount.toLocaleString()} for transaction ${transactionId}`);
     
@@ -115,13 +116,13 @@ async function allocateRevenue(
       },
     });
     await prisma.companyReserve.upsert({
-      where: { id: 1 },
+      where: { id: COMPANY_RESERVE_ID },
       update: { 
         balance: { increment: companyAmount },
         totalReceived: { increment: companyAmount },
       },
       create: { 
-        id: 1, 
+        id: COMPANY_RESERVE_ID, 
         balance: companyAmount,
         totalReceived: companyAmount,
       },

@@ -39,6 +39,9 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   const [purpose, setPurpose] = useState("");
   const [amount, setAmount] = useState("10000");
   const [notes, setNotes] = useState("");
+  const [selectedBroadcast, setSelectedBroadcast] = useState<any | null>(null);
+  const [contributionAmount, setContributionAmount] = useState("");
+  const [contributionWallet, setContributionWallet] = useState<"community" | "wallet">("wallet");
 
   const categoryRules = {
     national: {
@@ -60,6 +63,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   const eligibilityQuery = api.csp.getEligibility.useQuery(undefined, { refetchOnWindowFocus: false });
   const liveStatusQuery = api.csp.getLiveStatus.useQuery(undefined, { refetchOnWindowFocus: false });
   const historyQuery = api.csp.listHistory.useQuery({ pageSize: 5 }, { refetchOnWindowFocus: false });
+  const broadcastsQuery = api.csp.listBroadcasts.useQuery(undefined, { refetchOnWindowFocus: false });
   const submitRequest = api.csp.submitRequest.useMutation({
     onSuccess: () => {
       toast.success("Support request submitted for approval.");
@@ -74,6 +78,18 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     },
   });
 
+  const contributeMutation = api.csp.contribute.useMutation({
+    onSuccess: () => {
+      toast.success("Contribution submitted and held");
+      setSelectedBroadcast(null);
+      setContributionAmount("");
+      broadcastsQuery.refetch();
+      liveStatusQuery.refetch();
+      eligibilityQuery.refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const profile = {
     membership: (eligibilityQuery.data?.membershipName?.toLowerCase() as Membership) ?? ("basic" as Membership),
     membershipLabel: eligibilityQuery.data?.membershipName ?? "No active membership",
@@ -82,8 +98,15 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     contributionsMade: eligibilityQuery.data?.cumulativeContributions ?? 0,
     minContributionRequired: eligibilityQuery.data?.minContributionRequired ?? 10000,
     minPerContribution: eligibilityQuery.data?.minPerContribution ?? 500,
+    requestsContributed: eligibilityQuery.data?.requestsContributed ?? 0,
+    minDistinctRequests: eligibilityQuery.data?.minDistinctRequests ?? 10,
     nationalDirectRequired: 10,
     globalDirectRequired: 20,
+  };
+
+  const balances = {
+    cash: eligibilityQuery.data?.walletBalance ?? 0,
+    community: eligibilityQuery.data?.communityBalance ?? 0,
   };
 
   const eligibility = useMemo(() => {
@@ -95,6 +118,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         hasMembership: false,
         hasDirects: false,
         hasContrib: false,
+        hasDistinct: false,
         meetsMinPerContribution: false,
         rules,
       };
@@ -105,6 +129,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
       hasMembership: backend.hasMembership,
       hasDirects: backend.hasDirects,
       hasContrib: backend.hasContrib,
+      hasDistinct: backend.hasDistinct,
       meetsMinPerContribution: profile.minPerContribution >= 500,
       rules,
     };
@@ -140,6 +165,16 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     status: item.status,
     date: new Date(item.createdAt).toLocaleDateString(),
   }));
+
+  const broadcasts = broadcastsQuery.data ?? [];
+  const broadcastColumns = useMemo(() => {
+    const perColumn = 5;
+    const chunks: typeof broadcastsQuery.data[] = [];
+    for (let i = 0; i < broadcasts.length; i += perColumn) {
+      chunks.push(broadcasts.slice(i, i + perColumn));
+    }
+    return chunks;
+  }, [broadcasts]);
 
   const liveStatus = liveStatusQuery.data;
 
@@ -193,6 +228,24 @@ export function CspDashboard({ userName }: CspDashboardProps) {
           </div>
         </div>
       </Card>
+
+      {/* Wallet balances */}
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Card className="p-4 border-l-4 border-l-emerald-500 bg-white dark:bg-bpi-dark-card flex items-center justify-between">
+          <div>
+            <p className="text-xs text-muted-foreground">Cash Wallet</p>
+            <p className="text-xl font-bold text-foreground">₦{balances.cash.toLocaleString()}</p>
+          </div>
+          <Wallet className="w-6 h-6 text-emerald-600" />
+        </Card>
+        <Card className="p-4 border-l-4 border-l-blue-500 bg-white dark:bg-bpi-dark-card flex items-center justify-between">
+          <div>
+            <p className="text-xs text-muted-foreground">Community Wallet</p>
+            <p className="text-xl font-bold text-foreground">₦{balances.community.toLocaleString()}</p>
+          </div>
+          <Users className="w-6 h-6 text-blue-600" />
+        </Card>
+      </div>
 
       {/* Eligibility overview */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -319,6 +372,9 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             <span className={`px-2 py-1 rounded-full ${eligibility.hasContrib ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
               {eligibility.hasContrib ? "Contribution ok" : "Contribute ₦10k cumulative"}
             </span>
+            <span className={`px-2 py-1 rounded-full ${eligibility.hasDistinct ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
+              {eligibility.hasDistinct ? "10 requests met" : `${profile.minDistinctRequests} distinct requests needed`}
+            </span>
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -420,6 +476,76 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             ))}
           </div>
         </Card>
+
+        <Card className="p-5 bg-white dark:bg-bpi-dark-card space-y-3 lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <RadioTower className="w-5 h-5 text-emerald-600" />
+              <h4 className="font-semibold text-foreground">Active broadcasts</h4>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => broadcastsQuery.refetch()}>
+              Refresh
+            </Button>
+          </div>
+
+          {broadcastsQuery.data && broadcastsQuery.data.length === 0 && (
+            <p className="text-sm text-muted-foreground">No active broadcasts right now.</p>
+          )}
+
+          <div className="grid lg:grid-cols-2 gap-3">
+            {broadcastColumns.map((col, idx) => (
+              <div key={idx} className="space-y-3">
+                {col.map((item) => {
+                  const percent = Math.min(100, Math.floor((item.raisedAmount / item.thresholdAmount) * 100));
+                  const remaining = item.broadcastExpiresAt ? formatCountdown(Math.floor((new Date(item.broadcastExpiresAt).getTime() - Date.now()) / 1000)) : "--";
+                  const targetMet = item.raisedAmount >= item.thresholdAmount;
+                  return (
+                    <div key={item.id} className="rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-semibold">
+                            {item.user?.name?.[0]?.toUpperCase() ?? item.user?.email?.[0]?.toUpperCase() ?? "?"}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-foreground text-sm">{item.user?.name ?? item.user?.email ?? "User"}</p>
+                            <p className="text-xs text-muted-foreground">{item.user?.email}</p>
+                          </div>
+                        </div>
+                        {targetMet ? (
+                          <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 border border-blue-100">
+                            <CheckCircle2 className="h-4 w-4" /> Target met
+                          </span>
+                        ) : (
+                          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => setSelectedBroadcast(item)}>
+                            Contribute
+                          </Button>
+                        )}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-sm">
+                        <div>
+                          <p className="font-semibold text-foreground">₦{item.thresholdAmount.toLocaleString()}</p>
+                          <p className="text-xs text-muted-foreground">Requested • {item.category}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-foreground">₦{item.raisedAmount.toLocaleString()}</p>
+                          <p className="text-xs text-muted-foreground">Raised</p>
+                        </div>
+                      </div>
+                      <div className="mt-2 h-2 rounded-full bg-gray-200 dark:bg-bpi-dark-accent overflow-hidden">
+                        <div className="h-full bg-emerald-500" style={{ width: `${percent}%` }} />
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{percent}% funded</span>
+                        <span>{item.isAdminDefault ? "No expiry" : `Time left: ${remaining}`}</span>
+                      </div>
+                      <p className="mt-2 text-sm text-foreground">Purpose: {item.purpose}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
 
       {/* History & notifications */}
@@ -488,6 +614,77 @@ export function CspDashboard({ userName }: CspDashboardProps) {
           ))}
         </div>
       </Card>
+
+      {selectedBroadcast && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="absolute inset-0" onClick={() => setSelectedBroadcast(null)} />
+          <div className="relative w-full max-w-lg rounded-2xl bg-white dark:bg-bpi-dark-card border border-border p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Contribute to</p>
+                <h3 className="text-lg font-semibold text-foreground">{selectedBroadcast.user?.name ?? selectedBroadcast.user?.email ?? "User"}</h3>
+                <p className="text-xs text-muted-foreground">{selectedBroadcast.purpose}</p>
+              </div>
+              <button className="text-muted-foreground" onClick={() => setSelectedBroadcast(null)}>✕</button>
+            </div>
+
+            <div className="grid gap-3">
+              <div>
+                <label className="text-sm font-medium text-foreground">Amount (min ₦500)</label>
+                <input
+                  type="number"
+                  min={500}
+                  value={contributionAmount}
+                  onChange={(e) => setContributionAmount(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-background px-3 py-2 text-sm"
+                  placeholder="Enter amount"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-foreground">Wallet</label>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {["wallet", "community"].map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => setContributionWallet(w as "wallet" | "community")}
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition ${contributionWallet === w ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "border-gray-200 dark:border-bpi-dark-accent"}`}
+                    >
+                      {w === "wallet"
+                        ? `Cash Wallet • ₦${balances.cash.toLocaleString()}`
+                        : `Community Wallet • ₦${balances.community.toLocaleString()}`}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Only Cash or Community wallets are accepted. Balances refresh after each contribution.</p>
+              </div>
+            </div>
+
+            <Button
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={contributeMutation.isPending || !contributionAmount}
+              onClick={() => {
+                const amt = Number(contributionAmount);
+                if (Number.isNaN(amt) || amt < 500) {
+                  toast.error("Minimum contribution is ₦500");
+                  return;
+                }
+                contributeMutation.mutate({
+                  requestId: selectedBroadcast.id,
+                  amount: amt,
+                  walletType: contributionWallet,
+                });
+              }}
+            >
+              {contributeMutation.isPending ? "Processing..." : "Submit contribution"}
+            </Button>
+
+            <p className="text-xs text-muted-foreground">
+              Funds are held until the requester hits the threshold. Admin releases payout with 80/20 split.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
