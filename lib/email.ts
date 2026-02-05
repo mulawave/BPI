@@ -154,7 +154,7 @@ export async function sendPasswordResetEmail(email: string, resetToken: string) 
             <p>Best regards,<br>The BPI Team</p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -196,7 +196,7 @@ export async function sendVerificationEmail(email: string, code: string) {
             <p>Best regards,<br>The BPI Team</p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -231,16 +231,16 @@ export async function sendWelcomeEmail(email: string, name: string) {
           </div>
           <div class="content">
             <p>Hello ${name},</p>
-            <p>Welcome to the BeepAgro Progress Initiative! We're excited to have you as part of our community.</p>
+            <p>Welcome to the BeepAgro Palliative Initiative! We're excited to have you as part of our community.</p>
             <p>Get started by exploring your dashboard and connecting with other members:</p>
             <p style="text-align: center;">
-              <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard" class="button">Visit Dashboard</a>
+              <a href="https://beepagro.com/dashboard" class="button">Visit Dashboard</a>
             </p>
             <p>If you have any questions, our support team is here to help.</p>
             <p>Best regards,<br>The BPI Team</p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -340,7 +340,7 @@ export async function sendWithdrawalRequestToAdmins(
             </p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
             <p>This is an automated admin notification. Do not reply to this email.</p>
           </div>
         </div>
@@ -428,7 +428,7 @@ export async function sendWithdrawalApprovedToUser(
             <p>Best regards,<br>The BPI Team</p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -504,7 +504,7 @@ export async function sendWithdrawalRejectedToUser(
             <p>Best regards,<br>The BPI Team</p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -585,7 +585,7 @@ export async function sendTransferConfirmationToUser(
             <p>Best regards,<br>The BPI Team</p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -662,7 +662,7 @@ export async function sendTransferToUserConfirmation(
             <p>Best regards,<br>The BPI Team</p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -722,7 +722,7 @@ export async function sendTransferToUserConfirmation(
             <p>Best regards,<br>The BPI Team</p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -824,7 +824,7 @@ export async function sendRenewalReminderEmail(
             <p>Best regards,<br>The BPI Team</p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
           </div>
         </div>
       </body>

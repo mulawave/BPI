@@ -25,10 +25,10 @@
 ### Task 3: Settings Retrieval ✅
 **Files Modified:**
 - `server/trpc/router/admin.ts` - Extended getSettings and updateSettings
-- `app/layout.tsx` - Updated to use dynamic site title "BPI - BeepAgro Progress Initiative"
+- `app/layout.tsx` - Updated to use dynamic site title "BPI - BeepAgro Palliative Initiative"
 
 **New Settings Fields:**
-- `siteTitle` (default: "BPI - BeepAgro Progress Initiative")
+- `siteTitle` (default: "BPI - BeepAgro Palliative Initiative")
 - `supportEmail` (default: "support@beepagro.com")
 
 **Result:** Site title and support email now configurable via Admin Settings

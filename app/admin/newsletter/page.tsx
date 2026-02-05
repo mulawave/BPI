@@ -769,7 +769,7 @@ function EmailPreview({
         <div className="max-w-2xl mx-auto relative z-10">
           <div className="flex items-center justify-center gap-3 mb-4">
             <img src="/img/logo.png" alt="BPI" className="h-8" />
-            <div className="font-bold text-lg">BeepAgro Progress Initiative</div>
+            <div className="font-bold text-lg">BeepAgro Palliative Initiative</div>
           </div>
           
           <p className="text-center mb-3 opacity-95">Powering Palliative Through Technology</p>
@@ -793,13 +793,13 @@ function EmailPreview({
           
           <div className="border-t border-white/30 pt-4 text-xs text-center opacity-80">
             <p className="mb-2">
-              You are receiving this email because you signed up on BeepAgro Progress Initiative.
+              You are receiving this email because you signed up on BeepAgro Palliative Initiative.
             </p>
             <p className="mb-2">
               If you no longer wish to receive these emails, you can <a href="#" className="underline hover:text-white">unsubscribe here</a>.
             </p>
             <p className="mt-4">
-              © {new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.
+              © {new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.
             </p>
           </div>
         </div>

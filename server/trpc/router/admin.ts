@@ -5341,7 +5341,7 @@ export const adminRouter = createTRPCRouter({
       enableTrainingCenter: settingsMap.enableTrainingCenter ?? true,
       enablePromotionalMaterials: settingsMap.enablePromotionalMaterials ?? true,
       enableLatestUpdates: settingsMap.enableLatestUpdates ?? true,
-      siteTitle: settingsMap.siteTitle ?? 'BPI - BeepAgro Progress Initiative',
+      siteTitle: settingsMap.siteTitle ?? 'BPI - BeepAgro Palliative Initiative',
       supportEmail: settingsMap.supportEmail ?? 'support@beepagroafrica.com',
       smtpHost: settingsMap.smtpHost ?? '',
       smtpPort: settingsMap.smtpPort ?? '587',
@@ -8538,7 +8538,7 @@ export const adminRouter = createTRPCRouter({
                   <p>Best regards,<br>The BPI System</p>
                 </div>
                 <div class="footer">
-                  <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+                  <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
                   <p style="margin-top: 10px; color: #999;">This is an automated test email sent from your admin panel.</p>
                 </div>
               </div>
@@ -8925,7 +8925,7 @@ export const adminRouter = createTRPCRouter({
                         <p>Best regards,<br>BPI System Notifications</p>
                       </div>
                       <div class="footer">
-                        <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+                        <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
                       </div>
                     </div>
                   </body>
@@ -9296,7 +9296,7 @@ export const adminRouter = createTRPCRouter({
                     <p>Best regards,<br>BPI Administration Team</p>
                   </div>
                   <div class="footer">
-                    <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+                    <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
                     <p>This is an automated system notification. Please do not reply to this email.</p>
                   </div>
                 </div>
@@ -9436,7 +9436,7 @@ export const adminRouter = createTRPCRouter({
                     <p>Best regards,<br>BPI Administration Team</p>
                   </div>
                   <div class="footer">
-                    <p>&copy; ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+                    <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
                     <p>This is an automated system notification. Please do not reply to this email.</p>
                   </div>
                 </div>
@@ -9614,7 +9614,7 @@ function buildNewsletterEmail({
       <div class="footer-content">
         <div class="footer-logo">
           <img src="https://beepagro.com/img/logo.png" alt="BPI" />
-          <div class="footer-title">BeepAgro Progress Initiative</div>
+          <div class="footer-title">BeepAgro Palliative Initiative</div>
         </div>
         
         <p class="footer-text">Powering Palliative Through Technology</p>
@@ -9630,9 +9630,9 @@ function buildNewsletterEmail({
         ` : ''}
         
         <div class="disclaimer">
-          <p style="margin-bottom: 0.5rem;">You are receiving this email because you signed up on BeepAgro Progress Initiative.</p>
+          <p style="margin-bottom: 0.5rem;">You are receiving this email because you signed up on BeepAgro Palliative Initiative.</p>
           <p style="margin-bottom: 0.5rem;">If you no longer wish to receive these emails, you can <a href="https://beepagro.com/settings" style="color: #ffffff; text-decoration: underline;">unsubscribe here</a>.</p>
-          <p style="margin-top: 1rem;">© ${new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.</p>
+          <p style="margin-top: 1rem;">© ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
         </div>
       </div>
     </div>

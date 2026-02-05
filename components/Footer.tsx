@@ -64,7 +64,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
               <h3 className="text-2xl font-bold text-white">BPI</h3>
             </div>
             <p className="text-gray-400 text-sm leading-relaxed">
-              BeepAgro Progress Initiative - Empowering agricultural communities through innovation, sustainability, and shared prosperity.
+              BeepAgro Palliative Initiative - Empowering agricultural communities through innovation, sustainability, and shared prosperity.
             </p>
             
             {/* Social Links */}
@@ -219,7 +219,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
         {/* Bottom Footer */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm">
           <div className="text-gray-500 text-center md:text-left">
-            © {new Date().getFullYear()} BeepAgro Progress Initiative. All rights reserved.
+            © {new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.
           </div>
           
           {/* Footer Links */}

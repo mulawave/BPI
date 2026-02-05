@@ -6,8 +6,8 @@ import ViewportFitBanner from "@/components/ViewportFitBanner";
 import ImpersonationBanner from "@/components/admin/ImpersonationBanner";
 
 export const metadata = {
-  title: "BPI - BeepAgro Progress Initiative",
-  description: "BeepAgro Progress Initiative - Empowering Agricultural Communities",
+  title: "BPI - BeepAgro Palliative Initiative",
+  description: "BeepAgro Palliative Initiative - Empowering Agricultural Communities",
   icons: {
     icon: "/img/logo.png",
     shortcut: "/img/logo.png",
