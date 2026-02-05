@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/client/trpc";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,25 @@ type Membership = typeof membershipRank[number];
 
 type SupportCategory = "national" | "global";
 
+function hashRequestId(value: string) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  const normalized = Math.abs(hash).toString(36).slice(0, 8);
+  return `CSP-${normalized}`;
+}
+
+function shuffleArray<T>(input: T[]) {
+  const arr = [...input];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 export function CspDashboard({ userName }: CspDashboardProps) {
   const [supportCategory, setSupportCategory] = useState<SupportCategory>("national");
   const [purpose, setPurpose] = useState("");
@@ -42,6 +61,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   const [selectedBroadcast, setSelectedBroadcast] = useState<any | null>(null);
   const [contributionAmount, setContributionAmount] = useState("");
   const [contributionWallet, setContributionWallet] = useState<"community" | "wallet">("wallet");
+  const [shuffledBroadcasts, setShuffledBroadcasts] = useState<typeof broadcastsQuery.data>([]);
 
   const categoryRules = {
     national: {
@@ -149,15 +169,6 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     { directs: 100, hours: 168 },
   ];
 
-  const contributionSplit = [
-    { label: "Recipient Support", pct: 80, desc: "Recipient support wallet" },
-    { label: "Admin Wallet", pct: 5, desc: "System administration" },
-    { label: "Sponsor / Referrer", pct: 1, desc: "Direct sponsor reward" },
-    { label: "State Wallet", pct: 2, desc: "State reps" },
-    { label: "Management Wallet", pct: 5, desc: "Managed beneficiaries" },
-    { label: "Reserve Wallet", pct: 7, desc: "Management reserve" },
-  ];
-
   const history = (historyQuery.data?.items ?? []).map((item: { id: string; category: string; amount: number; status: string; createdAt: string | Date }) => ({
     id: item.id,
     category: item.category,
@@ -167,13 +178,42 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   }));
 
   const broadcasts = broadcastsQuery.data ?? [];
+
+  useEffect(() => {
+    setShuffledBroadcasts(broadcasts);
+  }, [broadcasts]);
+
+  useEffect(() => {
+    if (!broadcasts.length) return;
+    const interval = setInterval(() => {
+      setShuffledBroadcasts((prev) => {
+        const source = prev && prev.length ? prev : broadcasts;
+        return shuffleArray(source);
+      });
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [broadcasts]);
+
   const broadcastColumns = useMemo(() => {
     const perColumn = 5;
+    const source = (shuffledBroadcasts && shuffledBroadcasts.length ? shuffledBroadcasts : broadcasts) ?? [];
     const chunks: typeof broadcastsQuery.data[] = [];
-    for (let i = 0; i < broadcasts.length; i += perColumn) {
-      chunks.push(broadcasts.slice(i, i + perColumn));
+    for (let i = 0; i < source.length; i += perColumn) {
+      chunks.push(source.slice(i, i + perColumn));
     }
     return chunks;
+  }, [broadcasts, shuffledBroadcasts]);
+
+  const broadcastMetrics = useMemo(() => {
+    const total = broadcasts.length;
+    const targetMetCount = broadcasts.filter((b) => b.raisedAmount >= b.thresholdAmount).length;
+    const totalRaised = broadcasts.reduce((sum, b) => sum + b.raisedAmount, 0);
+    const avgProgress = total
+      ? Math.round(
+          (broadcasts.reduce((sum, b) => sum + (b.raisedAmount / Math.max(1, b.thresholdAmount)), 0) / total) * 100
+        )
+      : 0;
+    return { total, targetMetCount, totalRaised, avgProgress };
   }, [broadcasts]);
 
   const liveStatus = liveStatusQuery.data;
@@ -210,7 +250,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             <p className="text-sm uppercase tracking-wide text-white/80">Community Support Program</p>
             <h1 className="text-2xl sm:text-3xl font-bold mt-2">Request & Track Support</h1>
             <p className="text-white/80 mt-2 max-w-2xl">
-              Check eligibility, request support, monitor broadcasts, and view wallet splits in one place.
+              Check eligibility, request support, and monitor anonymous broadcasts in one place.
             </p>
           </div>
           <div className="flex items-center gap-3 bg-white/10 rounded-xl px-4 py-3 backdrop-blur border border-white/20">
@@ -462,18 +502,25 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         <Card className="p-5 bg-white dark:bg-bpi-dark-card space-y-3">
           <div className="flex items-center gap-2">
             <Wallet className="w-5 h-5 text-emerald-600" />
-            <h4 className="font-semibold text-foreground">80 / 20 split preview</h4>
+            <h4 className="font-semibold text-foreground">Live analytics</h4>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {contributionSplit.map((item) => (
-              <div key={item.label} className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold text-foreground text-sm">{item.label}</p>
-                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-200">{item.pct}%</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">{item.desc}</p>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
+              <p className="text-xs text-muted-foreground">Active broadcasts</p>
+              <p className="text-xl font-bold text-foreground">{broadcastMetrics.total}</p>
+            </div>
+            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
+              <p className="text-xs text-muted-foreground">Targets met</p>
+              <p className="text-xl font-bold text-foreground">{broadcastMetrics.targetMetCount}</p>
+            </div>
+            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
+              <p className="text-xs text-muted-foreground">Total raised</p>
+              <p className="text-xl font-bold text-foreground">₦{broadcastMetrics.totalRaised.toLocaleString()}</p>
+            </div>
+            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
+              <p className="text-xs text-muted-foreground">Avg. progress</p>
+              <p className="text-xl font-bold text-foreground">{broadcastMetrics.avgProgress}%</p>
+            </div>
           </div>
         </Card>
 
@@ -499,16 +546,15 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                   const percent = Math.min(100, Math.floor((item.raisedAmount / item.thresholdAmount) * 100));
                   const remaining = item.broadcastExpiresAt ? formatCountdown(Math.floor((new Date(item.broadcastExpiresAt).getTime() - Date.now()) / 1000)) : "--";
                   const targetMet = item.raisedAmount >= item.thresholdAmount;
+                  const anonLabel = hashRequestId(item.id);
                   return (
                     <div key={item.id} className="rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30 p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-semibold">
-                            {item.user?.name?.[0]?.toUpperCase() ?? item.user?.email?.[0]?.toUpperCase() ?? "?"}
-                          </div>
+                          <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-800 flex items-center justify-center font-semibold">🔒</div>
                           <div>
-                            <p className="font-semibold text-foreground text-sm">{item.user?.name ?? item.user?.email ?? "User"}</p>
-                            <p className="text-xs text-muted-foreground">{item.user?.email}</p>
+                            <p className="font-semibold text-foreground text-sm">{anonLabel}</p>
+                            <p className="text-xs text-muted-foreground">Anonymous request</p>
                           </div>
                         </div>
                         {targetMet ? (
@@ -604,7 +650,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             { title: "Submit", desc: "Send request with purpose and amount." },
             { title: "Approval", desc: "Management reviews and approves." },
             { title: "Broadcast", desc: "48h window to raise threshold." },
-            { title: "Payout", desc: "Auto 80/20 split across wallets." },
+            { title: "Payout", desc: "Admin releases held funds to the recipient." },
           ].map((step, idx) => (
             <div key={step.title} className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
               <p className="text-xs text-muted-foreground">Step {idx + 1}</p>
@@ -622,7 +668,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Contribute to</p>
-                <h3 className="text-lg font-semibold text-foreground">{selectedBroadcast.user?.name ?? selectedBroadcast.user?.email ?? "User"}</h3>
+                <h3 className="text-lg font-semibold text-foreground">{hashRequestId(selectedBroadcast.id)}</h3>
                 <p className="text-xs text-muted-foreground">{selectedBroadcast.purpose}</p>
               </div>
               <button className="text-muted-foreground" onClick={() => setSelectedBroadcast(null)}>✕</button>
@@ -680,7 +726,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </Button>
 
             <p className="text-xs text-muted-foreground">
-              Funds are held until the requester hits the threshold. Admin releases payout with 80/20 split.
+              Funds are held until the requester hits the threshold or admin releases the payout after review.
             </p>
           </div>
         </div>
