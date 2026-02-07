@@ -8,6 +8,7 @@ import { api } from "@/client/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCurrency } from "@/contexts/CurrencyContext";
+import { PaymentGateway } from "@/server/services/payment/types";
 
 type EmpowermentType = "CHILD_EDUCATION" | "VOCATIONAL_SKILL";
 type Gateway = "wallet" | "paystack" | "flutterwave";
@@ -15,6 +16,13 @@ type Gateway = "wallet" | "paystack" | "flutterwave";
 const PACKAGE_FEE = 330000;
 const VAT = 24750;
 const TOTAL_COST = PACKAGE_FEE + VAT;
+
+const toPaymentGateway = (value: Gateway | null): PaymentGateway | null => {
+  if (value === "paystack") return PaymentGateway.PAYSTACK;
+  if (value === "flutterwave") return PaymentGateway.FLUTTERWAVE;
+  if (value === "wallet") return PaymentGateway.WALLET;
+  return null;
+};
 
 export default function EmpowermentPage() {
   const router = useRouter();
@@ -31,7 +39,7 @@ export default function EmpowermentPage() {
   const [empowermentType, setEmpowermentType] = useState<EmpowermentType>("CHILD_EDUCATION");
   const [gateway, setGateway] = useState<Gateway>("wallet");
   const [pendingReference, setPendingReference] = useState<string | null>(null);
-  const [pendingGateway, setPendingGateway] = useState<Gateway | null>(null);
+  const [pendingGateway, setPendingGateway] = useState<PaymentGateway | null>(null);
 
   const { data: gatewayConfigs } = api.payment.getPaymentGateways.useQuery();
   const enabledByName = useMemo(
@@ -54,7 +62,9 @@ export default function EmpowermentPage() {
     onSuccess: (data: any) => {
       if (data?.paymentUrl) {
         setPendingReference(data.reference || null);
-        setPendingGateway((data.gateway as Gateway) || null);
+        setPendingGateway(
+          data.gateway === "paystack" ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE
+        );
         toast.success("Payment initiated. Complete payment to activate the package.");
         window.open(data.paymentUrl, "_blank");
         return;
@@ -87,16 +97,20 @@ export default function EmpowermentPage() {
       searchParams?.get("ref");
     const status = searchParams?.get("status");
 
-    if (!gatewayParam || !referenceParam) return;
+    if (typeof referenceParam !== "string" || !gatewayParam) return;
     if (status && status !== "successful" && status !== "success") return;
 
+    const gatewayValue = toPaymentGateway(gatewayParam);
+
+    if (!gatewayValue || gatewayValue === PaymentGateway.WALLET) return;
+
     verifyEmpowerment.mutate({
-      gateway: gatewayParam === "paystack" ? "paystack" : "flutterwave",
+      gateway: gatewayValue,
       reference: referenceParam,
     });
   }, [searchParams, verifyEmpowerment, router]);
 
-  const canSubmit = selectedUser && !activateEmpowerment.isLoading;
+  const canSubmit = selectedUser && !activateEmpowerment.isPending;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/30 to-white dark:from-bpi-dark-bg dark:via-bpi-dark-card/40 dark:to-bpi-dark-bg">
@@ -287,15 +301,16 @@ export default function EmpowermentPage() {
                 <p className="text-xs opacity-80">Reference: {pendingReference}</p>
                 <Button
                   className="mt-3 w-full gap-2"
-                  onClick={() =>
+                  onClick={() => {
+                    if (!pendingGateway || pendingGateway === PaymentGateway.WALLET) return;
                     verifyEmpowerment.mutate({
                       gateway: pendingGateway,
                       reference: pendingReference,
                       beneficiaryId: selectedUser?.id,
                       empowermentType,
-                    })
-                  }
-                  disabled={verifyEmpowerment.isLoading}
+                    });
+                  }}
+                  disabled={verifyEmpowerment.isPending}
                 >
                   <FiCheckCircle /> Verify payment
                 </Button>

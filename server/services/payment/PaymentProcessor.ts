@@ -90,7 +90,7 @@ export class PaymentProcessor {
         enabled,
         environment: (process.env.PAYSTACK_ENV as "test" | "live") || "test",
         secretKey,
-        publicKey: dbConfig?.publicKey,
+        publicKey: dbConfig?.publicKey || undefined,
         features: {
           paymentMethods: ["card", "banktransfer", "ussd"],
         },
