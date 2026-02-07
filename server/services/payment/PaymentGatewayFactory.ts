@@ -9,6 +9,7 @@ import {
 import { MockDevGateway } from "./MockDevGateway";
 import { WalletGateway } from "./WalletGateway";
 import { FlutterwaveGateway } from "./FlutterwaveGateway";
+import { PaystackGateway } from "./PaystackGateway";
 // Future imports:
 // import { PaystackGateway } from "./PaystackGateway";
 // import { BankTransferGateway } from "./BankTransferGateway";
@@ -52,11 +53,11 @@ export class PaymentGatewayFactory {
         gateway = new FlutterwaveGateway();
         break;
 
-      // TODO: Implement these gateways
+      case PaymentGateway.PAYSTACK:
+        gateway = new PaystackGateway();
+        break;
 
-      // case PaymentGateway.PAYSTACK:
-      //   gateway = new PaystackGateway();
-      //   break;
+      // TODO: Implement these gateways
 
       // case PaymentGateway.BANK_TRANSFER:
       //   gateway = new BankTransferGateway();

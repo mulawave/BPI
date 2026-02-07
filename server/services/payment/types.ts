@@ -5,7 +5,7 @@ export interface PaymentRequest {
   email: string;
   name: string;
   phone?: string;
-  paymentMethod: "flutterwave" | "wallet" | "mock";
+  paymentMethod: "flutterwave" | "paystack" | "wallet" | "mock";
   currency?: string;
   purpose?: string;
   metadata?: Record<string, any>;
@@ -52,6 +52,7 @@ export enum PaymentStatus {
 export enum PaymentGateway {
   MOCK_DEV = "mock_dev",
   WALLET = "wallet",
+  PAYSTACK = "paystack",
   FLUTTERWAVE = "flutterwave",
 }
 
@@ -60,6 +61,7 @@ export enum PaymentPurpose {
   UPGRADE = "UPGRADE",
   RENEWAL = "RENEWAL",
   TOPUP = "TOPUP",
+  EMPOWERMENT = "EMPOWERMENT",
 }
 
 export interface GatewayConfig {

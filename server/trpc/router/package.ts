@@ -1,11 +1,14 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import { getReferralChain } from "@/server/services/referral.service";
 import { distributeBptReward } from "@/server/services/rewards.service";
+import { PaymentProcessor } from "@/server/services/payment";
+import { PaymentGateway, PaymentPurpose, PaymentStatus } from "@/server/services/payment/types";
 import { randomUUID } from "crypto";
 import { getPalliativeTier, isHighTierPackage, getWalletFieldName } from "@/lib/palliative";
 import { recordRevenue } from "@/server/services/revenue.service";
+import { activateMembershipAfterExternalPayment } from "@/server/services/membershipPayments.service";
 import {
   notifyMembershipActivation,
   notifyMembershipRenewal,
@@ -44,10 +47,321 @@ const qualifiesForCspCommunityCredit = (packageName: string) => {
   return qualifyingNames.some((name) => name.toLowerCase() === packageName.toLowerCase());
 };
 
+async function finalizeEmpowermentPackage(params: {
+  sponsorId: string;
+  beneficiary: { id: string; name: string | null; email: string | null };
+  empowermentType: "CHILD_EDUCATION" | "VOCATIONAL_SKILL";
+  packageFee: number;
+  vat: number;
+  totalCost: number;
+}) {
+  const { sponsorId, beneficiary, empowermentType, packageFee, vat, totalCost } = params;
+
+  const GROSS_EMPOWERMENT_VALUE = 7250000;
+  const GROSS_SPONSOR_REWARD = 1000000;
+  const TAX_RATE = 0.075;
+
+  const netEmpowermentValue = GROSS_EMPOWERMENT_VALUE * (1 - TAX_RATE);
+  const netSponsorReward = GROSS_SPONSOR_REWARD * (1 - TAX_RATE);
+
+  const activatedAt = new Date();
+  const maturityDate = new Date(activatedAt);
+  maturityDate.setMonth(maturityDate.getMonth() + 24);
+
+  const empowermentPackage = await prisma.empowermentPackage.create({
+    data: {
+      id: randomUUID(),
+      updatedAt: new Date(),
+      sponsorId,
+      beneficiaryId: beneficiary.id,
+      packageFee,
+      vat,
+      empowermentType,
+      status: "Active - Countdown Running",
+      activatedAt,
+      maturityDate,
+      grossEmpowermentValue: GROSS_EMPOWERMENT_VALUE,
+      netEmpowermentValue,
+      grossSponsorReward: GROSS_SPONSOR_REWARD,
+      netSponsorReward,
+      beneficiaryCanView: true,
+      beneficiaryCanWithdraw: false,
+    },
+  });
+
+  await recordRevenue(prisma, {
+    source: "OTHER",
+    amount: totalCost,
+    currency: "NGN",
+    sourceId: empowermentPackage.id,
+    description: `Empowerment package fee paid by ${sponsorId} for ${beneficiary.name || beneficiary.email || "beneficiary"}`,
+  });
+
+  await prisma.user.update({
+    where: { id: beneficiary.id },
+    data: { sponsorId },
+  });
+
+  await prisma.empowermentTransaction.create({
+    data: {
+      id: randomUUID(),
+      empowermentPackageId: empowermentPackage.id,
+      transactionType: "ACTIVATION",
+      grossAmount: totalCost,
+      taxAmount: 0,
+      netAmount: totalCost,
+      description: `Empowerment package activated by sponsor ${sponsorId} for beneficiary ${beneficiary.name || beneficiary.email || beneficiary.id}`,
+      performedBy: sponsorId,
+    },
+  });
+
+  await notifyEmpowermentActivation(sponsorId, beneficiary.id, maturityDate);
+
+  return { maturityDate, empowermentPackage };
+}
+
 export const packageRouter = createTRPCRouter({
   getPackages: publicProcedure.query(async () => {
     return await prisma.membershipPackage.findMany();
   }),
+
+  // Initiate membership payment (wallet or external gateway)
+  initiateMembershipPayment: protectedProcedure
+    .input(z.object({
+      packageId: z.string(),
+      selectedPalliative: z.enum(["car", "house", "land", "business", "solar", "education"]).optional(),
+      gateway: z.enum(["wallet", "flutterwave"]).default("wallet"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id;
+      if (!userId) throw new Error("UNAUTHORIZED");
+
+      const membershipPackage = await prisma.membershipPackage.findUnique({ where: { id: input.packageId } });
+      if (!membershipPackage) throw new Error("Membership package not found.");
+
+      const totalCost = membershipPackage.price + membershipPackage.vat;
+
+      if (input.gateway === "wallet") {
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { wallet: true } });
+        if (!user) throw new Error("User not found");
+        if ((user.wallet ?? 0) < totalCost) {
+          throw new Error(`Insufficient wallet balance. You need NGN ${totalCost.toLocaleString()}`);
+        }
+
+        const walletReference = `MEM-WALLET-${Date.now()}`;
+
+        // Deduct and record transaction
+        await prisma.$transaction(async (tx) => {
+          await tx.user.update({ where: { id: userId }, data: { wallet: { decrement: totalCost } } });
+          await tx.transaction.create({
+            data: {
+              id: randomUUID(),
+              userId,
+              transactionType: "MEMBERSHIP_PAYMENT",
+              amount: -totalCost,
+              description: `${membershipPackage.name} membership via wallet`,
+              status: "completed",
+              reference: walletReference,
+              walletType: "main",
+            },
+          });
+        });
+
+        await activateMembershipAfterExternalPayment({
+          prisma,
+          userId,
+          packageId: input.packageId,
+          selectedPalliative: input.selectedPalliative,
+          paymentReference: walletReference,
+          paymentMethodLabel: "Wallet",
+          activatorName: ctx.session?.user?.name || ctx.session?.user?.email || "Member",
+        });
+
+        await recordRevenue(prisma, {
+          source: "MEMBERSHIP_REGISTRATION",
+          amount: totalCost,
+          currency: "NGN",
+          sourceId: input.packageId,
+          description: `Membership purchase: ${membershipPackage.name}`,
+        });
+
+        return { success: true, gateway: "wallet", paymentUrl: null, reference: walletReference };
+      }
+
+      // External gateway flow (Flutterwave)
+      const payment = await PaymentProcessor.processPayment({
+        amount: totalCost,
+        currency: "NGN",
+        userId,
+        packageId: input.packageId,
+        email: ctx.session?.user?.email || "",
+        name: ctx.session?.user?.name || "",
+        paymentMethod: "flutterwave",
+        purpose: PaymentPurpose.MEMBERSHIP,
+        gateway: PaymentGateway.FLUTTERWAVE,
+        metadata: {
+          packageId: input.packageId,
+          purpose: PaymentPurpose.MEMBERSHIP,
+          selectedPalliative: input.selectedPalliative,
+          userId,
+        },
+      });
+
+      if (!payment.success) {
+        throw new Error(payment.error || payment.message || "Failed to initiate payment");
+      }
+
+      const paymentRef = payment.transactionId || payment.reference || payment.gatewayReference || `MEM-FLW-${Date.now()}`;
+
+      // Create pending membership payment records for reconciliation
+      await prisma.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          transactionType: "MEMBERSHIP_PAYMENT",
+          amount: -totalCost,
+          description: `${membershipPackage.name} membership via ${input.gateway}`,
+          status: "pending",
+          reference: paymentRef,
+          walletType: "main",
+        },
+      });
+
+      await prisma.pendingPayment.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          transactionType: "MEMBERSHIP",
+          amount: totalCost,
+          currency: "NGN",
+          paymentMethod: input.gateway,
+          gatewayReference: paymentRef,
+          status: "pending",
+          metadata: {
+            packageId: input.packageId,
+            selectedPalliative: input.selectedPalliative,
+            purpose: PaymentPurpose.MEMBERSHIP,
+          },
+          updatedAt: new Date(),
+        },
+      });
+
+      return {
+        success: true,
+        gateway: "flutterwave",
+        paymentUrl: payment.paymentUrl,
+        reference: paymentRef,
+      };
+    }),
+
+  // Verify and activate membership after external payment
+  verifyMembershipPayment: protectedProcedure
+    .input(z.object({
+      gateway: z.nativeEnum(PaymentGateway),
+      reference: z.string(),
+      packageId: z.string().optional(),
+      selectedPalliative: z.enum(["car", "house", "land", "business", "solar", "education"]).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id;
+      if (!userId) throw new Error("UNAUTHORIZED");
+
+      const verification = await PaymentProcessor.verifyPayment(input.gateway, input.reference);
+      const successStates = [PaymentStatus.SUCCESS, PaymentStatus.SUCCESSFUL];
+
+      if (!verification.success || (verification.status && !successStates.includes(verification.status))) {
+        throw new Error(verification.error || verification.message || "Payment verification failed");
+      }
+
+      const pending = await prisma.pendingPayment.findFirst({
+        where: {
+          userId,
+          gatewayReference: input.reference,
+          transactionType: "MEMBERSHIP",
+          status: { in: ["pending", "processing"] },
+        },
+      });
+
+      const pendingMetadata = (pending?.metadata as Record<string, any> | undefined) || {};
+
+      const packageId = pendingMetadata.packageId || input.packageId;
+      const selectedPalliative = pendingMetadata.selectedPalliative || input.selectedPalliative;
+
+      if (!packageId) {
+        throw new Error("Package ID is required to complete membership activation.");
+      }
+
+      const membershipPackage = await prisma.membershipPackage.findUnique({ where: { id: packageId } });
+      if (!membershipPackage) {
+        throw new Error("Membership package not found.");
+      }
+
+      const totalCost = membershipPackage.price + membershipPackage.vat;
+      if (verification.amount && Math.abs(verification.amount - totalCost) > 5) {
+        console.warn("[WARN] [MEMBERSHIP] Verification amount mismatch", {
+          expected: totalCost,
+          verified: verification.amount,
+          reference: input.reference,
+        });
+      }
+
+      await activateMembershipAfterExternalPayment({
+        prisma,
+        userId,
+        packageId,
+        selectedPalliative,
+        paymentReference: input.reference,
+        paymentMethodLabel: input.gateway,
+        activatorName: ctx.session?.user?.name || ctx.session?.user?.email || "Member",
+      });
+
+      if (pending) {
+        await prisma.pendingPayment.update({
+          where: { id: pending.id },
+          data: {
+            status: "completed",
+            reviewedBy: userId,
+            reviewedAt: new Date(),
+            updatedAt: new Date(),
+            metadata: {
+              ...pendingMetadata,
+                verification: {
+                  status: verification.status,
+                  amount: verification.amount,
+                  reference: verification.reference,
+                  transactionId: verification.transactionId,
+                  gatewayReference: verification.gatewayReference,
+                  metadata: verification.metadata,
+                  message: verification.message,
+                },
+            },
+          },
+        });
+      }
+
+      await prisma.transaction.updateMany({
+        where: {
+          userId,
+          reference: input.reference,
+          transactionType: "MEMBERSHIP_PAYMENT",
+        },
+        data: { status: "completed" },
+      });
+
+      await recordRevenue(prisma, {
+        source: "MEMBERSHIP_REGISTRATION",
+        amount: totalCost,
+        currency: "NGN",
+        sourceId: packageId,
+        description: `Membership purchase: ${membershipPackage.name}`,
+      });
+
+      return {
+        success: true,
+        message: `${membershipPackage.name} activated successfully`,
+        reference: input.reference,
+      };
+    }),
 
   // Mock Payment Gateway for Testing
   processMockPayment: protectedProcedure
@@ -59,6 +373,9 @@ export const packageRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session?.user) {
         throw new Error("UNAUTHORIZED");
+      }
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("Mock membership payments are disabled in production.");
       }
       const userId = (ctx.session.user as any).id;
       const { packageId, selectedPalliative, paymentMethod = 'mock' } = input;
@@ -118,7 +435,7 @@ export const packageRouter = createTRPCRouter({
         }
 
         if (user.wallet < totalCost) {
-          throw new Error(`Insufficient wallet balance. You have ₦${user.wallet.toLocaleString()} but need ₦${totalCost.toLocaleString()}`);
+          throw new Error(`Insufficient wallet balance. You have NGN ${user.wallet.toLocaleString()} but need NGN ${totalCost.toLocaleString()}`);
         }
 
         // Deduct from wallet
@@ -551,9 +868,9 @@ export const packageRouter = createTRPCRouter({
         
         if (difference > tolerance) {
           throw new Error(
-            `Cost validation failed: Frontend submitted ₦${frontendCalculatedCost.toLocaleString()} but backend calculated ₦${backendCalculatedCost.toLocaleString()} ` +
-            `(Price: ₦${membershipPackage.price}, VAT: ₦${membershipPackage.vat}). ` +
-            `Difference: ₦${difference.toFixed(2)}. This may indicate tampering. Please refresh and try again.`
+            `Cost validation failed: Frontend submitted NGN ${frontendCalculatedCost.toLocaleString()} but backend calculated NGN ${backendCalculatedCost.toLocaleString()} ` +
+            `(Price: NGN ${membershipPackage.price}, VAT: NGN ${membershipPackage.vat}). ` +
+            `Difference: NGN ${difference.toFixed(2)}. This may indicate tampering. Please refresh and try again.`
           );
         }
       }
@@ -681,14 +998,15 @@ export const packageRouter = createTRPCRouter({
   activateEmpowerment: protectedProcedure
     .input(z.object({ 
       beneficiaryId: z.string(),
-      empowermentType: z.enum(["CHILD_EDUCATION", "VOCATIONAL_SKILL"])
+      empowermentType: z.enum(["CHILD_EDUCATION", "VOCATIONAL_SKILL"]),
+      gateway: z.enum(["wallet", "paystack", "flutterwave"]).default("wallet"),
     }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session?.user) {
         throw new Error("UNAUTHORIZED");
       }
       const sponsorId = (ctx.session.user as any).id;
-      const { beneficiaryId, empowermentType } = input;
+      const { beneficiaryId, empowermentType, gateway } = input;
 
       // BENEFICIARY VERIFICATION: Validate beneficiary exists and meets requirements
       const beneficiary = await prisma.user.findUnique({
@@ -726,6 +1044,8 @@ export const packageRouter = createTRPCRouter({
         where: { id: sponsorId },
         select: {
           wallet: true,
+          email: true,
+          name: true,
           activeMembershipPackageId: true,
           EmpowermentPackage_EmpowermentPackage_sponsorIdToUser: {
             where: { status: { not: "Completed" } },
@@ -742,79 +1062,237 @@ export const packageRouter = createTRPCRouter({
         throw new Error("You must have an active membership package to sponsor an empowerment package.");
       }
 
-      console.log(`✅ [EMPOWERMENT] Beneficiary verified: ${beneficiary.name} (${beneficiary.email})`);
-      console.log(`✅ [EMPOWERMENT] Sponsor approved: Active membership confirmed`);
+      console.log(`[EMPOWERMENT] Beneficiary verified: ${beneficiary.name} (${beneficiary.email})`);
+      console.log(`[EMPOWERMENT] Sponsor approved: Active membership confirmed`);
       
-      // TODO: Add payment logic for the empowerment package fee (₦354,750)
       const PACKAGE_FEE = 330000;
       const VAT = 24750;
-      const TOTAL_COST = PACKAGE_FEE + VAT; // ₦354,750
+      const TOTAL_COST = PACKAGE_FEE + VAT; // NGN 354,750
 
-      // 2. Define package constants
-      const GROSS_EMPOWERMENT_VALUE = 7250000;
-      const GROSS_SPONSOR_REWARD = 1000000;
-      const TAX_RATE = 0.075;
+      if (gateway === "wallet") {
+        if ((sponsor.wallet ?? 0) < TOTAL_COST) {
+          throw new Error(`Insufficient wallet balance. You need NGN ${TOTAL_COST.toLocaleString()} to activate this empowerment package.`);
+        }
 
-      // 3. Calculate net values (tax applied at release, not upfront)
-      const netEmpowermentValue = GROSS_EMPOWERMENT_VALUE * (1 - TAX_RATE);
-      const netSponsorReward = GROSS_SPONSOR_REWARD * (1 - TAX_RATE);
+        const paymentReference = `EMP-WALLET-${Date.now()}`;
 
-      // 4. Set maturity date (24 months from now)
-      const activatedAt = new Date();
-      const maturityDate = new Date(activatedAt);
-      maturityDate.setMonth(maturityDate.getMonth() + 24);
+        await prisma.$transaction(async (tx) => {
+          await tx.user.update({
+            where: { id: sponsorId },
+            data: { wallet: { decrement: TOTAL_COST } },
+          });
 
-      // 5. Create the EmpowermentPackage record
-      const empowermentPackage = await prisma.empowermentPackage.create({
-        data: {
-          id: randomUUID(),
-          updatedAt: new Date(),
+          await tx.transaction.create({
+            data: {
+              id: randomUUID(),
+              userId: sponsorId,
+              transactionType: "EMPOWERMENT_PACKAGE_FEE",
+              amount: -TOTAL_COST,
+              description: `Empowerment package fee for ${beneficiary.name} (${beneficiary.email})`,
+              status: "completed",
+              reference: paymentReference,
+              walletType: "main",
+            },
+          });
+        });
+
+        const { maturityDate } = await finalizeEmpowermentPackage({
           sponsorId,
-          beneficiaryId,
+          beneficiary: { id: beneficiaryId, name: beneficiary.name, email: beneficiary.email },
+          empowermentType,
           packageFee: PACKAGE_FEE,
           vat: VAT,
-          empowermentType,
-          status: "Active - Countdown Running",
-          activatedAt,
+          totalCost: TOTAL_COST,
+        });
+
+        return {
+          success: true,
+          message: "Empowerment package activated successfully. 24-month countdown has begun.",
           maturityDate,
-          grossEmpowermentValue: GROSS_EMPOWERMENT_VALUE,
-          netEmpowermentValue,
-          grossSponsorReward: GROSS_SPONSOR_REWARD,
-          netSponsorReward,
-          beneficiaryCanView: true,
-          beneficiaryCanWithdraw: false,
+        };
+      }
+
+      const payment = await PaymentProcessor.processPayment({
+        amount: TOTAL_COST,
+        currency: "NGN",
+        userId: sponsorId,
+        packageId: `empowerment-${beneficiaryId}`,
+        email: sponsor.email || "",
+        name: sponsor.name || "",
+        paymentMethod: gateway === "paystack" ? "paystack" : "flutterwave",
+        purpose: PaymentPurpose.EMPOWERMENT,
+        gateway: gateway === "paystack" ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE,
+        metadata: {
+          sponsorId,
+          beneficiaryId,
+          empowermentType,
+          purpose: PaymentPurpose.EMPOWERMENT,
         },
       });
 
-      // 6. Link beneficiary to sponsor if not already linked
-      await prisma.user.update({
-        where: { id: beneficiaryId },
-        data: { sponsorId: sponsorId },
-      });
-      
-      // 7. Create activation transaction record with sponsor tracking
-      await prisma.empowermentTransaction.create({
+      if (!payment.success) {
+        throw new Error(payment.error || payment.message || "Failed to initiate payment");
+      }
+
+      const paymentRef = payment.transactionId || payment.reference || payment.gatewayReference || `EMP-${Date.now()}`;
+
+      await prisma.transaction.create({
         data: {
           id: randomUUID(),
-          empowermentPackageId: empowermentPackage.id,
-          transactionType: "ACTIVATION",
-          grossAmount: TOTAL_COST,
-          taxAmount: 0, // No tax on activation
-          netAmount: TOTAL_COST,
-          description: `Empowerment package activated by sponsor ${sponsorId} for beneficiary ${beneficiary.name}`,
-          performedBy: sponsorId
-        }
+          userId: sponsorId,
+          transactionType: "EMPOWERMENT_PACKAGE_FEE",
+          amount: -TOTAL_COST,
+          description: `Empowerment package fee via ${gateway}`,
+          status: "pending",
+          reference: paymentRef,
+          walletType: "main",
+        },
       });
 
-      console.log(`✅ [EMPOWERMENT] Package created: ${empowermentPackage.id}, matures ${maturityDate.toDateString()}`);
+      await prisma.pendingPayment.create({
+        data: {
+          id: randomUUID(),
+          userId: sponsorId,
+          transactionType: "EMPOWERMENT",
+          amount: TOTAL_COST,
+          currency: "NGN",
+          paymentMethod: gateway,
+          gatewayReference: paymentRef,
+          status: "pending",
+          metadata: {
+            sponsorId,
+            beneficiaryId,
+            empowermentType,
+            packageFee: PACKAGE_FEE,
+            vat: VAT,
+            totalCost: TOTAL_COST,
+          },
+          updatedAt: new Date(),
+        },
+      });
 
-      // Send activation notifications to sponsor and beneficiary
-      await notifyEmpowermentActivation(sponsorId, beneficiaryId, maturityDate);
+      return {
+        success: true,
+        gateway,
+        paymentUrl: payment.paymentUrl,
+        reference: paymentRef,
+        message: "Payment initiated. Complete payment to activate empowerment package.",
+      };
+    }),
 
-      return { 
-        success: true, 
+  verifyEmpowermentPayment: protectedProcedure
+    .input(z.object({
+      gateway: z.nativeEnum(PaymentGateway),
+      reference: z.string(),
+      beneficiaryId: z.string().optional(),
+      empowermentType: z.enum(["CHILD_EDUCATION", "VOCATIONAL_SKILL"]).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.session?.user) {
+        throw new Error("UNAUTHORIZED");
+      }
+
+      const sponsorId = (ctx.session.user as any).id;
+
+      if (input.gateway === PaymentGateway.WALLET) {
+        throw new Error("Wallet payments do not require verification.");
+      }
+
+      const verification = await PaymentProcessor.verifyPayment(input.gateway, input.reference);
+      const successStates = [PaymentStatus.SUCCESS, PaymentStatus.SUCCESSFUL];
+
+      if (!verification.success || (verification.status && !successStates.includes(verification.status))) {
+        throw new Error(verification.error || verification.message || "Payment verification failed");
+      }
+
+      const pending = await prisma.pendingPayment.findFirst({
+        where: {
+          userId: sponsorId,
+          gatewayReference: input.reference,
+          transactionType: "EMPOWERMENT",
+          status: { in: ["pending", "processing"] },
+        },
+      });
+
+      const pendingMetadata = (pending?.metadata as Record<string, any> | undefined) || {};
+      const beneficiaryId = pendingMetadata.beneficiaryId || input.beneficiaryId;
+      const empowermentType = pendingMetadata.empowermentType || input.empowermentType;
+
+      if (!beneficiaryId || !empowermentType) {
+        throw new Error("Beneficiary and empowerment type are required to complete activation.");
+      }
+
+      const PACKAGE_FEE = 330000;
+      const VAT = 24750;
+      const TOTAL_COST = PACKAGE_FEE + VAT;
+
+      if (verification.amount && Math.abs(verification.amount - TOTAL_COST) > 1) {
+        throw new Error("Payment amount does not match the empowerment package fee.");
+      }
+
+      const beneficiary = await prisma.user.findUnique({
+        where: { id: beneficiaryId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          activated: true,
+          EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser: {
+            where: { status: { not: "Completed" } },
+            select: { id: true, status: true },
+          },
+        },
+      });
+
+      if (!beneficiary) {
+        throw new Error("Beneficiary user not found. Please ensure they have registered on the platform.");
+      }
+
+      if (!beneficiary.activated) {
+        throw new Error("Beneficiary account is not activated. They must verify their email first.");
+      }
+
+      if (beneficiary.EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser.length > 0) {
+        const existingPackage = beneficiary.EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser[0];
+        throw new Error(`Beneficiary already has an active empowerment package (Status: ${existingPackage.status}). Only one package per beneficiary is allowed.`);
+      }
+
+      const sponsor = await prisma.user.findUnique({
+        where: { id: sponsorId },
+        select: { activeMembershipPackageId: true },
+      });
+
+      if (!sponsor?.activeMembershipPackageId) {
+        throw new Error("You must have an active membership package to sponsor an empowerment package.");
+      }
+
+      const { maturityDate } = await finalizeEmpowermentPackage({
+        sponsorId,
+        beneficiary: { id: beneficiaryId, name: beneficiary.name, email: beneficiary.email },
+        empowermentType,
+        packageFee: PACKAGE_FEE,
+        vat: VAT,
+        totalCost: TOTAL_COST,
+      });
+
+      await prisma.pendingPayment.updateMany({
+        where: { id: pending?.id },
+        data: { status: "completed", updatedAt: new Date() },
+      });
+
+      await prisma.transaction.updateMany({
+        where: {
+          userId: sponsorId,
+          reference: input.reference,
+          transactionType: "EMPOWERMENT_PACKAGE_FEE",
+        },
+        data: { status: "completed" },
+      });
+
+      return {
+        success: true,
         message: "Empowerment package activated successfully. 24-month countdown has begun.",
-        maturityDate 
+        maturityDate,
       };
     }),
 
@@ -872,7 +1350,7 @@ export const packageRouter = createTRPCRouter({
         throw new Error(`Membership renewal available ${RENEWAL_WINDOW_DAYS} days before expiration. Your membership expires in ${daysUntilExpiry} days. Please renew after ${new Date(expiresAt.getTime() - RENEWAL_WINDOW_DAYS * 24 * 60 * 60 * 1000).toLocaleDateString()}.`);
       }
       
-      console.log(`✅ [RENEWAL] Eligible for renewal: ${daysUntilExpiry} days until expiry`);
+      console.log(`[RENEWAL] Eligible for renewal: ${daysUntilExpiry} days until expiry`);
 
       // TODO: Implement actual payment processing
       const renewalFee = membershipPackage.renewalFee || membershipPackage.price;
@@ -1454,7 +1932,7 @@ export const packageRouter = createTRPCRouter({
       
       if (!isAddonPackage) {
         if (newTotal < currentTotal) {
-          throw new Error(`Cannot downgrade from ${currentPackage.name} (₦${currentTotal.toLocaleString()}) to ${newPackage.name} (₦${newTotal.toLocaleString()}). Downgrades are not permitted. Please contact support if you need assistance.`);
+          throw new Error(`Cannot downgrade from ${currentPackage.name} (NGN ${currentTotal.toLocaleString()}) to ${newPackage.name} (NGN ${newTotal.toLocaleString()}). Downgrades are not permitted. Please contact support if you need assistance.`);
         }
         
         if (newTotal === currentTotal) {
@@ -1524,7 +2002,7 @@ export const packageRouter = createTRPCRouter({
         distributionReason = `True tier upgrade from ${currentPackage.name} to ${newPackage.name}`;
       }
 
-      console.log(`\n💰 [UPGRADE] Cost calculation:`, {
+      console.log(`\n[UPGRADE] Cost calculation:`, {
         from: currentPackage.name,
         to: newPackage.name,
         isAddon: isAddonPackage || isFeatureBundle,
@@ -1541,8 +2019,8 @@ export const packageRouter = createTRPCRouter({
         
         if (difference > tolerance) {
           throw new Error(
-            `Cost validation failed: Frontend submitted ₦${frontendCalculatedCost.toLocaleString()} but backend calculated ₦${upgradeCost.toLocaleString()}. ` +
-            `Difference: ₦${difference.toFixed(2)}. This may indicate tampering. Please refresh and try again.`
+            `Cost validation failed: Frontend submitted NGN ${frontendCalculatedCost.toLocaleString()} but backend calculated NGN ${upgradeCost.toLocaleString()}. ` +
+            `Difference: NGN ${difference.toFixed(2)}. This may indicate tampering. Please refresh and try again.`
           );
         }
       }
@@ -1558,7 +2036,7 @@ export const packageRouter = createTRPCRouter({
       }
 
       if (user.wallet < upgradeCost) {
-        throw new Error(`Insufficient wallet balance. You have ₦${user.wallet.toLocaleString()} but need ₦${upgradeCost.toLocaleString()} for the upgrade.`);
+        throw new Error(`Insufficient wallet balance. You have NGN ${user.wallet.toLocaleString()} but need NGN ${upgradeCost.toLocaleString()} for the upgrade.`);
       }
 
       // Deduct from wallet
@@ -1666,7 +2144,7 @@ export const packageRouter = createTRPCRouter({
 
       // Distribute differential bonuses to referral chain (only if shouldDistribute)
       if (shouldDistribute) {
-      console.log(`\n💸 [UPGRADE] Distribution enabled: ${distributionReason}`);
+      console.log(`\n[UPGRADE] Distribution enabled: ${distributionReason}`);
       
       // COMMISSION CAP VALIDATION: Use configured caps (defaults applied)
       const MAX_COMMISSION_L1 = 100000;
@@ -1689,7 +2167,7 @@ export const packageRouter = createTRPCRouter({
           const maxForLevel = maxCommissions[level - 1];
           
           if (totalCommission > maxForLevel) {
-            console.warn(`⚠️ Commission cap exceeded for L${level}: ₦${totalCommission} > ₦${maxForLevel}. Capping at max.`);
+            console.warn(`[WARN] Commission cap exceeded for L${level}: NGN ${totalCommission} > NGN ${maxForLevel}. Capping at max.`);
             const ratio = maxForLevel / totalCommission;
             bonuses.cash = Math.floor(bonuses.cash * ratio);
             bonuses.palliative = Math.floor(bonuses.palliative * ratio);
@@ -1744,7 +2222,7 @@ export const packageRouter = createTRPCRouter({
                                 ((newPackage as any)[`cashback_l${level}`] || 0) - ((currentPackage as any)[`cashback_l${level}`] || 0);
           
           if (Math.abs(bonusTotal - expectedTotal) > 0.01) {
-            console.warn(`⚠️ [VALIDATION] Bonus total mismatch for L${level}: calculated=${bonusTotal}, expected=${expectedTotal}`);
+            console.warn(`[WARN] [VALIDATION] Bonus total mismatch for L${level}: calculated=${bonusTotal}, expected=${expectedTotal}`);
           }
 
           // Create transaction record
@@ -1760,7 +2238,7 @@ export const packageRouter = createTRPCRouter({
             },
           });
           
-          console.log(`  ✅ L${level} distributed: ₦${bonusTotal} to referrer ${referrerId.substring(0, 8)}...`);
+          console.log(`  [UPGRADE] L${level} distributed: NGN ${bonusTotal} to referrer ${referrerId.substring(0, 8)}...`);
 
           // Notify referrer
           await notifyReferralReward(
@@ -1772,7 +2250,7 @@ export const packageRouter = createTRPCRouter({
         }
       }
       } else {
-        console.log(`\n⏭️ [UPGRADE] Distribution skipped: ${distributionReason}`);
+        console.log(`\n[UPGRADE] Distribution skipped: ${distributionReason}`);
       } // End shouldDistribute check
 
       // Check if new package includes MYNGUL Social Media benefit
@@ -1982,7 +2460,7 @@ export const packageRouter = createTRPCRouter({
       // The transaction amount is negative (debit), so we make it positive
       const totalPaid = Math.abs(transaction.amount);
       
-      // Calculate VAT from total: total = base + (base × 0.075) = base × 1.075
+      // Calculate VAT from total: total = base + (base * 0.075) = base * 1.075
       // So: base = total / 1.075, and VAT = total - base
       const baseAmount = totalPaid / (1 + VAT_RATE);
       const vatAmount = totalPaid - baseAmount;

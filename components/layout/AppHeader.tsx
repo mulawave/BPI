@@ -68,7 +68,7 @@ export function AppHeader({ pageTitle = "BeepAgro Africa", pageSubtitle = "Palli
               >
                 {currencies?.map((currency) => (
                   <option key={currency.id} value={currency.id}>
-                    {currency.sign} {currency.symbol}
+                    {currency.symbol || currency.name}
                   </option>
                 ))}
               </select>

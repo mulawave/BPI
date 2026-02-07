@@ -547,6 +547,7 @@ export const storeRouter = createTRPCRouter({
       z.object({
         intentId: z.string(),
         paymentMode: z.enum(["FIAT", "HYBRID", "TOKEN"]).default("FIAT"),
+        paymentSource: z.enum(["wallet", "cashback", "bpiToken"]).default("wallet"),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -570,20 +571,96 @@ export const storeRouter = createTRPCRouter({
       const paymentBreakdown = {
         ...(existing.paymentBreakdown as Record<string, unknown>),
         payment_mode: input.paymentMode,
+        payment_source: input.paymentSource,
         confirmed_at: new Date().toISOString(),
-      };
+      } as any;
+
+      const fiatPortion = Number(
+        paymentBreakdown?.fiat?.amount ??
+        paymentBreakdown?.fiat ??
+        paymentBreakdown?.fiat_portion ??
+        paymentBreakdown?.total_fiat ?? 0
+      );
+
+      const tokenPortion = Number(paymentBreakdown?.token?.amount ?? 0);
+      const tokenSymbol = paymentBreakdown?.token?.symbol ?? null;
+
+      const user = await (ctx.prisma as any).user.findUnique({
+        where: { id: ctx.user.id },
+        select: { wallet: true, cashback: true, bpiToken: true },
+      });
+
+      if (!user) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+      }
+
+      const sourceField = input.paymentSource === "wallet" ? "wallet" : input.paymentSource === "cashback" ? "cashback" : "bpiToken";
+      const sourceBalance = (user as any)[sourceField] ?? 0;
+
+      if (fiatPortion > 0 && sourceBalance < fiatPortion) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Insufficient balance for purchase" });
+      }
+
+      if (tokenPortion > 0 && typeof user.bpiToken !== "number") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Token wallet not available" });
+      }
 
       const claimCode = await generateClaimCode(ctx.prisma as any);
 
-      const updated = await (ctx.prisma as any).order.update({
-        where: { id: existing.id },
-        data: {
-          status: "PROCESSING",
-          claimStatus: "CODE_ISSUED",
-          claimCode,
-          paymentBreakdown,
-        },
-        include: { product: { include: { rewardConfig: true, pickupCenter: true } }, user: true, pickupCenter: true },
+      const updated = await (ctx.prisma as any).$transaction(async (tx: any) => {
+        // Deduct fiat portion from selected source
+        if (fiatPortion > 0) {
+          await tx.user.update({
+            where: { id: ctx.user.id },
+            data: { [sourceField]: { decrement: fiatPortion } },
+          });
+
+          await tx.transaction.create({
+            data: {
+              userId: ctx.user.id,
+              transactionType: "STORE_PURCHASE",
+              amount: -fiatPortion,
+              description: `Store purchase: ${existing.product?.name || "Product"} (source: ${sourceField}, order: ${existing.id})`,
+              status: "completed",
+              reference: `STORE-${existing.id}-${Date.now()}`,
+              walletType: sourceField === "wallet" ? "main" : sourceField,
+            },
+          });
+        }
+
+        // Deduct token portion from bpiToken
+        if (tokenPortion > 0) {
+          await tx.user.update({
+            where: { id: ctx.user.id },
+            data: { bpiToken: { decrement: tokenPortion } },
+          });
+
+          await tx.transaction.create({
+            data: {
+              userId: ctx.user.id,
+              transactionType: "STORE_PURCHASE_TOKEN",
+              amount: -tokenPortion,
+              description: `Store purchase token payment${tokenSymbol ? ` (${tokenSymbol})` : ""} (order: ${existing.id})`,
+              status: "completed",
+              reference: `STORE-TOKEN-${existing.id}-${Date.now()}`,
+              walletType: "bpiToken",
+            },
+          });
+        }
+
+        // Update order and issue claim code only after payment success
+        const order = await tx.order.update({
+          where: { id: existing.id },
+          data: {
+            status: "PROCESSING",
+            claimStatus: "CODE_ISSUED",
+            claimCode,
+            paymentBreakdown,
+          },
+          include: { product: { include: { rewardConfig: true, pickupCenter: true } }, user: true, pickupCenter: true },
+        });
+
+        return order;
       });
 
       if (ctx.user?.email) {
@@ -604,9 +681,7 @@ export const storeRouter = createTRPCRouter({
       }
 
       // Record revenue from store purchase
-      const breakdown = paymentBreakdown as any;
-      const fiatAmount = breakdown?.fiat_amount || breakdown?.total_fiat || 0;
-      
+      const fiatAmount = fiatPortion || paymentBreakdown?.total_fiat || 0;
       if (fiatAmount > 0) {
         await recordRevenue(ctx.prisma, {
           source: "STORE_PURCHASE",

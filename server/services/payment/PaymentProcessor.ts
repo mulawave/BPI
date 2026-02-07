@@ -17,17 +17,36 @@ export class PaymentProcessor {
    */
   static async getAvailableGateways(userId: string): Promise<PaymentGateway[]> {
     // TODO: Implement user location detection (Nigerian vs International)
-    // TODO: Fetch gateway configurations from database
-    // TODO: Filter based on enabled status and user location
 
-    // For now, return available gateways
-    const availableGateways: PaymentGateway[] = [
-      PaymentGateway.WALLET,
-      PaymentGateway.FLUTTERWAVE,
-      PaymentGateway.MOCK_DEV,
+    const configs = await prisma.paymentGatewayConfig.findMany({
+      where: { gatewayName: { in: ["paystack", "flutterwave"] } },
+      select: { gatewayName: true, isActive: true, publicKey: true, secretKey: true },
+    });
+
+    const configByName = Object.fromEntries(configs.map((c) => [c.gatewayName, c]));
+
+    const paystackConfig = configByName.paystack;
+    const flutterwaveConfig = configByName.flutterwave;
+
+    const paystackEnabled =
+      (paystackConfig?.isActive && !!paystackConfig?.secretKey) ||
+      (!!process.env.PAYSTACK_SECRET_KEY && process.env.NODE_ENV !== "production");
+
+    const flutterwaveEnabled =
+      (flutterwaveConfig?.isActive && !!flutterwaveConfig?.secretKey && !!flutterwaveConfig?.publicKey) ||
+      (!!process.env.FLUTTERWAVE_SECRET_KEY && !!process.env.FLUTTERWAVE_PUBLIC_KEY && process.env.NODE_ENV !== "production");
+
+    const gateways: Array<{ id: PaymentGateway; enabled: boolean }> = [
+      { id: PaymentGateway.WALLET, enabled: true },
+      { id: PaymentGateway.PAYSTACK, enabled: paystackEnabled },
+      { id: PaymentGateway.FLUTTERWAVE, enabled: flutterwaveEnabled },
     ];
 
-    return availableGateways;
+    if (process.env.NODE_ENV !== "production") {
+      gateways.push({ id: PaymentGateway.MOCK_DEV, enabled: true });
+    }
+
+    return gateways.filter((g) => g.enabled).map((g) => g.id);
   }
 
   /**
@@ -38,6 +57,9 @@ export class PaymentProcessor {
     // For now, return mock configuration
 
     if (gateway === PaymentGateway.MOCK_DEV) {
+      if (process.env.NODE_ENV === "production") {
+        return { enabled: false, environment: "live" };
+      }
       return {
         enabled: true,
         environment: "test",
@@ -55,16 +77,46 @@ export class PaymentProcessor {
       };
     }
 
-    if (gateway === PaymentGateway.FLUTTERWAVE) {
+    if (gateway === PaymentGateway.PAYSTACK) {
+      const dbConfig = await prisma.paymentGatewayConfig.findUnique({
+        where: { gatewayName: "paystack" },
+        select: { isActive: true, secretKey: true, publicKey: true, callbackUrl: true },
+      });
+
+      const secretKey = dbConfig?.secretKey || process.env.PAYSTACK_SECRET_KEY;
+      const enabled = !!secretKey && (dbConfig ? dbConfig.isActive : process.env.NODE_ENV !== "production");
+
       return {
-        enabled: true,
+        enabled,
+        environment: (process.env.PAYSTACK_ENV as "test" | "live") || "test",
+        secretKey,
+        publicKey: dbConfig?.publicKey,
+        features: {
+          paymentMethods: ["card", "banktransfer", "ussd"],
+        },
+      };
+    }
+
+    if (gateway === PaymentGateway.FLUTTERWAVE) {
+      const dbConfig = await prisma.paymentGatewayConfig.findUnique({
+        where: { gatewayName: "flutterwave" },
+        select: { isActive: true, publicKey: true, secretKey: true },
+      });
+
+      const publicKey = dbConfig?.publicKey || process.env.FLUTTERWAVE_PUBLIC_KEY;
+      const secretKey = dbConfig?.secretKey || process.env.FLUTTERWAVE_SECRET_KEY;
+      const encryptionKey = process.env.FLUTTERWAVE_ENCRYPTION_KEY;
+      const enabled = !!publicKey && !!secretKey && (dbConfig ? dbConfig.isActive : process.env.NODE_ENV !== "production");
+
+      return {
+        enabled,
         environment: (process.env.FLUTTERWAVE_ENV as "test" | "live") || "test",
-        publicKey: process.env.FLUTTERWAVE_PUBLIC_KEY,
-        secretKey: process.env.FLUTTERWAVE_SECRET_KEY,
+        publicKey,
+        secretKey,
         webhookSecret: process.env.FLUTTERWAVE_WEBHOOK_SECRET || "myngul.com22",
         features: {
           paymentMethods: ["card", "banktransfer", "ussd", "account"],
-          encryptionKey: process.env.FLUTTERWAVE_ENCRYPTION_KEY,
+          encryptionKey,
         },
       };
     }
@@ -260,10 +312,10 @@ export class PaymentProcessor {
       return PaymentGateway.WALLET;
     }
 
-    // TODO: Detect if Nigerian user → recommend Flutterwave/Paystack
+    // TODO: Detect if Nigerian user → recommend Flutterwave
     // TODO: Detect if International user → recommend Flutterwave multi-currency
 
-    // Default to mock dev for testing
-    return PaymentGateway.MOCK_DEV;
+    // Default to Flutterwave for card/bank rails in other cases
+    return PaymentGateway.FLUTTERWAVE;
   }
 }

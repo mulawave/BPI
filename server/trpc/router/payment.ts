@@ -130,6 +130,61 @@ export const paymentRouter = createTRPCRouter({
     }),
 
   /**
+   * Gateway health/config status for live readiness checks
+   */
+  getGatewayHealth: protectedProcedure.query(async ({ ctx }) => {
+    const configs = await ctx.prisma.paymentGatewayConfig.findMany({
+      where: { gatewayName: { in: ["paystack", "flutterwave"] } },
+      select: {
+        gatewayName: true,
+        isActive: true,
+        secretKey: true,
+        publicKey: true,
+      },
+    });
+
+    const byName = Object.fromEntries(configs.map((c) => [c.gatewayName, c]));
+
+    const flutterwaveEnv = {
+      publicKey: !!process.env.FLUTTERWAVE_PUBLIC_KEY,
+      secretKey: !!process.env.FLUTTERWAVE_SECRET_KEY,
+      encryptionKey: !!process.env.FLUTTERWAVE_ENCRYPTION_KEY,
+    };
+
+    const statuses = [
+      {
+        gateway: "wallet" as const,
+        isActive: true,
+        hasKeys: true,
+        envConfigured: true,
+        issues: [] as string[],
+      },
+      {
+        gateway: "paystack" as const,
+        isActive: byName.paystack?.isActive ?? false,
+        hasKeys: !!byName.paystack?.secretKey,
+        envConfigured: !!byName.paystack?.secretKey,
+        issues: [] as string[],
+      },
+      {
+        gateway: "flutterwave" as const,
+        isActive: byName.flutterwave?.isActive ?? false,
+        hasKeys: !!byName.flutterwave?.secretKey && !!byName.flutterwave?.publicKey,
+        envConfigured: flutterwaveEnv.publicKey && flutterwaveEnv.secretKey,
+        issues: [] as string[],
+      },
+    ];
+
+    statuses.forEach((s) => {
+      if (!s.isActive) s.issues.push("Gateway is inactive in DB config");
+      if (!s.hasKeys) s.issues.push("Missing gateway keys in DB config");
+      if (!s.envConfigured) s.issues.push("Missing required environment keys");
+    });
+
+    return statuses;
+  }),
+
+  /**
    * Initiate a payment
    */
   initiatePayment: protectedProcedure
@@ -152,8 +207,14 @@ export const paymentRouter = createTRPCRouter({
         userId,
         email: userEmail,
         name: userName,
-        paymentMethod: input.gateway === PaymentGateway.WALLET ? "wallet" : 
-                       input.gateway === PaymentGateway.FLUTTERWAVE ? "flutterwave" : "mock",
+        paymentMethod:
+          input.gateway === PaymentGateway.WALLET
+            ? "wallet"
+            : input.gateway === PaymentGateway.FLUTTERWAVE
+              ? "flutterwave"
+              : input.gateway === PaymentGateway.PAYSTACK
+                ? "paystack"
+                : "mock",
         amount: input.amount,
         currency: input.currency,
         gateway: input.gateway,

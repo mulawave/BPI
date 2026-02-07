@@ -41,8 +41,16 @@ export async function GET(req: NextRequest) {
     // Verify payment
     const verification = await gateway.verifyPayment(txRef);
 
+    const purpose = (verification.metadata as any)?.meta?.purpose || (verification.metadata as any)?.purpose;
+
     if (verification.success && status === "successful") {
       console.log("✅ Payment verified successfully");
+
+      if (purpose === "EMPOWERMENT") {
+        return NextResponse.redirect(
+          new URL(`/empowerment?gateway=flutterwave&reference=${txRef}&status=successful`, req.url)
+        );
+      }
 
       // Redirect to success page
       return NextResponse.redirect(
