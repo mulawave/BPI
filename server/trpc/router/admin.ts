@@ -42,6 +42,17 @@ const superAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next();
 });
 
+function generateSscCode(): string {
+  const segment = (length: number) =>
+    Array.from({ length }, () => Math.floor(Math.random() * 36).toString(36).toUpperCase()).join("");
+
+  return `${segment(3)}-${segment(4)}-${segment(3)}`;
+}
+
+function normalizeSsc(input: string): string {
+  return input.trim().toUpperCase();
+}
+
 export const adminRouter = createTRPCRouter({
   // Global search across key admin entities
   globalSearch: adminProcedure
@@ -190,6 +201,210 @@ export const adminRouter = createTRPCRouter({
         pages: Math.ceil(total / pageSize),
         currentPage: page,
       };
+    }),
+
+  /**
+   * SSC issuance summary for admins
+   */
+  getSscSummary: adminProcedure.query(async () => {
+    const now = new Date();
+    const activeMembershipFilter: any = {
+      activeMembershipPackageId: { not: null },
+      activated: true,
+      OR: [
+        { membershipExpiresAt: null },
+        { membershipExpiresAt: { gt: now } },
+      ],
+    };
+
+    const [pending, activeWithCodes, totalActive] = await prisma.$transaction([
+      prisma.user.count({ where: { ...activeMembershipFilter, ssc: null } }),
+      prisma.user.count({ where: { ...activeMembershipFilter, ssc: { not: null } } }),
+      prisma.user.count({ where: activeMembershipFilter }),
+    ]);
+
+    return { pending, activeWithCodes, totalActive };
+  }),
+
+  /**
+   * Generate SSC codes for all active members missing one
+   */
+  generateSscForActiveMembers: adminProcedure.mutation(async () => {
+    const now = new Date();
+    const activeMembershipFilter: any = {
+      activeMembershipPackageId: { not: null },
+      activated: true,
+      OR: [
+        { membershipExpiresAt: null },
+        { membershipExpiresAt: { gt: now } },
+      ],
+    };
+
+    const usersNeedingSsc = await prisma.user.findMany({
+      where: { ...activeMembershipFilter, ssc: null },
+      select: { id: true },
+    });
+
+    if (usersNeedingSsc.length === 0) {
+      return { generated: 0, pendingBefore: 0, remaining: 0 };
+    }
+
+    const generatedCodes = new Set<string>();
+    const updates = [] as ReturnType<typeof prisma.user.update>[];
+
+    for (const user of usersNeedingSsc) {
+      let code: string | null = null;
+
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const candidate = generateSscCode();
+        if (generatedCodes.has(candidate)) continue;
+
+        const exists = await prisma.user.findFirst({ where: { ssc: candidate } });
+        if (exists) continue;
+
+        code = candidate;
+        generatedCodes.add(candidate);
+        break;
+      }
+
+      if (!code) {
+        throw new Error("Failed to generate a unique SSC code after multiple attempts.");
+      }
+
+      updates.push(
+        prisma.user.update({
+          where: { id: user.id },
+          data: { ssc: code },
+        })
+      );
+    }
+
+    await prisma.$transaction(updates);
+
+    const remaining = await prisma.user.count({ where: { ...activeMembershipFilter, ssc: null } });
+
+    return {
+      generated: usersNeedingSsc.length,
+      pendingBefore: usersNeedingSsc.length + remaining,
+      remaining,
+    };
+  }),
+
+  /**
+   * List users who already have SSCs (paginated)
+   */
+  getSscUsers: adminProcedure
+    .input(
+      z.object({
+        page: z.number().default(1),
+        pageSize: z.number().default(10),
+        search: z.string().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const skip = (input.page - 1) * input.pageSize;
+
+      const where: any = { ssc: { not: null } };
+      if (input.search) {
+        where.OR = [
+          { firstname: { contains: input.search, mode: "insensitive" } },
+          { lastname: { contains: input.search, mode: "insensitive" } },
+          { email: { contains: input.search, mode: "insensitive" } },
+          { ssc: { contains: normalizeSsc(input.search) } },
+        ];
+      }
+
+      const [users, total] = await prisma.$transaction([
+        prisma.user.findMany({
+          where,
+          skip,
+          take: input.pageSize,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            firstname: true,
+            lastname: true,
+            email: true,
+            ssc: true,
+            membershipActivatedAt: true,
+            membershipExpiresAt: true,
+            activeMembershipPackageId: true,
+          },
+        }),
+        prisma.user.count({ where }),
+      ]);
+
+      const packageIds = users
+        .map((u) => u.activeMembershipPackageId)
+        .filter((id): id is string => !!id);
+
+      const packages = packageIds.length
+        ? await prisma.membershipPackage.findMany({
+            where: { id: { in: packageIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+
+      const packageMap = new Map<string, string>();
+      packages.forEach((pkg) => packageMap.set(pkg.id, pkg.name));
+
+      const enriched = users.map((u) => ({
+        ...u,
+        membershipName: u.activeMembershipPackageId
+          ? packageMap.get(u.activeMembershipPackageId) || "Active membership"
+          : null,
+      }));
+
+      return {
+        users: enriched,
+        total,
+        pages: Math.max(1, Math.ceil(total / input.pageSize)),
+        currentPage: input.page,
+      };
+    }),
+
+  /**
+   * Strip SSC from a user
+   */
+  stripSsc: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ input }) => {
+      await prisma.user.update({ where: { id: input.userId }, data: { ssc: null } });
+      return { success: true };
+    }),
+
+  /**
+   * Update a user's SSC with a custom value
+   */
+  updateUserSsc: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        ssc: z
+          .string()
+          .min(11)
+          .max(11)
+          .regex(/^[A-Za-z0-9]{3}-[A-Za-z0-9]{4}-[A-Za-z0-9]{3}$/),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const normalized = normalizeSsc(input.ssc);
+
+      const existing = await prisma.user.findFirst({
+        where: { ssc: normalized, NOT: { id: input.userId } },
+        select: { id: true },
+      });
+
+      if (existing) {
+        throw new Error("SSC already assigned to another user");
+      }
+
+      await prisma.user.update({
+        where: { id: input.userId },
+        data: { ssc: normalized },
+      });
+
+      return { success: true, ssc: normalized };
     }),
 
   getUserById: adminProcedure

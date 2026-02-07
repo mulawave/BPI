@@ -2226,16 +2226,6 @@ enum AllocationStatus {
   FAILED        // Allocation/distribution failed
 }
 
-enum ExecutiveRole {
-  CEO                // 30% of executive pool
-  CTO                // 20% of executive pool
-  HEAD_OF_TRAVEL     // 20% of executive pool
-  CMO                // 10% of executive pool
-  OLIVER             // 5% of executive pool
-  MORRISON           // 5% of executive pool
-  ANNIE              // 10% of executive pool
-}
-
 enum PoolType {
   LEADERSHIP    // 4% of total revenue
   STATE         // 4% of total revenue
@@ -2306,7 +2296,7 @@ model RevenueAllocation {
 
 model ExecutiveShareholder {
   id              String          @id @default(cuid())
-  role            ExecutiveRole   @unique
+  role            String          @unique
   userId          String?         @unique
   percentage      Decimal         @db.Decimal(5, 2) // % of executive pool (30% total)
   isActive        Boolean         @default(true)

@@ -15,6 +15,10 @@ interface AdminHeaderProps {
 
 export default function AdminHeader({ admin }: AdminHeaderProps) {
   const { theme, toggleTheme } = useTheme();
+  const baseUrl =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : process.env.NEXT_PUBLIC_APP_URL || "";
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/70 backdrop-blur-xl">
@@ -75,7 +79,11 @@ export default function AdminHeader({ admin }: AdminHeaderProps) {
               </p>
             </div>
             <button
-              onClick={() => signOut({ callbackUrl: "/admin/login" })}
+              onClick={() =>
+                signOut({
+                  callbackUrl: baseUrl ? `${baseUrl}/admin/login` : "/admin/login",
+                })
+              }
               className="ml-2 rounded-xl border border-transparent p-1.5 text-foreground/60 transition-all hover:border-border hover:bg-background/60 hover:text-red-600"
               aria-label="Sign out"
               title="Sign out"

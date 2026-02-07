@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
@@ -20,6 +20,7 @@ import {
   ChevronDown,
   ChevronUp,
   CheckCircle,
+  Trash2,
 } from "lucide-react";
 import CompanyReserveModal from "@/components/revenue/CompanyReserveModal";
 import RevenueSplitChart from "@/components/revenue/RevenueSplitChart";
@@ -35,13 +36,17 @@ import ExecutiveWithdrawalModal from "@/components/revenue/ExecutiveWithdrawalMo
 
 export default function RevenuePoolsPage() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [selectedPool, setSelectedPool] = useState<string | null>(null);
   const [showReserveModal, setShowReserveModal] = useState(false);
   const [showAuditTrail, setShowAuditTrail] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
   const [selectedShareholder, setSelectedShareholder] = useState<any>(null);
+  const [selectedExecutive, setSelectedExecutive] = useState<{ id: string; role: string } | null>(null);
+  const [newRoleName, setNewRoleName] = useState("");
+  const [newRolePercent, setNewRolePercent] = useState("");
+  const [percentageReason, setPercentageReason] = useState("");
+  const [percentages, setPercentages] = useState<Record<string, number>>({});
 
   // Queries
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = api.revenue.getDashboardStats.useQuery();
@@ -58,11 +63,21 @@ export default function RevenuePoolsPage() {
   const { data: allocations } = api.revenue.getAllocations.useQuery({ limit: 50 });
 
   // Mutations
+  const createExecutive = api.revenue.createExecutivePosition.useMutation({
+    onSuccess: () => {
+      toast.success("Executive position created");
+      refetchShareholders();
+      setNewRoleName("");
+      setNewRolePercent("");
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+
   const assignExecutive = api.revenue.assignExecutiveRole.useMutation({
     onSuccess: () => {
       toast.success("Executive role assigned successfully");
       refetchShareholders();
-      setSelectedRole(null);
+      setSelectedExecutive(null);
       setSearchQuery("");
     },
     onError: (error: any) => toast.error(error.message),
@@ -71,6 +86,14 @@ export default function RevenuePoolsPage() {
   const removeExecutive = api.revenue.removeExecutiveRole.useMutation({
     onSuccess: () => {
       toast.success("Executive removed successfully");
+      refetchShareholders();
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+
+  const deleteExecutivePosition = api.revenue.deleteExecutivePosition.useMutation({
+    onSuccess: () => {
+      toast.success("Executive position deleted");
       refetchShareholders();
     },
     onError: (error: any) => toast.error(error.message),
@@ -105,15 +128,31 @@ export default function RevenuePoolsPage() {
     onError: (error: any) => toast.error(error.message),
   });
 
-  const executiveRoles = [
-    { role: "CEO", percentage: 30, color: "bg-purple-500" },
-    { role: "CTO", percentage: 20, color: "bg-blue-500" },
-    { role: "HEAD_OF_TRAVEL", percentage: 20, color: "bg-green-500" },
-    { role: "CMO", percentage: 10, color: "bg-orange-500" },
-    { role: "OLIVER", percentage: 5, color: "bg-pink-500" },
-    { role: "MORRISON", percentage: 5, color: "bg-indigo-500" },
-    { role: "ANNIE", percentage: 10, color: "bg-teal-500" },
-  ];
+  const adjustPercentages = api.revenue.adjustExecutivePercentages.useMutation({
+    onSuccess: () => {
+      toast.success("Executive percentages updated");
+      refetchShareholders();
+      setPercentageReason("");
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+
+  useEffect(() => {
+    if (shareholders) {
+      const next: Record<string, number> = {};
+      shareholders.forEach((s: any) => {
+        next[s.id] = Number(s.percentage || 0);
+      });
+      setPercentages(next);
+    }
+  }, [shareholders]);
+
+  const totalPercentage = useMemo(
+    () => Object.values(percentages).reduce((sum, val) => sum + Number(val || 0), 0),
+    [percentages]
+  );
+
+  const execLoading = shareholdersLoading || !shareholders;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
@@ -393,107 +432,244 @@ export default function RevenuePoolsPage() {
 
         {/* Executive Shareholders (30% Pool) */}
         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-              <Users className="w-6 h-6 text-purple-600" />
-              Executive Shareholders (30%)
-            </h2>
-            <div className="text-sm text-slate-600 dark:text-slate-300">
-              Distributed daily at 8:00 AM
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <Users className="w-6 h-6 text-purple-600" />
+                Executive Shareholders (30%)
+              </h2>
+              <div className="text-sm text-slate-600 dark:text-slate-300">Distributed daily at 8:00 AM</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-200">
+                Total Allocation: <span className={Math.abs(totalPercentage - 100) < 0.01 ? "text-green-600" : "text-red-600"}>{totalPercentage.toFixed(2)}%</span>
+              </div>
+              <div className="px-3 py-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg text-sm text-purple-700 dark:text-purple-200">
+                Positions: {shareholders?.length || 0}
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {executiveRoles.map((role) => {
-              const assigned = shareholders?.find((s: any) => s.role === role.role);
-              return (
-                <div
-                  key={role.role}
-                  className="border border-slate-200 dark:border-slate-700 rounded-lg p-4"
+          {/* Create Position */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+            <div className="lg:col-span-1 bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-950/30 dark:to-indigo-950/30 border border-purple-200 dark:border-purple-800 rounded-lg p-4 shadow-sm">
+              <h4 className="font-semibold text-slate-800 dark:text-white mb-2 flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-purple-600" />
+                Create Executive Position
+              </h4>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Role Name</label>
+                  <input
+                    value={newRoleName}
+                    onChange={(e) => setNewRoleName(e.target.value)}
+                    placeholder="e.g. VP OPERATIONS"
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Allocation (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={newRolePercent}
+                    onChange={(e) => setNewRolePercent(e.target.value)}
+                    placeholder="e.g. 5"
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    const pct = Number(newRolePercent);
+                    if (!newRoleName.trim()) {
+                      toast.error("Enter a role name");
+                      return;
+                    }
+                    if (isNaN(pct) || pct <= 0) {
+                      toast.error("Enter a valid percentage");
+                      return;
+                    }
+                    createExecutive.mutate({ role: newRoleName, percentage: pct });
+                  }}
+                  disabled={createExecutive.isPending}
+                  className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors disabled:opacity-60"
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-3 h-3 rounded-full ${role.color}`} />
-                      <span className="font-semibold text-slate-800 dark:text-white">
-                        {role.role.replace(/_/g, " ")}
-                      </span>
+                  {createExecutive.isPending ? "Creating..." : "Add Position"}
+                </button>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Add new executive positions beyond the defaults. Keep total at 100%.
+                </p>
+              </div>
+            </div>
+
+            <div className="lg:col-span-2 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-lg p-4">
+              <h4 className="font-semibold text-slate-800 dark:text-white mb-2 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-blue-600" />
+                Rebalance Percentages
+              </h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">Update allocations for each position. Total must equal 100%.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3 max-h-52 overflow-y-auto pr-1">
+                {shareholders?.map((s: any, idx: number) => (
+                  <div key={s.id} className="flex items-center gap-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2">
+                    <div className={`w-2 h-10 rounded-full ${["bg-purple-500","bg-blue-500","bg-green-500","bg-orange-500","bg-pink-500","bg-indigo-500","bg-teal-500"][idx % 7]}`} />
+                    <div className="flex-1">
+                      <div className="text-sm font-semibold text-slate-800 dark:text-white">{s.role.replace(/_/g, " ")}</div>
+                      <div className="text-xs text-slate-500">{s.User?.name || "Unassigned"}</div>
                     </div>
-                    <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                      {role.percentage}%
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={percentages[s.id] ?? s.percentage}
+                        onChange={(e) => {
+                          const nextVal = parseFloat(e.target.value) || 0;
+                          setPercentages((prev) => ({ ...prev, [s.id]: nextVal }));
+                        }}
+                        className="w-24 px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-right text-sm text-slate-800 dark:text-white"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-400">%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Reason (required)</label>
+                  <textarea
+                    value={percentageReason}
+                    onChange={(e) => setPercentageReason(e.target.value)}
+                    rows={2}
+                    placeholder="Explain why percentages are being updated"
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-white"
+                  />
+                </div>
+                <div className="flex flex-col gap-2 justify-end">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-700 dark:text-slate-300">Total</span>
+                    <span className={`font-bold ${Math.abs(totalPercentage - 100) < 0.01 ? "text-green-600" : "text-red-600"}`}>
+                      {totalPercentage.toFixed(2)}%
                     </span>
                   </div>
+                  <button
+                    onClick={() => {
+                      if (Math.abs(totalPercentage - 100) > 0.01) {
+                        toast.error("Percentages must sum to 100%");
+                        return;
+                      }
+                      if (!percentageReason || percentageReason.length < 10) {
+                        toast.error("Provide a reason (min 10 characters)");
+                        return;
+                      }
+                      adjustPercentages.mutate({
+                        percentages: Object.entries(percentages).map(([shareholderId, percentage]) => ({ shareholderId, percentage: Number(percentage) })),
+                        reason: percentageReason,
+                      });
+                    }}
+                    disabled={adjustPercentages.isPending}
+                    className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-60"
+                  >
+                    {adjustPercentages.isPending ? "Updating..." : "Save Percentages"}
+                  </button>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">All positions must be included. Changes affect future distributions.</p>
+                </div>
+              </div>
+            </div>
+          </div>
 
-                  {assigned?.User ? (
-                    <div className="space-y-2">
-                      <div className="text-sm text-slate-700 dark:text-slate-200">
-                        <div className="font-medium">{assigned.User?.name || "No name"}</div>
-                        <div className="text-xs text-slate-500">
-                          {assigned.User?.email || "No email"}
-                        </div>
+          {/* Positions */}
+          {execLoading ? (
+            <div className="flex items-center justify-center py-8 text-slate-600 dark:text-slate-300">Loading executive positions...</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {shareholders?.map((shareholder: any, idx: number) => {
+                const color = ["bg-purple-500","bg-blue-500","bg-green-500","bg-orange-500","bg-pink-500","bg-indigo-500","bg-teal-500"][idx % 7];
+                return (
+                  <div key={shareholder.id} className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-3 h-3 rounded-full ${color}`} />
+                        <span className="font-semibold text-slate-800 dark:text-white">{shareholder.role.replace(/_/g, " ")}</span>
                       </div>
-                      
-                      {/* Wallet Balances */}
-                      <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3 space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-600 dark:text-slate-300">Current Balance</span>
-                          <span className="font-semibold text-green-600 dark:text-green-400">
-                            ₦{Number((assigned as any).currentBalance || 0).toLocaleString()}
-                          </span>
+                      <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{Number(shareholder.percentage).toFixed(2)}%</span>
+                    </div>
+
+                    {shareholder?.User ? (
+                      <div className="space-y-2">
+                        <div className="text-sm text-slate-700 dark:text-slate-200">
+                          <div className="font-medium">{shareholder.User?.name || "No name"}</div>
+                          <div className="text-xs text-slate-500">{shareholder.User?.email || "No email"}</div>
                         </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-600 dark:text-slate-300">Total Earned</span>
-                          <span className="font-medium text-slate-700 dark:text-slate-200">
-                            ₦{Number((assigned as any).totalEarned || 0).toLocaleString()}
-                          </span>
-                        </div>
-                        {(assigned as any).lastDistributionAt && (
-                          <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200 dark:border-slate-600">
-                            <span className="text-slate-600 dark:text-slate-300">Last Distribution</span>
-                            <span className="text-slate-500">
-                              {new Date((assigned as any).lastDistributionAt).toLocaleDateString()}
-                            </span>
+
+                        <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3 space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-600 dark:text-slate-300">Current Balance</span>
+                            <span className="font-semibold text-green-600 dark:text-green-400">₦{Number(shareholder.currentBalance || 0).toLocaleString()}</span>
                           </div>
-                        )}
-                      </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-600 dark:text-slate-300">Total Earned</span>
+                            <span className="text-slate-700 dark:text-slate-300">₦{Number(shareholder.totalEarned || 0).toLocaleString()}</span>
+                          </div>
+                          {shareholder.lastDistributionAt && (
+                            <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200 dark:border-slate-600">
+                              <span className="text-slate-600 dark:text-slate-300">Last Distribution</span>
+                              <span className="text-slate-500">{new Date(shareholder.lastDistributionAt).toLocaleDateString()}</span>
+                            </div>
+                          )}
+                        </div>
 
-                      <div className="flex gap-2">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedShareholder(shareholder);
+                              setShowWithdrawalModal(true);
+                            }}
+                            disabled={Number(shareholder.currentBalance || 0) <= 0}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Wallet className="w-4 h-4" />
+                            Withdraw
+                          </button>
+                          <button
+                            onClick={() => removeExecutive.mutate({ shareholderId: shareholder.id })}
+                            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-sm transition-colors"
+                          >
+                            <UserMinus className="w-4 h-4" />
+                            Clear User
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
                         <button
-                          onClick={() => {
-                            setSelectedShareholder(assigned);
-                            setShowWithdrawalModal(true);
-                          }}
-                          disabled={Number((assigned as any).currentBalance || 0) <= 0}
-                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => setSelectedExecutive({ id: shareholder.id, role: shareholder.role })}
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-sm transition-colors"
                         >
-                          <Wallet className="w-4 h-4" />
-                          Withdraw
+                          <UserPlus className="w-4 h-4" />
+                          Assign User
                         </button>
                         <button
                           onClick={() => {
-                            if (window.confirm(`Remove ${assigned.User?.name || "this user"} from ${role.role.replace(/_/g, ' ')} role?`)) {
-                              removeExecutive.mutate({ role: role.role as any });
+                            if (confirm(`Delete "${shareholder.role.replace(/_/g, " ")}" position? This cannot be undone.`)) {
+                              deleteExecutivePosition.mutate({ shareholderId: shareholder.id });
                             }
                           }}
-                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-sm transition-colors"
+                          disabled={deleteExecutivePosition.isPending}
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 text-sm transition-colors disabled:opacity-50"
                         >
-                          <UserMinus className="w-4 h-4" />
-                          Remove
+                          <Trash2 className="w-4 h-4" />
+                          Delete Position
                         </button>
                       </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setSelectedRole(role.role)}
-                      className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-sm transition-colors"
-                    >
-                      <UserPlus className="w-4 h-4" />
-                      Assign User
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Strategic Pools (20% - 4% each) */}
@@ -690,11 +866,11 @@ export default function RevenuePoolsPage() {
         </div>
 
         {/* User Search Modal */}
-        {(selectedRole || selectedPool) && (
+        {(selectedExecutive || selectedPool) && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full p-6">
               <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-4">
-                {selectedRole ? `Assign ${selectedRole.replace(/_/g, " ")}` : `Add to ${selectedPool} Pool`}
+                {selectedExecutive ? `Assign ${selectedExecutive.role.replace(/_/g, " ")}` : `Add to ${selectedPool} Pool`}
               </h3>
 
               <div className="relative mb-4">
@@ -714,9 +890,9 @@ export default function RevenuePoolsPage() {
                     <button
                       key={user.id}
                       onClick={() => {
-                        if (selectedRole) {
+                        if (selectedExecutive) {
                           assignExecutive.mutate({
-                            role: selectedRole as any,
+                            shareholderId: selectedExecutive.id,
                             userId: user.id,
                           });
                         } else if (selectedPool) {
@@ -749,7 +925,7 @@ export default function RevenuePoolsPage() {
 
               <button
                 onClick={() => {
-                  setSelectedRole(null);
+                  setSelectedExecutive(null);
                   setSelectedPool(null);
                   setSearchQuery("");
                 }}

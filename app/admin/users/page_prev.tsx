@@ -55,18 +55,6 @@ type User = {
   rank: string;
 };
 
-type SscUser = {
-  id: string;
-  firstname: string | null;
-  lastname: string | null;
-  email: string | null;
-  membershipName: string | null;
-  membershipActivatedAt: string | Date | null;
-  membershipExpiresAt: string | Date | null;
-  ssc: string | null;
-  name?: string | null;
-};
-
 export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
@@ -85,12 +73,6 @@ export default function UsersPage() {
   const [selectAllMode, setSelectAllMode] = useState<'page' | 'all' | 'none'>('none');
   const [showUserGuide, setShowUserGuide] = useState(false);
 
-  // SSC state
-  const [sscPage, setSscPage] = useState(1);
-  const [sscSearch, setSscSearch] = useState("");
-  const [editingSscUser, setEditingSscUser] = useState<SscUser | null>(null);
-  const [sscInput, setSscInput] = useState("");
-
   const { data, isLoading, refetch, isFetching } = api.admin.getUsers.useQuery({
     page,
     pageSize,
@@ -101,58 +83,14 @@ export default function UsersPage() {
     sortOrder: "desc",
   }, {
     refetchOnWindowFocus: false,
-    staleTime: 30000,
-    gcTime: 300000,
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    gcTime: 300000, // Keep in cache for 5 minutes
   });
 
+  // Reset page to 1 when filters change
   useEffect(() => {
     setPage(1);
   }, [search, roleFilter, activatedFilter]);
-
-  useEffect(() => {
-    setSscPage(1);
-  }, [sscSearch]);
-
-  const { data: sscSummary, refetch: refetchSscSummary, isFetching: isFetchingSsc } =
-    api.admin.getSscSummary.useQuery(undefined, { refetchOnWindowFocus: false });
-
-  const {
-    data: sscUsers,
-    refetch: refetchSscUsers,
-    isFetching: isFetchingSscUsers,
-  } = api.admin.getSscUsers.useQuery(
-    { page: sscPage, search: sscSearch || undefined },
-    { refetchOnWindowFocus: false }
-  );
-
-  const generateSscMutation = api.admin.generateSscForActiveMembers.useMutation({
-    onSuccess: (res) => {
-      toast.success(`Generated ${res.generated} SSC codes`);
-      refetchSscSummary();
-      refetchSscUsers();
-    },
-    onError: (error) => toast.error(error.message),
-  });
-
-  const stripSscMutation = api.admin.stripSsc.useMutation({
-    onSuccess: () => {
-      toast.success("SSC stripped successfully");
-      refetchSscSummary();
-      refetchSscUsers();
-    },
-    onError: (error) => toast.error(error.message),
-  });
-
-  const updateUserSscMutation = api.admin.updateUserSsc.useMutation({
-    onSuccess: () => {
-      toast.success("SSC updated");
-      setEditingSscUser(null);
-      setSscInput("");
-      refetchSscSummary();
-      refetchSscUsers();
-    },
-    onError: (error) => toast.error(error.message),
-  });
 
   // Memoize row selection to prevent infinite re-renders
   const rowSelection = useMemo(() => {
@@ -164,11 +102,6 @@ export default function UsersPage() {
 
   const activeFiltersCount =
     (search ? 1 : 0) + (roleFilter ? 1 : 0) + (activatedFilter !== undefined ? 1 : 0);
-
-  const formatDate = (value?: string | Date | null) => {
-    if (!value) return "‚Äî";
-    return format(new Date(value), "MMM d, yyyy");
-  };
 
   const bulkUpdateMutation = api.admin.bulkUpdateUsers.useMutation({
     onSuccess: () => {
@@ -286,7 +219,7 @@ export default function UsersPage() {
       header: "Wallet",
       cell: ({ row }) => (
         <span className="text-gray-700 dark:text-gray-300">
-          ‚Ç¶{row.original.wallet.toLocaleString()}
+          GÈ™{row.original.wallet.toLocaleString()}
         </span>
       ),
     },
@@ -553,7 +486,7 @@ export default function UsersPage() {
                   {/* Features */}
                   <div className="pt-4 border-t border-blue-200 dark:border-blue-700">
                     <h4 className="text-md font-bold text-gray-900 dark:text-white mb-3">
-                      ‚ú® Advanced Features
+                      G£ø Advanced Features
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
@@ -586,7 +519,7 @@ export default function UsersPage() {
                   {/* Pro Tip */}
                   <div className="bg-white dark:bg-bpi-dark-card rounded-lg p-4">
                     <h5 className="font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-                      üí° Pro Tip
+                      =É∆Ì Pro Tip
                     </h5>
                     <p className="text-sm text-gray-700 dark:text-gray-300">
                       Use the <span className="font-bold">search bar</span> for quick lookups, and combine <span className="font-bold">multiple filters</span> to narrow down specific user groups. 
@@ -632,181 +565,6 @@ export default function UsersPage() {
             icon={MdCheckCircle}
             color="purple"
           />
-        </motion.div>
-
-        {/* SSC issuance panel */}
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.08 }}
-          className="mt-5 grid grid-cols-1"
-        >
-          <div className="premium-stat-card relative overflow-hidden rounded-2xl border border-border bg-card/80 p-6 shadow-xl shadow-black/5 backdrop-blur-sm dark:shadow-black/20">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-muted-foreground">
-                  <MdCardMembership className="text-teal-500" size={18} />
-                  SSC issuance
-                  {isFetchingSsc && <span className="text-xs text-muted-foreground">¬∑ Refreshing</span>}
-                </div>
-                <h3 className="text-2xl font-bold text-foreground mb-1">
-                  {sscSummary?.pending ?? 0} pending
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  Active members: {sscSummary?.totalActive ?? 0} ¬∑ With SSC: {sscSummary?.activeWithCodes ?? 0}
-                </p>
-              </div>
-
-              <button
-                onClick={() => generateSscMutation.mutate()}
-                disabled={generateSscMutation.isPending || (sscSummary?.pending ?? 0) === 0}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/25 transition hover:shadow-emerald-500/35 disabled:opacity-60"
-              >
-                {generateSscMutation.isPending ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Generating...
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2">
-                    <MdSync size={16} />
-                    Generate SSC for active members
-                  </span>
-                )}
-              </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-3 text-sm text-muted-foreground sm:grid-cols-3">
-              <div className="rounded-lg bg-muted/60 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Pending</p>
-                <p className="text-lg font-semibold text-foreground">{sscSummary?.pending ?? 0}</p>
-              </div>
-              <div className="rounded-lg bg-muted/60 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">With SSC</p>
-                <p className="text-lg font-semibold text-foreground">{sscSummary?.activeWithCodes ?? 0}</p>
-              </div>
-              <div className="rounded-lg bg-muted/60 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Active members</p>
-                <p className="text-lg font-semibold text-foreground">{sscSummary?.totalActive ?? 0}</p>
-              </div>
-            </div>
-
-            {isFetchingSsc && (
-              <div className="mt-3 text-xs text-muted-foreground">Refreshing SSC stats...</div>
-            )}
-          </div>
-        </motion.div>
-
-        {/* SSC holders table */}
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mt-4 premium-stat-card relative overflow-hidden rounded-2xl border border-border bg-card/80 p-6 shadow-xl shadow-black/5 backdrop-blur-sm dark:shadow-black/20"
-        >
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                <MdCardMembership className="text-teal-500" size={18} /> Users with SSC
-              </p>
-              <h3 className="text-xl font-bold text-foreground">
-                {sscUsers?.total ?? 0} users
-              </h3>
-            </div>
-            <div className="relative w-full sm:w-80">
-              <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-              <input
-                type="text"
-                value={sscSearch}
-                onChange={(e) => setSscSearch(e.target.value)}
-                placeholder="Search by name, email, or SSC"
-                className="w-full rounded-xl border-2 border-border bg-background/60 pl-10 pr-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-[hsl(var(--primary))] focus:outline-none focus:ring-4 focus:ring-[hsl(var(--secondary))]/20"
-              />
-            </div>
-          </div>
-
-          <div className="mt-4 overflow-x-auto rounded-xl border border-border">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 text-left">First name</th>
-                  <th className="px-4 py-3 text-left">Last name</th>
-                  <th className="px-4 py-3 text-left">Email</th>
-                  <th className="px-4 py-3 text-left">Membership plan</th>
-                  <th className="px-4 py-3 text-left">Start</th>
-                  <th className="px-4 py-3 text-left">End</th>
-                  <th className="px-4 py-3 text-left">SSC</th>
-                  <th className="px-4 py-3 text-left">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border text-sm">
-                {sscUsers?.users?.length ? (
-                  sscUsers.users.map((u) => (
-                    <tr key={u.id} className="hover:bg-muted/40 transition">
-                      <td className="px-4 py-3 text-foreground">{u.firstname || "-"}</td>
-                      <td className="px-4 py-3 text-foreground">{u.lastname || "-"}</td>
-                      <td className="px-4 py-3 text-foreground">{u.email || "-"}</td>
-                      <td className="px-4 py-3 text-foreground">{u.membershipName || ""}</td>
-                      <td className="px-4 py-3 text-foreground">{u.membershipActivatedAt ? format(new Date(u.membershipActivatedAt), "MMM d, yyyy") : "-"}</td>
-                      <td className="px-4 py-3 text-foreground">{u.membershipExpiresAt ? format(new Date(u.membershipExpiresAt), "MMM d, yyyy") : "-"}</td>
-                      <td className="px-4 py-3 font-semibold text-foreground">{u.ssc}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() => stripSscMutation.mutate({ userId: u.id })}
-                            disabled={stripSscMutation.isPending}
-                            className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-60"
-                          >
-                            <MdDelete size={16} /> Strip SSC
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditingSscUser(u);
-                              setSscInput(u.ssc || "");
-                            }}
-                            className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/60"
-                          >
-                            <MdEdit size={16} /> Edit SSC
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">
-                      {isFetchingSscUsers ? "Loading SSC users..." : "No users with SSC found."}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-sm text-muted-foreground">
-            <div>
-              Page {sscUsers?.currentPage || 1} of {sscUsers?.pages || 1} ¬∑ {sscUsers?.total || 0} total
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setSscPage((p) => Math.max(1, p - 1))}
-                disabled={sscPage <= 1 || isFetchingSscUsers}
-                className="rounded-lg border border-border px-3 py-1.5 text-foreground disabled:opacity-50"
-              >
-                Prev
-              </button>
-              <button
-                onClick={() => {
-                  const nextPage = (sscUsers?.currentPage || 1) + 1;
-                  if (sscUsers && nextPage <= (sscUsers.pages || 1)) setSscPage(nextPage);
-                }}
-                disabled={isFetchingSscUsers || (sscUsers?.currentPage || 1) >= (sscUsers?.pages || 1)}
-                className="rounded-lg border border-border px-3 py-1.5 text-foreground disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
-          </div>
         </motion.div>
 
         {/* Search and Filters */}
@@ -1183,7 +941,7 @@ export default function UsersPage() {
                   <div className="space-y-4 mb-6">
                     <div className="rounded-xl bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-900/50 p-4">
                       <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-200 mb-2">
-                        ‚ö†Ô∏è Warning: This is a global action
+                        G‹·n+≈ Warning: This is a global action
                       </p>
                       <p className="text-xs text-yellow-700 dark:text-yellow-300">
                         This will activate ALL inactive users in the entire database, regardless of filters or pagination.
@@ -1272,7 +1030,7 @@ export default function UsersPage() {
                   <div className="space-y-4 mb-6">
                     <div className="rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 p-4">
                       <p className="text-sm font-semibold text-red-800 dark:text-red-200 mb-2">
-                        ‚ö†Ô∏è Warning: Data will be rebuilt
+                        G‹·n+≈ Warning: Data will be rebuilt
                       </p>
                       <p className="text-xs text-red-700 dark:text-red-300">
                         This will truncate and rebuild the entire Referral table based on User.sponsorId relationships.
@@ -1336,56 +1094,6 @@ export default function UsersPage() {
                 </div>
               </div>
             </motion.div>
-          </div>
-        )}
-
-        {/* Edit SSC Modal */}
-        {editingSscUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-            <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
-              <h3 className="text-lg font-semibold text-foreground mb-2">Edit SSC</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Update SSC for {editingSscUser.firstname || editingSscUser.lastname || editingSscUser.email || "user"}.
-              </p>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-muted-foreground">SSC (format: XXX-XXXX-XXX)</label>
-                <input
-                  value={sscInput}
-                  onChange={(e) => setSscInput(e.target.value.toUpperCase())}
-                  placeholder="ABC-1234-XYZ"
-                  className="w-full rounded-xl border-2 border-border bg-background/70 px-3 py-2 text-foreground focus:border-[hsl(var(--primary))] focus:outline-none focus:ring-4 focus:ring-[hsl(var(--secondary))]/20"
-                />
-              </div>
-              <div className="mt-5 flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setEditingSscUser(null);
-                    setSscInput("");
-                  }}
-                  className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted/60"
-                  disabled={updateUserSscMutation.isPending}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => updateUserSscMutation.mutate({ userId: editingSscUser.id, ssc: sscInput })}
-                  disabled={updateUserSscMutation.isPending}
-                  className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-teal-500 to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/30 disabled:opacity-60"
-                >
-                  {updateUserSscMutation.isPending ? (
-                    <span className="flex items-center gap-2">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                      Saving...
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      <MdEdit size={16} />
-                      Save SSC
-                    </span>
-                  )}
-                </button>
-              </div>
-            </div>
           </div>
         )}
 

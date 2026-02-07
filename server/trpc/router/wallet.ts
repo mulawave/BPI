@@ -47,6 +47,10 @@ export const walletRouter = createTRPCRouter({
       if (!user?.email) throw new Error("User email not found");
 
       const { amount, paymentGateway, reference, proofOfPayment } = input;
+
+      if (paymentGateway === 'mock' && process.env.NODE_ENV === 'production') {
+        throw new Error("Mock deposits are disabled in production. Please select a live gateway.");
+      }
       const txReference = reference || `DEP-${Date.now()}`;
 
       // Calculate VAT (7.5% added on top)

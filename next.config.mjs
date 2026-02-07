@@ -1,14 +1,33 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Set timeout for static generation
+  staticPageGenerationTimeout: 120,
   experimental: {
+    instrumentationHook: true,
     serverActions: {
       allowedOrigins: ["*"]
     },
     // Performance optimizations
     optimizePackageImports: ['@trpc/react-query', '@trpc/client', 'react-icons', 'framer-motion'],
+    // Faster refresh
+    turbotrace: {
+      logLevel: 'error'
+    },
+  },
+  // Faster webpack builds
+  webpack: (config, { dev }) => {
+    if (dev) {
+      config.watchOptions = {
+        poll: 1000,
+        aggregateTimeout: 300,
+        ignored: ['**/node_modules', '**/.next', '**/backups', '**/logs', '**/test-results'],
+      };
+    }
+    return config;
   },
   // Compile only necessary pages in dev
   onDemandEntries: {

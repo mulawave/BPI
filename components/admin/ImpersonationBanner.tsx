@@ -10,6 +10,10 @@ export default function ImpersonationBanner() {
   const isImpersonating = (session as any)?.user?.isImpersonation;
   const impersonatedBy = (session as any)?.user?.impersonatedByEmail;
   const targetUserEmail = session?.user?.email;
+  const baseUrl =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : process.env.NEXT_PUBLIC_APP_URL || "";
 
   if (!isImpersonating) return null;
 
@@ -21,7 +25,7 @@ export default function ImpersonationBanner() {
     } else {
       // Fallback: sign out and redirect to admin
       toast.success("Ending impersonation session...");
-      await signOut({ callbackUrl: "/admin/users" });
+      await signOut({ callbackUrl: baseUrl ? `${baseUrl}/admin/users` : "/admin/users" });
     }
   };
 

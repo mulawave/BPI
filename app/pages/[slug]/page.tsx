@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function PageDetail({ params }: { params: { slug: string } }) {
   const slug = params.slug;
   const page = await prisma.page.findFirst({ where: { slug, status: "published" } });

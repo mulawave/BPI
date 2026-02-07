@@ -398,7 +398,8 @@ export default function ActivateMembershipPage() {
                 size="sm"
                 onClick={() => {
                   setIsLoggingOut(true);
-                  signOut({ callbackUrl: '/login' });
+                  const baseUrl = typeof window !== "undefined" ? window.location.origin : process.env.NEXT_PUBLIC_APP_URL || "";
+                  signOut({ callbackUrl: baseUrl ? `${baseUrl}/login` : "/login" });
                 }}
                 disabled={isLoggingOut || processing}
                 className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"

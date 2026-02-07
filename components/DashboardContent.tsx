@@ -1578,6 +1578,13 @@ export default function DashboardContent({ session, customContent }: DashboardCo
                       isEditable={false}
                     />
                     <ProfileField
+                      label="SSC (Secured Secret)"
+                      value={userProfile?.ssc || 'Not assigned'}
+                      fieldKey="ssc"
+                      icon={Shield}
+                      isEditable={false}
+                    />
+                    <ProfileField
                       label="Address"
                       value={userProfile?.address || ''}
                       fieldKey="address"
@@ -1667,6 +1674,24 @@ export default function DashboardContent({ session, customContent }: DashboardCo
 
           {/* User Profile Column */}
           <div className="col-span-12 lg:col-span-3 flex flex-col gap-3 h-full">
+            {/* SSC badge (only when present) */}
+            {userProfile?.ssc && (
+              <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-4 sm:p-5 shadow-lg dark:shadow-none border border-emerald-100/80 dark:border-emerald-900/40">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold tracking-wide text-emerald-700 dark:text-emerald-300">IDENTITY</span>
+                  <Shield className="w-4 h-4 text-emerald-600 dark:text-emerald-300" />
+                </div>
+                <h3 className="text-sm font-semibold text-foreground mb-2">YOUR SSC</h3>
+                <p className="text-lg font-mono font-bold text-emerald-700 dark:text-emerald-200 break-words">
+                  {userProfile.ssc}
+                </p>
+                <hr className="my-3 border-gray-200 dark:border-bpi-dark-accent" />
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  SSC stands for Social Security Code. It is unique to each user and serves as your identifier across the BPI digital ecosystem.
+                </p>
+              </div>
+            )}
+
             {/* User Profile Card - ONLY this card elevated with z-20 when membership is active and profile incomplete */}
             <div className={`bg-white dark:bg-bpi-dark-card rounded-2xl p-3 sm:p-6 shadow-lg dark:shadow-none mb-3 ${!needsActivation && !isProfileComplete ? 'relative z-20' : ''}`}>
               <h2 className="text-lg font-semibold text-foreground mb-3">User Profile</h2>

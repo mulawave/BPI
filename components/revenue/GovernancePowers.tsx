@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import {
@@ -33,20 +33,22 @@ export default function GovernancePowers() {
   const [transferReason, setTransferReason] = useState("");
 
   // Percentage adjustment state
-  const [percentages, setPercentages] = useState({
-    CEO: 30,
-    CTO: 20,
-    HEAD_OF_TRAVEL: 20,
-    CMO: 10,
-    OLIVER: 5,
-    MORRISON: 5,
-    ANNIE: 10,
-  });
+  const [percentages, setPercentages] = useState<Record<string, number>>({});
   const [percentageReason, setPercentageReason] = useState("");
 
   // Queries
   const { data: shareholders } = api.revenue.getExecutiveShareholders.useQuery();
   const { data: pools } = api.revenue.getStrategicPools.useQuery();
+
+  useEffect(() => {
+    if (shareholders) {
+      const next: Record<string, number> = {};
+      shareholders.forEach((s: any) => {
+        next[s.id] = Number(s.percentage || 0);
+      });
+      setPercentages(next);
+    }
+  }, [shareholders]);
 
   // Mutations
   const manualAllocation = api.revenue.manualAllocation.useMutation({
@@ -435,10 +437,10 @@ export default function GovernancePowers() {
               </p>
 
               {/* Executive Percentage Inputs */}
-              {Object.entries(percentages).map(([role, value]) => (
-                <div key={role} className="flex items-center gap-3">
+              {shareholders?.map((shareholder: any) => (
+                <div key={shareholder.id} className="flex items-center gap-3">
                   <label className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-300">
-                    {role.replace(/_/g, " ")}
+                    {shareholder.role.replace(/_/g, " ")}
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -446,12 +448,12 @@ export default function GovernancePowers() {
                       min="0"
                       max="100"
                       step="0.01"
-                      value={value}
+                      value={percentages[shareholder.id] ?? shareholder.percentage}
                       onChange={(e) => {
                         const newValue = parseFloat(e.target.value) || 0;
                         setPercentages((prev) => ({
                           ...prev,
-                          [role]: newValue,
+                          [shareholder.id]: newValue,
                         }));
                       }}
                       className="w-24 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-white text-right"
@@ -508,8 +510,8 @@ export default function GovernancePowers() {
                     return;
                   }
                   adjustPercentages.mutate({
-                    percentages: Object.entries(percentages).map(([role, percentage]) => ({
-                      role: role as any,
+                    percentages: Object.entries(percentages).map(([shareholderId, percentage]) => ({
+                      shareholderId,
                       percentage,
                     })),
                     reason: percentageReason,
@@ -523,16 +525,13 @@ export default function GovernancePowers() {
               <button
                 onClick={() => {
                   setShowPercentageChange(false);
-                  // Reset to current values from database
-                  setPercentages({
-                    CEO: 30,
-                    CTO: 20,
-                    HEAD_OF_TRAVEL: 20,
-                    CMO: 10,
-                    OLIVER: 5,
-                    MORRISON: 5,
-                    ANNIE: 10,
-                  });
+                  if (shareholders) {
+                    const next: Record<string, number> = {};
+                    shareholders.forEach((s: any) => {
+                      next[s.id] = Number(s.percentage || 0);
+                    });
+                    setPercentages(next);
+                  }
                   setPercentageReason("");
                 }}
                 className="flex-1 px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"

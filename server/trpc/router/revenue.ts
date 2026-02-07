@@ -89,22 +89,71 @@ export const revenueRouter = createTRPCRouter({
   }),
 
   /**
+   * Create a new executive position (dynamic role)
+   */
+  createExecutivePosition: protectedProcedure
+    .input(
+      z.object({
+        role: z.string().min(2).max(50),
+        percentage: z.number().min(0).max(100),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const roleKey = normalizeRoleName(input.role);
+      const normalizedRole = roleKey;
+
+      const existingRole = await ctx.prisma.executiveShareholder.findUnique({
+        where: { role: roleKey },
+      });
+
+      if (existingRole) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Role ${normalizedRole} already exists.`,
+        });
+      }
+
+      // Admin override: allow creating roles even if totals temporarily exceed 100%.
+
+      const shareholder = await ctx.prisma.executiveShareholder.create({
+        data: {
+          role: roleKey,
+          percentage: input.percentage,
+          userId: null,
+        },
+      });
+
+      await ctx.prisma.revenueAdminAction.create({
+        data: {
+          adminId: ctx.session!.user.id,
+          actionType: "CREATE_EXECUTIVE",
+          description: `Created executive position ${normalizedRole} at ${input.percentage}%`,
+          metadata: {
+            role: normalizedRole,
+            percentage: input.percentage,
+          },
+        },
+      });
+
+      return shareholder;
+    }),
+
+  /**
    * Assign user to executive role
    */
   assignExecutiveRole: protectedProcedure
     .input(
-      z.object({
-        role: z.enum([
-          "CEO",
-          "CTO",
-          "HEAD_OF_TRAVEL",
-          "CMO",
-          "OLIVER",
-          "MORRISON",
-          "ANNIE",
-        ]),
-        userId: z.string(),
-      })
+      z
+        .object({
+          shareholderId: z.string().optional(),
+          role: z.string().optional(),
+          userId: z.string(),
+        })
+        .refine((data) => data.shareholderId || data.role, {
+          message: "Provide role or shareholderId",
+        })
     )
     .mutation(async ({ ctx, input }) => {
       // Admin check
@@ -112,27 +161,41 @@ export const revenueRouter = createTRPCRouter({
         throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
       }
 
-      // Check if role is already assigned
-      const existing = await ctx.prisma.executiveShareholder.findUnique({
-        where: { role: input.role },
+      const roleKey = input.role ? normalizeRoleName(input.role) : undefined;
+
+      const shareholder = await ctx.prisma.executiveShareholder.findUnique({
+        where: input.shareholderId
+          ? { id: input.shareholderId }
+          : { role: roleKey },
+        include: {
+          User: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              username: true,
+            },
+          },
+        },
       });
 
-      if (existing && existing.userId) {
+      if (!shareholder) {
         throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Role ${input.role} is already assigned to another user`,
+          code: "NOT_FOUND",
+          message: "Executive position not found. Create it first.",
         });
       }
 
-      // Assign or update
-      const shareholder = await ctx.prisma.executiveShareholder.upsert({
-        where: { role: input.role },
-        update: { userId: input.userId },
-        create: {
-          role: input.role,
-          userId: input.userId,
-          percentage: getRolePercentage(input.role),
-        },
+      if (shareholder.userId && shareholder.userId !== input.userId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${shareholder.role} is already assigned to another user`,
+        });
+      }
+
+      const updatedShareholder = await ctx.prisma.executiveShareholder.update({
+        where: { id: shareholder.id },
+        data: { userId: input.userId },
         include: {
           User: {
             select: {
@@ -150,15 +213,15 @@ export const revenueRouter = createTRPCRouter({
         data: {
           adminId: ctx.session!.user.id,
           actionType: "ASSIGN_EXECUTIVE",
-          description: `Assigned ${input.role} to user ${shareholder.User?.name || shareholder.User?.email || input.userId}`,
+          description: `Assigned ${shareholder.role} to user ${updatedShareholder.User?.name || updatedShareholder.User?.email || input.userId}`,
           metadata: {
-            role: input.role,
+            role: shareholder.role,
             userId: input.userId,
           },
         },
       });
 
-      return shareholder;
+      return updatedShareholder;
     }),
 
   /**
@@ -166,17 +229,14 @@ export const revenueRouter = createTRPCRouter({
    */
   removeExecutiveRole: protectedProcedure
     .input(
-      z.object({
-        role: z.enum([
-          "CEO",
-          "CTO",
-          "HEAD_OF_TRAVEL",
-          "CMO",
-          "OLIVER",
-          "MORRISON",
-          "ANNIE",
-        ]),
-      })
+      z
+        .object({
+          shareholderId: z.string().optional(),
+          role: z.string().optional(),
+        })
+        .refine((data) => data.shareholderId || data.role, {
+          message: "Provide role or shareholderId",
+        })
     )
     .mutation(async ({ ctx, input }) => {
       // Admin check
@@ -184,8 +244,18 @@ export const revenueRouter = createTRPCRouter({
         throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
       }
 
+      const roleKey = input.role ? normalizeRoleName(input.role) : undefined;
+
+      const shareholder = await ctx.prisma.executiveShareholder.findUnique({
+        where: input.shareholderId ? { id: input.shareholderId } : { role: roleKey },
+      });
+
+      if (!shareholder) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Executive position not found" });
+      }
+
       await ctx.prisma.executiveShareholder.update({
-        where: { role: input.role },
+        where: { id: shareholder.id },
         data: { userId: null },
       });
 
@@ -194,8 +264,65 @@ export const revenueRouter = createTRPCRouter({
         data: {
           adminId: ctx.session!.user.id,
           actionType: "REMOVE_EXECUTIVE",
-          description: `Removed ${input.role}`,
-          metadata: { role: input.role },
+          description: `Removed ${shareholder.role}`,
+          metadata: { role: shareholder.role, shareholderId: shareholder.id },
+        },
+      });
+
+      return { success: true };
+    }),
+
+  /**
+   * Delete executive position entirely
+   */
+  deleteExecutivePosition: protectedProcedure
+    .input(
+      z.object({
+        shareholderId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Admin check
+      if ((ctx.session?.user as any)?.role !== 'admin') {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+      }
+
+      const shareholder = await ctx.prisma.executiveShareholder.findUnique({
+        where: { id: input.shareholderId },
+      });
+
+      if (!shareholder) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Executive position not found" });
+      }
+
+      // Can't delete if user is currently assigned
+      if (shareholder.userId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot delete position with assigned user. Clear user first.",
+        });
+      }
+
+      // Can't delete if position has balance
+      if (Number(shareholder.currentBalance || 0) > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot delete position with outstanding balance. Withdraw funds first.",
+        });
+      }
+
+      // Delete the position
+      await ctx.prisma.executiveShareholder.delete({
+        where: { id: input.shareholderId },
+      });
+
+      // Log admin action
+      await ctx.prisma.revenueAdminAction.create({
+        data: {
+          adminId: ctx.session!.user.id,
+          actionType: "DELETE_EXECUTIVE_POSITION",
+          description: `Deleted executive position: ${shareholder.role}`,
+          metadata: { role: shareholder.role, shareholderId: shareholder.id },
         },
       });
 
@@ -1423,15 +1550,7 @@ export const revenueRouter = createTRPCRouter({
       z.object({
         percentages: z.array(
           z.object({
-            role: z.enum([
-              "CEO",
-              "CTO",
-              "HEAD_OF_TRAVEL",
-              "CMO",
-              "OLIVER",
-              "MORRISON",
-              "ANNIE",
-            ]),
+            shareholderId: z.string(),
             percentage: z.number().min(0).max(100),
           })
         ),
@@ -1443,7 +1562,22 @@ export const revenueRouter = createTRPCRouter({
 
       const userId = (ctx.session?.user as any)?.id;
 
-      // Validate that percentages sum to 100
+      const existing = await ctx.prisma.executiveShareholder.findMany({
+        select: { id: true, role: true },
+      });
+
+      if (existing.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No executive positions found" });
+      }
+
+      // Ensure all positions are covered
+      if (input.percentages.length !== existing.length) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Provide percentages for every executive position",
+        });
+      }
+
       const total = input.percentages.reduce((sum, p) => sum + p.percentage, 0);
       if (Math.abs(total - 100) > 0.01) {
         throw new TRPCError({
@@ -1453,9 +1587,9 @@ export const revenueRouter = createTRPCRouter({
       }
 
       // Update each shareholder's percentage
-      for (const { role, percentage } of input.percentages) {
-        await ctx.prisma.executiveShareholder.updateMany({
-          where: { role },
+      for (const { shareholderId, percentage } of input.percentages) {
+        await ctx.prisma.executiveShareholder.update({
+          where: { id: shareholderId },
           data: { percentage },
         });
       }
@@ -1630,15 +1764,9 @@ export const revenueRouter = createTRPCRouter({
  * Helper: Get percentage for executive role
  */
 function getRolePercentage(
-  role:
-    | "CEO"
-    | "CTO"
-    | "HEAD_OF_TRAVEL"
-    | "CMO"
-    | "OLIVER"
-    | "MORRISON"
-    | "ANNIE"
+  role: string
 ): number {
+  const normalized = normalizeRoleName(role);
   const percentages = {
     CEO: 30,
     CTO: 20,
@@ -1647,6 +1775,13 @@ function getRolePercentage(
     OLIVER: 5,
     MORRISON: 5,
     ANNIE: 10,
-  };
-  return percentages[role];
+  } as Record<string, number>;
+  return percentages[normalized] ?? 0;
+}
+
+/**
+ * Normalize role display string into a consistent key
+ */
+function normalizeRoleName(role: string): string {
+  return role.trim().toUpperCase().replace(/\s+/g, "_");
 }
