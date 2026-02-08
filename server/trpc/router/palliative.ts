@@ -58,7 +58,7 @@ export const palliativeRouter = createTRPCRouter({
    */
   activatePalliative: protectedProcedure
     .input(z.object({
-      palliativeType: z.string()
+      palliativeType: z.enum(["car", "house", "land", "business", "solar", "education"])
     }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session?.user) {

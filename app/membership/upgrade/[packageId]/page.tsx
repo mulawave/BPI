@@ -48,9 +48,20 @@ export default function UpgradePage() {
         frontendCalculatedCost: upgradeCost // Cost validation
       });
 
-      toast.success(
-        `${result.message} • Upgrade Cost: ${formatAmount(result.upgradeCost)} • New Expiry: ${new Date(result.newExpiry).toLocaleDateString()}`
-      );
+      if ("paymentUrl" in result && result.paymentUrl) {
+        toast.success(result.message || "Upgrade payment initialized. Complete payment to finish the upgrade.");
+        window.open(result.paymentUrl, "_blank");
+        return;
+      }
+
+      if ("upgradeCost" in result && result.upgradeCost !== undefined && result.newExpiry) {
+        toast.success(
+          `${result.message} • Upgrade Cost: ${formatAmount(result.upgradeCost)} • New Expiry: ${new Date(result.newExpiry).toLocaleDateString()}`
+        );
+      } else {
+        toast.success(result.message || "Upgrade completed successfully.");
+      }
+
       router.push("/dashboard");
     } catch (error: any) {
       toast.error(`Upgrade failed: ${error.message}`);

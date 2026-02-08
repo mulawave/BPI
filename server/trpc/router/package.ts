@@ -1072,6 +1072,78 @@ export const packageRouter = createTRPCRouter({
       const VAT = 24750;
       const TOTAL_COST = PACKAGE_FEE + VAT; // NGN 354,750
 
+      if (gateway !== "wallet") {
+        const gatewayEnum = gateway === "paystack" ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE;
+
+        const payment = await PaymentProcessor.processPayment({
+          amount: TOTAL_COST,
+          currency: "NGN",
+          userId: sponsorId,
+          packageId: "empowerment",
+          email: ctx.session?.user?.email || "",
+          name: ctx.session?.user?.name || "",
+          paymentMethod: gateway,
+          purpose: PaymentPurpose.EMPOWERMENT,
+          gateway: gatewayEnum,
+          metadata: {
+            beneficiaryId,
+            empowermentType,
+            purpose: PaymentPurpose.EMPOWERMENT,
+            sponsorId,
+          },
+        });
+
+        if (!payment.success) {
+          throw new Error(payment.error || payment.message || "Failed to initiate empowerment payment");
+        }
+
+        const paymentRef =
+          payment.transactionId || payment.reference || payment.gatewayReference || `EMP-${gateway}-${Date.now()}`;
+
+        await prisma.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId: sponsorId,
+            transactionType: "EMPOWERMENT_PACKAGE_FEE",
+            amount: -TOTAL_COST,
+            description: `Empowerment package fee for ${beneficiary.name} (${beneficiary.email}) via ${gateway}`,
+            status: "pending",
+            reference: paymentRef,
+            walletType: "main",
+          },
+        });
+
+        await prisma.pendingPayment.create({
+          data: {
+            id: randomUUID(),
+            userId: sponsorId,
+            transactionType: "EMPOWERMENT",
+            amount: TOTAL_COST,
+            currency: "NGN",
+            paymentMethod: gateway,
+            gatewayReference: paymentRef,
+            status: "pending",
+            metadata: {
+              beneficiaryId,
+              empowermentType,
+              packageFee: PACKAGE_FEE,
+              vat: VAT,
+              totalCost: TOTAL_COST,
+              purpose: PaymentPurpose.EMPOWERMENT,
+            },
+            updatedAt: new Date(),
+          },
+        });
+
+        return {
+          success: true,
+          gateway,
+          paymentUrl: payment.paymentUrl,
+          reference: paymentRef,
+          message: "Empowerment payment initialized. Complete payment to activate the package.",
+        };
+      }
+
       if ((sponsor.wallet ?? 0) < TOTAL_COST) {
         throw new Error(`Insufficient wallet balance. You need NGN ${TOTAL_COST.toLocaleString()} to activate this empowerment package.`);
       }
@@ -1098,79 +1170,167 @@ export const packageRouter = createTRPCRouter({
         });
       });
 
-      // 2. Define package constants
-      const GROSS_EMPOWERMENT_VALUE = 7250000;
-      const GROSS_SPONSOR_REWARD = 1000000;
-      const TAX_RATE = 0.075;
+      const { maturityDate } = await finalizeEmpowermentPackage({
+        sponsorId,
+        beneficiary: {
+          id: beneficiary.id,
+          name: beneficiary.name,
+          email: beneficiary.email,
+        },
+        empowermentType,
+        packageFee: PACKAGE_FEE,
+        vat: VAT,
+        totalCost: TOTAL_COST,
+      });
 
-      // 3. Calculate net values (tax applied at release, not upfront)
-      const netEmpowermentValue = GROSS_EMPOWERMENT_VALUE * (1 - TAX_RATE);
-      const netSponsorReward = GROSS_SPONSOR_REWARD * (1 - TAX_RATE);
+      return {
+        success: true,
+        message: "Empowerment package activated successfully. 24-month countdown has begun.",
+        maturityDate,
+      };
+    }),
 
-      // 4. Set maturity date (24 months from now)
-      const activatedAt = new Date();
-      const maturityDate = new Date(activatedAt);
-      maturityDate.setMonth(maturityDate.getMonth() + 24);
+  // Verify and activate empowerment after external payment
+  verifyEmpowermentPayment: protectedProcedure
+    .input(z.object({
+      gateway: z.nativeEnum(PaymentGateway),
+      reference: z.string(),
+      beneficiaryId: z.string().optional(),
+      empowermentType: z.enum(["CHILD_EDUCATION", "VOCATIONAL_SKILL"]).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const sponsorId = (ctx.session?.user as any)?.id;
+      if (!sponsorId) throw new Error("UNAUTHORIZED");
 
-      // 5. Create the EmpowermentPackage record
-      const empowermentPackage = await prisma.empowermentPackage.create({
-        data: {
-          id: randomUUID(),
-          updatedAt: new Date(),
-          sponsorId,
-          beneficiaryId,
-          packageFee: PACKAGE_FEE,
-          vat: VAT,
-          empowermentType,
-          status: "Active - Countdown Running",
-          activatedAt,
-          maturityDate,
-          grossEmpowermentValue: GROSS_EMPOWERMENT_VALUE,
-          netEmpowermentValue,
-          grossSponsorReward: GROSS_SPONSOR_REWARD,
-          netSponsorReward,
-          beneficiaryCanView: true,
-          beneficiaryCanWithdraw: false,
+      const verification = await PaymentProcessor.verifyPayment(input.gateway, input.reference);
+      const successStates = [PaymentStatus.SUCCESS, PaymentStatus.SUCCESSFUL];
+
+      if (!verification.success || (verification.status && !successStates.includes(verification.status))) {
+        throw new Error(verification.error || verification.message || "Payment verification failed");
+      }
+
+      const pending = await prisma.pendingPayment.findFirst({
+        where: {
+          userId: sponsorId,
+          gatewayReference: input.reference,
+          transactionType: "EMPOWERMENT",
+          status: { in: ["pending", "processing"] },
         },
       });
 
-      await recordRevenue(prisma, {
-        source: "OTHER",
-        amount: TOTAL_COST,
-        currency: "NGN",
-        sourceId: empowermentPackage.id,
-        description: `Empowerment package fee paid by ${sponsorId} for ${beneficiary.name}`,
-      });
+      const pendingMetadata = (pending?.metadata as Record<string, any> | undefined) || {};
 
-      // 6. Link beneficiary to sponsor if not already linked
-      await prisma.user.update({
+      const beneficiaryId = pendingMetadata.beneficiaryId || input.beneficiaryId;
+      const empowermentType = (pendingMetadata.empowermentType || input.empowermentType) as
+        | "CHILD_EDUCATION"
+        | "VOCATIONAL_SKILL"
+        | undefined;
+
+      if (!beneficiaryId || !empowermentType) {
+        throw new Error("Beneficiary and empowerment type are required to complete verification.");
+      }
+
+      const beneficiary = await prisma.user.findUnique({
         where: { id: beneficiaryId },
-        data: { sponsorId: sponsorId },
-      });
-      
-      // 7. Create activation transaction record with sponsor tracking
-      await prisma.empowermentTransaction.create({
-        data: {
-          id: randomUUID(),
-          empowermentPackageId: empowermentPackage.id,
-          transactionType: "ACTIVATION",
-          grossAmount: TOTAL_COST,
-          taxAmount: 0, // No tax on activation
-          netAmount: TOTAL_COST,
-          description: `Empowerment package activated by sponsor ${sponsorId} for beneficiary ${beneficiary.name}`,
-          performedBy: sponsorId
-        }
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          activated: true,
+          EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser: {
+            where: { status: { not: "Completed" } },
+            select: { id: true, status: true },
+          },
+        },
       });
 
-      console.log(`[EMPOWERMENT] Package created: ${empowermentPackage.id}, matures ${maturityDate.toDateString()}`);
+      if (!beneficiary) {
+        throw new Error("Beneficiary user not found. Please ensure they have registered on the platform.");
+      }
 
-      // Send activation notifications to sponsor and beneficiary
-      await notifyEmpowermentActivation(sponsorId, beneficiaryId, maturityDate);
+      if (!beneficiary.activated) {
+        throw new Error("Beneficiary account is not activated. They must verify their email first.");
+      }
 
-      return { 
-        success: true, 
-        message: "Empowerment package activated successfully. 24-month countdown has begun.",
-        maturityDate 
+      if (beneficiary.EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser.length > 0) {
+        const existingPackage = beneficiary.EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser[0];
+        throw new Error(`Beneficiary already has an active empowerment package (Status: ${existingPackage.status}). Only one package per beneficiary is allowed.`);
+      }
+
+      const sponsor = await prisma.user.findUnique({
+        where: { id: sponsorId },
+        select: {
+          activeMembershipPackageId: true,
+        },
+      });
+
+      if (!sponsor?.activeMembershipPackageId) {
+        throw new Error("You must have an active membership package to sponsor an empowerment package.");
+      }
+
+      const PACKAGE_FEE = 330000;
+      const VAT = 24750;
+      const TOTAL_COST = PACKAGE_FEE + VAT;
+
+      if (verification.amount && Math.abs(verification.amount - TOTAL_COST) > 5) {
+        console.warn("[WARN] [EMPOWERMENT] Verification amount mismatch", {
+          expected: TOTAL_COST,
+          verified: verification.amount,
+          reference: input.reference,
+        });
+      }
+
+      const { maturityDate } = await finalizeEmpowermentPackage({
+        sponsorId,
+        beneficiary: {
+          id: beneficiary.id,
+          name: beneficiary.name,
+          email: beneficiary.email,
+        },
+        empowermentType,
+        packageFee: PACKAGE_FEE,
+        vat: VAT,
+        totalCost: TOTAL_COST,
+      });
+
+      if (pending) {
+        await prisma.pendingPayment.update({
+          where: { id: pending.id },
+          data: {
+            status: "completed",
+            reviewedBy: sponsorId,
+            reviewedAt: new Date(),
+            updatedAt: new Date(),
+            metadata: {
+              ...pendingMetadata,
+              verification: {
+                status: verification.status,
+                amount: verification.amount,
+                reference: verification.reference,
+                transactionId: verification.transactionId,
+                gatewayReference: verification.gatewayReference,
+                metadata: verification.metadata,
+                message: verification.message,
+              },
+            },
+          },
+        });
+      }
+
+      await prisma.transaction.updateMany({
+        where: {
+          userId: sponsorId,
+          reference: input.reference,
+          transactionType: "EMPOWERMENT_PACKAGE_FEE",
+        },
+        data: { status: "completed" },
+      });
+
+      return {
+        success: true,
+        message: "Empowerment package activated successfully.",
+        reference: input.reference,
+        maturityDate,
       };
     }),
 

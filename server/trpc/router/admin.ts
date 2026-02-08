@@ -14,6 +14,7 @@ import {
 } from "@/server/services/membershipPayments.service";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { initiateBankTransfer } from "@/lib/flutterwave";
 import { notifyWithdrawalStatus, notifyDepositStatus } from "@/server/services/notification.service";
 import { generateReceiptLink } from "@/server/services/receipt.service";
@@ -208,7 +209,7 @@ export const adminRouter = createTRPCRouter({
    */
   getSscSummary: adminProcedure.query(async () => {
     const now = new Date();
-    const activeMembershipFilter: any = {
+    const activeMembershipFilter: Prisma.UserWhereInput = {
       activeMembershipPackageId: { not: null },
       activated: true,
       OR: [
@@ -231,7 +232,7 @@ export const adminRouter = createTRPCRouter({
    */
   generateSscForActiveMembers: adminProcedure.mutation(async () => {
     const now = new Date();
-    const activeMembershipFilter: any = {
+    const activeMembershipFilter: Prisma.UserWhereInput = {
       activeMembershipPackageId: { not: null },
       activated: true,
       OR: [
