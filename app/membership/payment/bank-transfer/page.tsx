@@ -45,6 +45,9 @@ export default function BankTransferPaymentPage() {
   const packageId = searchParams?.get('packageId');
   const amount = Number(searchParams?.get('amount') || 0);
   const isUpgrade = searchParams?.get('upgrade') === 'true';
+  const purposeParam = searchParams?.get('purpose');
+  const empowermentType = searchParams?.get('empowermentType');
+  const beneficiaryId = searchParams?.get('beneficiaryId');
   const [copied, setCopied] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [proofFile, setProofFile] = useState<File | null>(null);
@@ -52,7 +55,7 @@ export default function BankTransferPaymentPage() {
   const submitProofMutation = api.payment.submitBankTransferProof.useMutation({
     onSuccess: () => {
       toast.success("Proof submitted. Awaiting admin verification.");
-      router.push("/membership");
+      router.push(purposeParam === 'empowerment' ? "/empowerment" : "/membership");
     },
     onError: (e) => {
       toast.error(e.message);
@@ -67,8 +70,13 @@ export default function BankTransferPaymentPage() {
   };
 
   const handleProofUpload = async () => {
-    if (!packageId || !amount) {
-      toast.error("Missing payment details. Please go back and try again.");
+    if (!amount) {
+      toast.error("Missing payment amount. Please go back and try again.");
+      return;
+    }
+
+    if (purposeParam === 'empowerment' && (!beneficiaryId || !empowermentType)) {
+      toast.error("Missing empowerment details. Please go back and try again.");
       return;
     }
 
@@ -99,16 +107,23 @@ export default function BankTransferPaymentPage() {
 
       toast.dismiss(loadingToast);
 
-      const purpose = isUpgrade ? PaymentPurpose.UPGRADE : PaymentPurpose.MEMBERSHIP;
+      const purpose = purposeParam === 'empowerment'
+        ? PaymentPurpose.EMPOWERMENT
+        : isUpgrade
+          ? PaymentPurpose.UPGRADE
+          : PaymentPurpose.MEMBERSHIP;
+
+      const resolvedPackageId = packageId || (purpose === PaymentPurpose.EMPOWERMENT ? 'empowerment' : undefined);
 
       await submitProofMutation.mutateAsync({
         amount,
         currency: "NGN",
         purpose,
-        packageId,
+        packageId: resolvedPackageId,
         isUpgrade,
         fromPackageId: searchParams?.get("from") || undefined,
         proofUrl: json.proofUrl,
+        metadata: purpose === PaymentPurpose.EMPOWERMENT ? { beneficiaryId, empowermentType } : undefined,
       });
     } catch (e) {
       toast.dismiss(loadingToast);
@@ -168,7 +183,13 @@ export default function BankTransferPaymentPage() {
           </div>
           <h1 className="text-3xl font-bold text-foreground mb-2">Bank Transfer Payment</h1>
           <p className="text-muted-foreground">
-            Transfer {formatAmount(amount)} to complete your {isUpgrade ? 'membership upgrade' : 'membership activation'}
+            Transfer {formatAmount(amount)} to complete your {
+              purposeParam === 'empowerment'
+                ? 'empowerment activation'
+                : isUpgrade
+                  ? 'membership upgrade'
+                  : 'membership activation'
+            }
           </p>
         </div>
 

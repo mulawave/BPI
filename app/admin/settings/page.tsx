@@ -486,6 +486,14 @@ export default function SettingsPage() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <SettingField
+                  label="Application Base URL"
+                  settingKey="app_base_url"
+                  description="Base URL for emails and redirects (e.g., https://beepagro.com)"
+                  currentValue={systemSettings?.app_base_url?.value || ""}
+                  type="url"
+                  onSave={handleSaveGeneralSetting}
+                />
+                <SettingField
                   label="Site Name"
                   settingKey="site_name"
                   description="The name of your platform"

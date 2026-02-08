@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { prisma } from './prisma';
+import { resolveAppBaseUrl } from '@/lib/appUrl';
 
 interface EmailOptions {
   to: string;
@@ -121,7 +122,8 @@ export async function sendEmail(options: EmailOptions) {
 }
 
 export async function sendPasswordResetEmail(email: string, resetToken: string) {
-  const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/set-new-password?token=${resetToken}`;
+  const baseUrl = (await resolveAppBaseUrl()).replace(/\/$/, "");
+  const resetUrl = `${baseUrl}/set-new-password?token=${resetToken}`;
   
   const html = `
     <!DOCTYPE html>
@@ -273,7 +275,7 @@ export async function sendWithdrawalRequestToAdmins(
     select: { email: true, name: true }
   });
 
-  const adminUrl = `${process.env.NEXT_PUBLIC_APP_URL}/admin/withdrawals`;
+  const adminUrl = `${(await resolveAppBaseUrl()).replace(/\/$/, "")}/admin/withdrawals`;
 
   const html = `
     <!DOCTYPE html>
@@ -496,7 +498,7 @@ export async function sendWithdrawalRejectedToUser(
             </ul>
 
             <p style="text-align: center;">
-              <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard" class="button">View Dashboard</a>
+              <a href="${(await resolveAppBaseUrl()).replace(/\/$/, "")}/dashboard" class="button">View Dashboard</a>
             </p>
 
             <p>If you have any questions or concerns, please contact our support team immediately.</p>
@@ -746,7 +748,7 @@ export async function sendRenewalReminderEmail(
   daysUntilExpiry: number,
   renewalFee: number
 ) {
-  const renewalUrl = `${process.env.NEXT_PUBLIC_APP_URL}/membership`;
+  const renewalUrl = `${(await resolveAppBaseUrl()).replace(/\/$/, "")}/membership`;
   
   const html = `
     <!DOCTYPE html>

@@ -1189,6 +1189,53 @@ export const packageRouter = createTRPCRouter({
         maturityDate,
       };
     }),
+          getMyEmpowermentPackages: protectedProcedure.query(async ({ ctx }) => {
+            const userId = (ctx.session?.user as any)?.id;
+            if (!userId) {
+              throw new Error("UNAUTHORIZED");
+            }
+
+            return await prisma.empowermentPackage.findMany({
+              where: {
+                OR: [{ sponsorId: userId }, { beneficiaryId: userId }],
+              },
+              select: {
+                id: true,
+                sponsorId: true,
+                beneficiaryId: true,
+                status: true,
+                maturityDate: true,
+                activatedAt: true,
+                approvedAt: true,
+                releasedAt: true,
+                adminApproved: true,
+                isConverted: true,
+                fallbackEnabled: true,
+                empowermentType: true,
+                packageFee: true,
+                vat: true,
+                grossEmpowermentValue: true,
+                netEmpowermentValue: true,
+                grossSponsorReward: true,
+                netSponsorReward: true,
+                User_EmpowermentPackage_sponsorIdToUser: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                  },
+                },
+                User_EmpowermentPackage_beneficiaryIdToUser: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+              orderBy: { activatedAt: "desc" },
+            });
+          }),
 
   // Verify and activate empowerment after external payment
   verifyEmpowermentPayment: protectedProcedure

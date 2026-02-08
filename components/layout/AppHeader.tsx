@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { Button } from "@/components/ui/button";
 import { Calendar, Moon, Sun, RefreshCw, Settings, LogOut, User } from "lucide-react";
+import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 
 interface AppHeaderProps {
   pageTitle?: string;
@@ -105,12 +106,15 @@ export function AppHeader({ pageTitle = "BeepAgro Africa", pageSubtitle = "Palli
                     <span className="hidden lg:inline">Settings</span>
                   </Button>
                 </Link>
-                <Link href="/api/auth/signout">
-                  <Button variant="outline" size="sm" className="gap-2 bg-white dark:bg-green-900/40 border-gray-300 dark:border-green-700/50">
-                    <LogOut className="w-4 h-4" />
-                    <span className="hidden lg:inline">Sign Out</span>
-                  </Button>
-                </Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 bg-white dark:bg-green-900/40 border-gray-300 dark:border-green-700/50"
+                  onClick={() => signOut({ callbackUrl: `${resolveClientBaseUrl()}/login` })}
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden lg:inline">Sign Out</span>
+                </Button>
               </div>
             ) : (
               <Link href="/login">

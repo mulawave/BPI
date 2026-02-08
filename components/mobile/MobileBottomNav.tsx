@@ -5,6 +5,8 @@ import { AiOutlineRobot } from "react-icons/ai";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { signOut } from "next-auth/react";
+import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 
 // Inline cn utility to avoid import issues
 const cn = (...classes: (string | boolean | undefined | null)[]) => classes.filter(Boolean).join(" ");
@@ -124,7 +126,13 @@ export default function MobileBottomNav({
                   key={label}
                   href={href}
                   className="flex items-center gap-3 py-2 px-4 rounded-lg hover:bg-gray-100 dark:hover:bg-green-800/50 text-sm text-gray-900 dark:text-white"
-                  onClick={() => {
+                  onClick={(event) => {
+                    if (label === "Logout") {
+                      event.preventDefault();
+                      signOut({ callbackUrl: `${resolveClientBaseUrl()}/login` });
+                      setShowMenu(false);
+                      return;
+                    }
                     setNavLoadingHref(href);
                     setShowMenu(false);
                   }}

@@ -35,6 +35,7 @@ import {
   Mail,
   Gift,
 } from "lucide-react";
+import { FiBookOpen } from "react-icons/fi";
 import { useEffect, useState } from "react";
 
 const navigation = [
@@ -110,6 +111,12 @@ const navigation = [
     href: "/admin/packages", 
     icon: Package,
     description: "Membership packages"
+  },
+  { 
+    name: "Empowerment", 
+    href: "/admin/empowerment", 
+    icon: FiBookOpen,
+    description: "Manage empowerment lifecycle"
   },
   { 
     name: "Palliatives", 

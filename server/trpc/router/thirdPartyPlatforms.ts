@@ -35,46 +35,48 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
       select: { sponsorId: true },
     });
 
-    // For each available platform, get the appropriate referral link
+    // For each available platform, only return direct sponsor-submitted links
+    if (!user?.sponsorId) {
+      return [];
+    }
+
+    const sponsorId = user.sponsorId;
+    if (!sponsorId) {
+      return [];
+    }
+
     const platformsWithLinks = await Promise.all(
       availablePlatforms.map(async (platform: any) => {
-        let referralLink = platform.adminDefaultLink;
-        let linkOwner = "BPI Admin";
-
-        if (user?.sponsorId) {
-          // Check if sponsor has submitted a link for this platform
-          const sponsorLink = await ctx.prisma.userThirdPartyLink.findUnique({
-            where: {
-              userId_platformId: {
-                userId: user.sponsorId,
-                platformId: platform.id,
+        const sponsorLink = await ctx.prisma.userThirdPartyLink.findUnique({
+          where: {
+            userId_platformId: {
+              userId: sponsorId,
+              platformId: platform.id,
+            },
+          },
+          include: {
+            User: {
+              select: {
+                firstname: true,
+                lastname: true,
               },
             },
-            include: {
-              User: {
-                select: {
-                  firstname: true,
-                  lastname: true,
-                },
-              },
-            },
-          });
+          },
+        });
 
-          if (sponsorLink) {
-            referralLink = sponsorLink.referralLink;
-            linkOwner = `${sponsorLink.User.firstname || ''} ${sponsorLink.User.lastname || ''}`.trim() || "Your Sponsor";
-          }
-        }
+        if (!sponsorLink) return null;
 
         return {
           ...platform,
-          referralLink,
-          linkOwner,
+          referralLink: sponsorLink.referralLink,
+          linkOwner:
+            `${sponsorLink.User.firstname || ""} ${sponsorLink.User.lastname || ""}`.trim() ||
+            "Your Sponsor",
         };
       })
     );
 
-    return platformsWithLinks;
+    return platformsWithLinks.filter(Boolean);
   }),
 
   // Submit user's referral link for a platform

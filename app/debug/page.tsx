@@ -1,5 +1,6 @@
 "use client";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
+import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 import { api } from "@/client/trpc";
 import { useState } from "react";
 
@@ -144,9 +145,12 @@ export default function DebugPage() {
               <a href="/dashboard" className="block text-blue-600 hover:underline">
                 → Try Dashboard Access
               </a>
-              <a href="/api/auth/signout" className="block text-red-600 hover:underline">
+              <button
+                onClick={() => signOut({ callbackUrl: `${resolveClientBaseUrl()}/login` })}
+                className="block text-left text-red-600 hover:underline"
+              >
                 → Sign Out
-              </a>
+              </button>
               <a href="/login" className="block text-green-600 hover:underline">
                 → Login Page
               </a>

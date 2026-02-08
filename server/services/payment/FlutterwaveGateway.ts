@@ -12,6 +12,7 @@ import {
   WebhookValidationResult,
 } from "./types";
 import crypto from "crypto";
+import { resolveAppBaseUrl } from "@/lib/appUrl";
 
 interface FlutterwavePaymentData {
   tx_ref: string;
@@ -108,17 +109,18 @@ export class FlutterwaveGateway implements IPaymentGateway {
       // Generate transaction reference
       const txRef = `FLW-${Date.now()}-${request.userId.substring(0, 8)}`;
 
-      // Get user details from metadata
-      const userEmail = request.metadata?.userEmail || "user@bpi.com";
-      const userName = request.metadata?.userName || "BPI User";
-      const userPhone = request.metadata?.userPhone;
+      // Get user details from request (fallback to metadata/defaults)
+      const userEmail = request.email || request.metadata?.userEmail || "user@bpi.com";
+      const userName = request.name || request.metadata?.userName || "BPI User";
+      const userPhone = request.phone || request.metadata?.userPhone;
 
       // Prepare payment data
+      const baseUrl = (await resolveAppBaseUrl()).replace(/\/$/, "");
       const paymentData: FlutterwavePaymentData = {
         tx_ref: txRef,
         amount: request.amount,
         currency: request.currency || "NGN",
-        redirect_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/flutterwave/callback`,
+        redirect_url: `${baseUrl}/api/webhooks/flutterwave/callback`,
         customer: {
           email: userEmail,
           phonenumber: userPhone,
@@ -127,7 +129,7 @@ export class FlutterwaveGateway implements IPaymentGateway {
         customizations: {
           title: "BPI Membership Payment",
           description: `Payment for ${request.purpose}`,
-          logo: `${process.env.NEXT_PUBLIC_APP_URL}/img/logo.png`,
+          logo: `${baseUrl}/img/logo.png`,
         },
         payment_options: this.getPaymentOptions(),
         meta: {

@@ -160,24 +160,28 @@ export default function AdminStorePage() {
       toast.error("Name and description are required");
       return;
     }
-    if (!editingProduct.accepted_tokens?.length) {
-      toast.error("At least one token required");
-      return;
-    }
     if (!editingProduct.images || editingProduct.images.length === 0) {
       toast.error("Please upload at least one product image");
       return;
     }
 
     try {
+      const acceptedTokens = (editingProduct.accepted_tokens ?? []).filter(Boolean);
+      const tokenPaymentLimits = acceptedTokens.length
+        ? acceptedTokens.reduce((acc: Record<string, number>, token: string) => {
+            acc[token] = editingProduct.token_payment_limits?.[token] ?? 0;
+            return acc;
+          }, {} as Record<string, number>)
+        : {};
+
       const payload: UpsertProductInput = {
         id: editingProduct.product_id === "new-product" ? undefined : editingProduct.product_id,
         name: editingProduct.name,
         description: editingProduct.description,
         productType: (editingProduct.product_type || "physical").toUpperCase() as any,
         basePriceFiat: editingProduct.base_price_fiat || 0,
-        acceptedTokens: editingProduct.accepted_tokens,
-        tokenPaymentLimits: editingProduct.token_payment_limits || {},
+        acceptedTokens,
+        tokenPaymentLimits,
         rewardConfigId: editingProduct.reward_config?.[0]?.reward_id,
         inventoryType: (editingProduct.inventory_type || "unlimited").toUpperCase() as any,
         status: (editingProduct.status || "active").toUpperCase() as any,
@@ -912,8 +916,8 @@ export default function AdminStorePage() {
       </Card>
 
       {editingProduct && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center px-4">
-          <Card className="w-full max-w-3xl p-6 space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center px-4 py-6 overflow-y-auto">
+          <Card className="w-full max-w-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div className="text-lg font-semibold">{editingProduct.product_id === "new-product" ? "Add Product" : "Edit Product"}</div>
               <Button variant="ghost" size="icon" onClick={() => setEditingProduct(null)}>
@@ -961,7 +965,7 @@ export default function AdminStorePage() {
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Accepted Tokens (comma)</label>
+                <label className="text-sm font-medium">Accepted Tokens (comma, optional)</label>
                 <input
                   value={editingProduct.accepted_tokens.join(",")}
                   onChange={(e) => {
@@ -973,7 +977,7 @@ export default function AdminStorePage() {
                 <div className="text-[11px] text-muted-foreground">List tokens, then set per-token % caps below.</div>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Hero badge</label>
+                <label className="text-sm font-medium">Hero badge (optional)</label>
                 <input
                   value={editingProduct.hero_badge ?? ""}
                   onChange={(e) => setEditingProduct((prev) => prev ? { ...prev, hero_badge: e.target.value } : prev)}
@@ -1049,7 +1053,7 @@ export default function AdminStorePage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Pickup Center</label>
+                <label className="text-sm font-medium">Pickup Center (optional)</label>
                 <select
                   value={editingProduct.pickup_center_id ?? ""}
                   onChange={(e) => setEditingProduct((prev) => prev ? { ...prev, pickup_center_id: e.target.value || undefined } : prev)}
@@ -1062,7 +1066,7 @@ export default function AdminStorePage() {
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Reward Center</label>
+                <label className="text-sm font-medium">Reward Center (optional)</label>
                 <select
                   value={editingProduct.reward_center_id ?? ""}
                   onChange={(e) => setEditingProduct((prev) => prev ? { ...prev, reward_center_id: e.target.value || undefined } : prev)}
@@ -1110,7 +1114,7 @@ export default function AdminStorePage() {
                 </div>
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-sm font-medium">Reward Config</label>
+                <label className="text-sm font-medium">Reward Config (optional)</label>
                 <select
                   value={editingProduct.reward_config?.[0]?.reward_id ?? ""}
                   onChange={(e) => {

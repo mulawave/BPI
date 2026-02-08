@@ -1,5 +1,6 @@
 "use client";
 import { Session } from "next-auth";
+import { signOut } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect, useCallback, useTransition, useRef, ReactNode } from "react";
@@ -29,6 +30,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { Modal } from "./ui/Modal";
 import { checkProfileCompletion, getCompletionMessage } from "@/lib/profile-completion";
+import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 import DashboardPreview from "./DashboardPreview";
 import { CommunityCard } from "./CommunityCard";
 import UpdatesModal from "./community/UpdatesModal";
@@ -269,18 +271,18 @@ export default function DashboardContent({ session, customContent }: DashboardCo
   }, [currentPath]);
   const navItemClass = (active: boolean) =>
     active
-      ? "flex items-center gap-3 px-3 py-2.5 rounded-lg bg-gradient-to-r from-bpi-primary to-bpi-secondary text-white shadow-sm"
-      : "flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors";
+      ? "flex items-center gap-2 px-2.5 py-2 rounded-lg bg-gradient-to-r from-bpi-primary to-bpi-secondary text-white shadow-sm"
+      : "flex items-center gap-2 px-2.5 py-2 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors";
 
   const sidebarNav = () => (
-    <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-4 shadow-lg dark:shadow-none">
-      <nav className="space-y-1">
+    <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-3 shadow-lg dark:shadow-none w-full">
+      <nav className="space-y-0.5">
         <div className="group">
           <Link href="/dashboard" className={navItemClass(isActive("/dashboard") || currentPath === "/") }
             onClick={() => setNavLoadingHref("/dashboard")}>
-            {navLoadingHref === "/dashboard" ? <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin" /> : <Home className="w-5 h-5 flex-shrink-0" />}
+            {navLoadingHref === "/dashboard" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <Home className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold">Dashboard</div>
+              <div className="text-xs font-semibold">Dashboard</div>
             </div>
           </Link>
         </div>
@@ -288,9 +290,9 @@ export default function DashboardContent({ session, customContent }: DashboardCo
         <div className="group">
           <Link href="/blog" className={navItemClass(isActive("/blog"))}
             onClick={() => setNavLoadingHref("/blog")}>
-            {navLoadingHref === "/blog" ? <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin" /> : <BookOpen className="w-5 h-5 flex-shrink-0" />}
+            {navLoadingHref === "/blog" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <BookOpen className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium">BPI Blog</div>
+              <div className="text-xs font-medium">BPI Blog</div>
             </div>
           </Link>
         </div>
@@ -298,9 +300,9 @@ export default function DashboardContent({ session, customContent }: DashboardCo
         <div className="group">
           <Link href="/csp" className={navItemClass(isActive("/csp"))}
             onClick={() => setNavLoadingHref("/csp")}>
-            {navLoadingHref === "/csp" ? <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin" /> : <LifeBuoy className="w-5 h-5 flex-shrink-0" />}
+            {navLoadingHref === "/csp" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <LifeBuoy className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium">BPI CSP</div>
+              <div className="text-xs font-medium">BPI CSP</div>
             </div>
           </Link>
         </div>
@@ -308,9 +310,9 @@ export default function DashboardContent({ session, customContent }: DashboardCo
         <div className="group">
           <Link href="/store" className={navItemClass(isActive("/store"))}
             onClick={() => setNavLoadingHref("/store")}>
-            {navLoadingHref === "/store" ? <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin" /> : <Store className="w-5 h-5 flex-shrink-0" />}
+            {navLoadingHref === "/store" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <Store className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium">Store</div>
+              <div className="text-xs font-medium">Store</div>
             </div>
           </Link>
         </div>
@@ -318,9 +320,19 @@ export default function DashboardContent({ session, customContent }: DashboardCo
         <div className="group">
           <Link href="/help" className={navItemClass(isActive("/help"))}
             onClick={() => setNavLoadingHref("/help")}>
-            {navLoadingHref === "/help" ? <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin" /> : <AiOutlineRobot className="w-5 h-5 flex-shrink-0" />}
+            {navLoadingHref === "/help" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <AiOutlineRobot className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium">Smart Help</div>
+              <div className="text-xs font-medium">Smart Help</div>
+            </div>
+          </Link>
+        </div>
+
+        <div className="group">
+          <Link href="/empowerment" className={navItemClass(isActive("/empowerment"))}
+            onClick={() => setNavLoadingHref("/empowerment")}>
+            {navLoadingHref === "/empowerment" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <GraduationCap className="w-4 h-4 flex-shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium">Empowerment</div>
             </div>
           </Link>
         </div>
@@ -328,9 +340,9 @@ export default function DashboardContent({ session, customContent }: DashboardCo
         <div className="group">
           <Link href="/settings" className={navItemClass(isActive("/settings"))}
             onClick={() => setNavLoadingHref("/settings")}>
-            {navLoadingHref === "/settings" ? <Loader2 className="w-5 h-5 flex-shrink-0 animate-spin" /> : <User className="w-5 h-5 flex-shrink-0" />}
+            {navLoadingHref === "/settings" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <User className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium">Account</div>
+              <div className="text-xs font-medium">Account</div>
             </div>
           </Link>
         </div>
@@ -1480,12 +1492,15 @@ export default function DashboardContent({ session, customContent }: DashboardCo
                     </Button>
                   </Link>
                   
-                  <Link href="/api/auth/signout">
-                    <Button variant="outline" size="sm" className="gap-2 bg-white dark:bg-green-900/40 border-gray-300 dark:border-green-700/50">
-                      <LogOut className="w-4 h-4" />
-                      <span className="hidden md:inline">Sign Out</span>
-                    </Button>
-                  </Link>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 bg-white dark:bg-green-900/40 border-gray-300 dark:border-green-700/50"
+                    onClick={() => signOut({ callbackUrl: `${resolveClientBaseUrl()}/login` })}
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span className="hidden md:inline">Sign Out</span>
+                  </Button>
                 </div>
               </div>
             </div>

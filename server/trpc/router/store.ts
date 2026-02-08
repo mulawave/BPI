@@ -198,7 +198,7 @@ export const storeRouter = createTRPCRouter({
         description: z.string().min(1),
         productType: z.enum(["PHYSICAL", "DIGITAL", "LICENSE", "SERVICE", "UTILITY"]),
         basePriceFiat: z.number().positive(),
-        acceptedTokens: z.array(z.string().min(1)),
+        acceptedTokens: z.array(z.string().min(1)).optional().default([]),
         tokenPaymentLimits: z.record(z.number().min(0).max(1)),
         rewardConfigId: z.string().optional(),
         inventoryType: z.enum(["UNLIMITED", "LIMITED", "TIME_BOUND"]).default("UNLIMITED"),
