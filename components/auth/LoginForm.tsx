@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useMemo, useState, FormEvent } from "react";
 import { AlertBadge } from "@/components/ui/AlertBadge";
 import { TopLoadingBar } from "@/components/ui/TopLoadingBar";
 import { signIn } from "next-auth/react";
@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
+import { api } from "@/client/trpc";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -18,6 +19,19 @@ export default function LoginForm() {
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState<null | { type: "success" | "failed" | "warning"; message: string }>(null);
+  const { data: footerPages } = api.content.getFooterPages.useQuery(undefined, { refetchOnWindowFocus: false });
+
+  const policyLinks = useMemo(() => {
+    const termsPage = footerPages?.find((p: any) => p.category === "terms");
+    const privacyPage = footerPages?.find((p: any) => p.category === "policy" || p.category === "privacy");
+    const cookiesPage = footerPages?.find((p: any) => p.category === "cookies");
+
+    return {
+      terms: termsPage ? `/pages/${termsPage.slug}` : "/pages/terms-of-service",
+      privacy: privacyPage ? `/pages/${privacyPage.slug}` : "/pages/privacy-policy",
+      cookies: cookiesPage ? `/pages/${cookiesPage.slug}` : "/pages/cookie-policy",
+    };
+  }, [footerPages]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -153,6 +167,14 @@ export default function LoginForm() {
       >
         {loading ? "Logging in…" : "LOGIN"}
       </Button>
+
+      <p className="text-xs text-muted-foreground text-center">
+        By signing in, you agree to our
+        <Link href={policyLinks.terms} className="text-[#0d3b29] hover:underline ml-1">Terms</Link>,
+        <Link href={policyLinks.privacy} className="text-[#0d3b29] hover:underline ml-1">Privacy Policy</Link>,
+        {" "}and
+        <Link href={policyLinks.cookies} className="text-[#0d3b29] hover:underline ml-1">Cookie Policy</Link>.
+      </p>
     </form>
      </div>
   );

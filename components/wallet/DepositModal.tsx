@@ -7,6 +7,7 @@ import { api } from "@/client/trpc";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import BankTransferDetails from "../payment/BankTransferDetails";
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -457,20 +458,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                   <Building2 className="w-5 h-5 text-blue-600" />
                   Company Bank Account
                 </h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Bank Name</p>
-                    <p className="font-bold text-lg">{bankDetails?.bank_name?.value || 'Not configured'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Account Number</p>
-                    <p className="font-bold text-2xl tracking-wider">{bankDetails?.bank_account_number?.value || 'Not configured'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Account Name</p>
-                    <p className="font-bold">{bankDetails?.bank_account_name?.value || 'Not configured'}</p>
-                  </div>
-                </div>
+                <BankTransferDetails bankDetails={bankDetails} showCopy className="space-y-3" />
               </div>
 
               {/* Instructions */}

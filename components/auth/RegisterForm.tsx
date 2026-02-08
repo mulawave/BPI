@@ -1,16 +1,17 @@
 "use client";
-import { useState } from "react";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { AiOutlineUser, AiOutlineIdcard, AiOutlineMan, AiOutlineMail, AiOutlineLock, AiOutlineReload, AiOutlineCheckCircle, AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
+import Link from "next/link";
 
 export default function RegisterForm({ refId = "1" }: { refId?: string }) {
   const router = useRouter();
   const registerMutation = api.auth.register.useMutation();
+  const { data: footerPages } = api.content.getFooterPages.useQuery(undefined, { refetchOnWindowFocus: false });
   const [form, setForm] = useState({
     firstname: "",
     lastname: "",
@@ -29,6 +30,18 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
   const [captchaKey, setCaptchaKey] = useState(0); // for resetting
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const policyLinks = useMemo(() => {
+    const termsPage = footerPages?.find((p: any) => p.category === "terms");
+    const privacyPage = footerPages?.find((p: any) => p.category === "policy" || p.category === "privacy");
+    const cookiesPage = footerPages?.find((p: any) => p.category === "cookies");
+
+    return {
+      terms: termsPage ? `/pages/${termsPage.slug}` : "/pages/terms-of-service",
+      privacy: privacyPage ? `/pages/${privacyPage.slug}` : "/pages/privacy-policy",
+      cookies: cookiesPage ? `/pages/${cookiesPage.slug}` : "/pages/cookie-policy",
+    };
+  }, [footerPages]);
 
   useEffect(() => {
     // Generate two random numbers for the captcha
@@ -223,7 +236,13 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
           required
           className="h-4 w-4 rounded border-gray-300 text-[#0d3b29] focus:ring-[#0d3b29]"
         />
-        <span>I accept the terms and conditions</span>
+        <span className="flex flex-wrap items-center gap-1">
+          I accept the
+          <Link href={policyLinks.terms} className="text-[#0d3b29] hover:underline">Terms</Link>,
+          <Link href={policyLinks.privacy} className="text-[#0d3b29] hover:underline">Privacy Policy</Link>,
+          and
+          <Link href={policyLinks.cookies} className="text-[#0d3b29] hover:underline">Cookie Policy</Link>.
+        </span>
       </label>
       {err && <p className="text-xs sm:text-sm text-red-600">{err}</p>}
       <Button type="submit" disabled={loading || registerMutation.isPending} className="w-full bg-[#0d3b29] text-white rounded-full h-10 sm:h-12 text-base sm:text-lg">

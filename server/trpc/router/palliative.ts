@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { randomUUID } from "crypto";
 import { 
@@ -8,6 +9,22 @@ import {
   calculateThresholdProgress,
   canActivatePalliative 
 } from "@/lib/palliative";
+
+function requireAdmin(session: any) {
+  const userRole = (session?.user as any)?.role;
+  if (userRole !== "admin") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+  }
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
 
 export const palliativeRouter = createTRPCRouter({
   /**
@@ -41,7 +58,7 @@ export const palliativeRouter = createTRPCRouter({
    */
   activatePalliative: protectedProcedure
     .input(z.object({
-      palliativeType: z.enum(["car", "house", "land", "business", "solar", "education"])
+      palliativeType: z.string()
     }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session?.user) {
@@ -254,6 +271,96 @@ export const palliativeRouter = createTRPCRouter({
       } : null,
     };
   }),
+
+  /**
+   * Admin: list all palliative options (active + inactive)
+   */
+  adminListOptions: protectedProcedure.query(async ({ ctx }) => {
+    requireAdmin(ctx.session);
+
+    return ctx.prisma.palliativeOption.findMany({
+      orderBy: { displayOrder: "asc" },
+    });
+  }),
+
+  /**
+   * Admin: create a palliative option
+   */
+  adminCreateOption: protectedProcedure
+    .input(z.object({
+      name: z.string().min(2),
+      slug: z.string().min(1).optional(),
+      targetAmount: z.number().positive(),
+      description: z.string().optional(),
+      icon: z.string().optional(),
+      active: z.boolean().default(true),
+      displayOrder: z.number().int().default(0),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const slug = input.slug ? slugify(input.slug) : slugify(input.name);
+
+      return ctx.prisma.palliativeOption.create({
+        data: {
+          id: randomUUID(),
+          name: input.name,
+          slug,
+          targetAmount: input.targetAmount,
+          description: input.description,
+          icon: input.icon,
+          active: input.active,
+          displayOrder: input.displayOrder,
+          updatedAt: new Date(),
+        },
+      });
+    }),
+
+  /**
+   * Admin: update a palliative option
+   */
+  adminUpdateOption: protectedProcedure
+    .input(z.object({
+      id: z.string(),
+      name: z.string().min(2),
+      slug: z.string().min(1).optional(),
+      targetAmount: z.number().positive(),
+      description: z.string().nullable().optional(),
+      icon: z.string().nullable().optional(),
+      active: z.boolean(),
+      displayOrder: z.number().int(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const slug = input.slug ? slugify(input.slug) : slugify(input.name);
+
+      return ctx.prisma.palliativeOption.update({
+        where: { id: input.id },
+        data: {
+          name: input.name,
+          slug,
+          targetAmount: input.targetAmount,
+          description: input.description ?? undefined,
+          icon: input.icon ?? undefined,
+          active: input.active,
+          displayOrder: input.displayOrder,
+          updatedAt: new Date(),
+        },
+      });
+    }),
+
+  /**
+   * Admin: delete a palliative option
+   */
+  adminDeleteOption: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      await ctx.prisma.palliativeOption.delete({ where: { id: input.id } });
+      return { success: true };
+    }),
 
   /**
    * Get user's activated palliative status and progress

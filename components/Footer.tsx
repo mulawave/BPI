@@ -1,11 +1,10 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { 
   Facebook, Twitter, Instagram, Linkedin, Youtube,
-  Mail, Phone, MapPin, ArrowRight, ChevronUp,
-  Leaf, Users, Shield, Award, TrendingUp, BookOpen,
-  Sparkles, GraduationCap, Calculator, Download, Megaphone
+  Mail, Phone, MapPin, ChevronUp,
+  Users, Shield, TrendingUp, BookOpen
 } from "lucide-react";
 import { api } from "@/client/trpc";
 
@@ -14,26 +13,20 @@ interface FooterProps {
 }
 
 export default function Footer({ onModalOpen }: FooterProps) {
-  const [email, setEmail] = useState("");
   const { data: footerPages } = api.content.getFooterPages.useQuery(undefined, { refetchOnWindowFocus: false });
   const { data: companyInfo } = api.admin.getSystemSettings.useQuery(undefined, { refetchOnWindowFocus: false });
 
   const footerLinks = useMemo<{ label: string; href: string }[]>(() => {
-    if (!footerPages || footerPages.length === 0) {
-      return [
-        { label: "Terms of Service", href: "/pages/terms-of-service" },
-        { label: "Privacy Policy", href: "/pages/privacy-policy" },
-        { label: "Cookie Policy", href: "/pages/cookie-policy" },
-      ];
-    }
-    return footerPages.map((p: { title: string; slug: string }) => ({ label: p.title, href: `/pages/${p.slug}` }));
-  }, [footerPages]);
+    const termsPage = footerPages?.find((p: any) => p.category === "terms");
+    const privacyPage = footerPages?.find((p: any) => p.category === "policy" || p.category === "privacy");
+    const cookiesPage = footerPages?.find((p: any) => p.category === "cookies");
 
-  const handleSubscribe = (e: React.FormEvent) => {
-    e.preventDefault();
-    // TODO: Implement newsletter subscription
-    setEmail("");
-  };
+    return [
+      { label: "Terms of Service", href: termsPage ? `/pages/${termsPage.slug}` : "/pages/terms-of-service" },
+      { label: "Privacy Policy", href: privacyPage ? `/pages/${privacyPage.slug}` : "/pages/privacy-policy" },
+      { label: "Cookie Policy", href: cookiesPage ? `/pages/${cookiesPage.slug}` : "/pages/cookie-policy" },
+    ];
+  }, [footerPages]);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -58,10 +51,8 @@ export default function Footer({ onModalOpen }: FooterProps) {
           {/* Column 1: About BPI */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-bpi-primary to-emerald-600 rounded-lg flex items-center justify-center">
-                <Leaf className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="text-2xl font-bold text-white">BPI</h3>
+              <img src="/img/logo.png" alt="BPI" className="h-11 w-11 rounded-xl border border-border object-cover flex-shrink-0" />
+              <h3 className="text-2xl font-bold text-white">BeepAgro Palliative Initiative</h3>
             </div>
             <p className="text-gray-400 text-sm leading-relaxed">
               BeepAgro Palliative Initiative - Empowering agricultural communities through innovation, sustainability, and shared prosperity.
@@ -90,81 +81,19 @@ export default function Footer({ onModalOpen }: FooterProps) {
             </div>
           </div>
 
-          {/* Column 2: Quick Links */}
-          <div>
-            <h4 className="text-white font-semibold text-lg mb-6 flex items-center gap-2">
-              <Users className="w-5 h-5 text-bpi-primary" />
-              Quick Links
-            </h4>
-            <ul className="space-y-3">
-              {[
-                { label: "About Us", href: "/about" },
-                { label: "Membership Packages", href: "/membership" },
-                { label: "Tokenomics", href: "/tokenomics" },
-                { label: "Empowerment Programs", href: "/empowerment" },
-                { label: "Community", onClick: () => onModalOpen?.('community') },
-                { label: "Training Center", onClick: () => onModalOpen?.('training') },
-              ].map((link) => (
-                <li key={link.label}>
-                  {link.href ? (
-                    <Link 
-                      href={link.href}
-                      className="text-gray-400 hover:text-bpi-primary transition-colors duration-200 flex items-center gap-2 group text-sm"
-                    >
-                      <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <span>{link.label}</span>
-                    </Link>
-                  ) : (
-                    <button
-                      onClick={link.onClick}
-                      className="text-gray-400 hover:text-bpi-primary transition-colors duration-200 flex items-center gap-2 group text-sm"
-                    >
-                      <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <span>{link.label}</span>
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* Column 2: (reserved) */}
+          <div className="hidden lg:block" aria-hidden />
 
-          {/* Column 3: Community Features */}
-          <div>
-            <h4 className="text-white font-semibold text-lg mb-6 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-bpi-primary" />
-              Features
-            </h4>
-            <ul className="space-y-3">
-              {[
-                { label: "BPI Calculator", icon: Calculator, onClick: () => onModalOpen?.('calculator') },
-                { label: "Best Deals", icon: Sparkles, onClick: () => onModalOpen?.('deals') },
-                { label: "Leadership Pool", icon: Award, onClick: () => onModalOpen?.('leadership') },
-                { label: "Latest Updates", icon: Megaphone, onClick: () => onModalOpen?.('updates') },
-                { label: "Training Courses", icon: GraduationCap, onClick: () => onModalOpen?.('training') },
-                { label: "Promotional Materials", icon: Download, onClick: () => onModalOpen?.('materials') },
-              ].map(({ label, icon: Icon, onClick }) => (
-                <li key={label}>
-                  <button
-                    onClick={onClick}
-                    className="text-gray-400 hover:text-bpi-primary transition-colors duration-200 flex items-center gap-2 group text-sm w-full text-left"
-                  >
-                    <Icon className="w-4 h-4 text-gray-500 group-hover:text-bpi-primary transition-colors" />
-                    <span>{label}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* Column 3: (reserved) */}
+          <div className="hidden lg:block" aria-hidden />
 
-          {/* Column 4: Contact & Newsletter */}
+          {/* Column 4: Contact (kept last) */}
           <div>
             <h4 className="text-white font-semibold text-lg mb-6 flex items-center gap-2">
               <Mail className="w-5 h-5 text-bpi-primary" />
-              Stay Connected
+              Contact
             </h4>
-            
-            {/* Contact Info */}
-            <div className="space-y-3 mb-6">
+            <div className="space-y-3">
               {companyInfo?.company_address?.value && (
                 <div className="flex items-start gap-3 text-sm">
                   <MapPin className="w-4 h-4 text-bpi-primary flex-shrink-0 mt-1" />
@@ -187,28 +116,6 @@ export default function Footer({ onModalOpen }: FooterProps) {
                   </a>
                 </div>
               )}
-            </div>
-
-            {/* Newsletter Signup */}
-            <div>
-              <p className="text-gray-400 text-sm mb-3">Subscribe to our newsletter for updates</p>
-              <form onSubmit={handleSubscribe} className="flex gap-2">
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Your email"
-                  className="flex-1 px-3 py-2 bg-green-900/20 border border-green-800/50 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-bpi-primary transition-colors"
-                  required
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-gradient-to-r from-bpi-primary to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-bpi-primary transition-all duration-300 flex items-center justify-center"
-                  aria-label="Subscribe"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </form>
             </div>
           </div>
         </div>

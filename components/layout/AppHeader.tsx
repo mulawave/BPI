@@ -66,11 +66,18 @@ export function AppHeader({ pageTitle = "BeepAgro Africa", pageSubtitle = "Palli
                 className="h-9 px-3 pr-8 text-sm font-medium bg-white dark:bg-green-900/40 hover:bg-accent border border-gray-300 dark:border-green-700/50 rounded-md appearance-none cursor-pointer transition-colors text-gray-900 dark:text-white"
                 disabled={!currencies || currencies.length === 0}
               >
-                {currencies?.map((currency) => (
-                  <option key={currency.id} value={currency.id}>
-                    {currency.symbol || currency.name}
-                  </option>
-                ))}
+                {currencies?.map((currency) => {
+                  const rawLabel = currency.symbol || currency.name || "";
+                  const safeLabel = rawLabel.replace(/[^\x20-\x7E]/g, "");
+                  const fallbackLabel = (currency.name || "").replace(/[^\x20-\x7E]/g, "");
+                  const label = safeLabel.trim() ? safeLabel : fallbackLabel || "Currency";
+
+                  return (
+                    <option key={currency.id} value={currency.id}>
+                      {label}
+                    </option>
+                  );
+                })}
               </select>
               <RefreshCw className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
             </div>

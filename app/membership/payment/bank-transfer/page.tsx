@@ -20,6 +20,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "@/client/trpc";
 import { PaymentPurpose } from "@/server/services/payment";
+import BankTransferDetails from "@/components/payment/BankTransferDetails";
 
 type UploadSuccess = { success: true; proofUrl: string; message?: string };
 
@@ -57,15 +58,6 @@ export default function BankTransferPaymentPage() {
       toast.error(e.message);
     },
   });
-
-  // BeepAgro Bank Details (Nigeria)
-  const bankDetails = {
-    bankName: "First Bank of Nigeria",
-    accountNumber: "2013456789",
-    accountName: "BeepAgro Africa Ltd",
-    swiftCode: "FBNINGLA",
-    sortCode: "011152305"
-  };
 
   const handleCopy = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -209,65 +201,7 @@ export default function BankTransferPaymentPage() {
                   </div>
                 </div>
 
-                {/* Bank Name */}
-                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Bank Name</p>
-                      <p className="text-lg font-semibold text-foreground">{bankDetails.bankName}</p>
-                    </div>
-                    <button
-                      onClick={() => handleCopy(bankDetails.bankName, 'Bank Name')}
-                      className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-lg transition-colors"
-                    >
-                      {copied === 'Bank Name' ? (
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                      ) : (
-                        <Copy className="w-5 h-5 text-muted-foreground" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Account Number */}
-                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Account Number</p>
-                      <p className="text-lg font-semibold text-foreground font-mono">{bankDetails.accountNumber}</p>
-                    </div>
-                    <button
-                      onClick={() => handleCopy(bankDetails.accountNumber, 'Account Number')}
-                      className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-lg transition-colors"
-                    >
-                      {copied === 'Account Number' ? (
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                      ) : (
-                        <Copy className="w-5 h-5 text-muted-foreground" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Account Name */}
-                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Account Name</p>
-                      <p className="text-lg font-semibold text-foreground">{bankDetails.accountName}</p>
-                    </div>
-                    <button
-                      onClick={() => handleCopy(bankDetails.accountName, 'Account Name')}
-                      className="p-2 hover:bg-white dark:hover:bg-gray-700 rounded-lg transition-colors"
-                    >
-                      {copied === 'Account Name' ? (
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                      ) : (
-                        <Copy className="w-5 h-5 text-muted-foreground" />
-                      )}
-                    </button>
-                  </div>
-                </div>
+                <BankTransferDetails showCopy className="space-y-4" />
               </div>
 
               {/* Upload Proof of Payment */}

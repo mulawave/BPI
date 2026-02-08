@@ -242,12 +242,9 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
                   </li>
                 )}
               </ul>
-              <Link 
-                href="/settings" 
-                className="inline-flex items-center gap-1 text-[10px] font-medium text-bpi-primary hover:underline mt-2"
-              >
-                Go to Security Settings →
-              </Link>
+              <p className="text-[10px] font-medium text-orange-800 dark:text-orange-200 mt-2">
+                Visit your account settings to set PIN and 2FA.
+              </p>
             </div>
           </div>
         </div>

@@ -3,7 +3,7 @@ import { hash, compare } from "bcryptjs";
 import { createTRPCRouter, publicProcedure, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { randomUUID } from "crypto";
-import { sendWelcomeEmail } from "@/lib/email";
+import { sendPasswordResetEmail, sendWelcomeEmail } from "@/lib/email";
 
 const registerSchema = z.object({
   firstname: z.string().min(2, "First name must be at least 2 characters"),
@@ -190,13 +190,10 @@ export const authRouter = createTRPCRouter({
           VALUES (${randomUUID()}, ${user.id}, ${token}, ${expires}, false, NOW())
         `;
 
-        // TODO: Send email with reset link
-        // For now, we'll just log the token (in production, send email)
-        console.log(`Password reset token for ${input.email}: ${token}`);
-        console.log(`Reset link: http://localhost:3000/set-new-password?token=${token}`);
+        await sendPasswordResetEmail(user.email || input.email, token);
 
       } catch (error) {
-        console.error("Failed to create password reset token:", error);
+        console.error("Failed to process password reset request:", error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to process password reset request",

@@ -48,6 +48,8 @@ export const userRouter = createTRPCRouter({
           palliative: true,
           palliativeActivated: true,
           palliativeActivatedAt: true,
+          selectedPalliative: true,
+          palliativeTier: true,
           cashback: true,
           studentCashback: true,
           community: true,

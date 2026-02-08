@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
-import { 
-  CreditCard, 
-  Wallet, 
-  Building2, 
-  Coins, 
+import {
+  CreditCard,
+  Wallet,
+  Building2,
+  Coins,
   CheckCircle,
   ArrowLeft,
   Moon,
@@ -17,16 +17,25 @@ import {
   Loader2,
   AlertCircle,
   Bitcoin,
-  LogOut
+  LogOut,
 } from "lucide-react";
-import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { signOut } from "next-auth/react";
 import LoadingScreen from "@/components/LoadingScreen";
+import { isHighTierPackage } from "@/lib/palliative";
 
 // Payment gateway options
-type PaymentGateway = 'wallet' | 'bank-transfer' | 'paystack' | 'flutterwave' | 'utility-token' | 'crypto' | 'mock';
+type PaymentGateway =
+  | "wallet"
+  | "bank-transfer"
+  | "paystack"
+  | "flutterwave"
+  | "utility-token"
+  | "crypto";
+
+type PalliativeSlug = "car" | "house" | "land" | "business" | "solar" | "education";
+const ALLOWED_PALLIATIVES: PalliativeSlug[] = ["car", "house", "land", "business", "solar", "education"];
 
 interface PaymentOption {
   id: PaymentGateway;
@@ -35,7 +44,7 @@ interface PaymentOption {
   icon: any;
   available: boolean;
   comingSoon?: boolean;
-  regionRestricted?: 'nigeria' | 'foreign' | null;
+  regionRestricted?: "nigeria" | "foreign" | null;
 }
 
 export default function ActivateMembershipPage() {
@@ -53,6 +62,7 @@ export default function ActivateMembershipPage() {
   const [selectedGateway, setSelectedGateway] = useState<PaymentGateway | null>(null);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPalliative, setSelectedPalliative] = useState<PalliativeSlug | null>(null);
   const [success, setSuccess] = useState(false);
   const [isDashboardLoading, setIsDashboardLoading] = useState(false);
   const [isPlansLoading, setIsPlansLoading] = useState(false);
@@ -94,27 +104,48 @@ export default function ActivateMembershipPage() {
 
   // Fetch user details to check wallet balance
   const { data: userDetails } = api.user.getDetails.useQuery();
+  const { data: palliativeOptions = [], isLoading: isLoadingPalliatives } = api.palliative.getPalliativeOptions.useQuery();
   const walletBalance = userDetails?.wallet || 0;
   const hasEnoughBalance = walletBalance >= totalCost;
+  const existingPalliative = userDetails?.selectedPalliative || null;
+  const isHighTierSelected = useMemo(
+    () => (selectedPackage ? isHighTierPackage(selectedPackage.name) : false),
+    [selectedPackage],
+  );
+  const requiresPalliative = isHighTierSelected && !userDetails?.palliativeActivated;
+
+  useEffect(() => {
+    const firstAvailable = palliativeOptions.find((opt) => ALLOWED_PALLIATIVES.includes(opt.slug as PalliativeSlug));
+
+    if (existingPalliative && ALLOWED_PALLIATIVES.includes(existingPalliative as PalliativeSlug) && !selectedPalliative) {
+      setSelectedPalliative(existingPalliative as PalliativeSlug);
+      return;
+    }
+
+    if (requiresPalliative && !selectedPalliative && firstAvailable) {
+      setSelectedPalliative(firstAvailable.slug as PalliativeSlug);
+    }
+  }, [existingPalliative, selectedPalliative, requiresPalliative, palliativeOptions]);
 
   // Fetch live gateway configuration (DB-driven)
   const { data: gatewayConfigs } = api.payment.getPaymentGateways.useQuery();
   const gatewayEnabledByName = new Map(
     (gatewayConfigs ?? []).map((g) => [g.gatewayName, g.isActive] as const),
   );
-  const dbEnabled = (gateway: PaymentGateway) => gatewayEnabledByName.get(gateway);
-  const comingSoonFromDb = (gateway: PaymentGateway, fallback: boolean) => {
-    const enabled = dbEnabled(gateway);
+  const isEnabled = (gateway: PaymentGateway, fallback = false) => {
+    const enabled = gatewayEnabledByName.get(gateway);
     if (enabled === undefined) return fallback;
-    return !enabled;
+    return enabled;
   };
+  const comingSoonFromDb = (gateway: PaymentGateway, fallback: boolean) => !isEnabled(gateway, !fallback);
 
-  // Process payment mutation
-  const processMockPayment = api.package.processMockPayment.useMutation({
+  const initiateMembershipPayment = api.package.initiateMembershipPayment.useMutation({
     onSuccess: (data) => {
+      if (data.paymentUrl) {
+        window.open(data.paymentUrl, "_blank");
+      }
       setSuccess(true);
       setProcessing(false);
-      // Redirect to dashboard after 2 seconds
       setTimeout(() => {
         router.push('/dashboard');
       }, 2000);
@@ -128,6 +159,9 @@ export default function ActivateMembershipPage() {
   // Process upgrade mutation
   const processUpgradeMutation = api.package.processUpgradePayment.useMutation({
     onSuccess: (data) => {
+      if (data.paymentUrl) {
+        window.open(data.paymentUrl, "_blank");
+      }
       setSuccess(true);
       setProcessing(false);
       // Redirect to dashboard after 2 seconds
@@ -140,6 +174,11 @@ export default function ActivateMembershipPage() {
       setProcessing(false);
     }
   });
+
+  const handlePalliativeChange = (value: string) => {
+    const slug = ALLOWED_PALLIATIVES.find((slugOption) => slugOption === value) ?? null;
+    setSelectedPalliative(slug);
+  };
 
   // Define payment options
   const paymentOptions: PaymentOption[] = [
@@ -158,16 +197,16 @@ export default function ActivateMembershipPage() {
       name: 'Bank Transfer (Nigeria)',
       description: 'Direct bank transfer with automated verification',
       icon: Building2,
-      available: true,
+      available: isEnabled('bank-transfer', false),
       regionRestricted: 'nigeria',
-      comingSoon: comingSoonFromDb('bank-transfer', false)
+      comingSoon: comingSoonFromDb('bank-transfer', true)
     },
     {
       id: 'paystack',
       name: 'Paystack',
       description: 'Pay with cards, bank transfer, or USSD',
       icon: CreditCard,
-      available: true,
+      available: isEnabled('paystack', false),
       regionRestricted: 'nigeria',
       comingSoon: comingSoonFromDb('paystack', true)
     },
@@ -176,7 +215,7 @@ export default function ActivateMembershipPage() {
       name: 'Flutterwave',
       description: 'International payments with currency conversion',
       icon: CreditCard,
-      available: true,
+      available: isEnabled('flutterwave', false),
       comingSoon: comingSoonFromDb('flutterwave', true)
     },
     {
@@ -184,7 +223,7 @@ export default function ActivateMembershipPage() {
       name: 'Utility Tokens',
       description: 'Pay with approved utility tokens',
       icon: Coins,
-      available: true,
+      available: isEnabled('utility-token', false),
       regionRestricted: 'nigeria',
       comingSoon: comingSoonFromDb('utility-token', true)
     },
@@ -193,17 +232,9 @@ export default function ActivateMembershipPage() {
       name: 'Cryptocurrency',
       description: 'Pay with Bitcoin, USDT, or other supported crypto',
       icon: Bitcoin,
-      available: true,
+      available: isEnabled('crypto', false),
       comingSoon: comingSoonFromDb('crypto', true)
     },
-    {
-      id: 'mock',
-      name: 'Mock Payment (Testing)',
-      description: 'Simulate successful payment for testing purposes',
-      icon: Wallet,
-      available: true,
-      comingSoon: comingSoonFromDb('mock', false)
-    }
   ];
 
   const handlePayment = async () => {
@@ -211,6 +242,13 @@ export default function ActivateMembershipPage() {
 
     setProcessing(true);
     setError(null);
+
+    // Require palliative selection for new high-tier activations/upgrades without an existing choice
+    if (requiresPalliative && !selectedPalliative) {
+      setError('Please select a palliative option for your membership tier.');
+      setProcessing(false);
+      return;
+    }
 
     try {
       if (selectedGateway === 'wallet') {
@@ -227,28 +265,51 @@ export default function ActivateMembershipPage() {
             packageId: selectedPackage.id,
             currentPackageId: fromPackageId,
             paymentMethod: 'wallet',
-            frontendCalculatedCost: totalCost // Cost validation
+            frontendCalculatedCost: totalCost, // Cost validation
+            selectedPalliative: selectedPalliative || undefined,
           });
         } else {
-          await processMockPayment.mutateAsync({ 
+          await initiateMembershipPayment.mutateAsync({ 
             packageId: selectedPackage.id,
-            paymentMethod: 'wallet'
+            gateway: 'wallet',
+            selectedPalliative: selectedPalliative || undefined,
           });
         }
       } else if (selectedGateway === 'bank-transfer') {
         // Redirect to bank transfer page with payment details
-        router.push(`/membership/payment/bank-transfer?packageId=${selectedPackage.id}&amount=${totalCost}${isUpgrade ? `&upgrade=true&from=${fromPackageId}` : ''}`);
-      } else if (selectedGateway === 'mock') {
-        // Process mock payment (activation or upgrade)
+        const palliativeQuery = selectedPalliative ? `&palliative=${encodeURIComponent(selectedPalliative)}` : '';
+        router.push(`/membership/payment/bank-transfer?packageId=${selectedPackage.id}&amount=${totalCost}${isUpgrade ? `&upgrade=true&from=${fromPackageId}` : ''}${palliativeQuery}`);
+        setProcessing(false);
+      } else if (selectedGateway === 'flutterwave') {
         if (isUpgrade && fromPackageId) {
-          await processUpgradeMutation.mutateAsync({ 
+          await processUpgradeMutation.mutateAsync({
             packageId: selectedPackage.id,
             currentPackageId: fromPackageId,
-            frontendCalculatedCost: totalCost // Cost validation
+            paymentMethod: 'flutterwave',
+            frontendCalculatedCost: totalCost,
+            selectedPalliative: selectedPalliative || undefined,
           });
         } else {
-          await processMockPayment.mutateAsync({ 
-            packageId: selectedPackage.id 
+          await initiateMembershipPayment.mutateAsync({
+            packageId: selectedPackage.id,
+            gateway: 'flutterwave',
+            selectedPalliative: selectedPalliative || undefined,
+          });
+        }
+      } else if (selectedGateway === 'paystack') {
+        if (isUpgrade && fromPackageId) {
+          await processUpgradeMutation.mutateAsync({
+            packageId: selectedPackage.id,
+            currentPackageId: fromPackageId,
+            paymentMethod: 'paystack',
+            frontendCalculatedCost: totalCost,
+            selectedPalliative: selectedPalliative || undefined,
+          });
+        } else {
+          await initiateMembershipPayment.mutateAsync({
+            packageId: selectedPackage.id,
+            gateway: 'paystack',
+            selectedPalliative: selectedPalliative || undefined,
           });
         }
       } else {
@@ -525,25 +586,55 @@ export default function ActivateMembershipPage() {
                 </div>
               )}
 
+              {requiresPalliative && (
+                <Card className="bg-white dark:bg-bpi-dark-card p-6 mb-6">
+                  <h4 className="text-sm font-semibold text-foreground mb-3">Palliative Selection</h4>
+                  <label className="text-xs text-muted-foreground mb-2 block">
+                    {existingPalliative ? 'Pre-selected from your account' : 'Required for your tier'}
+                  </label>
+                  <select
+                    className="w-full border border-bpi-border dark:border-bpi-dark-accent rounded-lg px-3 py-2 text-sm bg-white dark:bg-bpi-dark-card"
+                    value={selectedPalliative ?? ''}
+                    onChange={(e) => handlePalliativeChange(e.target.value)}
+                    disabled={isLoadingPalliatives}
+                  >
+                    <option value="">Select option</option>
+                    {palliativeOptions.map((option) => (
+                      <option key={option.id} value={option.slug}>
+                        {`${option.name} (${formatAmount(option.targetAmount)})`}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {existingPalliative
+                      ? 'You can keep your existing preference or pick a different option for this upgrade.'
+                      : 'Choose the palliative benefit to activate with this tier.'}
+                  </p>
+                </Card>
+              )}
+
               <div className="space-y-4 mb-8">
                 {paymentOptions.map((option) => {
                   const Icon = option.icon;
                   const isSelected = selectedGateway === option.id;
                   
+                  const isDisabled = !option.available || option.comingSoon || processing;
+
                   return (
                     <button
                       key={option.id}
                       onClick={() => {
+                        if (isDisabled) return;
                         setSelectedGateway(option.id);
                         setError(null);
                       }}
-                      disabled={!option.available || processing}
+                      disabled={isDisabled}
                       className={`w-full p-5 rounded-xl border-2 transition-all text-left ${
                         isSelected
                           ? 'border-bpi-primary bg-bpi-primary/5 dark:bg-bpi-primary/10'
                           : 'border-gray-200 dark:border-gray-700 hover:border-bpi-primary/50'
                       } ${
-                        !option.available || processing
+                        isDisabled
                           ? 'opacity-50 cursor-not-allowed'
                           : 'cursor-pointer'
                       }`}

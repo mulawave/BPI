@@ -1,6 +1,7 @@
 ﻿import { z } from "zod";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
+import type { Prisma, MembershipPackage } from "@prisma/client";
 import { getReferralChain } from "@/server/services/referral.service";
 import { distributeBptReward } from "@/server/services/rewards.service";
 import { PaymentProcessor } from "@/server/services/payment";
@@ -130,7 +131,7 @@ export const packageRouter = createTRPCRouter({
     .input(z.object({
       packageId: z.string(),
       selectedPalliative: z.enum(["car", "house", "land", "business", "solar", "education"]).optional(),
-      gateway: z.enum(["wallet", "flutterwave"]).default("wallet"),
+      gateway: z.enum(["wallet", "flutterwave", "paystack"]).default("wallet"),
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = (ctx.session?.user as any)?.id;
@@ -151,7 +152,7 @@ export const packageRouter = createTRPCRouter({
         const walletReference = `MEM-WALLET-${Date.now()}`;
 
         // Deduct and record transaction
-        await prisma.$transaction(async (tx) => {
+        await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
           await tx.user.update({ where: { id: userId }, data: { wallet: { decrement: totalCost } } });
           await tx.transaction.create({
             data: {
@@ -188,7 +189,9 @@ export const packageRouter = createTRPCRouter({
         return { success: true, gateway: "wallet", paymentUrl: null, reference: walletReference };
       }
 
-      // External gateway flow (Flutterwave)
+      // External gateway flow (Paystack or Flutterwave)
+      const gatewayEnum = input.gateway === "paystack" ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE;
+
       const payment = await PaymentProcessor.processPayment({
         amount: totalCost,
         currency: "NGN",
@@ -196,9 +199,9 @@ export const packageRouter = createTRPCRouter({
         packageId: input.packageId,
         email: ctx.session?.user?.email || "",
         name: ctx.session?.user?.name || "",
-        paymentMethod: "flutterwave",
+        paymentMethod: input.gateway,
         purpose: PaymentPurpose.MEMBERSHIP,
-        gateway: PaymentGateway.FLUTTERWAVE,
+        gateway: gatewayEnum,
         metadata: {
           packageId: input.packageId,
           purpose: PaymentPurpose.MEMBERSHIP,
@@ -211,7 +214,7 @@ export const packageRouter = createTRPCRouter({
         throw new Error(payment.error || payment.message || "Failed to initiate payment");
       }
 
-      const paymentRef = payment.transactionId || payment.reference || payment.gatewayReference || `MEM-FLW-${Date.now()}`;
+      const paymentRef = payment.transactionId || payment.reference || payment.gatewayReference || `MEM-${input.gateway}-${Date.now()}`;
 
       // Create pending membership payment records for reconciliation
       await prisma.transaction.create({
@@ -248,7 +251,7 @@ export const packageRouter = createTRPCRouter({
 
       return {
         success: true,
-        gateway: "flutterwave",
+        gateway: input.gateway,
         paymentUrl: payment.paymentUrl,
         reference: paymentRef,
       };
@@ -1069,230 +1072,105 @@ export const packageRouter = createTRPCRouter({
       const VAT = 24750;
       const TOTAL_COST = PACKAGE_FEE + VAT; // NGN 354,750
 
-      if (gateway === "wallet") {
-        if ((sponsor.wallet ?? 0) < TOTAL_COST) {
-          throw new Error(`Insufficient wallet balance. You need NGN ${TOTAL_COST.toLocaleString()} to activate this empowerment package.`);
-        }
-
-        const paymentReference = `EMP-WALLET-${Date.now()}`;
-
-        await prisma.$transaction(async (tx) => {
-          await tx.user.update({
-            where: { id: sponsorId },
-            data: { wallet: { decrement: TOTAL_COST } },
-          });
-
-          await tx.transaction.create({
-            data: {
-              id: randomUUID(),
-              userId: sponsorId,
-              transactionType: "EMPOWERMENT_PACKAGE_FEE",
-              amount: -TOTAL_COST,
-              description: `Empowerment package fee for ${beneficiary.name} (${beneficiary.email})`,
-              status: "completed",
-              reference: paymentReference,
-              walletType: "main",
-            },
-          });
-        });
-
-        const { maturityDate } = await finalizeEmpowermentPackage({
-          sponsorId,
-          beneficiary: { id: beneficiaryId, name: beneficiary.name, email: beneficiary.email },
-          empowermentType,
-          packageFee: PACKAGE_FEE,
-          vat: VAT,
-          totalCost: TOTAL_COST,
-        });
-
-        return {
-          success: true,
-          message: "Empowerment package activated successfully. 24-month countdown has begun.",
-          maturityDate,
-        };
+      if ((sponsor.wallet ?? 0) < TOTAL_COST) {
+        throw new Error(`Insufficient wallet balance. You need NGN ${TOTAL_COST.toLocaleString()} to activate this empowerment package.`);
       }
 
-      const payment = await PaymentProcessor.processPayment({
-        amount: TOTAL_COST,
-        currency: "NGN",
-        userId: sponsorId,
-        packageId: `empowerment-${beneficiaryId}`,
-        email: sponsor.email || "",
-        name: sponsor.name || "",
-        paymentMethod: gateway === "paystack" ? "paystack" : "flutterwave",
-        purpose: PaymentPurpose.EMPOWERMENT,
-        gateway: gateway === "paystack" ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE,
-        metadata: {
+      const paymentReference = `EMP-WALLET-${Date.now()}`;
+
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await tx.user.update({
+          where: { id: sponsorId },
+          data: { wallet: { decrement: TOTAL_COST } },
+        });
+
+        await tx.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId: sponsorId,
+            transactionType: "EMPOWERMENT_PACKAGE_FEE",
+            amount: -TOTAL_COST,
+            description: `Empowerment package fee for ${beneficiary.name} (${beneficiary.email})`,
+            status: "completed",
+            reference: paymentReference,
+            walletType: "main",
+          },
+        });
+      });
+
+      // 2. Define package constants
+      const GROSS_EMPOWERMENT_VALUE = 7250000;
+      const GROSS_SPONSOR_REWARD = 1000000;
+      const TAX_RATE = 0.075;
+
+      // 3. Calculate net values (tax applied at release, not upfront)
+      const netEmpowermentValue = GROSS_EMPOWERMENT_VALUE * (1 - TAX_RATE);
+      const netSponsorReward = GROSS_SPONSOR_REWARD * (1 - TAX_RATE);
+
+      // 4. Set maturity date (24 months from now)
+      const activatedAt = new Date();
+      const maturityDate = new Date(activatedAt);
+      maturityDate.setMonth(maturityDate.getMonth() + 24);
+
+      // 5. Create the EmpowermentPackage record
+      const empowermentPackage = await prisma.empowermentPackage.create({
+        data: {
+          id: randomUUID(),
+          updatedAt: new Date(),
           sponsorId,
           beneficiaryId,
+          packageFee: PACKAGE_FEE,
+          vat: VAT,
           empowermentType,
-          purpose: PaymentPurpose.EMPOWERMENT,
+          status: "Active - Countdown Running",
+          activatedAt,
+          maturityDate,
+          grossEmpowermentValue: GROSS_EMPOWERMENT_VALUE,
+          netEmpowermentValue,
+          grossSponsorReward: GROSS_SPONSOR_REWARD,
+          netSponsorReward,
+          beneficiaryCanView: true,
+          beneficiaryCanWithdraw: false,
         },
       });
 
-      if (!payment.success) {
-        throw new Error(payment.error || payment.message || "Failed to initiate payment");
-      }
-
-      const paymentRef = payment.transactionId || payment.reference || payment.gatewayReference || `EMP-${Date.now()}`;
-
-      await prisma.transaction.create({
-        data: {
-          id: randomUUID(),
-          userId: sponsorId,
-          transactionType: "EMPOWERMENT_PACKAGE_FEE",
-          amount: -TOTAL_COST,
-          description: `Empowerment package fee via ${gateway}`,
-          status: "pending",
-          reference: paymentRef,
-          walletType: "main",
-        },
+      await recordRevenue(prisma, {
+        source: "OTHER",
+        amount: TOTAL_COST,
+        currency: "NGN",
+        sourceId: empowermentPackage.id,
+        description: `Empowerment package fee paid by ${sponsorId} for ${beneficiary.name}`,
       });
 
-      await prisma.pendingPayment.create({
-        data: {
-          id: randomUUID(),
-          userId: sponsorId,
-          transactionType: "EMPOWERMENT",
-          amount: TOTAL_COST,
-          currency: "NGN",
-          paymentMethod: gateway,
-          gatewayReference: paymentRef,
-          status: "pending",
-          metadata: {
-            sponsorId,
-            beneficiaryId,
-            empowermentType,
-            packageFee: PACKAGE_FEE,
-            vat: VAT,
-            totalCost: TOTAL_COST,
-          },
-          updatedAt: new Date(),
-        },
-      });
-
-      return {
-        success: true,
-        gateway,
-        paymentUrl: payment.paymentUrl,
-        reference: paymentRef,
-        message: "Payment initiated. Complete payment to activate empowerment package.",
-      };
-    }),
-
-  verifyEmpowermentPayment: protectedProcedure
-    .input(z.object({
-      gateway: z.nativeEnum(PaymentGateway),
-      reference: z.string(),
-      beneficiaryId: z.string().optional(),
-      empowermentType: z.enum(["CHILD_EDUCATION", "VOCATIONAL_SKILL"]).optional(),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      if (!ctx.session?.user) {
-        throw new Error("UNAUTHORIZED");
-      }
-
-      const sponsorId = (ctx.session.user as any).id;
-
-      if (input.gateway === PaymentGateway.WALLET) {
-        throw new Error("Wallet payments do not require verification.");
-      }
-
-      const verification = await PaymentProcessor.verifyPayment(input.gateway, input.reference);
-      const successStates = [PaymentStatus.SUCCESS, PaymentStatus.SUCCESSFUL];
-
-      if (!verification.success || (verification.status && !successStates.includes(verification.status))) {
-        throw new Error(verification.error || verification.message || "Payment verification failed");
-      }
-
-      const pending = await prisma.pendingPayment.findFirst({
-        where: {
-          userId: sponsorId,
-          gatewayReference: input.reference,
-          transactionType: "EMPOWERMENT",
-          status: { in: ["pending", "processing"] },
-        },
-      });
-
-      const pendingMetadata = (pending?.metadata as Record<string, any> | undefined) || {};
-      const beneficiaryId = pendingMetadata.beneficiaryId || input.beneficiaryId;
-      const empowermentType = pendingMetadata.empowermentType || input.empowermentType;
-
-      if (!beneficiaryId || !empowermentType) {
-        throw new Error("Beneficiary and empowerment type are required to complete activation.");
-      }
-
-      const PACKAGE_FEE = 330000;
-      const VAT = 24750;
-      const TOTAL_COST = PACKAGE_FEE + VAT;
-
-      if (verification.amount && Math.abs(verification.amount - TOTAL_COST) > 1) {
-        throw new Error("Payment amount does not match the empowerment package fee.");
-      }
-
-      const beneficiary = await prisma.user.findUnique({
+      // 6. Link beneficiary to sponsor if not already linked
+      await prisma.user.update({
         where: { id: beneficiaryId },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          activated: true,
-          EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser: {
-            where: { status: { not: "Completed" } },
-            select: { id: true, status: true },
-          },
-        },
+        data: { sponsorId: sponsorId },
+      });
+      
+      // 7. Create activation transaction record with sponsor tracking
+      await prisma.empowermentTransaction.create({
+        data: {
+          id: randomUUID(),
+          empowermentPackageId: empowermentPackage.id,
+          transactionType: "ACTIVATION",
+          grossAmount: TOTAL_COST,
+          taxAmount: 0, // No tax on activation
+          netAmount: TOTAL_COST,
+          description: `Empowerment package activated by sponsor ${sponsorId} for beneficiary ${beneficiary.name}`,
+          performedBy: sponsorId
+        }
       });
 
-      if (!beneficiary) {
-        throw new Error("Beneficiary user not found. Please ensure they have registered on the platform.");
-      }
+      console.log(`[EMPOWERMENT] Package created: ${empowermentPackage.id}, matures ${maturityDate.toDateString()}`);
 
-      if (!beneficiary.activated) {
-        throw new Error("Beneficiary account is not activated. They must verify their email first.");
-      }
+      // Send activation notifications to sponsor and beneficiary
+      await notifyEmpowermentActivation(sponsorId, beneficiaryId, maturityDate);
 
-      if (beneficiary.EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser.length > 0) {
-        const existingPackage = beneficiary.EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser[0];
-        throw new Error(`Beneficiary already has an active empowerment package (Status: ${existingPackage.status}). Only one package per beneficiary is allowed.`);
-      }
-
-      const sponsor = await prisma.user.findUnique({
-        where: { id: sponsorId },
-        select: { activeMembershipPackageId: true },
-      });
-
-      if (!sponsor?.activeMembershipPackageId) {
-        throw new Error("You must have an active membership package to sponsor an empowerment package.");
-      }
-
-      const { maturityDate } = await finalizeEmpowermentPackage({
-        sponsorId,
-        beneficiary: { id: beneficiaryId, name: beneficiary.name, email: beneficiary.email },
-        empowermentType,
-        packageFee: PACKAGE_FEE,
-        vat: VAT,
-        totalCost: TOTAL_COST,
-      });
-
-      await prisma.pendingPayment.updateMany({
-        where: { id: pending?.id },
-        data: { status: "completed", updatedAt: new Date() },
-      });
-
-      await prisma.transaction.updateMany({
-        where: {
-          userId: sponsorId,
-          reference: input.reference,
-          transactionType: "EMPOWERMENT_PACKAGE_FEE",
-        },
-        data: { status: "completed" },
-      });
-
-      return {
-        success: true,
+      return { 
+        success: true, 
         message: "Empowerment package activated successfully. 24-month countdown has begun.",
-        maturityDate,
+        maturityDate 
       };
     }),
 
@@ -1899,7 +1777,7 @@ export const packageRouter = createTRPCRouter({
       packageId: z.string(),
       currentPackageId: z.string(),
       selectedPalliative: z.enum(["car", "house", "land", "business", "solar", "education"]).optional(),
-      paymentMethod: z.enum(['wallet']).default('wallet'),
+      paymentMethod: z.enum(['wallet', 'paystack', 'flutterwave']).default('wallet'),
       frontendCalculatedCost: z.number().optional() // Frontend cost for validation
     }))
     .mutation(async ({ ctx, input }) => {
@@ -1907,13 +1785,11 @@ export const packageRouter = createTRPCRouter({
         throw new Error("UNAUTHORIZED");
       }
       const userId = (ctx.session.user as any).id;
-      const { packageId, currentPackageId, selectedPalliative, paymentMethod = 'mock', frontendCalculatedCost } = input;
+      const { packageId, currentPackageId, selectedPalliative, paymentMethod = 'wallet', frontendCalculatedCost } = input;
 
       // Get both packages
-      const [newPackage, currentPackage] = await Promise.all([
-        prisma.membershipPackage.findUnique({ where: { id: packageId } }),
-        prisma.membershipPackage.findUnique({ where: { id: currentPackageId } }),
-      ]);
+      const newPackage: MembershipPackage | null = await prisma.membershipPackage.findUnique({ where: { id: packageId } });
+      const currentPackage: MembershipPackage | null = await prisma.membershipPackage.findUnique({ where: { id: currentPackageId } });
 
       if (!newPackage || !currentPackage) {
         throw new Error("Package not found.");
@@ -2025,39 +1901,38 @@ export const packageRouter = createTRPCRouter({
         }
       }
 
-      // Check wallet balance and deduct
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { wallet: true }
-      });
+      if (paymentMethod === 'wallet') {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { wallet: true }
+        });
 
-      if (!user) {
-        throw new Error("User not found.");
-      }
-
-      if (user.wallet < upgradeCost) {
-        throw new Error(`Insufficient wallet balance. You have NGN ${user.wallet.toLocaleString()} but need NGN ${upgradeCost.toLocaleString()} for the upgrade.`);
-      }
-
-      // Deduct from wallet
-      await prisma.user.update({
-        where: { id: userId },
-        data: { wallet: { decrement: upgradeCost } }
-      });
-
-      // Create transaction record
-      await prisma.transaction.create({
-        data: {
-          id: randomUUID(),
-          userId,
-          transactionType: "MEMBERSHIP_UPGRADE",
-          amount: -upgradeCost,
-          description: `Upgraded from ${currentPackage.name} to ${newPackage.name} via wallet${shouldDistribute ? ' (with referral distribution)' : ' (no distribution)'}`,
-          status: "completed",
-          reference: `UPG-WALLET-${Date.now()}`,
-          walletType: 'main',
+        if (!user) {
+          throw new Error("User not found.");
         }
-      });
+
+        if (user.wallet < upgradeCost) {
+          throw new Error(`Insufficient wallet balance. You have NGN ${user.wallet.toLocaleString()} but need NGN ${upgradeCost.toLocaleString()} for the upgrade.`);
+        }
+
+        await prisma.user.update({
+          where: { id: userId },
+          data: { wallet: { decrement: upgradeCost } }
+        });
+
+        await prisma.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "MEMBERSHIP_UPGRADE",
+            amount: -upgradeCost,
+            description: `Upgraded from ${currentPackage.name} to ${newPackage.name} via wallet${shouldDistribute ? ' (with referral distribution)' : ' (no distribution)'}`,
+            status: "completed",
+            reference: `UPG-WALLET-${Date.now()}`,
+            walletType: 'main',
+          }
+        });
+      }
 
       // Determine palliative tier for new package
       const newPalliativeTier = getPalliativeTier(newPackage.price);
@@ -2079,7 +1954,7 @@ export const packageRouter = createTRPCRouter({
       }
 
       // Calculate differential bonuses (new package rewards - old package rewards)
-      const bonusDifferences = {
+      const bonusDifferences: Record<"l1" | "l2" | "l3" | "l4", { cash: number; palliative: number; bpt: number; cashback: number }> = {
         l1: {
           cash: newPackage.cash_l1 - currentPackage.cash_l1,
           palliative: newPackage.palliative_l1 - currentPackage.palliative_l1,
@@ -2106,16 +1981,88 @@ export const packageRouter = createTRPCRouter({
         },
       };
 
-      // Validate that we're not downgrading (prevent negative bonuses)
-      const allBonusesPositive = Object.values(bonusDifferences).every(level =>
-        level.cash >= 0 && level.palliative >= 0 && level.bpt >= 0 && level.cashback >= 0
-      );
-      
-      if (!allBonusesPositive && !isFeatureBundle && !isAddonPackage) {
-        throw new Error("Cannot downgrade to a package with lower referral rewards.");
+      // Previously blocked upgrades when any referral reward differential was negative.
+      // That produced false "downgrade" errors for legitimate paid upgrades where some
+      // referral lines are lower. We now allow the upgrade as long as the target package
+      // price is higher (checked above via upgradeCost > 0) and let downstream logic
+      // handle distributions based on the actual differentials.
+
+      // External gateways: initialize payment and return URL without completing upgrade yet
+      if (paymentMethod === 'paystack' || paymentMethod === 'flutterwave') {
+        const gatewayEnum = paymentMethod === 'paystack' ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE;
+
+        const payment = await PaymentProcessor.processPayment({
+          amount: upgradeCost,
+          currency: "NGN",
+          userId,
+          packageId,
+          email: ctx.session?.user?.email || "",
+          name: ctx.session?.user?.name || "",
+          paymentMethod,
+          purpose: PaymentPurpose.UPGRADE,
+          gateway: gatewayEnum,
+          metadata: {
+            packageId,
+            currentPackageId,
+            purpose: PaymentPurpose.UPGRADE,
+            userId,
+            selectedPalliative,
+            upgradeCost,
+            shouldDistribute,
+          },
+        });
+
+        if (!payment.success) {
+          throw new Error(payment.error || payment.message || "Failed to initiate upgrade payment");
+        }
+
+        const paymentRef = payment.transactionId || payment.reference || payment.gatewayReference || `UPG-${paymentMethod}-${Date.now()}`;
+
+        // Pending transaction & payment records for reconciliation
+        await prisma.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "MEMBERSHIP_UPGRADE",
+            amount: -upgradeCost,
+            description: `Upgrade to ${newPackage.name} via ${paymentMethod}`,
+            status: "pending",
+            reference: paymentRef,
+            walletType: 'main',
+          }
+        });
+
+        await prisma.pendingPayment.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "MEMBERSHIP_UPGRADE",
+            amount: upgradeCost,
+            currency: "NGN",
+            paymentMethod,
+            gatewayReference: paymentRef,
+            status: "pending",
+            metadata: {
+              packageId,
+              currentPackageId,
+              selectedPalliative,
+              purpose: PaymentPurpose.UPGRADE,
+              shouldDistribute,
+            },
+            updatedAt: new Date(),
+          },
+        });
+
+        return {
+          success: true,
+          gateway: paymentMethod,
+          paymentUrl: payment.paymentUrl,
+          reference: paymentRef,
+          message: "Upgrade payment initialized. Complete payment to finalize upgrade.",
+        };
       }
 
-      // Simulate payment processing
+      // Simulate payment processing for wallet path
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       // Get current membership to preserve remaining time
@@ -2154,7 +2101,8 @@ export const packageRouter = createTRPCRouter({
       const maxCommissions = [MAX_COMMISSION_L1, MAX_COMMISSION_L2, MAX_COMMISSION_L3, MAX_COMMISSION_L4];
 
       for (let level = 1; level <= 4; level++) {
-        const referrerId = referralChain[level - 1];
+        const referrer = referralChain[level - 1];
+        const referrerId = typeof referrer === "string" ? referrer : referrer?.id;
         if (!referrerId) continue;
 
         const levelKey = `l${level}` as 'l1' | 'l2' | 'l3' | 'l4';

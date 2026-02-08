@@ -33,6 +33,7 @@ import {
   GraduationCap,
   Activity,
   Mail,
+  Gift,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -109,6 +110,12 @@ const navigation = [
     href: "/admin/packages", 
     icon: Package,
     description: "Membership packages"
+  },
+  { 
+    name: "Palliatives", 
+    href: "/admin/palliatives", 
+    icon: Gift,
+    description: "Palliative catalogue & pricing"
   },
   { 
     name: "Analytics", 
