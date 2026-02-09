@@ -21,6 +21,70 @@ type FirebaseConfigResponse = {
 };
 
 export const configRouter = createTRPCRouter({
+  getFeatureToggles: publicProcedure.query(async () => {
+    const toggleKeys = [
+      "enableEpcEpp",
+      "enableSolarAssessment",
+      "enableBestDeals",
+      "enableBpiCalculator",
+      "enableDigitalFarm",
+      "enableTrainingCenter",
+      "enablePromotionalMaterials",
+      "enableLatestUpdates",
+    ];
+
+    const settings = await prisma.adminSettings.findMany({
+      where: { settingKey: { in: toggleKeys } },
+      select: { settingKey: true, settingValue: true },
+    });
+
+    const settingsMap = settings.reduce((acc: Record<string, boolean>, setting) => {
+      acc[setting.settingKey] = setting.settingValue === "true";
+      return acc;
+    }, {});
+
+    return {
+      enableEpcEpp: settingsMap.enableEpcEpp ?? false,
+      enableSolarAssessment: settingsMap.enableSolarAssessment ?? false,
+      enableBestDeals: settingsMap.enableBestDeals ?? false,
+      enableBpiCalculator: settingsMap.enableBpiCalculator ?? true,
+      enableDigitalFarm: settingsMap.enableDigitalFarm ?? false,
+      enableTrainingCenter: settingsMap.enableTrainingCenter ?? true,
+      enablePromotionalMaterials: settingsMap.enablePromotionalMaterials ?? true,
+      enableLatestUpdates: settingsMap.enableLatestUpdates ?? true,
+    };
+  }),
+  getPublicSettings: publicProcedure.query(async () => {
+    const publicSettingKeys = [
+      "bank_name",
+      "bank_account_number",
+      "bank_account_name",
+      "company_address",
+      "company_email",
+      "company_phone",
+      "social_facebook",
+      "social_twitter",
+      "social_instagram",
+      "social_linkedin",
+      "social_youtube",
+    ];
+
+    const settings = await prisma.adminSettings.findMany({
+      where: { settingKey: { in: publicSettingKeys } },
+      orderBy: { settingKey: "asc" },
+    });
+
+    const settingsMap: Record<string, any> = {};
+    settings.forEach((setting) => {
+      settingsMap[setting.settingKey] = {
+        value: setting.settingValue,
+        description: setting.description,
+        updatedAt: setting.updatedAt,
+      };
+    });
+
+    return settingsMap;
+  }),
   getFirebaseConfig: publicProcedure.query(async (): Promise<FirebaseConfigResponse> => {
     const settingKeys = Object.values(firebaseSettingKeys);
 

@@ -5,6 +5,7 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import { compare } from "bcryptjs";
+import { resolveAppBaseUrl } from "@/lib/appUrl";
 
 export const authConfig: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
@@ -52,15 +53,24 @@ export const authConfig: NextAuthOptions = {
   },
   callbacks: {
     async redirect({ url, baseUrl }) {
+      const resolved = await resolveAppBaseUrl();
+      const appUrl = resolved?.replace(/\/$/, "");
+      const normalizedBaseUrl = appUrl && appUrl !== baseUrl ? appUrl : baseUrl;
+
       // If signing in successfully, always redirect to dashboard
       if (url.includes("/api/auth/callback")) {
-        return `${baseUrl}/dashboard`;
+        return `${normalizedBaseUrl}/dashboard`;
       }
       // Allows relative callback URLs
-      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      if (url.startsWith("/")) return `${normalizedBaseUrl}${url}`;
       // Allows callback URLs on the same origin
-      if (new URL(url).origin === baseUrl) return url;
-      return `${baseUrl}/dashboard`;
+      try {
+        const target = new URL(url);
+        if (target.origin === baseUrl || (appUrl && target.origin === appUrl)) return url;
+      } catch (e) {
+        // ignore
+      }
+      return `${normalizedBaseUrl}/dashboard`;
     },
     async jwt({ token, user }) {
       // If user object exists (first time login), add user info to token

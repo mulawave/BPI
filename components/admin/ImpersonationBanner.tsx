@@ -4,16 +4,14 @@ import { useSession, signOut } from "next-auth/react";
 import { MdWarning, MdExitToApp } from "react-icons/md";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
+import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 
 export default function ImpersonationBanner() {
   const { data: session } = useSession();
   const isImpersonating = (session as any)?.user?.isImpersonation;
   const impersonatedBy = (session as any)?.user?.impersonatedByEmail;
   const targetUserEmail = session?.user?.email;
-  const baseUrl =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : process.env.NEXT_PUBLIC_APP_URL || "";
+  const baseUrl = resolveClientBaseUrl();
 
   if (!isImpersonating) return null;
 

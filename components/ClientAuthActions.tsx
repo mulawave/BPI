@@ -1,12 +1,10 @@
 "use client";
 import { signIn, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
+import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 
 export default function ClientAuthActions({ session }: { session: any }) {
-  const baseUrl =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : process.env.NEXT_PUBLIC_APP_URL || "";
+  const baseUrl = resolveClientBaseUrl();
 
   if (session?.user) {
     return (

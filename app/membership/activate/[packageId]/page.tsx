@@ -22,6 +22,7 @@ import {
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { signOut } from "next-auth/react";
+import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 import LoadingScreen from "@/components/LoadingScreen";
 import { isHighTierPackage } from "@/lib/palliative";
 
@@ -459,7 +460,7 @@ export default function ActivateMembershipPage() {
                 size="sm"
                 onClick={() => {
                   setIsLoggingOut(true);
-                  const baseUrl = typeof window !== "undefined" ? window.location.origin : process.env.NEXT_PUBLIC_APP_URL || "";
+                  const baseUrl = resolveClientBaseUrl();
                   signOut({ callbackUrl: baseUrl ? `${baseUrl}/login` : "/login" });
                 }}
                 disabled={isLoggingOut || processing}

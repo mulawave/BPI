@@ -36,8 +36,8 @@ export default function UserSecuritySettingsPanel() {
   // Get security status
   const { data: securityStatus, isLoading } = api.security.getSecurityStatus.useQuery();
 
-  // Get system settings to check if features are enabled
-  const { data: systemSettings } = api.admin.getSystemSettings.useQuery();
+  // Get system-level security flags (user-safe)
+  const { data: securityFeatures } = api.security.getSecurityFeatureFlags.useQuery();
 
   // Setup PIN mutation
   const setupPinMutation = api.security.setupPin.useMutation({
@@ -151,8 +151,8 @@ export default function UserSecuritySettingsPanel() {
     );
   }
 
-  const pinEnabled = systemSettings?.pin_enabled?.value === 'true';
-  const twoFAEnabled = systemSettings?.two_factor_enabled?.value === 'true';
+  const pinEnabled = securityFeatures?.pinEnabled ?? false;
+  const twoFAEnabled = securityFeatures?.twoFAEnabled ?? false;
 
   return (
     <div className="space-y-6">

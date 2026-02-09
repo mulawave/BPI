@@ -5527,7 +5527,7 @@ export const adminRouter = createTRPCRouter({
   }),
 
   // Get admin settings for feature toggles
-  getSettings: protectedProcedure.query(async () => {
+  getSettings: adminProcedure.query(async () => {
     const settings = await prisma.adminSettings.findMany({
       select: {
         settingKey: true,

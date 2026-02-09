@@ -681,8 +681,8 @@ export default function DashboardContent({ session, customContent }: DashboardCo
     refetchOnWindowFocus: false,
   });
   
-  // Get admin settings for feature toggles
-  const { data: adminSettings } = api.admin.getSettings.useQuery(undefined, {
+  // Get public feature toggles
+  const { data: featureToggles } = api.config.getFeatureToggles.useQuery(undefined, {
     staleTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
@@ -3053,7 +3053,7 @@ export default function DashboardContent({ session, customContent }: DashboardCo
               <hr className="border-gray-200 dark:border-bpi-dark-accent mb-4" />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-h-[460px] overflow-y-auto pr-1">
               {/* BPI Calculator Card - Admin Controlled */}
-              {(adminSettings?.enableBpiCalculator === true || adminSettings?.enableBpiCalculator === undefined) && (
+              {(featureToggles?.enableBpiCalculator === true || featureToggles?.enableBpiCalculator === undefined) && (
                 <CommunityCard
                   title="BPI Calculator"
                   description="Calculate your potential earnings"
@@ -3086,7 +3086,7 @@ export default function DashboardContent({ session, customContent }: DashboardCo
               )}
 
               {/* EPC & EPP Card - Admin Controlled */}
-              {adminSettings?.enableEpcEpp === true && (
+              {featureToggles?.enableEpcEpp === true && (
                 <CommunityCard
                   title="EPC & EPP"
                   description="Global promotion system"
@@ -3097,7 +3097,7 @@ export default function DashboardContent({ session, customContent }: DashboardCo
               )}
 
               {/* Solar Assessment Card - Admin Controlled */}
-              {adminSettings?.enableSolarAssessment === true && (
+              {featureToggles?.enableSolarAssessment === true && (
                 <CommunityCard
                   title="Solar Assessment"
                   description="Energy consulting services"
@@ -3108,7 +3108,7 @@ export default function DashboardContent({ session, customContent }: DashboardCo
               )}
 
               {/* Digital Farm Card - Admin Controlled */}
-              {adminSettings?.enableDigitalFarm === true && (
+              {featureToggles?.enableDigitalFarm === true && (
                 <CommunityCard
                   title="Digital Farm"
                   description="Virtual agriculture platform"
@@ -3119,7 +3119,7 @@ export default function DashboardContent({ session, customContent }: DashboardCo
               )}
 
               {/* Training Center Card - Admin Controlled */}
-              {(adminSettings?.enableTrainingCenter === true || adminSettings?.enableTrainingCenter === undefined) && (
+              {(featureToggles?.enableTrainingCenter === true || featureToggles?.enableTrainingCenter === undefined) && (
                 <CommunityCard
                   title="Training Center"
                   description="Skill development courses"
@@ -3130,7 +3130,7 @@ export default function DashboardContent({ session, customContent }: DashboardCo
               )}
 
               {/* Promotional Materials Card - Admin Controlled */}
-              {(adminSettings?.enablePromotionalMaterials === true || adminSettings?.enablePromotionalMaterials === undefined) && (
+              {(featureToggles?.enablePromotionalMaterials === true || featureToggles?.enablePromotionalMaterials === undefined) && (
                 <CommunityCard
                   title="Promotional Materials"
                   description="Download marketing assets"
@@ -3142,7 +3142,7 @@ export default function DashboardContent({ session, customContent }: DashboardCo
               )}
 
               {/* Latest Updates Card - Admin Controlled */}
-              {(adminSettings?.enableLatestUpdates === true || adminSettings?.enableLatestUpdates === undefined) && (
+              {(featureToggles?.enableLatestUpdates === true || featureToggles?.enableLatestUpdates === undefined) && (
                 <CommunityCard
                   title="Latest Updates"
                   description="Company news & announcements"
@@ -3154,7 +3154,7 @@ export default function DashboardContent({ session, customContent }: DashboardCo
               )}
 
               {/* Best Deals Card - Admin Controlled */}
-              {adminSettings?.enableBestDeals === true && (
+              {featureToggles?.enableBestDeals === true && (
                 <CommunityCard
                   title="Best Deals"
                   description="Exclusive offers & promotions"

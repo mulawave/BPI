@@ -14,7 +14,7 @@ interface FooterProps {
 
 export default function Footer({ onModalOpen }: FooterProps) {
   const { data: footerPages } = api.content.getFooterPages.useQuery(undefined, { refetchOnWindowFocus: false });
-  const { data: companyInfo } = api.admin.getSystemSettings.useQuery(undefined, { refetchOnWindowFocus: false });
+  const { data: companyInfo } = api.config.getPublicSettings.useQuery(undefined, { refetchOnWindowFocus: false });
 
   const footerLinks = useMemo<{ label: string; href: string }[]>(() => {
     const termsPage = footerPages?.find((p: any) => p.category === "terms");

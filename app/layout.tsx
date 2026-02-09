@@ -4,6 +4,7 @@ import Providers from "@/components/providers";
 import { cn } from "@/styles/utils";
 import ViewportFitBanner from "@/components/ViewportFitBanner";
 import ImpersonationBanner from "@/components/admin/ImpersonationBanner";
+import { resolveAppBaseUrl } from "@/lib/appUrl";
 
 export const metadata = {
   title: "BPI - BeepAgro Palliative Initiative",
@@ -15,10 +16,15 @@ export const metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const appBaseUrl = await resolveAppBaseUrl();
+
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={cn("min-h-screen bg-background font-sans antialiased")}> 
+      <body
+        className={cn("min-h-screen bg-background font-sans antialiased")}
+        data-app-base-url={appBaseUrl}
+      > 
         <Providers>
           <ImpersonationBanner />
           {children}

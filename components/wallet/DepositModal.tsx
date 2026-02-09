@@ -33,7 +33,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const { data: gatewayConfigs } = api.payment.getPaymentGateways.useQuery(undefined, {
     enabled: isOpen,
   });
-  const { data: bankDetails } = api.admin.getSystemSettings.useQuery(undefined, {
+  const { data: bankDetails } = api.config.getPublicSettings.useQuery(undefined, {
     enabled: isOpen && selectedGateway === 'bank-transfer',
   });
   const enabledByName = new Map(

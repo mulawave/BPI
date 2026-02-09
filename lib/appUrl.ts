@@ -7,7 +7,16 @@ const normalizeUrl = (value: string) => {
   return `https://${trimmed}`;
 };
 
+let cachedBaseUrl: string | null = null;
+let cachedAt = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
 export async function resolveAppBaseUrl(): Promise<string> {
+  const now = Date.now();
+  if (cachedBaseUrl && now - cachedAt < CACHE_TTL_MS) {
+    return cachedBaseUrl;
+  }
+
   try {
     const setting = await prisma.adminSettings.findFirst({
       where: { settingKey: "app_base_url" },
@@ -15,13 +24,22 @@ export async function resolveAppBaseUrl(): Promise<string> {
     });
 
     const fromSetting = normalizeUrl(setting?.settingValue || "");
-    if (fromSetting) return fromSetting;
+    if (fromSetting) {
+      cachedBaseUrl = fromSetting;
+      cachedAt = now;
+      return fromSetting;
+    }
   } catch (error) {
     console.error("[resolveAppBaseUrl] Failed to read admin setting:", error);
   }
 
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  if (process.env.NEXTAUTH_URL) return process.env.NEXTAUTH_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "https://beepagro.com";
+  const envUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+
+  const fallback = envUrl || "https://beepagro.com";
+  cachedBaseUrl = fallback;
+  cachedAt = now;
+  return fallback;
 }

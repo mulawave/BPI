@@ -28,6 +28,25 @@ export const securityRouter = createTRPCRouter({
     };
   }),
 
+  // Get system-level security feature flags for users
+  getSecurityFeatureFlags: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.session?.user?.id) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+
+    const settings = await ctx.prisma.adminSettings.findMany({
+      where: { settingKey: { in: ["pin_enabled", "two_factor_enabled"] } },
+      select: { settingKey: true, settingValue: true },
+    });
+
+    const settingsMap = new Map(settings.map((s) => [s.settingKey, s.settingValue]));
+
+    return {
+      pinEnabled: settingsMap.get("pin_enabled") === "true",
+      twoFAEnabled: settingsMap.get("two_factor_enabled") === "true",
+    };
+  }),
+
   // Setup or update PIN
   setupPin: protectedProcedure
     .input(

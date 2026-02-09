@@ -4,6 +4,7 @@ import { signOut } from "next-auth/react";
 import { Bell, LogOut, Moon, Sun, User } from "lucide-react";
 import Image from "next/image";
 import { useTheme } from "../../contexts/ThemeContext";
+import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 
 interface AdminHeaderProps {
   admin: {
@@ -15,10 +16,7 @@ interface AdminHeaderProps {
 
 export default function AdminHeader({ admin }: AdminHeaderProps) {
   const { theme, toggleTheme } = useTheme();
-  const baseUrl =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : process.env.NEXT_PUBLIC_APP_URL || "";
+  const baseUrl = resolveClientBaseUrl();
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/70 backdrop-blur-xl">

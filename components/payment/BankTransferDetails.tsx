@@ -78,7 +78,7 @@ export default function BankTransferDetails({
   referenceLabel = "Reference",
   showReference = false,
 }: BankTransferDetailsProps) {
-  const { data, isLoading, isError } = api.admin.getSystemSettings.useQuery(undefined, {
+  const { data, isLoading, isError } = api.config.getPublicSettings.useQuery(undefined, {
     enabled: !bankDetails,
   });
 
