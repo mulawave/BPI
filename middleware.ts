@@ -31,17 +31,45 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  const publicRoutes = new Set([
+    "/",
+    "/login",
+    "/register",
+    "/forgot-password",
+    "/set-new-password",
+    "/tokenomics",
+    "/about",
+    "/blog",
+    "/coming-soon",
+    "/help",
+    "/store",
+    "/checkout",
+    "/csp",
+    "/empowerment",
+  ]);
+
+  const publicRoutePrefixes = [
+    "/blog/",
+    "/help/",
+    "/store/",
+    "/checkout/",
+    "/csp/",
+    "/empowerment/",
+  ];
+
+  const isResetRoute = /^\/(forgot-password|set-new-password|reset|reset-password|password-reset)(\/|$)/.test(
+    pathname,
+  );
+
   // Allow requests for API, auth, static files, and public pages
   if (
     pathname.startsWith("/api") ||
     pathname.startsWith("/static") ||
     pathname.startsWith("/_next") ||
     pathname.includes(".") || // e.g., favicon.ico
-    pathname === "/" ||
-    pathname === "/login" ||
-    pathname === "/register" ||
-    pathname === "/forgot-password" ||
-    pathname === "/tokenomics" // Allow access to tokenomics page
+    publicRoutes.has(pathname) ||
+    publicRoutePrefixes.some((prefix) => pathname.startsWith(prefix)) ||
+    isResetRoute
   ) {
     return NextResponse.next();
   }
