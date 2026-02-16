@@ -318,11 +318,17 @@ export function BankDetailsField({ userId }: BankDetailsFieldProps) {
             <select
               value={formData.bankCode}
               onChange={(e) => {
-                const selectedBank = banks?.find((b: any) => b.code === e.target.value);
-                setFormData({ 
-                  ...formData, 
-                  bankCode: e.target.value,
-                  bankId: selectedBank?.id?.toString() || "",
+                const bankCode = e.target.value;
+                const bankList = (banks as any[]) || [];
+                const selectedBank = bankList.find((b) => {
+                  const candidateCode = b.code || b.bankCode || b.bank_code;
+                  return candidateCode === bankCode;
+                });
+
+                setFormData({
+                  ...formData,
+                  bankCode,
+                  bankId: selectedBank?.id ? String(selectedBank.id) : "",
                 });
                 setVerifiedAccountName(null);
               }}
