@@ -1,0 +1,8 @@
+# Custom error handler for 503 Service Unavailable
+ErrorDocument 503 /503.html
+
+# Ensure the error document itself is not affected
+<Files "503.html">
+    Order Allow,Deny
+    Allow from all
+</Files>
