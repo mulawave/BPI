@@ -10,11 +10,24 @@ const normalizeUrl = (value: string) => {
 let cachedBaseUrl: string | null = null;
 let cachedAt = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const isBuild = !!process.env.NEXT_PHASE && process.env.NEXT_PHASE.includes("build");
 
 export async function resolveAppBaseUrl(): Promise<string> {
   const now = Date.now();
   if (cachedBaseUrl && now - cachedAt < CACHE_TTL_MS) {
     return cachedBaseUrl;
+  }
+
+  const envUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+
+  if (isBuild) {
+    const fallback = envUrl || "https://beepagro.com";
+    cachedBaseUrl = fallback;
+    cachedAt = now;
+    return fallback;
   }
 
   try {
@@ -32,11 +45,6 @@ export async function resolveAppBaseUrl(): Promise<string> {
   } catch (error) {
     console.error("[resolveAppBaseUrl] Failed to read admin setting:", error);
   }
-
-  const envUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.NEXTAUTH_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
 
   const fallback = envUrl || "https://beepagro.com";
   cachedBaseUrl = fallback;
