@@ -7153,6 +7153,378 @@ export const adminRouter = createTRPCRouter({
       return { success: true };
     }),
 
+  // Third Party Executive Overpass (bypass sponsor dependency for user third-party links)
+  searchThirdPartyExecutiveOverpassUsers: adminProcedure
+    .input(
+      z.object({
+        query: z.string().min(1),
+        limit: z.number().min(1).max(20).optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const queryRaw = input.query.trim();
+      if (queryRaw.length < 2) {
+        return [];
+      }
+
+      const limit = input.limit ?? 10;
+      const queryLower = queryRaw.toLowerCase();
+
+      const users = await prisma.user.findMany({
+        where: {
+          email: {
+            contains: queryRaw,
+            mode: "insensitive",
+          },
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          firstname: true,
+          lastname: true,
+        },
+        take: Math.max(limit * 3, 30),
+      });
+
+      const formatName = (u: any) => {
+        const full = `${u?.firstname || ""} ${u?.lastname || ""}`.trim();
+        return full || u?.name || u?.email || "";
+      };
+
+      return users
+        .filter((u) => !!u.email)
+        .map((u) => ({
+          id: u.id,
+          email: u.email!,
+          fullName: formatName(u),
+        }))
+        .sort((a, b) => {
+          const aEmail = a.email.toLowerCase();
+          const bEmail = b.email.toLowerCase();
+          const aStarts = aEmail.startsWith(queryLower);
+          const bStarts = bEmail.startsWith(queryLower);
+          if (aStarts !== bStarts) return aStarts ? -1 : 1;
+          return aEmail.localeCompare(bEmail);
+        })
+        .slice(0, limit);
+    }),
+
+  getThirdPartyExecutiveOverpassPreview: adminProcedure
+    .input(z.object({ email: z.string().email() }))
+    .query(async ({ input }) => {
+      const email = input.email.trim();
+
+      const user = await prisma.user.findFirst({
+        where: {
+          email: {
+            equals: email,
+            mode: "insensitive",
+          },
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          firstname: true,
+          lastname: true,
+          activated: true,
+          activeMembershipPackageId: true,
+          membershipActivatedAt: true,
+          membershipExpiresAt: true,
+          sponsorId: true,
+          User: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              firstname: true,
+              lastname: true,
+            },
+          },
+        },
+      });
+
+      if (!user) {
+        throw new Error("User not found for that email");
+      }
+
+      const membershipPackage = user.activeMembershipPackageId
+        ? await prisma.membershipPackage.findUnique({
+            where: { id: user.activeMembershipPackageId },
+            select: { id: true, name: true },
+          })
+        : null;
+
+      const overpass = await prisma.thirdPartyExecutiveOverpass.findUnique({
+        where: { userId: user.id },
+        select: {
+          id: true,
+          grantedAt: true,
+          expiresAt: true,
+          revokedAt: true,
+          grantedByUserId: true,
+          revokedByUserId: true,
+        },
+      });
+
+      const now = new Date();
+      const isActiveOverpass =
+        !!overpass && !overpass.revokedAt && (!overpass.expiresAt || overpass.expiresAt >= now);
+
+      const formatName = (u: any) => {
+        const full = `${u?.firstname || ""} ${u?.lastname || ""}`.trim();
+        return full || u?.name || u?.email || "";
+      };
+
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          fullName: formatName(user),
+        },
+        sponsor: user.User
+          ? {
+              id: user.User.id,
+              email: user.User.email,
+              fullName: formatName(user.User),
+            }
+          : null,
+        membership: {
+          isActivated: user.activated,
+          activeMembershipPackageId: user.activeMembershipPackageId,
+          planName: membershipPackage?.name ?? null,
+          membershipActivatedAt: user.membershipActivatedAt,
+          membershipExpiresAt: user.membershipExpiresAt,
+        },
+        overpass: {
+          exists: !!overpass,
+          isActive: isActiveOverpass,
+          grantedAt: overpass?.grantedAt ?? null,
+          expiresAt: overpass?.expiresAt ?? null,
+          revokedAt: overpass?.revokedAt ?? null,
+        },
+      };
+    }),
+
+  grantThirdPartyExecutiveOverpass: adminProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+        mode: z.enum(["PERMANENT", "EXPIRES"]),
+        expiresOn: z.string().optional(), // YYYY-MM-DD
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const email = input.email.trim();
+      const target = await prisma.user.findFirst({
+        where: {
+          email: {
+            equals: email,
+            mode: "insensitive",
+          },
+        },
+        select: { id: true, email: true, firstname: true, lastname: true, name: true },
+      });
+
+      if (!target) {
+        throw new Error("User not found for that email");
+      }
+
+      let expiresAt: Date | null = null;
+      if (input.mode === "EXPIRES") {
+        const raw = (input.expiresOn || "").trim();
+        const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) {
+          throw new Error("Expiry date is required (YYYY-MM-DD)");
+        }
+
+        const year = Number(match[1]);
+        const monthIndex = Number(match[2]) - 1;
+        const day = Number(match[3]);
+        const endOfDayServerTime = new Date(year, monthIndex, day, 23, 59, 59, 999);
+        if (Number.isNaN(endOfDayServerTime.getTime())) {
+          throw new Error("Invalid expiry date");
+        }
+
+        expiresAt = endOfDayServerTime;
+      }
+
+      const adminId = ctx.session!.user.id;
+      const now = new Date();
+
+      const existing = await prisma.thirdPartyExecutiveOverpass.findUnique({
+        where: { userId: target.id },
+        select: { id: true },
+      });
+
+      const record = existing
+        ? await prisma.thirdPartyExecutiveOverpass.update({
+            where: { userId: target.id },
+            data: {
+              grantedByUserId: adminId,
+              grantedAt: now,
+              expiresAt,
+              revokedAt: null,
+              revokedByUserId: null,
+            },
+            select: { id: true },
+          })
+        : await prisma.thirdPartyExecutiveOverpass.create({
+            data: {
+              id: randomUUID(),
+              userId: target.id,
+              grantedByUserId: adminId,
+              grantedAt: now,
+              expiresAt,
+              createdAt: now,
+            },
+            select: { id: true },
+          });
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId,
+          action: "GRANT_THIRD_PARTY_EXECUTIVE_OVERPASS",
+          entity: "THIRD_PARTY_OVERPASS",
+          entityId: target.id,
+          metadata: {
+            targetEmail: target.email,
+            mode: input.mode,
+            expiresAt: expiresAt ? expiresAt.toISOString() : null,
+            overpassId: record.id,
+          },
+          ipAddress: "",
+          userAgent: "",
+        },
+      });
+
+      return { success: true };
+    }),
+
+  listThirdPartyExecutiveOverpasses: adminProcedure.query(async () => {
+    const now = new Date();
+    const rows = await prisma.thirdPartyExecutiveOverpass.findMany({
+      where: {
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gte: now } }],
+      },
+      orderBy: { grantedAt: "desc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            firstname: true,
+            lastname: true,
+            activated: true,
+            activeMembershipPackageId: true,
+            membershipActivatedAt: true,
+            membershipExpiresAt: true,
+            sponsorId: true,
+            User: {
+              select: {
+                id: true,
+                email: true,
+                name: true,
+                firstname: true,
+                lastname: true,
+              },
+            },
+          },
+        },
+        grantedBy: {
+          select: { id: true, email: true, name: true, firstname: true, lastname: true },
+        },
+      },
+    });
+
+    const packageIds = [...new Set(rows.map((r) => r.user.activeMembershipPackageId).filter(Boolean))] as string[];
+    const packages = packageIds.length
+      ? await prisma.membershipPackage.findMany({
+          where: { id: { in: packageIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+
+    const packageMap = new Map(packages.map((p) => [p.id, p.name] as const));
+
+    const formatName = (u: any) => {
+      const full = `${u?.firstname || ""} ${u?.lastname || ""}`.trim();
+      return full || u?.name || u?.email || "";
+    };
+
+    return rows.map((r) => ({
+      id: r.id,
+      userId: r.userId,
+      grantedAt: r.grantedAt,
+      expiresAt: r.expiresAt,
+      user: {
+        id: r.user.id,
+        email: r.user.email,
+        fullName: formatName(r.user),
+        activated: r.user.activated,
+        membershipActivatedAt: r.user.membershipActivatedAt,
+        membershipExpiresAt: r.user.membershipExpiresAt,
+        planName: r.user.activeMembershipPackageId ? packageMap.get(r.user.activeMembershipPackageId) ?? null : null,
+      },
+      sponsor: r.user.User
+        ? {
+            id: r.user.User.id,
+            email: r.user.User.email,
+            fullName: formatName(r.user.User),
+          }
+        : null,
+      grantedBy: {
+        id: r.grantedBy.id,
+        email: r.grantedBy.email,
+        fullName: formatName(r.grantedBy),
+      },
+    }));
+  }),
+
+  revokeThirdPartyExecutiveOverpass: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const adminId = ctx.session!.user.id;
+      const now = new Date();
+
+      const existing = await prisma.thirdPartyExecutiveOverpass.findUnique({
+        where: { userId: input.userId },
+        select: { id: true, userId: true },
+      });
+
+      if (!existing) {
+        throw new Error("Overpass record not found");
+      }
+
+      await prisma.thirdPartyExecutiveOverpass.update({
+        where: { userId: input.userId },
+        data: {
+          revokedAt: now,
+          revokedByUserId: adminId,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId,
+          action: "REVOKE_THIRD_PARTY_EXECUTIVE_OVERPASS",
+          entity: "THIRD_PARTY_OVERPASS",
+          entityId: input.userId,
+          metadata: { overpassId: existing.id },
+          ipAddress: "",
+          userAgent: "",
+        },
+      });
+
+      return { success: true };
+    }),
+
   // ===========================
   // Leadership Pool Admin
   // ===========================

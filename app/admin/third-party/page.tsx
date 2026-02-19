@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Plus, Edit2, Trash2, Power, PowerOff, ExternalLink, Image as ImageIcon, MoveUp, MoveDown, Upload, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Plus, Edit2, Trash2, Power, PowerOff, ExternalLink, Image as ImageIcon, MoveUp, MoveDown, Upload, X, UserCheck, Calendar, Shield } from "lucide-react";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,83 @@ export default function ThirdPartyPlatformsPage() {
 
   // Get all platforms (admin view)
   const { data: platforms, isLoading } = api.admin.getAllThirdPartyPlatforms.useQuery();
+
+  // =========================
+  // Executive Overpass
+  // =========================
+  const [overpassEmail, setOverpassEmail] = useState("");
+  const [overpassMode, setOverpassMode] = useState<"PERMANENT" | "EXPIRES">("PERMANENT");
+  const [overpassExpiryDate, setOverpassExpiryDate] = useState<string>(""); // YYYY-MM-DD
+  const [debouncedOverpassEmail, setDebouncedOverpassEmail] = useState("");
+  const [overpassEmailFocused, setOverpassEmailFocused] = useState(false);
+
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedOverpassEmail(overpassEmail.trim()), 500);
+    return () => clearTimeout(t);
+  }, [overpassEmail]);
+
+  const {
+    data: overpassPreview,
+    isFetching: isFetchingPreview,
+    error: overpassPreviewError,
+  } = api.admin.getThirdPartyExecutiveOverpassPreview.useQuery(
+    { email: debouncedOverpassEmail },
+    {
+      enabled: isValidEmail(debouncedOverpassEmail),
+      refetchOnWindowFocus: false,
+      staleTime: 0,
+    }
+  );
+
+  const { data: overpassEmailMatches, isFetching: isFetchingMatches } =
+    api.admin.searchThirdPartyExecutiveOverpassUsers.useQuery(
+      { query: debouncedOverpassEmail, limit: 10 },
+      {
+        enabled: debouncedOverpassEmail.trim().length >= 2,
+        refetchOnWindowFocus: false,
+        staleTime: 0,
+      }
+    );
+
+  const {
+    data: activeOverpasses,
+    isLoading: isLoadingOverpasses,
+  } = api.admin.listThirdPartyExecutiveOverpasses.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+    staleTime: 0,
+  });
+
+  const grantOverpassMutation = api.admin.grantThirdPartyExecutiveOverpass.useMutation({
+    onSuccess: async () => {
+      toast.success("Executive overpass granted");
+      await utils.admin.listThirdPartyExecutiveOverpasses.invalidate();
+      if (isValidEmail(debouncedOverpassEmail)) {
+        await utils.admin.getThirdPartyExecutiveOverpassPreview.invalidate({
+          email: debouncedOverpassEmail,
+        });
+      }
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const revokeOverpassMutation = api.admin.revokeThirdPartyExecutiveOverpass.useMutation({
+    onSuccess: async () => {
+      toast.success("Executive overpass revoked");
+      await utils.admin.listThirdPartyExecutiveOverpasses.invalidate();
+      if (isValidEmail(debouncedOverpassEmail)) {
+        await utils.admin.getThirdPartyExecutiveOverpassPreview.invalidate({
+          email: debouncedOverpassEmail,
+        });
+      }
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
 
   // Mutations
   const createMutation = api.admin.createThirdPartyPlatform.useMutation({
@@ -263,87 +340,378 @@ export default function ThirdPartyPlatformsPage() {
         </Button>
       </div>
 
-      {/* User Guide */}
-      <AdminPageGuide
-        title="Third-Party Opportunities Guide"
-        sections={[
-          {
-            title: "Third-Party Platform Overview",
-            icon: <ExternalLink className="w-5 h-5 text-blue-600" />,
-            items: [
-              "Promote <strong>external earning opportunities</strong> to BPI members",
-              "Integrate <strong>partner platforms</strong> (surveys, freelancing, affiliate programs)",
-              "Provide <strong>registration links</strong> with optional BPI tracking",
-              "<strong>Admin default links</strong> for platforms requiring admin accounts",
-              "<strong>Reorder platforms</strong> to prioritize best opportunities",
-              "<strong>Active/inactive</strong> status control without deleting data"
-            ]
-          },
-          {
-            title: "Adding New Platforms",
-            icon: <Plus className="w-5 h-5 text-green-600" />,
-            type: "ol",
-            items: [
-              "<strong>Click 'Add Platform'</strong> - Opens platform creation modal",
-              "<strong>Enter platform name</strong> - Clear, recognizable name (e.g., 'Fiverr', 'Survey Junkie')",
-              "<strong>Add description</strong> - Brief explanation of earning opportunity (2-3 sentences)",
-              "<strong>Registration URL</strong> - Direct link for users to sign up (include referral code if applicable)",
-              "<strong>Admin default link</strong> - Admin portal URL or dashboard (optional)",
-              "<strong>Select category</strong> - Classify platform (Surveys, Freelancing, Crypto, etc.)",
-              "<strong>Upload logo</strong> - Platform logo image (PNG/JPG, recommended 200x200px)",
-              "<strong>Set active status</strong> - Toggle on to make visible to users immediately"
-            ]
-          },
-          {
-            title: "Platform Categories",
-            icon: <ImageIcon className="w-5 h-5 text-orange-600" />,
-            items: [
-              "<strong>Surveys</strong> - Paid survey platforms (Swagbucks, InboxDollars)",
-              "<strong>Freelancing</strong> - Skill-based work (Fiverr, Upwork, Freelancer)",
-              "<strong>Crypto</strong> - Cryptocurrency earning/trading platforms",
-              "<strong>Affiliate Marketing</strong> - Referral-based income opportunities",
-              "<strong>E-commerce</strong> - Online selling platforms (eBay, Etsy, Amazon)",
-              "<strong>Other</strong> - Miscellaneous opportunities not fitting above categories"
-            ]
-          },
-          {
-            title: "Platform Reordering",
-            icon: <MoveUp className="w-5 h-5 text-purple-600" />,
-            items: [
-              "<strong>Move Up/Down</strong> - Click arrow buttons to adjust display order",
-              "<strong>Top positions</strong> - Most visible to users, highest engagement",
-              "<strong>Strategic ordering</strong> - Place best-paying/easiest platforms first",
-              "<strong>Seasonal adjustments</strong> - Reorder based on platform availability",
-              "<strong>Test performance</strong> - Track which positions get most clicks",
-              "Order changes are <strong>immediate</strong> - reflect instantly on user dashboards"
-            ]
-          },
-          {
-            title: "Logo Upload & Branding",
-            icon: <Upload className="w-5 h-5 text-blue-600" />,
-            items: [
-              "<strong>Click upload button</strong> - Select logo image from device",
-              "<strong>Supported formats</strong> - JPG, JPEG, PNG (max 2MB)",
-              "<strong>Recommended size</strong> - 200x200px square for best display",
-              "<strong>Upload progress</strong> - Real-time percentage shown",
-              "<strong>Auto-optimization</strong> - Images compressed for fast loading",
-              "<strong>Remove/replace</strong> - Click X to delete, re-upload to change"
-            ]
-          }
-        ]}
-        features={[
-          "Add/edit/delete third-party platforms",
-          "Logo upload & display",
-          "Category classification",
-          "Registration URL tracking",
-          "Admin portal links",
-          "Platform reordering (priority)",
-          "Active/inactive status toggle",
-          "Description & branding management"
-        ]}
-        proTip="For <strong>maximum user engagement</strong>, add <strong>5-10 high-quality platforms</strong> with <strong>clear earning potential</strong>. Include your <strong>BPI referral code</strong> in registration URLs to earn commissions. Order platforms by <strong>ease of use</strong> (easiest first) to reduce user drop-off. Update descriptions regularly with <strong>current payout rates</strong> to maintain trust. Test all links monthly to ensure they're <strong>not broken</strong>."
-        warning="Always <strong>verify platform legitimacy</strong> before adding - scam platforms damage BPI's credibility. <strong>Registration URLs with referral codes</strong> should comply with both platform's and BPI's terms of service. <strong>Deleting a platform is permanent</strong> - consider deactivating instead to preserve click history. <strong>Admin default links</strong> should never contain sensitive credentials."
-      />
+      <div className="flex flex-col gap-6 mb-6">
+        <div className="order-1">
+          {/* User Guide */}
+          <AdminPageGuide
+            title="Third-Party Opportunities Guide"
+            sections={[
+              {
+                title: "Third-Party Platform Overview",
+                icon: <ExternalLink className="w-5 h-5 text-blue-600" />,
+                items: [
+                  "Promote <strong>external earning opportunities</strong> to BPI members",
+                  "Integrate <strong>partner platforms</strong> (surveys, freelancing, affiliate programs)",
+                  "Provide <strong>registration links</strong> with optional BPI tracking",
+                  "<strong>Admin default links</strong> for platforms requiring admin accounts",
+                  "<strong>Reorder platforms</strong> to prioritize best opportunities",
+                  "<strong>Active/inactive</strong> status control without deleting data"
+                ]
+              },
+              {
+                title: "Adding New Platforms",
+                icon: <Plus className="w-5 h-5 text-green-600" />,
+                type: "ol",
+                items: [
+                  "<strong>Click 'Add Platform'</strong> - Opens platform creation modal",
+                  "<strong>Enter platform name</strong> - Clear, recognizable name (e.g., 'Fiverr', 'Survey Junkie')",
+                  "<strong>Add description</strong> - Brief explanation of earning opportunity (2-3 sentences)",
+                  "<strong>Registration URL</strong> - Direct link for users to sign up (include referral code if applicable)",
+                  "<strong>Admin default link</strong> - Admin portal URL or dashboard (optional)",
+                  "<strong>Select category</strong> - Classify platform (Surveys, Freelancing, Crypto, etc.)",
+                  "<strong>Upload logo</strong> - Platform logo image (PNG/JPG, recommended 200x200px)",
+                  "<strong>Set active status</strong> - Toggle on to make visible to users immediately"
+                ]
+              },
+              {
+                title: "Platform Categories",
+                icon: <ImageIcon className="w-5 h-5 text-orange-600" />,
+                items: [
+                  "<strong>Surveys</strong> - Paid survey platforms (Swagbucks, InboxDollars)",
+                  "<strong>Freelancing</strong> - Skill-based work (Fiverr, Upwork, Freelancer)",
+                  "<strong>Crypto</strong> - Cryptocurrency earning/trading platforms",
+                  "<strong>Affiliate Marketing</strong> - Referral-based income opportunities",
+                  "<strong>E-commerce</strong> - Online selling platforms (eBay, Etsy, Amazon)",
+                  "<strong>Other</strong> - Miscellaneous opportunities not fitting above categories"
+                ]
+              },
+              {
+                title: "Platform Reordering",
+                icon: <MoveUp className="w-5 h-5 text-purple-600" />,
+                items: [
+                  "<strong>Move Up/Down</strong> - Click arrow buttons to adjust display order",
+                  "<strong>Top positions</strong> - Most visible to users, highest engagement",
+                  "<strong>Strategic ordering</strong> - Place best-paying/easiest platforms first",
+                  "<strong>Seasonal adjustments</strong> - Reorder based on platform availability",
+                  "<strong>Test performance</strong> - Track which positions get most clicks",
+                  "Order changes are <strong>immediate</strong> - reflect instantly on user dashboards"
+                ]
+              },
+              {
+                title: "Logo Upload & Branding",
+                icon: <Upload className="w-5 h-5 text-blue-600" />,
+                items: [
+                  "<strong>Click upload button</strong> - Select logo image from device",
+                  "<strong>Supported formats</strong> - JPG, JPEG, PNG (max 2MB)",
+                  "<strong>Recommended size</strong> - 200x200px square for best display",
+                  "<strong>Upload progress</strong> - Real-time percentage shown",
+                  "<strong>Auto-optimization</strong> - Images compressed for fast loading",
+                  "<strong>Remove/replace</strong> - Click X to delete, re-upload to change"
+                ]
+              }
+            ]}
+            features={[
+              "Add/edit/delete third-party platforms",
+              "Logo upload & display",
+              "Category classification",
+              "Registration URL tracking",
+              "Admin portal links",
+              "Platform reordering (priority)",
+              "Active/inactive status toggle",
+              "Description & branding management"
+            ]}
+            proTip="For <strong>maximum user engagement</strong>, add <strong>5-10 high-quality platforms</strong> with <strong>clear earning potential</strong>. Include your <strong>BPI referral code</strong> in registration URLs to earn commissions. Order platforms by <strong>ease of use</strong> (easiest first) to reduce user drop-off. Update descriptions regularly with <strong>current payout rates</strong> to maintain trust. Test all links monthly to ensure they're <strong>not broken</strong>."
+            warning="Always <strong>verify platform legitimacy</strong> before adding - scam platforms damage BPI's credibility. <strong>Registration URLs with referral codes</strong> should comply with both platform's and BPI's terms of service. <strong>Deleting a platform is permanent</strong> - consider deactivating instead to preserve click history. <strong>Admin default links</strong> should never contain sensitive credentials."
+          />
+        </div>
+
+        {/* Executive Overpass */}
+        <div className="order-2 bg-white dark:bg-bpi-dark-card border border-bpi-border dark:border-bpi-dark-accent rounded-xl overflow-hidden">
+        <div className="p-5 border-b border-bpi-border dark:border-bpi-dark-accent flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-bpi-primary/10 flex items-center justify-center">
+              <Shield className="w-5 h-5 text-bpi-primary" />
+            </div>
+            <div>
+              <div className="text-lg font-semibold text-foreground">Executive Overpass</div>
+              <div className="text-sm text-muted-foreground">
+                Bypass sponsor dependency for Third-Party Opportunities only
+              </div>
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground whitespace-nowrap">
+            Expiry is end-of-day (server time)
+          </div>
+        </div>
+
+        <div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Email lookup */}
+          <div className="lg:col-span-1 space-y-3 relative">
+            <label className="text-sm font-medium text-foreground">User Email</label>
+            <input
+              type="email"
+              value={overpassEmail}
+              onChange={(e) => setOverpassEmail(e.target.value)}
+              onFocus={() => setOverpassEmailFocused(true)}
+              onBlur={() => {
+                setTimeout(() => setOverpassEmailFocused(false), 150);
+              }}
+              placeholder="Enter user email"
+              className="w-full px-3 py-2 border border-bpi-border dark:border-bpi-dark-accent rounded bg-white dark:bg-bpi-dark-card text-foreground"
+            />
+
+            {overpassEmailFocused && (overpassEmailMatches?.length || 0) > 0 && (
+                <div className="absolute z-50 mt-1 w-full rounded-lg border border-bpi-border bg-white shadow-lg dark:border-bpi-dark-accent dark:bg-bpi-dark-card overflow-hidden">
+                  <div className="px-3 py-2 text-xs text-muted-foreground border-b border-bpi-border dark:border-bpi-dark-accent flex items-center justify-between">
+                    <span>
+                      {isFetchingMatches ? "Searching…" : `Matches (${overpassEmailMatches?.length || 0})`}
+                    </span>
+                    <span className="text-[11px]">Click to select</span>
+                  </div>
+                  <div className="max-h-56 overflow-auto">
+                    {overpassEmailMatches?.map((m: any) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setOverpassEmail(m.email);
+                          setOverpassEmailFocused(false);
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-bpi-dark-accent/30 transition-colors"
+                      >
+                        <div className="text-sm font-medium text-foreground">
+                          {m.fullName || m.email}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{m.email}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            {overpassEmail.trim().length > 0 &&
+              !isValidEmail(overpassEmail.trim()) &&
+              (overpassEmailMatches?.length || 0) === 0 && (
+                <div className="text-xs text-red-600">Please enter a valid email address</div>
+              )}
+            {isFetchingPreview && isValidEmail(debouncedOverpassEmail) && (
+              <div className="text-xs text-muted-foreground">Validating email…</div>
+            )}
+            {overpassPreviewError && isValidEmail(debouncedOverpassEmail) && (
+              <div className="text-xs text-red-600">
+                {(overpassPreviewError as any)?.message || "Lookup failed"}
+              </div>
+            )}
+          </div>
+
+          {/* Preview */}
+          <div className="lg:col-span-2 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <UserCheck className="w-4 h-4" />
+              Validation Result
+            </div>
+
+            {overpassPreview ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="rounded-lg border border-bpi-border dark:border-bpi-dark-accent p-4 bg-gray-50 dark:bg-bpi-dark-accent/20">
+                  <div className="text-xs text-muted-foreground">User</div>
+                  <div className="text-sm font-semibold text-foreground">
+                    {overpassPreview.user.fullName || overpassPreview.user.email}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{overpassPreview.user.email}</div>
+                </div>
+
+                <div className="rounded-lg border border-bpi-border dark:border-bpi-dark-accent p-4 bg-gray-50 dark:bg-bpi-dark-accent/20">
+                  <div className="text-xs text-muted-foreground">Immediate Sponsor</div>
+                  <div className="text-sm font-semibold text-foreground">
+                    {overpassPreview.sponsor?.fullName || "No sponsor"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{overpassPreview.sponsor?.email || "-"}</div>
+                </div>
+
+                <div className="rounded-lg border border-bpi-border dark:border-bpi-dark-accent p-4 bg-gray-50 dark:bg-bpi-dark-accent/20">
+                  <div className="text-xs text-muted-foreground">Membership Status</div>
+                  <div className="text-sm font-semibold text-foreground">
+                    {overpassPreview.membership.isActivated ? "Activated" : "Not activated"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Plan: {overpassPreview.membership.planName || "-"}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-bpi-border dark:border-bpi-dark-accent p-4 bg-gray-50 dark:bg-bpi-dark-accent/20">
+                  <div className="text-xs text-muted-foreground">Active Overpass</div>
+                  <div className="text-sm font-semibold text-foreground">
+                    {overpassPreview.overpass.isActive ? "Yes" : "No"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Expires: {overpassPreview.overpass.expiresAt ? new Date(overpassPreview.overpass.expiresAt).toLocaleDateString() : "Permanent / N/A"}
+                  </div>
+                </div>
+
+                <div className="md:col-span-2 rounded-lg border border-bpi-border dark:border-bpi-dark-accent p-4 bg-white dark:bg-bpi-dark-card">
+                  <div className="flex flex-col md:flex-row md:items-end gap-3 justify-between">
+                    <div className="flex-1">
+                      <div className="text-xs text-muted-foreground mb-1">Overpass Mode</div>
+                      <select
+                        value={overpassMode}
+                        onChange={(e) => setOverpassMode(e.target.value as any)}
+                        className="w-full px-3 py-2 border border-bpi-border dark:border-bpi-dark-accent rounded bg-white dark:bg-bpi-dark-card text-foreground"
+                      >
+                        <option value="PERMANENT">Permanent</option>
+                        <option value="EXPIRES">Expires</option>
+                      </select>
+                    </div>
+
+                    <div className="flex-1">
+                      <div className="text-xs text-muted-foreground mb-1 flex items-center gap-2">
+                        <Calendar className="w-4 h-4" />
+                        Expiry Date
+                      </div>
+                      <input
+                        type="date"
+                        value={overpassExpiryDate}
+                        onChange={(e) => setOverpassExpiryDate(e.target.value)}
+                        disabled={overpassMode !== "EXPIRES"}
+                        className="w-full px-3 py-2 border border-bpi-border dark:border-bpi-dark-accent rounded bg-white dark:bg-bpi-dark-card text-foreground disabled:opacity-50"
+                      />
+                      {overpassMode === "EXPIRES" && !overpassExpiryDate && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Pick a date (end-of-day server time)
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 md:justify-end">
+                      <Button
+                        onClick={() => {
+                          if (!overpassPreview?.user?.email) {
+                            toast.error("Enter a valid user email");
+                            return;
+                          }
+                          if (overpassMode === "EXPIRES" && !overpassExpiryDate) {
+                            toast.error("Select an expiry date");
+                            return;
+                          }
+
+                          const toastId = toast.loading("Granting executive overpass...");
+                          grantOverpassMutation
+                            .mutateAsync({
+                              email: overpassPreview.user.email,
+                              mode: overpassMode,
+                              expiresOn: overpassMode === "EXPIRES" ? overpassExpiryDate : undefined,
+                            })
+                            .then(() => toast.success("Overpass granted", { id: toastId }))
+                            .catch((e: any) => toast.error(e?.message || "Failed", { id: toastId }));
+                        }}
+                        disabled={grantOverpassMutation.isPending}
+                        className="bg-bpi-primary hover:bg-bpi-primary/90"
+                      >
+                        {grantOverpassMutation.isPending ? "Granting…" : "Grant Overpass"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-bpi-border dark:border-bpi-dark-accent p-6 text-sm text-muted-foreground">
+                Enter a user email to validate and preview details.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Tracking Table */}
+        <div className="border-t border-bpi-border dark:border-bpi-dark-accent">
+          <div className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-semibold text-foreground">Active Executive Overpasses</div>
+              <div className="text-xs text-muted-foreground">
+                {isLoadingOverpasses ? "Loading…" : `${activeOverpasses?.length || 0} active`}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border border-bpi-border dark:border-bpi-dark-accent">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-bpi-dark-accent/30">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">User</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Sponsor</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Mode</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Expires</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Granted</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeOverpasses?.map((row: any) => (
+                    <tr key={row.id} className="border-t border-bpi-border dark:border-bpi-dark-accent">
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-foreground">{row.user.fullName || row.user.email}</div>
+                        <div className="text-xs text-muted-foreground">{row.user.email}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-foreground">{row.sponsor?.fullName || "No sponsor"}</div>
+                        <div className="text-xs text-muted-foreground">{row.sponsor?.email || "-"}</div>
+                      </td>
+                      <td className="px-4 py-3 text-foreground">{row.expiresAt ? "Expires" : "Permanent"}</td>
+                      <td className="px-4 py-3 text-foreground">
+                        {row.expiresAt ? new Date(row.expiresAt).toLocaleDateString() : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-foreground">{new Date(row.grantedAt).toLocaleDateString()}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => {
+                            toast.custom((t) => (
+                              <div className="w-full max-w-sm rounded-lg border border-bpi-border bg-white p-3 shadow-lg dark:border-bpi-dark-accent dark:bg-bpi-dark-card">
+                                <div className="text-sm text-foreground">Revoke overpass for {row.user.email}?</div>
+                                <div className="mt-2 flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => toast.dismiss(t.id)}
+                                    className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-gray-50 dark:hover:bg-bpi-dark-accent/30"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      toast.dismiss(t.id);
+                                      const toastId = toast.loading("Revoking overpass...");
+                                      revokeOverpassMutation
+                                        .mutateAsync({ userId: row.userId })
+                                        .then(() => toast.success("Overpass revoked", { id: toastId }))
+                                        .catch((e: any) => toast.error(e?.message || "Failed", { id: toastId }));
+                                    }}
+                                    className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+                                  >
+                                    Revoke
+                                  </button>
+                                </div>
+                              </div>
+                            ));
+                          }}
+                          className="px-3 py-1.5 rounded bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
+                          disabled={revokeOverpassMutation.isPending}
+                        >
+                          Revoke
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!isLoadingOverpasses && (!activeOverpasses || activeOverpasses.length === 0) && (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>
+                        No active executive overpasses.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
 
       {/* Platforms List */}
       <div className="grid gap-4">

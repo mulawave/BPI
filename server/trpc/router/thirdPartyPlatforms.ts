@@ -29,6 +29,28 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
       (platform: any) => !submittedPlatformIds.has(platform.id)
     );
 
+    // Executive Overpass: allow user to use admin links (bypass sponsor dependency)
+    const overpass = await ctx.prisma.thirdPartyExecutiveOverpass.findUnique({
+      where: { userId },
+      select: { revokedAt: true, expiresAt: true },
+    });
+
+    const now = new Date();
+    const hasActiveOverpass =
+      !!overpass && !overpass.revokedAt && (!overpass.expiresAt || overpass.expiresAt >= now);
+
+    if (hasActiveOverpass) {
+      const platformsWithAdminLinks = availablePlatforms
+        .filter((p: any) => !!p.adminDefaultLink)
+        .map((p: any) => ({
+          ...p,
+          referralLink: p.adminDefaultLink,
+          linkOwner: "Admin",
+        }));
+
+      return platformsWithAdminLinks;
+    }
+
     // Get user's sponsor to show their links
     const user = await ctx.prisma.user.findUnique({
       where: { id: userId },
@@ -256,13 +278,22 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session!.user.id;
 
+      // Executive Overpass: allow registration tracking even if sponsor is unavailable
+      const overpass = await ctx.prisma.thirdPartyExecutiveOverpass.findUnique({
+        where: { userId },
+        select: { revokedAt: true, expiresAt: true },
+      });
+      const now = new Date();
+      const hasActiveOverpass =
+        !!overpass && !overpass.revokedAt && (!overpass.expiresAt || overpass.expiresAt >= now);
+
       // Get user's sponsor
       const user = await ctx.prisma.user.findUnique({
         where: { id: userId },
         select: { sponsorId: true },
       });
 
-      if (!user?.sponsorId) {
+      if (!user?.sponsorId && !hasActiveOverpass) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "You don't have a sponsor",
@@ -292,7 +323,8 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
           id: randomUUID(),
           userId,
           platformId: input.platformId,
-          referredByUserId: user.sponsorId,
+          // Keep sponsor attribution when sponsor exists; otherwise allow null under overpass
+          referredByUserId: user?.sponsorId ?? null,
         },
       });
 

@@ -1464,6 +1464,26 @@ model ThirdPartyRegistration {
   @@index([userId])
 }
 
+model ThirdPartyExecutiveOverpass {
+  id              String   @id
+  userId          String   @unique
+  grantedByUserId String
+  grantedAt       DateTime @default(now())
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  revokedByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user         User  @relation("ThirdPartyExecutiveOverpass_user", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy    User  @relation("ThirdPartyExecutiveOverpass_grantedBy", fields: [grantedByUserId], references: [id])
+  revokedBy    User? @relation("ThirdPartyExecutiveOverpass_revokedBy", fields: [revokedByUserId], references: [id])
+
+  @@index([expiresAt])
+  @@index([grantedAt])
+  @@index([revokedAt])
+}
+
 model TicketCategory {
   id               String             @id
   name             String
@@ -1738,6 +1758,9 @@ model User {
   WalletBalance                                                        WalletBalance[]
   ThirdPartyRegistration_ThirdPartyRegistration_referredByUserIdToUser ThirdPartyRegistration[]     @relation("ThirdPartyRegistration_referredByUserIdToUser")
   ThirdPartyRegistration_ThirdPartyRegistration_userIdToUser           ThirdPartyRegistration[]     @relation("ThirdPartyRegistration_userIdToUser")
+  ThirdPartyExecutiveOverpassAsUser                                    ThirdPartyExecutiveOverpass? @relation("ThirdPartyExecutiveOverpass_user")
+  ThirdPartyExecutiveOverpassGranted                                   ThirdPartyExecutiveOverpass[] @relation("ThirdPartyExecutiveOverpass_grantedBy")
+  ThirdPartyExecutiveOverpassRevoked                                   ThirdPartyExecutiveOverpass[] @relation("ThirdPartyExecutiveOverpass_revokedBy")
   TokenTransaction                                                     TokenTransaction[]
   TrainingCourse                                                       TrainingCourse[]
   TrainingProgress                                                     TrainingProgress[]

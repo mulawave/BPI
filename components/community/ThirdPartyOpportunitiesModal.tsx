@@ -204,7 +204,7 @@ export default function ThirdPartyOpportunitiesModal({
                           How It Works
                         </h3>
                         <ol className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-decimal list-inside">
-                          <li>Click your sponsor's referral link below</li>
+                          <li>Click the referral link below</li>
                           <li>Register on the platform using their link</li>
                           <li>Get your own referral link from that platform</li>
                           <li>Come back and submit your link here</li>
