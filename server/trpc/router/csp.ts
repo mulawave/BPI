@@ -841,17 +841,60 @@ export const cspRouter = createTRPCRouter({
 
       // Load admin-configurable CSP fee percentages (with hardcoded defaults)
       const pct = await loadCspFeePercentages(prisma);
-      const shares = {
-        recipient: Math.floor(total * pct.recipient),
-        admin: Math.floor(total * pct.admin),
-        sponsor: Math.floor(total * pct.sponsor),
-        state: Math.floor(total * pct.state),
-        management: Math.floor(total * pct.management),
-        reserve: Math.floor(total * pct.reserve),
-      };
-      const allocated = shares.recipient + shares.admin + shares.sponsor + shares.state + shares.management + shares.reserve;
-      const remainder = total - allocated;
-      shares.recipient += remainder; // push rounding remainder to recipient
+
+      // ─── 120% Disbursement Rule ───────────────────────────────────────────
+      // Path A — Fully funded (raisedAmount >= thresholdAmount):
+      //   Beneficiary receives 100% of their original requestedAmount.
+      //   The 20% markup surplus is split across admin pools proportionally.
+      // Path B — Partially funded (raisedAmount < thresholdAmount):
+      //   Beneficiary receives pct.recipient (80%) of total raised.
+      //   Admin pools receive their configured percentages of the remainder.
+      // ─────────────────────────────────────────────────────────────────────
+      const fullyFunded =
+        request.thresholdAmount > 0 &&
+        request.raisedAmount >= request.thresholdAmount &&
+        request.requestedAmount != null &&
+        request.requestedAmount > 0;
+
+      let shares: { recipient: number; admin: number; sponsor: number; state: number; management: number; reserve: number };
+
+      if (fullyFunded) {
+        // Path A: recipient gets exactly requestedAmount; remainder is the markup pool
+        const recipientShare = Math.min(request.requestedAmount!, total);
+        const markupPool = total - recipientShare;
+        // Split markupPool among admin pools proportionally to their configured weights
+        const adminPoolWeight = pct.admin + pct.sponsor + pct.state + pct.management + pct.reserve;
+        const safeWeight = adminPoolWeight > 0 ? adminPoolWeight : 1;
+        const adminShare     = Math.floor(markupPool * (pct.admin      / safeWeight));
+        const sponsorShare   = Math.floor(markupPool * (pct.sponsor    / safeWeight));
+        const stateShare     = Math.floor(markupPool * (pct.state      / safeWeight));
+        const managementShare= Math.floor(markupPool * (pct.management / safeWeight));
+        const reserveShare   = markupPool - adminShare - sponsorShare - stateShare - managementShare;
+        shares = {
+          recipient:  recipientShare,
+          admin:      adminShare,
+          sponsor:    sponsorShare,
+          state:      stateShare,
+          management: managementShare,
+          reserve:    reserveShare,
+        };
+      } else {
+        // Path B: apply configured percentages to total raised
+        const adminShare      = Math.floor(total * pct.admin);
+        const sponsorShare    = Math.floor(total * pct.sponsor);
+        const stateShare      = Math.floor(total * pct.state);
+        const managementShare = Math.floor(total * pct.management);
+        const reserveShare    = Math.floor(total * pct.reserve);
+        const allocated       = adminShare + sponsorShare + stateShare + managementShare + reserveShare;
+        shares = {
+          recipient:  total - allocated, // remainder (≈80%) all goes to recipient
+          admin:      adminShare,
+          sponsor:    sponsorShare,
+          state:      stateShare,
+          management: managementShare,
+          reserve:    reserveShare,
+        };
+      }
 
       await prisma.$transaction(async (tx) => {
         const holding = await ensureSystemWallet(tx, holdingWalletName, "CSP_HOLDING");
@@ -946,7 +989,7 @@ export const cspRouter = createTRPCRouter({
         },
       });
 
-      return { success: true, released: total, shares };
+      return { success: true, released: total, shares, fullyFunded };
     }),
 
   extendBroadcast: protectedProcedure
