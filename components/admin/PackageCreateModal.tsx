@@ -36,6 +36,9 @@ export default function PackageCreateModal({
     renewalFee: 0,
     isActive: true,
     features: [] as string[],
+    profitMode: "PERCENT" as "PERCENT" | "FIXED" | "HYBRID",
+    profitPercent: 1,
+    profitFixedAmountFiat: 0,
     // Activation rewards
     cash_l1: 0,
     cash_l2: 0,
@@ -76,6 +79,9 @@ export default function PackageCreateModal({
       renewalFee: 0,
       isActive: true,
       features: [],
+      profitMode: "PERCENT",
+      profitPercent: 1,
+      profitFixedAmountFiat: 0,
       cash_l1: 0,
       cash_l2: 0,
       cash_l3: 0,
@@ -310,6 +316,73 @@ export default function PackageCreateModal({
                           step="0.01"
                           min="0"
                         />
+                      </div>
+
+                      {/* Profit Configuration */}
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Profit Configuration
+                        </label>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                              Mode
+                            </label>
+                            <select
+                              value={formData.profitMode}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  profitMode: e.target.value as any,
+                                }))
+                              }
+                              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                            >
+                              <option value="PERCENT">PERCENT</option>
+                              <option value="FIXED">FIXED</option>
+                              <option value="HYBRID">HYBRID</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                              Percent (0–1 or 0–100)
+                            </label>
+                            <input
+                              type="number"
+                              value={formData.profitPercent}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  profitPercent: parseFloat(e.target.value) || 0,
+                                }))
+                              }
+                              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                              step="0.01"
+                              min="0"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                              Fixed (₦)
+                            </label>
+                            <input
+                              type="number"
+                              value={formData.profitFixedAmountFiat}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  profitFixedAmountFiat: parseFloat(e.target.value) || 0,
+                                }))
+                              }
+                              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                              step="0.01"
+                              min="0"
+                            />
+                          </div>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                          Used for profit pool recording (VAT excluded). Percent is interpreted like the store: values above 1 are treated as 0–100.
+                        </p>
                       </div>
 
                       {/* Status Toggle */}

@@ -100,6 +100,7 @@ export const youtubeRouter = createTRPCRouter({
       });
 
       // Create transaction records
+      const purchaseReference = `YT-${Date.now()}-${randomUUID()}`;
       await prisma.transaction.create({
         data: {
           id: randomUUID(),
@@ -127,8 +128,17 @@ export const youtubeRouter = createTRPCRouter({
         source: "YOUTUBE_SUBSCRIPTION",
         amount: Number(plan.amount),
         currency: "NGN",
-        sourceId: plan.id,
+        sourceId: `YOUTUBE_SUBSCRIPTION:${purchaseReference}`,
         description: `YouTube plan purchase: ${plan.name}`,
+        userId,
+        programType: "YOUTUBE",
+        metadata: {
+          planId: plan.id,
+          planName: plan.name,
+          vat: Number(plan.vat),
+          totalCost,
+          purchaseReference,
+        },
       });
 
       // Create YoutubeProvider record with subscription balance

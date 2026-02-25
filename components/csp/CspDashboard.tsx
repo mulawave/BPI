@@ -22,6 +22,8 @@ import {
   Globe,
   HeadphonesIcon,
   ChevronRight,
+  TimerReset,
+  TrendingDown,
 } from "lucide-react";
 
 interface CspDashboardProps {
@@ -63,35 +65,32 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   const [contributionWallet, setContributionWallet] = useState<"community" | "wallet">("wallet");
   const [shuffledBroadcasts, setShuffledBroadcasts] = useState<typeof broadcastsQuery.data>([]);
 
-  const categoryRules = {
-    national: {
-      label: "National",
-      minMembership: "regular plus" as Membership,
-      minDirects: 10,
-      minThreshold: 10000,
-      broadcastHours: 48,
-    },
-    global: {
-      label: "Global",
-      minMembership: "gold" as Membership,
-      minDirects: 20,
-      minThreshold: 20000,
-      broadcastHours: 48,
-    },
-  } satisfies Record<SupportCategory, { label: string; minMembership: Membership; minDirects: number; minThreshold: number; broadcastHours: number }>;
+  const categoryRulesFallback = {
+    national: { label: "National", minDirects: 10, minThreshold: 10000, broadcastHours: 48, minCumulativeContrib: 10000, minDistinctRequests: 10 },
+    global: { label: "Global", minDirects: 10, minThreshold: 20000, broadcastHours: 48, minCumulativeContrib: 20000, minDistinctRequests: 10 },
+  };
 
   const eligibilityQuery = api.csp.getEligibility.useQuery(undefined, { refetchOnWindowFocus: false });
+  const waitStatusQuery = api.csp.getWaitStatus.useQuery(undefined, { refetchOnWindowFocus: false });
   const liveStatusQuery = api.csp.getLiveStatus.useQuery(undefined, { refetchOnWindowFocus: false });
   const historyQuery = api.csp.listHistory.useQuery({ pageSize: 5 }, { refetchOnWindowFocus: false });
   const broadcastsQuery = api.csp.listBroadcasts.useQuery(undefined, { refetchOnWindowFocus: false });
+
+  // Derive per-category config from backend when available, fall back to static defaults
+  const categoryRules = {
+    national: eligibilityQuery.data?.categoryConfig?.national ?? categoryRulesFallback.national,
+    global: eligibilityQuery.data?.categoryConfig?.global ?? categoryRulesFallback.global,
+  };
+
   const submitRequest = api.csp.submitRequest.useMutation({
     onSuccess: () => {
       toast.success("Support request submitted for approval.");
       liveStatusQuery.refetch();
       historyQuery.refetch();
+      eligibilityQuery.refetch();
       setPurpose("");
       setNotes("");
-      setAmount(categoryRules[supportCategory].minThreshold.toString());
+      setAmount(String(categoryRules[supportCategory]?.minThreshold ?? 10000));
     },
     onError: (err) => {
       toast.error(err.message || "Failed to submit request");
@@ -115,13 +114,14 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     membershipLabel: eligibilityQuery.data?.membershipName ?? "No active membership",
     membershipActive: eligibilityQuery.data?.membershipActive ?? false,
     directReferrals: eligibilityQuery.data?.directReferrals ?? 0,
+    qualifiedDirects: eligibilityQuery.data?.qualifiedDirects ?? 0,
     contributionsMade: eligibilityQuery.data?.cumulativeContributions ?? 0,
     minContributionRequired: eligibilityQuery.data?.minContributionRequired ?? 10000,
     minPerContribution: eligibilityQuery.data?.minPerContribution ?? 500,
     requestsContributed: eligibilityQuery.data?.requestsContributed ?? 0,
     minDistinctRequests: eligibilityQuery.data?.minDistinctRequests ?? 10,
-    nationalDirectRequired: 10,
-    globalDirectRequired: 20,
+    hasCooldown: eligibilityQuery.data?.cooldown?.isActive ?? false,
+    cooldownEndsAt: eligibilityQuery.data?.cooldown?.cooldownEndsAt ?? null,
   };
 
   const balances = {
@@ -131,7 +131,6 @@ export function CspDashboard({ userName }: CspDashboardProps) {
 
   const eligibility = useMemo(() => {
     const backend = eligibilityQuery.data?.categories?.[supportCategory];
-    const rules = categoryRules[supportCategory];
     if (!backend) {
       return {
         eligible: false,
@@ -140,7 +139,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         hasContrib: false,
         hasDistinct: false,
         meetsMinPerContribution: false,
-        rules,
+        globalPath: null as string | null,
       };
     }
 
@@ -151,7 +150,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
       hasContrib: backend.hasContrib,
       hasDistinct: backend.hasDistinct,
       meetsMinPerContribution: profile.minPerContribution >= 500,
-      rules,
+      globalPath: backend.globalPath ?? null,
     };
   }, [eligibilityQuery.data, profile.minPerContribution, supportCategory]);
 
@@ -234,7 +233,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     const parsedAmount = Number(amount);
     submitRequest.mutate({
       category: supportCategory,
-      amount: Number.isNaN(parsedAmount) ? categoryRules[supportCategory].minThreshold : parsedAmount,
+      amount: Number.isNaN(parsedAmount) ? (categoryRules[supportCategory]?.minThreshold ?? 10000) : parsedAmount,
       purpose,
       notes,
     });
@@ -254,7 +253,9 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </p>
           </div>
           <div className="flex items-center gap-3 bg-white/10 rounded-xl px-4 py-3 backdrop-blur border border-white/20">
-            {eligibility.eligible ? (
+            {profile.hasCooldown ? (
+              <TimerReset className="w-6 h-6 text-amber-200" />
+            ) : eligibility.eligible ? (
               <CheckCircle2 className="w-6 h-6 text-white" />
             ) : (
               <AlertTriangle className="w-6 h-6 text-amber-200" />
@@ -262,7 +263,11 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             <div>
               <p className="text-sm font-semibold">Status</p>
               <p className="text-white/80 text-sm">
-                {eligibility.eligible ? "Eligible to request support" : "Complete requirements to unlock"}
+                {profile.hasCooldown
+                  ? "Cooldown active — next request locked"
+                  : eligibility.eligible
+                  ? "Eligible to request support"
+                  : "Complete requirements to unlock"}
               </p>
             </div>
           </div>
@@ -287,6 +292,56 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </Card>
       </div>
 
+      {/* Cooldown / wait-period status — visible only when active */}
+      {waitStatusQuery.data?.hasCooldown && waitStatusQuery.data.cooldownEndsAt && (
+        <Card className="p-5 border-l-4 border-l-amber-500 bg-amber-50/60 dark:bg-amber-900/10 dark:border-amber-400">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <TimerReset className="w-6 h-6 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-semibold text-foreground">Collection Cooldown Active</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  You cannot submit a new request until{" "}
+                  <span className="font-medium text-foreground">
+                    {new Date(waitStatusQuery.data.cooldownEndsAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                  </span>
+                  {waitStatusQuery.data.cooldownMonths && (
+                    <> ({waitStatusQuery.data.cooldownMonths}-month cooldown)</>
+                  )}
+                  .
+                </p>
+              </div>
+            </div>
+
+            {/* Monthly reduction progress */}
+            {waitStatusQuery.data.monthlyProgress && (
+              <div className="sm:min-w-[220px] space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <TrendingDown className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <p className="text-xs font-semibold text-foreground">
+                    Reduce wait by contributing ₦{waitStatusQuery.data.monthlyProgress.target.toLocaleString()}/mo
+                  </p>
+                </div>
+                <div className="h-2 w-full rounded-full bg-amber-200 dark:bg-amber-900/40 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-amber-500 transition-all duration-500"
+                    style={{ width: `${waitStatusQuery.data.monthlyProgress.pct}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground flex items-center justify-between">
+                  <span>₦{waitStatusQuery.data.monthlyProgress.contributed.toLocaleString()} contributed this month</span>
+                  {waitStatusQuery.data.monthlyProgress.reduced ? (
+                    <span className="text-emerald-600 font-medium">1 month deducted ✓</span>
+                  ) : (
+                    <span>₦{Math.max(0, waitStatusQuery.data.monthlyProgress.target - waitStatusQuery.data.monthlyProgress.contributed).toLocaleString()} more to reduce by 1 month</span>
+                  )}
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
       {/* Eligibility overview */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <Card className="p-4 border-l-4 border-l-emerald-500 bg-white dark:bg-bpi-dark-card">
@@ -303,9 +358,9 @@ export function CspDashboard({ userName }: CspDashboardProps) {
           <div className="flex items-center gap-3">
             <Target className="w-5 h-5 text-emerald-600" />
             <div>
-              <p className="text-xs text-muted-foreground">Direct referrals</p>
-              <p className="font-semibold text-foreground">{profile.directReferrals}</p>
-              <p className="text-[11px] text-muted-foreground">Need {categoryRules[supportCategory].minDirects}+ for {categoryRules[supportCategory].label}</p>
+              <p className="text-xs text-muted-foreground">Qualified directs</p>
+              <p className="font-semibold text-foreground">{profile.qualifiedDirects}</p>
+              <p className="text-[11px] text-muted-foreground">Need {categoryRules[supportCategory]?.minDirects ?? 10}+ for {categoryRules[supportCategory]?.label ?? supportCategory}</p>
             </div>
           </div>
         </Card>
@@ -324,7 +379,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             <Clock className="w-5 h-5 text-emerald-600" />
             <div>
               <p className="text-xs text-muted-foreground">Broadcast window</p>
-              <p className="font-semibold text-foreground">{categoryRules[supportCategory].broadcastHours} hrs</p>
+              <p className="font-semibold text-foreground">{categoryRules[supportCategory]?.broadcastHours ?? 48} hrs</p>
               <p className="text-[11px] text-muted-foreground">Extendable via payments or directs</p>
             </div>
           </div>
@@ -358,10 +413,10 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                       className={`w-full rounded-lg border px-3 py-2 text-left transition ${active ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "border-gray-200 dark:border-bpi-dark-accent"}`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-foreground">{rules.label}</span>
+                        <span className="font-semibold text-foreground">{rules?.label ?? cat}</span>
                         <Globe className="w-4 h-4 text-muted-foreground" />
                       </div>
-                      <p className="text-xs text-muted-foreground">Directs {rules.minDirects}+ • Threshold ₦{rules.minThreshold.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">Directs {rules?.minDirects ?? 10}+ • Threshold ₦{(rules?.minThreshold ?? 10000).toLocaleString()}</p>
                     </button>
                   );
                 })}
@@ -375,8 +430,13 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-background px-3 py-2 text-sm"
-                  min={categoryRules[supportCategory].minThreshold}
+                  min={categoryRules[supportCategory]?.minThreshold ?? 10000}
                 />
+                {amount && !Number.isNaN(Number(amount)) && Number(amount) > 0 && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Broadcast target: ₦{Math.ceil(Number(amount) * 1.2).toLocaleString()} <span className="text-amber-600">(+20% service markup)</span>
+                  </p>
+                )}
               </div>
               <div>
                 <label className="text-sm font-medium text-foreground">Purpose</label>
@@ -407,14 +467,19 @@ export function CspDashboard({ userName }: CspDashboardProps) {
               {eligibility.hasMembership ? "Membership ok" : "Upgrade membership"}
             </span>
             <span className={`px-2 py-1 rounded-full ${eligibility.hasDirects ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
-              {eligibility.hasDirects ? "Directs ok" : `Need ${categoryRules[supportCategory].minDirects}+ directs`}
+              {eligibility.hasDirects ? "Directs ok" : `Need ${categoryRules[supportCategory]?.minDirects ?? 10}+ qualified directs`}
             </span>
             <span className={`px-2 py-1 rounded-full ${eligibility.hasContrib ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
-              {eligibility.hasContrib ? "Contribution ok" : "Contribute ₦10k cumulative"}
+              {eligibility.hasContrib ? "Contribution ok" : `Contribute ₦${(categoryRules[supportCategory]?.minCumulativeContrib ?? 10000).toLocaleString()} cumulative`}
             </span>
             <span className={`px-2 py-1 rounded-full ${eligibility.hasDistinct ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
               {eligibility.hasDistinct ? "10 requests met" : `${profile.minDistinctRequests} distinct requests needed`}
             </span>
+            {supportCategory === "global" && eligibility.globalPath && (
+              <span className="px-2 py-1 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
+                Qualifies via Path {eligibility.globalPath}
+              </span>
+            )}
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -424,11 +489,11 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </div>
             <Button
               onClick={handleSubmit}
-              disabled={!eligibility.eligible}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={!eligibility.eligible || profile.hasCooldown || submitRequest.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
             >
               <Sparkles className="w-4 h-4 mr-2" />
-              Submit for approval
+              {profile.hasCooldown ? "Cooldown active" : "Submit for approval"}
             </Button>
           </div>
         </Card>
@@ -447,7 +512,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
               <div className="p-3 rounded-lg bg-white dark:bg-bpi-dark-card border border-gray-100 dark:border-bpi-dark-accent">
                 <p className="text-muted-foreground">Raised</p>
-                <p className="font-semibold text-foreground">₦{(liveStatus?.raisedAmount ?? 0).toLocaleString()} / ₦{(liveStatus?.thresholdAmount ?? categoryRules[supportCategory].minThreshold).toLocaleString()}</p>
+                <p className="font-semibold text-foreground">₦{(liveStatus?.raisedAmount ?? 0).toLocaleString()} / ₦{(liveStatus?.thresholdAmount ?? categoryRules[supportCategory]?.minThreshold ?? 10000).toLocaleString()}</p>
               </div>
               <div className="p-3 rounded-lg bg-white dark:bg-bpi-dark-card border border-gray-100 dark:border-bpi-dark-accent">
                 <p className="text-muted-foreground">Contributors</p>

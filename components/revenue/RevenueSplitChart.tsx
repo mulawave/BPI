@@ -6,13 +6,23 @@ interface RevenueSplitChartProps {
   companyReserve: number;
   executivePool: number;
   strategicPools: number;
+  companyPercent?: number;
+  executivePercent?: number;
+  strategicPercent?: number;
 }
 
-export default function RevenueSplitChart({ companyReserve, executivePool, strategicPools }: RevenueSplitChartProps) {
+export default function RevenueSplitChart({
+  companyReserve,
+  executivePool,
+  strategicPools,
+  companyPercent = 50,
+  executivePercent = 30,
+  strategicPercent = 20,
+}: RevenueSplitChartProps) {
   const data = [
-    { name: "Company Reserve (50%)", value: companyReserve, percentage: 50 },
-    { name: "Executive Pool (30%)", value: executivePool, percentage: 30 },
-    { name: "Strategic Pools (20%)", value: strategicPools, percentage: 20 },
+    { name: `Company Reserve (${companyPercent}%)`, value: companyReserve, percentage: companyPercent },
+    { name: `Executive Pool (${executivePercent}%)`, value: executivePool, percentage: executivePercent },
+    { name: `Strategic Pools (${strategicPercent}%)`, value: strategicPools, percentage: strategicPercent },
   ];
 
   const COLORS = ["#3b82f6", "#8b5cf6", "#f97316"];
@@ -24,7 +34,7 @@ export default function RevenueSplitChart({ companyReserve, executivePool, strat
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6">
       <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4">
-        Revenue Allocation (50/30/20)
+        Revenue Allocation ({companyPercent}/{executivePercent}/{strategicPercent})
       </h3>
       <ResponsiveContainer width="100%" height={300}>
         <PieChart>

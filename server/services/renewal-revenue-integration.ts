@@ -18,20 +18,64 @@ export async function recordRenewalRevenue(params: {
   vat: number;
   renewalHistoryId: string;
 }) {
-  const { userId, packageName, renewalFee, vat, renewalHistoryId } = params;
+  const { userId, packageId, packageName, renewalFee, vat, renewalHistoryId } = params;
   
   const totalAmount = renewalFee + vat;
+
+  const normalizePercent = (maybePercent: number, fallback: number) => {
+    if (!Number.isFinite(maybePercent)) return fallback;
+    if (maybePercent < 0) return fallback;
+    return maybePercent > 1 ? maybePercent / 100 : maybePercent;
+  };
+
+  const computeProfitFiat = (params: {
+    profitMode: "PERCENT" | "FIXED" | "HYBRID";
+    profitPercent: number;
+    profitFixedAmountFiat: number;
+    baseFiat: number;
+  }) => {
+    const percent = normalizePercent(params.profitPercent, 0);
+    const fixed = Number(params.profitFixedAmountFiat ?? 0);
+    const base = Number(params.baseFiat ?? 0);
+
+    let profit = 0;
+    if (params.profitMode === "PERCENT") profit = base * percent;
+    else if (params.profitMode === "FIXED") profit = fixed;
+    else profit = base * percent + fixed;
+
+    return Math.min(Math.max(profit, 0), base);
+  };
   
   try {
     console.log(`[RENEWAL REVENUE] Recording renewal revenue for user ${userId}: ₦${totalAmount.toLocaleString()}`);
+
+    const membershipPackage = await prisma.membershipPackage.findUnique({ where: { id: packageId } });
+    const renewalProfitFiat = membershipPackage
+      ? computeProfitFiat({
+          profitMode: ((membershipPackage.profitMode ?? "PERCENT") as any) as "PERCENT" | "FIXED" | "HYBRID",
+          profitPercent: Number(membershipPackage.profitPercent ?? 1),
+          profitFixedAmountFiat: Number(membershipPackage.profitFixedAmountFiat ?? 0),
+          baseFiat: Number(renewalFee ?? 0),
+        })
+      : Number(renewalFee ?? 0);
     
     // Record revenue in the revenue system
     const revenueTransaction = await recordRevenue(prisma, {
       source: "MEMBERSHIP_RENEWAL",
-      amount: totalAmount,
+      amount: renewalProfitFiat,
       currency: "NGN",
       sourceId: `renewal-${renewalHistoryId}`,
       description: `Membership renewal: ${packageName}`,
+      userId,
+      packageId,
+      programType: "MEMBERSHIP_RENEWAL",
+      metadata: {
+        totalPaid: totalAmount,
+        renewalFee,
+        vat,
+        packageName,
+        usedProfitConfig: Boolean(membershipPackage),
+      },
     });
     
     console.log(`[RENEWAL REVENUE] Successfully recorded renewal revenue: ${revenueTransaction.id}`);

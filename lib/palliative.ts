@@ -60,13 +60,49 @@ export function calculateThresholdProgress(currentAmount: number): number {
 }
 
 /**
- * Check if user can activate palliative (reached threshold)
+ * Get the target amount for a given palliative option slug.
+ * Falls back to 0 if slug not recognised.
+ */
+export function getOptionTargetAmount(slug: string): number {
+  const option = PALLIATIVE_OPTIONS.find(o => o.slug === slug);
+  return option ? option.targetAmount : 0;
+}
+
+/**
+ * Check if shelter-activation milestone has been reached.
+ * This is purely the ₦200k threshold check (or already activated).
+ */
+export function isShelterActivated(
+  palliativeBalance: number,
+  palliativeActivated: boolean
+): boolean {
+  return palliativeActivated || palliativeBalance >= PALLIATIVE_THRESHOLD;
+}
+
+/**
+ * Calculate progress toward an option's target amount.
+ */
+export function calculateOptionProgress(
+  currentAmount: number,
+  optionTargetAmount: number
+): number {
+  if (optionTargetAmount <= 0) return 0;
+  return Math.min((currentAmount / optionTargetAmount) * 100, 100);
+}
+
+/**
+ * Check if user can activate palliative.
+ * Pass optionTargetAmount to validate against the chosen option's target
+ * rather than just the shelter-activation threshold.
  */
 export function canActivatePalliative(
   palliativeWallet: number,
-  palliativeActivated: boolean
+  palliativeActivated: boolean,
+  optionTargetAmount?: number
 ): boolean {
-  return palliativeWallet >= PALLIATIVE_THRESHOLD && !palliativeActivated;
+  if (palliativeActivated) return false;
+  const required = optionTargetAmount ?? PALLIATIVE_THRESHOLD;
+  return palliativeWallet >= required;
 }
 
 /**

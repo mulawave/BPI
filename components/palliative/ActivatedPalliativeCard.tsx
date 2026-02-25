@@ -8,7 +8,8 @@ import { useCurrency } from "@/contexts/CurrencyContext";
 import { 
   Target, TrendingUp, CheckCircle2, Clock,
   Loader2, AlertCircle, Sparkles, Award,
-  Car, Home, MapPin, Briefcase, Sun as SolarIcon, GraduationCap
+  Car, Home, MapPin, Briefcase, Sun as SolarIcon, GraduationCap,
+  Zap, Shield
 } from "lucide-react";
 import { cn } from "@/styles/utils";
 import toast from "react-hot-toast";
@@ -74,6 +75,9 @@ export function ActivatedPalliativeCard() {
     activatedAt,
   } = activated;
 
+  const isOpenPalliative = (activated as any).activationType === "instant";
+  const thresholdAmount = (activated as any).thresholdAmount ?? null;
+
   // Icon mapping for palliative types
   const palliativeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
     car: Car,
@@ -125,8 +129,23 @@ export function ActivatedPalliativeCard() {
             )}>
               {palliativeType.charAt(0).toUpperCase() + palliativeType.slice(1)} Palliative
             </h3>
+            {/* Open vs Shelter distinction badge */}
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className={cn(
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold",
+                isOpenPalliative
+                  ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
+                  : "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+              )}>
+                {isOpenPalliative ? (
+                  <><Zap className="w-3 h-3" /> Open Palliative • Instant</>
+                ) : (
+                  <><Shield className="w-3 h-3" /> Shelter Palliative • Accumulated</>
+                )}
+              </span>
+            </div>
             <p className={cn(
-              "text-sm",
+              "text-sm mt-0.5",
               hasMatured
                 ? "text-yellow-700 dark:text-yellow-300"
                 : "text-emerald-700 dark:text-emerald-300"
@@ -247,12 +266,27 @@ export function ActivatedPalliativeCard() {
           <div className="flex items-start gap-3">
             <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-sm text-emerald-900 dark:text-emerald-100 font-medium mb-1">
-                Keep growing your network!
-              </p>
-              <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                You need {formatAmount(targetAmount - currentBalance)} more to reach your target. Earn 10% of all referral package prices towards your palliative.
-              </p>
+              {isOpenPalliative ? (
+                <>
+                  <p className="text-sm text-emerald-900 dark:text-emerald-100 font-medium mb-1">
+                    <Zap className="w-3.5 h-3.5 inline mr-1 text-violet-500" />
+                    Open Palliative — Instant Benefit Active
+                  </p>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                    Your palliative was activated instantly at membership registration. Your benefit wallet is growing as referral commissions flow in.
+                    {thresholdAmount ? ` Starting value: ₦${Number(thresholdAmount).toLocaleString()}.` : ""}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-emerald-900 dark:text-emerald-100 font-medium mb-1">
+                    Keep growing your network!
+                  </p>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                    You need {formatAmount(targetAmount - currentBalance)} more to reach your target. Earn 10% of all referral package prices towards your palliative.
+                  </p>
+                </>
+              )}
             </div>
           </div>
         </div>

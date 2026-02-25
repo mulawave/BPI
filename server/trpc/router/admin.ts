@@ -20,6 +20,7 @@ import { notifyWithdrawalStatus, notifyDepositStatus } from "@/server/services/n
 import { generateReceiptLink } from "@/server/services/receipt.service";
 import { sendWithdrawalApprovedToUser, sendWithdrawalRejectedToUser } from "@/lib/email";
 import { recordRevenue } from "@/server/services/revenue.service";
+import { getNigerianRegion } from "@/lib/nigeria-regions";
 
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.session?.user) {
@@ -1109,9 +1110,43 @@ export const adminRouter = createTRPCRouter({
         const metadata = (payment.metadata ?? {}) as any;
         const paymentRef = payment.gatewayReference || payment.id;
 
+        const normalizePercent = (maybePercent: number, fallback: number) => {
+          if (!Number.isFinite(maybePercent)) return fallback;
+          if (maybePercent < 0) return fallback;
+          return maybePercent > 1 ? maybePercent / 100 : maybePercent;
+        };
+
+        const computeProfitFiat = (params: {
+          profitMode: "PERCENT" | "FIXED" | "HYBRID";
+          profitPercent: number;
+          profitFixedAmountFiat: number;
+          baseFiat: number;
+        }) => {
+          const percent = normalizePercent(params.profitPercent, 0);
+          const fixed = Number(params.profitFixedAmountFiat ?? 0);
+          const base = Number(params.baseFiat ?? 0);
+
+          let profit = 0;
+          if (params.profitMode === "PERCENT") profit = base * percent;
+          else if (params.profitMode === "FIXED") profit = fixed;
+          else profit = base * percent + fixed;
+
+          return Math.min(Math.max(profit, 0), base);
+        };
+
         if (purpose === "MEMBERSHIP") {
           const pkgId = metadata.packageId as string | undefined;
           if (!pkgId) throw new Error(`Missing packageId in payment metadata for MEMBERSHIP activation. Payment ID: ${payment.id}, User: ${payment.User?.email || payment.userId}. Please check the payment record and ensure packageId is present.`);
+
+          const membershipPackage = await prisma.membershipPackage.findUnique({ where: { id: pkgId } });
+          if (!membershipPackage) throw new Error(`Membership package not found: ${pkgId}`);
+
+          const membershipProfitFiat = computeProfitFiat({
+            profitMode: ((membershipPackage.profitMode ?? "PERCENT") as any) as "PERCENT" | "FIXED" | "HYBRID",
+            profitPercent: Number(membershipPackage.profitPercent ?? 1),
+            profitFixedAmountFiat: Number(membershipPackage.profitFixedAmountFiat ?? 0),
+            baseFiat: Number(membershipPackage.price ?? 0),
+          });
 
           await activateMembershipAfterExternalPayment({
             prisma,
@@ -1126,11 +1161,168 @@ export const adminRouter = createTRPCRouter({
           // Record revenue for membership purchase
           await recordRevenue(prisma, {
             source: "MEMBERSHIP_REGISTRATION",
-            amount: payment.amount,
+            amount: membershipProfitFiat,
             currency: "NGN",
             sourceId: payment.id,
             description: `Membership purchase: Package ${pkgId}`,
+            sourceKey: "BANK_TRANSFER",
+            userId: payment.userId,
+            packageId: pkgId,
+            programType: "MEMBERSHIP",
+            country: payment.User?.country ?? undefined,
+            state: payment.User?.state ?? undefined,
+            region: getNigerianRegion(payment.User?.state),
+            metadata: {
+              paymentRef,
+              paymentAmount: payment.amount,
+              basePrice: membershipPackage.price,
+              vat: membershipPackage.vat,
+              packageName: membershipPackage.name,
+              selectedPalliative: metadata.selectedPalliative ?? null,
+              paymentMethod: "BANK_TRANSFER",
+            },
           });
+        } else if (purpose === "STORE_PURCHASE") {
+          const orderId = metadata.orderId as string | undefined;
+          if (!orderId) {
+            throw new Error(
+              `Missing orderId in payment metadata for STORE_PURCHASE. Payment ID: ${payment.id}, User: ${payment.User?.email || payment.userId}.`
+            );
+          }
+
+          const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: {
+              product: { include: { pickupCenter: true } },
+              user: true,
+              pickupCenter: true,
+            },
+          });
+
+          if (!order) {
+            throw new Error(`Store order not found: ${orderId}`);
+          }
+
+          if (order.userId !== payment.userId) {
+            throw new Error(
+              `Order user mismatch for STORE_PURCHASE. Order ${order.id} belongs to ${order.userId} but payment is for ${payment.userId}.`
+            );
+          }
+
+          const generateClaimCode = async (): Promise<string> => {
+            let claimCode = "";
+            let exists = true;
+            while (exists) {
+              const rand = Math.floor(100000 + Math.random() * 900000);
+              claimCode = `BPI-${rand}-PC`;
+              const found = await prisma.order.findFirst({ where: { claimCode } });
+              exists = Boolean(found);
+            }
+            return claimCode;
+          };
+
+          // If order is already moved forward, treat approval as idempotent.
+          if (order.status === "PENDING") {
+            const claimCode = await generateClaimCode();
+            const nowIso = new Date().toISOString();
+
+            const existingBreakdown = (order.paymentBreakdown ?? {}) as any;
+            const externalTokenExisting = existingBreakdown?.external_token ?? {};
+
+            const txHash = payment.proofOfPayment || (metadata.txHash as string | undefined) || null;
+
+            const paymentBreakdown = {
+              ...existingBreakdown,
+              payment_mode: "EXTERNAL_TOKEN",
+              confirmed_at: nowIso,
+              external_token: {
+                ...externalTokenExisting,
+                gateway_reference: paymentRef,
+                tx_hash: txHash,
+                token_symbol: (metadata.tokenSymbol as string | undefined) ?? externalTokenExisting?.symbol ?? null,
+                expected_amount: (metadata.expectedTokenAmount as number | undefined) ?? externalTokenExisting?.expected_amount ?? null,
+                expected_fiat: (metadata.totalFiat as number | undefined) ?? externalTokenExisting?.expected_fiat ?? null,
+                deposit_address: (metadata.depositAddress as string | undefined) ?? externalTokenExisting?.deposit_address ?? null,
+              },
+            };
+
+            const updatedOrder = await prisma.order.update({
+              where: { id: order.id },
+              data: {
+                status: "PROCESSING",
+                claimStatus: "CODE_ISSUED",
+                claimCode,
+                paymentBreakdown,
+              },
+              include: { product: true, user: true, pickupCenter: true },
+            });
+
+            try {
+              const { sendEmail } = await import("@/lib/email");
+
+              if (updatedOrder.user?.email) {
+                await sendEmail({
+                  to: updatedOrder.user.email,
+                  subject: "Your BPI pickup claim code",
+                  html: `<p>Hello ${updatedOrder.user.name ?? ""},</p><p>Your order for <strong>${updatedOrder.product?.name ?? "your item"}</strong> is confirmed.</p><p><strong>Claim Code:</strong> ${claimCode}</p><p>Please present this code and a valid ID at the pickup center to receive your item.</p>`,
+                });
+              }
+
+              const pickupEmail = updatedOrder.pickupCenter?.contactEmail;
+              if (pickupEmail) {
+                await sendEmail({
+                  to: pickupEmail,
+                  subject: "New pickup order assigned",
+                  html: `<p>A new order has been assigned to your pickup center.</p><p>Product: ${updatedOrder.product?.name ?? "Item"}</p><p>Claim Code: ${claimCode}</p>`,
+                });
+              }
+            } catch {
+              // Email failures should not block approval.
+            }
+
+            const profitFiat = Number((updatedOrder.pricingSnapshot as any)?.profit_fiat ?? 0);
+            const totalFiat = Number((updatedOrder.pricingSnapshot as any)?.total_fiat ?? payment.amount ?? 0);
+            const amountForPools = profitFiat > 0 ? profitFiat : totalFiat;
+
+            if (amountForPools > 0) {
+              try {
+                await recordRevenue(prisma, {
+                  source: "STORE_PURCHASE",
+                  amount: amountForPools,
+                  currency: "NGN",
+                  sourceId: updatedOrder.id,
+                  description: `Store purchase profit: ${updatedOrder.product?.name || "Product"}`,
+                  sourceKey: "EXTERNAL_TOKEN",
+                  userId: updatedOrder.userId,
+                  orderId: updatedOrder.id,
+                  productId: updatedOrder.productId,
+                  programType: "STORE",
+                  country: updatedOrder.user?.country ?? undefined,
+                  state: updatedOrder.user?.state ?? undefined,
+                  region: getNigerianRegion(updatedOrder.user?.state),
+                  tokenSymbol:
+                    (metadata.tokenSymbol as string | undefined) ??
+                    (updatedOrder.pricingSnapshot as any)?.token_symbol ??
+                    (updatedOrder.paymentBreakdown as any)?.external_token?.symbol ??
+                    undefined,
+                  metadata: {
+                    pendingPaymentId: payment.id,
+                    paymentRef,
+                    txHash,
+                    quantity: updatedOrder.quantity,
+                    profitFiat,
+                    totalFiat,
+                    pricingSnapshot: updatedOrder.pricingSnapshot ?? null,
+                    paymentBreakdown: updatedOrder.paymentBreakdown ?? null,
+                  },
+                });
+              } catch (err: any) {
+                // RevenueTransaction uses a composite idempotency key (source, sourceId); ignore duplicates.
+                const code = err?.code || err?.name;
+                if (code !== "P2002") throw err;
+              }
+            }
+          }
         } else if (purpose === "UPGRADE") {
           const pkgId = metadata.packageId as string | undefined;
           const fromId = metadata.fromPackageId as string | undefined;
@@ -1155,6 +1347,21 @@ export const adminRouter = createTRPCRouter({
             currency: "NGN",
             sourceId: payment.id,
             description: `Membership upgrade: From ${fromId} to ${pkgId}`,
+            sourceKey: "BANK_TRANSFER",
+            userId: payment.userId,
+            packageId: pkgId,
+            programType: "MEMBERSHIP_UPGRADE",
+            country: payment.User?.country ?? undefined,
+            state: payment.User?.state ?? undefined,
+            region: getNigerianRegion(payment.User?.state),
+            metadata: {
+              paymentRef,
+              paymentAmount: payment.amount,
+              fromPackageId: fromId,
+              toPackageId: pkgId,
+              selectedPalliative: metadata.selectedPalliative ?? null,
+              paymentMethod: "BANK_TRANSFER",
+            },
           });
         } else if (purpose === "TOPUP" || purpose === "DEPOSIT") {
           // Extract deposit amount and VAT from metadata
@@ -2257,6 +2464,9 @@ export const adminRouter = createTRPCRouter({
           isActive: z.boolean().optional(),
           features: z.array(z.string()).optional(),
           renewalFee: z.number().optional(),
+          profitMode: z.enum(["PERCENT", "FIXED", "HYBRID"]).optional(),
+          profitPercent: z.number().min(0).optional(),
+          profitFixedAmountFiat: z.number().min(0).optional(),
         }),
       })
     )
@@ -2331,6 +2541,9 @@ export const adminRouter = createTRPCRouter({
         hasRenewal: z.boolean().default(true),
         renewalFee: z.number().optional(),
         renewalCycle: z.number().default(365),
+        profitMode: z.enum(["PERCENT", "FIXED", "HYBRID"]).default("PERCENT"),
+        profitPercent: z.number().min(0).default(1),
+        profitFixedAmountFiat: z.number().min(0).default(0),
         // Activation rewards
         cash_l1: z.number().default(0),
         cash_l2: z.number().default(0),

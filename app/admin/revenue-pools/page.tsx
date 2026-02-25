@@ -21,6 +21,16 @@ import {
   ChevronUp,
   CheckCircle,
   Trash2,
+  Clock,
+  Cpu,
+  AlertTriangle,
+  RefreshCw,
+  PlusCircle,
+  CheckSquare,
+  XCircle,
+  PauseCircle,
+  Receipt,
+  Settings2,
 } from "lucide-react";
 import CompanyReserveModal from "@/components/revenue/CompanyReserveModal";
 import RevenueSplitChart from "@/components/revenue/RevenueSplitChart";
@@ -47,20 +57,79 @@ export default function RevenuePoolsPage() {
   const [newRolePercent, setNewRolePercent] = useState("");
   const [percentageReason, setPercentageReason] = useState("");
   const [percentages, setPercentages] = useState<Record<string, number>>({});
+  const [splitCompany, setSplitCompany] = useState("50");
+  const [splitExecutive, setSplitExecutive] = useState("30");
+  const [splitStrategic, setSplitStrategic] = useState("20");
+
+  // Pool config editing
+  const [editingPoolConfig, setEditingPoolConfig] = useState<{ poolType: string; freq: string; maxMembers: string } | null>(null);
+
+  // Tech Pool project state
+  const [showTechPanel, setShowTechPanel] = useState(false);
+  const [techProjectForm, setTechProjectForm] = useState<{ title: string; description: string; category: string; approvedBudget: string; startDate: string; endDate: string; milestones: string }>({ title: "", description: "", category: "", approvedBudget: "", startDate: "", endDate: "", milestones: "" });
+  const [showTechProjectForm, setShowTechProjectForm] = useState(false);
+  const [spendForm, setSpendForm] = useState<{ projectId: string; amount: string; description: string; receipt: string } | null>(null);
+  const [editingTechProject, setEditingTechProject] = useState<{ id: string; roiNotes: string; milestones: string } | null>(null);
+
+  const [analyticsFilters, setAnalyticsFilters] = useState({
+    programType: "",
+    sourceKey: "",
+    productId: "",
+    orderId: "",
+    packageId: "",
+    tokenSymbol: "",
+    country: "",
+    state: "",
+    region: "",
+    userId: "",
+  });
+
+  const analyticsFiltersPayload = useMemo(() => {
+    const trimmed: Record<string, string> = {
+      programType: analyticsFilters.programType.trim(),
+      sourceKey: analyticsFilters.sourceKey.trim(),
+      productId: analyticsFilters.productId.trim(),
+      orderId: analyticsFilters.orderId.trim(),
+      packageId: analyticsFilters.packageId.trim(),
+      tokenSymbol: analyticsFilters.tokenSymbol.trim(),
+      country: analyticsFilters.country.trim(),
+      state: analyticsFilters.state.trim(),
+      region: analyticsFilters.region.trim(),
+      userId: analyticsFilters.userId.trim(),
+    };
+
+    const out: Record<string, string> = {};
+    (Object.keys(trimmed) as Array<keyof typeof trimmed>).forEach((key) => {
+      if (trimmed[key]) out[key] = trimmed[key];
+    });
+
+    return Object.keys(out).length ? out : undefined;
+  }, [analyticsFilters]);
 
   // Queries
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = api.revenue.getDashboardStats.useQuery();
+  const { data: splitSettings, isLoading: splitLoading, refetch: refetchSplit } = api.revenue.getProfitSplitSettings.useQuery();
   const { data: shareholders, isLoading: shareholdersLoading, refetch: refetchShareholders } = api.revenue.getExecutiveShareholders.useQuery();
   const { data: pools, isLoading: poolsLoading, refetch: refetchPools } = api.revenue.getStrategicPools.useQuery();
+  const { data: techProjects, refetch: refetchTechProjects } = api.revenue.listTechProjects.useQuery();
   const { data: searchResults } = api.revenue.searchUsers.useQuery(
     { query: searchQuery },
     { enabled: searchQuery.length >= 2 }
   );
 
   // Analytics queries
-  const { data: revenueBySource } = api.revenue.getRevenueBySource.useQuery({ days: 30 });
-  const { data: revenueTrend } = api.revenue.getRevenueTrend.useQuery({ days: 30 });
-  const { data: allocations } = api.revenue.getAllocations.useQuery({ limit: 50 });
+  const { data: revenueBySource } = api.revenue.getRevenueBySource.useQuery({
+    days: 30,
+    filters: analyticsFiltersPayload,
+  });
+  const { data: revenueTrend } = api.revenue.getRevenueTrend.useQuery({
+    days: 30,
+    filters: analyticsFiltersPayload,
+  });
+  const { data: allocations } = api.revenue.getAllocations.useQuery({
+    limit: 50,
+    filters: analyticsFiltersPayload,
+  });
 
   // Mutations
   const createExecutive = api.revenue.createExecutivePosition.useMutation({
@@ -137,6 +206,72 @@ export default function RevenuePoolsPage() {
     onError: (error: any) => toast.error(error.message),
   });
 
+  const updateSplit = api.revenue.updateProfitSplitSettings.useMutation({
+    onSuccess: () => {
+      toast.success("Revenue split updated");
+      refetchSplit();
+      refetchStats();
+    },
+    onError: (error: any) => toast.error(error.message || "Failed to update split"),
+  });
+
+  const updatePoolConfig = api.revenue.updatePoolConfig.useMutation({
+    onSuccess: () => {
+      toast.success("Pool configuration updated");
+      refetchPools();
+      setEditingPoolConfig(null);
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+
+  const createTechProject = api.revenue.createTechProject.useMutation({
+    onSuccess: () => {
+      toast.success("Technology project created");
+      refetchTechProjects();
+      setShowTechProjectForm(false);
+      setTechProjectForm({ title: "", description: "", category: "", approvedBudget: "", startDate: "", endDate: "", milestones: "" });
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+
+  const approveTechProject = api.revenue.approveTechProject.useMutation({
+    onSuccess: (_, vars) => {
+      toast.success(`Project ${vars.action.toLowerCase().replace("_", " ")}`);
+      refetchTechProjects();
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+
+  const recordTechSpend = api.revenue.recordTechSpend.useMutation({
+    onSuccess: () => {
+      toast.success("Spend recorded");
+      refetchTechProjects();
+      setSpendForm(null);
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+
+  const updateTechProject = api.revenue.updateTechProject.useMutation({
+    onSuccess: () => {
+      toast.success("Project updated");
+      refetchTechProjects();
+      setEditingTechProject(null);
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+
+  const syncLeadershipQualifications = api.revenue.syncLeadershipQualifications.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Qualifications synced: ${data.activated} activated, ${data.deactivated} deactivated`);
+      refetchPools();
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+
+  const { data: overduePools, refetch: refetchOverdue } = api.revenue.getOverduePools.useQuery(undefined, {
+    refetchInterval: 60_000, // re-check every minute while page is open
+  });
+
   useEffect(() => {
     if (shareholders) {
       const next: Record<string, number> = {};
@@ -146,6 +281,20 @@ export default function RevenuePoolsPage() {
       setPercentages(next);
     }
   }, [shareholders]);
+
+  useEffect(() => {
+    if (!splitSettings) return;
+    setSplitCompany(String(splitSettings.companyPercent));
+    setSplitExecutive(String(splitSettings.executivePercent));
+    setSplitStrategic(String(splitSettings.strategicPercent));
+  }, [splitSettings]);
+
+  const splitLabel = useMemo(() => {
+    const c = splitSettings?.companyPercent ?? 50;
+    const e = splitSettings?.executivePercent ?? 30;
+    const s = splitSettings?.strategicPercent ?? 20;
+    return `${c}/${e}/${s}`;
+  }, [splitSettings]);
 
   const totalPercentage = useMemo(
     () => Object.values(percentages).reduce((sum, val) => sum + Number(val || 0), 0),
@@ -166,9 +315,96 @@ export default function RevenuePoolsPage() {
                 Revenue Pools & Allocation
               </h1>
               <p className="text-slate-600 dark:text-slate-300 mt-2">
-                Manage revenue distribution (50/30/20 split)
+                Manage revenue distribution ({splitLabel} split)
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Revenue Split Settings */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 dark:text-white">Allocation Split Settings</h2>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Updates apply to new revenue transactions going forward.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+                Company Reserve (%)
+              </label>
+              <input
+                value={splitCompany}
+                onChange={(e) => setSplitCompany(e.target.value)}
+                inputMode="decimal"
+                className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                placeholder="50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+                Executive Pool (%)
+              </label>
+              <input
+                value={splitExecutive}
+                onChange={(e) => setSplitExecutive(e.target.value)}
+                inputMode="decimal"
+                className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                placeholder="30"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+                Strategic Pools (%)
+              </label>
+              <input
+                value={splitStrategic}
+                onChange={(e) => setSplitStrategic(e.target.value)}
+                inputMode="decimal"
+                className="w-full px-4 py-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                placeholder="20"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mt-4">
+            <div className="text-sm text-slate-600 dark:text-slate-300">
+              {splitLoading ? "Loading current split..." : `Current: ${splitLabel}`}
+            </div>
+            <button
+              onClick={() => {
+                const company = parseFloat(splitCompany);
+                const executive = parseFloat(splitExecutive);
+                const strategic = parseFloat(splitStrategic);
+
+                if (![company, executive, strategic].every((v) => Number.isFinite(v))) {
+                  toast.error("Please enter valid numbers for all percentages");
+                  return;
+                }
+                if (company < 0 || executive < 0 || strategic < 0) {
+                  toast.error("Percentages cannot be negative");
+                  return;
+                }
+                if (Math.abs(company + executive + strategic - 100) > 0.0001) {
+                  toast.error("Percentages must sum to 100");
+                  return;
+                }
+
+                updateSplit.mutate({
+                  companyPercent: company,
+                  executivePercent: executive,
+                  strategicPercent: strategic,
+                });
+              }}
+              disabled={updateSplit.isPending}
+              className="px-5 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {updateSplit.isPending ? "Saving..." : "Save Split"}
+            </button>
           </div>
         </div>
 
@@ -703,6 +939,21 @@ export default function RevenuePoolsPage() {
             </div>
           ) : (
             <div className="space-y-4">
+              {/* Overdue distribution warning banner */}
+              {overduePools && overduePools.length > 0 && (
+                <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                      {overduePools.length} pool{overduePools.length > 1 ? "s" : ""} overdue for scheduled distribution
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                      {overduePools.map((p: any) => `${p.type} (was due ${new Date(p.nextDistributionAt).toLocaleDateString()})`).join(" · ")}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {pools.map((pool: any) => (
               <div
                 key={pool.id}
@@ -715,14 +966,45 @@ export default function RevenuePoolsPage() {
                     </h3>
                     <div className="flex items-center gap-4 mt-1">
                       <span className="text-sm text-slate-600 dark:text-slate-300">
-                        {pool.Members?.length || 0} members
+                        {pool.Members?.length || 0} members {pool.maxMembers ? `/ ${pool.maxMembers} max` : ""}
                       </span>
                       <span className="text-sm font-medium text-green-600 dark:text-green-400">
                         ₦{Number(pool.balance || 0).toLocaleString()} available
                       </span>
+                      {pool.distributionFrequency && pool.distributionFrequency !== "MANUAL" && (
+                        <span className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full">
+                          <Clock className="w-3 h-3" />
+                          {pool.distributionFrequency.toLowerCase()}
+                        </span>
+                      )}
+                      {pool.lastDistributedAt && (
+                        <span className="text-xs text-slate-400">
+                          Last distributed: {new Date(pool.lastDistributedAt).toLocaleDateString()}
+                        </span>
+                      )}
+                      {pool.nextDistributionAt && (() => {
+                        const isOverdue = new Date(pool.nextDistributionAt) <= new Date();
+                        return (
+                          <span className={`text-xs ${
+                            isOverdue
+                              ? "text-red-600 dark:text-red-400 font-semibold"
+                              : "text-amber-600 dark:text-amber-400"
+                          }`}>
+                            {isOverdue ? "⚠ OVERDUE — " : "Next: "}
+                            {new Date(pool.nextDistributionAt).toLocaleDateString()}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => setEditingPoolConfig({ poolType: pool.type, freq: pool.distributionFrequency ?? "MANUAL", maxMembers: pool.maxMembers ? String(pool.maxMembers) : "" })}
+                      className="px-3 py-2 bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-sm transition-colors"
+                      title="Configure pool"
+                    >
+                      <Settings2 className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => setSelectedPool(pool.type)}
                       className="px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 text-sm transition-colors"
@@ -730,6 +1012,20 @@ export default function RevenuePoolsPage() {
                       <UserPlus className="w-4 h-4 inline mr-1" />
                       Add Member
                     </button>
+                    {pool.type === "LEADERSHIP" && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm("Sync LEADERSHIP pool members with their LeadershipPoolQualification records? Members who no longer qualify will be deactivated.")) {
+                            syncLeadershipQualifications.mutate();
+                          }
+                        }}
+                        disabled={syncLeadershipQualifications.isPending}
+                        className="px-3 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 text-sm transition-colors disabled:opacity-50"
+                        title="Sync qualification status from LeadershipPoolQualification"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${syncLeadershipQualifications.isPending ? "animate-spin" : ""}`} />
+                      </button>
+                    )}
                     {pool.balance > 0 && (pool.Members?.length || 0) > 0 && (
                       <button
                         onClick={() => {
@@ -747,6 +1043,58 @@ export default function RevenuePoolsPage() {
                   </div>
                 </div>
 
+                {/* Pool Config Editor */}
+{editingPoolConfig?.poolType === pool.type && (() => { const epc = editingPoolConfig!; return (
+                  <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Settings2 className="w-4 h-4 text-amber-600" />
+                      <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">Configure {pool.type} Pool</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Distribution Frequency</label>
+                        <select
+                          value={epc.freq}
+                          onChange={(e) => setEditingPoolConfig((p) => p ? { ...p, freq: e.target.value } : p)}
+                          className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none"
+                        >
+                          <option value="MANUAL">Manual</option>
+                          <option value="MONTHLY">Monthly</option>
+                          <option value="QUARTERLY">Quarterly</option>
+                          <option value="BI_ANNUAL">Bi-Annual</option>
+                          <option value="ANNUAL">Annual</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Max Members (optional)</label>
+                        <input
+                          type="number"
+                          placeholder="Unlimited"
+                          value={epc.maxMembers}
+                          onChange={(e) => setEditingPoolConfig((p) => p ? { ...p, maxMembers: e.target.value } : p)}
+                          className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => updatePoolConfig.mutate({
+                          poolType: epc.poolType as any,
+                          distributionFrequency: epc.freq as any,
+                          maxMembers: epc.maxMembers ? parseInt(epc.maxMembers) : undefined,
+                        })}
+                        disabled={updatePoolConfig.isPending}
+                        className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                      >
+                        Save Config
+                      </button>
+                      <button onClick={() => setEditingPoolConfig(null)} className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg text-sm hover:bg-slate-50 transition-colors">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ); })()}
+
                 {(pool.Members?.length || 0) > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {pool.Members?.map((member: any) => (
@@ -762,6 +1110,20 @@ export default function RevenuePoolsPage() {
                             <div className="text-xs text-slate-500">
                               {member.User?.email || "No email"}
                             </div>
+                            {member.qualificationStatus && (
+                              <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-xs font-medium ${
+                                member.qualificationStatus === "SUSPENDED" ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300" :
+                                member.qualificationStatus === "PENDING_REVIEW" ? "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300" :
+                                "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
+                              }`}>
+                                {member.qualificationStatus}
+                              </span>
+                            )}
+                            {member.eligibilityCriteria && (
+                              <div className="text-xs text-slate-400 mt-0.5 truncate" title={member.eligibilityCriteria}>
+                                {member.eligibilityCriteria}
+                              </div>
+                            )}
                           </div>
                           <button
                             onClick={() => {
@@ -800,6 +1162,288 @@ export default function RevenuePoolsPage() {
           )}
         </div>
 
+        {/* Technology Pool Projects Section */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full border-2 border-blue-200 dark:border-blue-700 flex items-center justify-center">
+                <Cpu className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Technology Pool Projects</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Budget allocation, spend tracking and ROI reporting</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowTechProjectForm((v) => !v)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
+              <PlusCircle className="w-4 h-4" />
+              Propose Project
+            </button>
+          </div>
+
+          {/* New Project Form */}
+          {showTechProjectForm && (
+            <motion.div
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 p-5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl"
+            >
+              <h3 className="text-base font-semibold text-blue-800 dark:text-blue-300 mb-4">New Technology Project Proposal</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Title *</label>
+                  <input value={techProjectForm.title} onChange={(e) => setTechProjectForm((p) => ({ ...p, title: e.target.value }))} className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Project title" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Category *</label>
+                  <input value={techProjectForm.category} onChange={(e) => setTechProjectForm((p) => ({ ...p, category: e.target.value }))} className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:border-blue-500" placeholder="e.g. Infrastructure, Software, Security" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Description</label>
+                  <textarea value={techProjectForm.description} onChange={(e) => setTechProjectForm((p) => ({ ...p, description: e.target.value }))} rows={3} className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:border-blue-500 resize-none" placeholder="Project description and goals" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Approved Budget (₦) *</label>
+                  <input type="number" value={techProjectForm.approvedBudget} onChange={(e) => setTechProjectForm((p) => ({ ...p, approvedBudget: e.target.value }))} className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:border-blue-500" placeholder="0" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Milestones (comma-separated)</label>
+                  <input value={techProjectForm.milestones} onChange={(e) => setTechProjectForm((p) => ({ ...p, milestones: e.target.value }))} className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Design, Development, Testing, Launch" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Start Date</label>
+                  <input type="date" value={techProjectForm.startDate} onChange={(e) => setTechProjectForm((p) => ({ ...p, startDate: e.target.value }))} className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">End Date</label>
+                  <input type="date" value={techProjectForm.endDate} onChange={(e) => setTechProjectForm((p) => ({ ...p, endDate: e.target.value }))} className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:border-blue-500" />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => createTechProject.mutate({
+                    title: techProjectForm.title,
+                    description: techProjectForm.description,
+                    category: techProjectForm.category as any,
+                    approvedBudget: parseFloat(techProjectForm.approvedBudget) || 0,
+                    milestones: techProjectForm.milestones ? techProjectForm.milestones.split(",").map((m) => m.trim()).filter(Boolean) : undefined,
+                    startDate: techProjectForm.startDate || undefined,
+                    endDate: techProjectForm.endDate || undefined,
+                  })}
+                  disabled={createTechProject.isPending || !techProjectForm.title || !techProjectForm.category || !techProjectForm.approvedBudget}
+                  className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {createTechProject.isPending ? "Creating..." : "Create Project"}
+                </button>
+                <button onClick={() => setShowTechProjectForm(false)} className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg text-sm hover:bg-slate-50 transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Projects List */}
+          {!techProjects || techProjects.length === 0 ? (
+            <div className="text-center py-10 text-slate-400">
+              <Cpu className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">No technology projects yet. Propose the first one above.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {(techProjects as any[]).map((proj: any) => {
+                const budgetPct = proj.approvedBudget > 0 ? Math.min(100, (proj.totalSpent / proj.approvedBudget) * 100) : 0;
+                const statusColors: Record<string, string> = {
+                  PROPOSED: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300",
+                  APPROVED: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+                  IN_PROGRESS: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+                  COMPLETED: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+                  REJECTED: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+                  ON_HOLD: "bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-300",
+                };
+                return (
+                  <motion.div key={proj.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="border border-slate-200 dark:border-slate-700 rounded-xl p-5">
+                    <div className="flex items-start justify-between gap-4 mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColors[proj.status] ?? ""}`}>{proj.status.replace("_", " ")}</span>
+                          {proj.category && <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">{proj.category}</span>}
+                        </div>
+                        <h4 className="text-base font-semibold text-slate-800 dark:text-white">{proj.title}</h4>
+                        {proj.description && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{proj.description}</p>}
+                        <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
+                          {proj.proposedBy && <span>Proposed by: {proj.proposedBy.name ?? proj.proposedBy.email}</span>}
+                          {proj.approvedBy && <span>Approved by: {proj.approvedBy.name ?? proj.approvedBy.email}</span>}
+                          {proj.startDate && <span>Start: {new Date(proj.startDate).toLocaleDateString()}</span>}
+                          {proj.endDate && <span>End: {new Date(proj.endDate).toLocaleDateString()}</span>}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-lg font-bold text-slate-800 dark:text-white">₦{Number(proj.approvedBudget || 0).toLocaleString()}</div>
+                        <div className="text-xs text-slate-500">Budget</div>
+                        <div className="text-sm font-semibold text-red-600 dark:text-red-400 mt-1">₦{Number(proj.totalSpent || 0).toLocaleString()} spent</div>
+                      </div>
+                    </div>
+
+                    {/* Budget progress bar */}
+                    <div className="mb-3">
+                      <div className="flex justify-between text-xs text-slate-500 mb-1">
+                        <span>Budget utilization</span>
+                        <span>{budgetPct.toFixed(1)}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full transition-all ${budgetPct > 90 ? "bg-red-500" : budgetPct > 70 ? "bg-amber-400" : "bg-blue-500"}`}
+                          style={{ width: `${budgetPct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Milestones */}
+                    {proj.milestones && (() => {
+                      try {
+                        const ms = typeof proj.milestones === "string" ? JSON.parse(proj.milestones) : proj.milestones;
+                        if (Array.isArray(ms) && ms.length > 0) return (
+                          <div className="flex flex-wrap gap-1.5 mb-3">
+                            {ms.map((m: string, i: number) => (
+                              <span key={i} className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded">{m}</span>
+                            ))}
+                          </div>
+                        );
+                      } catch {}
+                      return null;
+                    })()}
+
+                    {/* ROI Notes */}
+                    {proj.roiNotes && (
+                      <div className="text-xs text-slate-500 dark:text-slate-400 italic mb-3 border-l-2 border-green-300 pl-3">
+                        ROI: {proj.roiNotes}
+                      </div>
+                    )}
+
+                    {/* Spend history */}
+                    {proj.Spends && proj.Spends.length > 0 && (
+                      <div className="mb-3 bg-slate-50 dark:bg-slate-700/30 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">Spend History</p>
+                        <div className="space-y-1">
+                          {proj.Spends.map((s: any) => (
+                            <div key={s.id} className="flex justify-between text-xs text-slate-600 dark:text-slate-300">
+                              <span>{s.description}</span>
+                              <span className="font-medium">₦{Number(s.amount).toLocaleString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {proj.status === "PROPOSED" && (
+                        <>
+                          <button
+                            onClick={() => approveTechProject.mutate({ projectId: proj.id, action: "APPROVE" })}
+                            disabled={approveTechProject.isPending}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg text-xs hover:bg-green-100 transition-colors disabled:opacity-50"
+                          >
+                            <CheckSquare className="w-3 h-3" /> Approve
+                          </button>
+                          <button
+                            onClick={() => approveTechProject.mutate({ projectId: proj.id, action: "REJECT" })}
+                            disabled={approveTechProject.isPending}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg text-xs hover:bg-red-100 transition-colors disabled:opacity-50"
+                          >
+                            <XCircle className="w-3 h-3" /> Reject
+                          </button>
+                          <button
+                            onClick={() => approveTechProject.mutate({ projectId: proj.id, action: "ON_HOLD" })}
+                            disabled={approveTechProject.isPending}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs hover:bg-slate-200 transition-colors disabled:opacity-50"
+                          >
+                            <PauseCircle className="w-3 h-3" /> On Hold
+                          </button>
+                        </>
+                      )}
+                      {(proj.status === "APPROVED" || proj.status === "IN_PROGRESS") && (
+                        <button
+                          onClick={() => setSpendForm({ projectId: proj.id, amount: "", description: "", receipt: "" })}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg text-xs hover:bg-blue-100 transition-colors"
+                        >
+                          <Receipt className="w-3 h-3" /> Record Spend
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setEditingTechProject({ id: proj.id, roiNotes: proj.roiNotes ?? "", milestones: proj.milestones ? (typeof proj.milestones === "string" ? (() => { try { return JSON.parse(proj.milestones).join(", "); } catch { return proj.milestones; } })() : proj.milestones.join(", ")) : "" })}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 rounded-lg text-xs hover:bg-slate-100 transition-colors"
+                      >
+                        <Settings2 className="w-3 h-3" /> Edit ROI/Milestones
+                      </button>
+                    </div>
+
+                    {/* Spend Form */}
+                    {spendForm?.projectId === proj.id && (() => { const sf = spendForm!; return (
+                      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+                        <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-3">Record Spend for: {proj.title}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-xs text-slate-500 mb-1">Amount (₦) *</label>
+                            <input type="number" value={sf.amount} onChange={(e) => setSpendForm((p) => p ? { ...p, amount: e.target.value } : p)} className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none" />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-slate-500 mb-1">Description *</label>
+                            <input value={sf.description} onChange={(e) => setSpendForm((p) => p ? { ...p, description: e.target.value } : p)} className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none" placeholder="What was purchased" />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-slate-500 mb-1">Receipt URL</label>
+                            <input value={sf.receipt} onChange={(e) => setSpendForm((p) => p ? { ...p, receipt: e.target.value } : p)} className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none" placeholder="Optional receipt link" />
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          <button
+                            onClick={() => recordTechSpend.mutate({ projectId: sf.projectId, amount: parseFloat(sf.amount) || 0, description: sf.description, receipt: sf.receipt || undefined })}
+                            disabled={recordTechSpend.isPending || !sf.amount || !sf.description}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                          >
+                            {recordTechSpend.isPending ? "Saving..." : "Save Spend"}
+                          </button>
+                          <button onClick={() => setSpendForm(null)} className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg text-sm hover:bg-slate-50 transition-colors">Cancel</button>
+                        </div>
+                      </motion.div>
+                    ); })()}
+
+                    {/* Edit ROI / Milestones Form */}
+                    {editingTechProject?.id === proj.id && (() => { const etp = editingTechProject!; return (
+                      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-3 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg">
+                        <p className="text-xs font-semibold text-green-700 dark:text-green-300 mb-3">Edit: {proj.title}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs text-slate-500 mb-1">ROI Notes</label>
+                            <textarea rows={2} value={etp.roiNotes} onChange={(e) => setEditingTechProject((p) => p ? { ...p, roiNotes: e.target.value } : p)} className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none resize-none" placeholder="Return on investment notes" />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-slate-500 mb-1">Milestones (comma-separated)</label>
+                            <textarea rows={2} value={etp.milestones} onChange={(e) => setEditingTechProject((p) => p ? { ...p, milestones: e.target.value } : p)} className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none resize-none" placeholder="Phase 1, Phase 2, Launch" />
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          <button
+                            onClick={() => updateTechProject.mutate({ projectId: etp.id, roiNotes: etp.roiNotes || undefined, milestones: etp.milestones ? etp.milestones.split(",").map((m) => m.trim()).filter(Boolean) : undefined })}
+                            disabled={updateTechProject.isPending}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 transition-colors"
+                          >
+                            {updateTechProject.isPending ? "Saving..." : "Save"}
+                          </button>
+                          <button onClick={() => setEditingTechProject(null)} className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg text-sm hover:bg-slate-50 transition-colors">Cancel</button>
+                        </div>
+                      </motion.div>
+                    ); })()}
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* Analytics & Charts Section */}
         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6">
           <div className="flex items-center justify-between mb-6">
@@ -809,6 +1453,185 @@ export default function RevenuePoolsPage() {
             </h2>
           </div>
 
+          {/* Analytics Filters */}
+          <div className="mb-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/40 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Search className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Filters</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  (optional)
+                </p>
+              </div>
+              <button
+                onClick={() =>
+                  setAnalyticsFilters({
+                    programType: "",
+                    sourceKey: "",
+                    productId: "",
+                    orderId: "",
+                    packageId: "",
+                    tokenSymbol: "",
+                    country: "",
+                    state: "",
+                    region: "",
+                    userId: "",
+                  })
+                }
+                className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  Program Type
+                </label>
+                <input
+                  value={analyticsFilters.programType}
+                  onChange={(e) =>
+                    setAnalyticsFilters((p) => ({ ...p, programType: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                  placeholder="e.g. MEMBERSHIP / STORE"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  Source Key
+                </label>
+                <input
+                  value={analyticsFilters.sourceKey}
+                  onChange={(e) =>
+                    setAnalyticsFilters((p) => ({ ...p, sourceKey: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                  placeholder="e.g. EXTERNAL_TOKEN"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  Token Symbol
+                </label>
+                <input
+                  value={analyticsFilters.tokenSymbol}
+                  onChange={(e) =>
+                    setAnalyticsFilters((p) => ({ ...p, tokenSymbol: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                  placeholder="e.g. BPT / USDT"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  Product ID
+                </label>
+                <input
+                  value={analyticsFilters.productId}
+                  onChange={(e) =>
+                    setAnalyticsFilters((p) => ({ ...p, productId: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                  placeholder="Product ID"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  Order ID
+                </label>
+                <input
+                  value={analyticsFilters.orderId}
+                  onChange={(e) =>
+                    setAnalyticsFilters((p) => ({ ...p, orderId: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                  placeholder="Order ID"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  Package ID
+                </label>
+                <input
+                  value={analyticsFilters.packageId}
+                  onChange={(e) =>
+                    setAnalyticsFilters((p) => ({ ...p, packageId: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                  placeholder="Package ID"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  Country
+                </label>
+                <input
+                  value={analyticsFilters.country}
+                  onChange={(e) =>
+                    setAnalyticsFilters((p) => ({ ...p, country: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                  placeholder="Country"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  State
+                </label>
+                <input
+                  value={analyticsFilters.state}
+                  onChange={(e) =>
+                    setAnalyticsFilters((p) => ({ ...p, state: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                  placeholder="State"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  Region
+                </label>
+                <input
+                  value={analyticsFilters.region}
+                  onChange={(e) =>
+                    setAnalyticsFilters((p) => ({ ...p, region: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                  placeholder="Region"
+                />
+              </div>
+
+              <div className="md:col-span-2 lg:col-span-3">
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                  User ID
+                </label>
+                <input
+                  value={analyticsFilters.userId}
+                  onChange={(e) =>
+                    setAnalyticsFilters((p) => ({ ...p, userId: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                  placeholder="User ID (optional)"
+                />
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+              <Info className="w-4 h-4" />
+              Filters apply to Source, Trend, and Allocation Timeline (last 30 days for charts).
+            </p>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {/* Revenue Split Pie Chart */}
             {stats && (
@@ -816,6 +1639,9 @@ export default function RevenuePoolsPage() {
                 companyReserve={stats.companyReserve}
                 executivePool={stats.executivePoolPending}
                 strategicPools={stats.strategicPools.reduce((sum: any, p: any) => sum + p.balance, 0)}
+                companyPercent={splitSettings?.companyPercent}
+                executivePercent={splitSettings?.executivePercent}
+                strategicPercent={splitSettings?.strategicPercent}
               />
             )}
 

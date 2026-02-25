@@ -17,6 +17,17 @@ import toast from "react-hot-toast";
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(value);
 
+const formatProductPrice = (product: Product): string => {
+  const mode = String((product as any).pricing_mode ?? "fiat").toLowerCase();
+  if (mode === "token_unit") {
+    const symbol = String((product as any).token_unit_symbol ?? "").toUpperCase();
+    const amount = Number((product as any).token_unit_amount ?? 0);
+    if (symbol && Number.isFinite(amount) && amount > 0) return `${amount} ${symbol}`;
+    return "Token-unit";
+  }
+  return formatCurrency(product.base_price_fiat);
+};
+
 function RatingStars({ rating }: { rating: number }) {
   return (
     <div className="flex items-center gap-1">
@@ -105,7 +116,7 @@ function FeaturedCarouselCard({ product, detailLoading, onViewDetails }: { produ
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="text-xs text-muted-foreground">From</div>
-            <div className="text-xl font-bold text-foreground">{formatCurrency(product.base_price_fiat)}</div>
+            <div className="text-xl font-bold text-foreground">{formatProductPrice(product)}</div>
           </div>
           <Button
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:shadow-lg transition-all duration-200"
@@ -208,7 +219,7 @@ function ProductCard({ product, quickBuyLoading, detailLoading, onQuickBuy, onVi
         
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">From</div>
-          <div className="text-xl font-bold text-foreground">{formatCurrency(product.base_price_fiat)}</div>
+          <div className="text-xl font-bold text-foreground">{formatProductPrice(product)}</div>
         </div>
 
       <TokenLimits product={product} />
@@ -302,7 +313,7 @@ function MobileProductCard({ product, quickBuyLoading, detailLoading, onQuickBuy
             <h3 className="text-base font-semibold text-foreground line-clamp-1">{product.name}</h3>
             <p className="text-sm text-muted-foreground line-clamp-2">{product.description}</p>
           </div>
-          <div className="text-right text-sm font-semibold text-foreground whitespace-nowrap">{formatCurrency(product.base_price_fiat)}</div>
+          <div className="text-right text-sm font-semibold text-foreground whitespace-nowrap">{formatProductPrice(product)}</div>
         </div>
       <TokenLimits product={product} />
       <RewardChips product={product} />
@@ -356,6 +367,7 @@ export function StoreExperience() {
   const [detailLoading, setDetailLoading] = useState<string | null>(null);
   const router = useRouter();
   const checkoutMutation = api.store.createCheckoutIntent.useMutation();
+  const externalCheckoutMutation = api.store.createExternalTokenCheckoutIntent.useMutation();
 
   // Fetch the full catalog once; filters/search are applied client-side so the featured carousel stays unfiltered.
   const { data: productsData, isLoading } = api.store.listProducts.useQuery({
@@ -393,7 +405,10 @@ export function StoreExperience() {
     setQuickBuyLoading(product.product_id);
     const loadingId = toast.loading(`Opening checkout for ${product.name}...`);
     try {
-      const res = await checkoutMutation.mutateAsync({ productId: product.product_id, quantity: 1 });
+      const isTokenUnit = String((product as any).pricing_mode ?? "fiat").toLowerCase() === "token_unit";
+      const res = isTokenUnit
+        ? await externalCheckoutMutation.mutateAsync({ productId: product.product_id, quantity: 1 })
+        : await checkoutMutation.mutateAsync({ productId: product.product_id, quantity: 1 });
       const qty = 1;
       const redirect = res.redirectUrl || `/checkout?intent=${res.intentId}&productId=${product.product_id}&quantity=${qty}`;
       router.push(redirect);
@@ -404,7 +419,7 @@ export function StoreExperience() {
       toast.dismiss(loadingId);
       setQuickBuyLoading(null);
     }
-  }, [checkoutMutation, router]);
+  }, [checkoutMutation, externalCheckoutMutation, router]);
 
   const handleViewDetails = useCallback((product: Product) => {
     setDetailLoading(product.product_id);

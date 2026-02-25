@@ -16,10 +16,6 @@ const nextConfig = {
     },
     // Performance optimizations
     optimizePackageImports: ['@trpc/react-query', '@trpc/client', 'react-icons', 'framer-motion'],
-    // Faster refresh
-    turbotrace: {
-      logLevel: 'error'
-    },
   },
   // Faster webpack builds
   webpack: (config, { dev }) => {

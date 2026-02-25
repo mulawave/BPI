@@ -35,6 +35,9 @@ export default function PackageEditModal({
     renewalFee: 0,
     isActive: true,
     features: [] as string[],
+    profitMode: "PERCENT" as "PERCENT" | "FIXED" | "HYBRID",
+    profitPercent: 1,
+    profitFixedAmountFiat: 0,
   });
 
   const [newFeature, setNewFeature] = useState("");
@@ -48,6 +51,9 @@ export default function PackageEditModal({
         renewalFee: pkg.renewalFee || 0,
         isActive: pkg.isActive,
         features: pkg.features || [],
+        profitMode: ((pkg as any).profitMode ?? "PERCENT") as any,
+        profitPercent: Number((pkg as any).profitPercent ?? 1),
+        profitFixedAmountFiat: Number((pkg as any).profitFixedAmountFiat ?? 0),
       });
     }
   }, [pkg]);
@@ -86,6 +92,9 @@ export default function PackageEditModal({
         renewalFee: formData.renewalFee > 0 ? formData.renewalFee : undefined,
         isActive: formData.isActive,
         features: formData.features.filter((f) => f.trim()),
+        profitMode: formData.profitMode,
+        profitPercent: formData.profitPercent,
+        profitFixedAmountFiat: formData.profitFixedAmountFiat,
       },
     });
   };
@@ -239,6 +248,73 @@ export default function PackageEditModal({
                       step="0.01"
                       min="0"
                     />
+                  </div>
+
+                  {/* Profit Configuration */}
+                  <div className="bg-gray-50 dark:bg-green-900/30 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                      Profit Configuration
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                          Mode
+                        </label>
+                        <select
+                          value={formData.profitMode}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              profitMode: e.target.value as any,
+                            }))
+                          }
+                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                        >
+                          <option value="PERCENT">PERCENT</option>
+                          <option value="FIXED">FIXED</option>
+                          <option value="HYBRID">HYBRID</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                          Percent (0–1 or 0–100)
+                        </label>
+                        <input
+                          type="number"
+                          value={formData.profitPercent}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              profitPercent: parseFloat(e.target.value) || 0,
+                            }))
+                          }
+                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                          step="0.01"
+                          min="0"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                          Fixed (₦)
+                        </label>
+                        <input
+                          type="number"
+                          value={formData.profitFixedAmountFiat}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              profitFixedAmountFiat: parseFloat(e.target.value) || 0,
+                            }))
+                          }
+                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white focus:outline-none focus:border-[#0d3b29]"
+                          step="0.01"
+                          min="0"
+                        />
+                      </div>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Used for profit pool recording (VAT excluded). Percent is interpreted like the store: values above 1 are treated as 0–100.
+                    </p>
                   </div>
 
                   {/* Status Toggle */}

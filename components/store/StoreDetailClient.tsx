@@ -16,6 +16,17 @@ import { api } from "@/client/trpc";
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(value);
 
+const formatProductPrice = (product: Product): string => {
+  const mode = String((product as any).pricing_mode ?? "fiat").toLowerCase();
+  if (mode === "token_unit") {
+    const symbol = String((product as any).token_unit_symbol ?? "").toUpperCase();
+    const amount = Number((product as any).token_unit_amount ?? 0);
+    if (symbol && Number.isFinite(amount) && amount > 0) return `${amount} ${symbol}`;
+    return "Token-unit";
+  }
+  return formatCurrency(product.base_price_fiat);
+};
+
 type Props = { product: Product };
 
 export default function StoreDetailClient({ product }: Props) {
@@ -23,6 +34,7 @@ export default function StoreDetailClient({ product }: Props) {
   const searchParams = useSearchParams();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const checkoutMutation = api.store.createCheckoutIntent.useMutation();
+  const externalCheckoutMutation = api.store.createExternalTokenCheckoutIntent.useMutation();
   const { data: catalog } = api.store.listProducts.useQuery({ status: "all" });
   const catalogProducts: Product[] = catalog ?? [];
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -33,7 +45,10 @@ export default function StoreDetailClient({ product }: Props) {
     setCheckoutLoading(true);
     const toastId = toast.loading("Opening checkout...");
     try {
-      const res = await checkoutMutation.mutateAsync({ productId: product.product_id, quantity: 1 });
+      const isTokenUnit = String((product as any).pricing_mode ?? "fiat").toLowerCase() === "token_unit";
+      const res = isTokenUnit
+        ? await externalCheckoutMutation.mutateAsync({ productId: product.product_id, quantity: 1 })
+        : await checkoutMutation.mutateAsync({ productId: product.product_id, quantity: 1 });
       const redirect = res.redirectUrl || `/checkout?intent=${res.intentId}&productId=${product.product_id}&quantity=1`;
       router.replace(redirect);
     } catch (err: any) {
@@ -42,7 +57,7 @@ export default function StoreDetailClient({ product }: Props) {
       toast.dismiss(toastId);
       setCheckoutLoading(false);
     }
-  }, [checkoutMutation, product.product_id, router]);
+  }, [checkoutMutation, externalCheckoutMutation, product, router]);
 
   // Auto-trigger when arriving with checkout=1 (from Quick Buy)
   useEffect(() => {
@@ -143,7 +158,7 @@ export default function StoreDetailClient({ product }: Props) {
               </div>
               <div className="text-right">
                 <div className="text-sm text-muted-foreground">From</div>
-                <div className="text-3xl font-bold">{formatCurrency(product.base_price_fiat)}</div>
+                <div className="text-3xl font-bold">{formatProductPrice(product)}</div>
               </div>
             </div>
 
@@ -243,7 +258,7 @@ export default function StoreDetailClient({ product }: Props) {
                 <div className="p-4 space-y-2">
                   <div className="text-xs uppercase text-muted-foreground">{fp.product_type}</div>
                   <div className="text-base font-semibold text-foreground line-clamp-2">{fp.name}</div>
-                  <div className="text-sm font-bold text-foreground">{formatCurrency(fp.base_price_fiat)}</div>
+                  <div className="text-sm font-bold text-foreground">{formatProductPrice(fp)}</div>
                 </div>
               </Link>
             ))}
@@ -266,7 +281,7 @@ export default function StoreDetailClient({ product }: Props) {
                 <div className="p-3 space-y-1">
                   <div className="text-xs uppercase text-muted-foreground">{sp.product_type}</div>
                   <div className="text-sm font-semibold text-foreground line-clamp-2">{sp.name}</div>
-                  <div className="text-sm font-bold text-foreground">{formatCurrency(sp.base_price_fiat)}</div>
+                  <div className="text-sm font-bold text-foreground">{formatProductPrice(sp)}</div>
                 </div>
               </Link>
             ))}

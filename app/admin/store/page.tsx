@@ -12,6 +12,8 @@ import type { AppRouter } from "@/server/trpc/router/_app";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import toast from "react-hot-toast";
 import {
+  Building2,
+  CheckCircle2,
   Coins,
   Filter,
   Gift,
@@ -21,12 +23,14 @@ import {
   PauseCircle,
   Pencil,
   Percent,
+  Phone,
   PlayCircle,
   RefreshCw,
   Save,
   Search,
   Shield,
   Tags,
+  Trash2,
   X,
 } from "lucide-react";
 import AdminPageGuide from "@/components/admin/AdminPageGuide";
@@ -37,6 +41,7 @@ type RouterInputs = inferRouterInputs<AppRouter>;
 type Product = RouterOutputs["store"]["listProducts"][number];
 type TokenRate = RouterOutputs["store"]["listTokenRates"][number];
 type Order = RouterOutputs["store"]["listOrders"][number];
+type StoreRewardConfig = RouterOutputs["store"]["listStoreRewardConfigs"][number];
 type UpsertProductInput = RouterInputs["store"]["adminUpsertProduct"] & { images?: string[] };
 
 type EditableProduct = Omit<
@@ -45,31 +50,49 @@ type EditableProduct = Omit<
   | "created_at"
   | "updated_at"
   | "reward_config"
+  | "store_reward_config_id"
 > & {
   product_id?: string;
   reward_config?: Product["reward_config"];
+  store_reward_config_id?: string | null;
   images?: string[];
 };
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(value || 0);
 
+const formatProductPrice = (product: Product): string => {
+  const mode = String((product as any).pricing_mode ?? "fiat").toLowerCase();
+  if (mode === "token_unit") {
+    const symbol = String((product as any).token_unit_symbol ?? "").toUpperCase();
+    const amount = Number((product as any).token_unit_amount ?? 0);
+    if (symbol && Number.isFinite(amount) && amount > 0) return `${amount} ${symbol}`;
+    return "Token-unit";
+  }
+  return formatCurrency(product.base_price_fiat);
+};
+
 const newProductTemplate = (): EditableProduct => ({
   product_id: "new-product",
   name: "",
   description: "",
+  vendor: null,
+  category: null,
   product_type: "physical",
+  pricing_mode: "fiat",
   base_price_fiat: 0,
+  token_unit_symbol: null,
+  token_unit_amount: null,
   accepted_tokens: ["BPT"],
   token_payment_limits: { BPT: 0.2 },
   reward_config: [],
+  store_reward_config_id: null,
   inventory_type: "unlimited",
   status: "active",
   hero_badge: "",
   images: [],
   featured: false,
   pickup_center_id: undefined,
-  reward_center_id: undefined,
   delivery_required: false,
   tags: [],
 });
@@ -79,6 +102,8 @@ export default function AdminStorePage() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [query, setQuery] = useState<string>("");
   const [debouncedQuery, setDebouncedQuery] = useState<string>("");
+  const [vendorFilter, setVendorFilter] = useState<string>("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all");
   const [orderQuery, setOrderQuery] = useState<string>("");
   const [debouncedOrderQuery, setDebouncedOrderQuery] = useState<string>("");
@@ -88,6 +113,14 @@ export default function AdminStorePage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const [pausingProductId, setPausingProductId] = useState<string | null>(null);
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
+  const [togglingConfigId, setTogglingConfigId] = useState<string | null>(null);
+  const [togglingStoreConfigId, setTogglingStoreConfigId] = useState<string | null>(null);
+  const [deletingConfigId, setDeletingConfigId] = useState<string | null>(null);
+  const [deletingLevelId, setDeletingLevelId] = useState<string | null>(null);
+  const [previewCenterId, setPreviewCenterId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 250);
@@ -104,22 +137,28 @@ export default function AdminStorePage() {
       status: statusFilter === "all" ? undefined : statusFilter,
       type: typeFilter === "all" ? undefined : typeFilter,
       query: debouncedQuery || undefined,
+      vendor: vendorFilter || undefined,
+      category: categoryFilter || undefined,
     }
   );
   const tokenRatesQuery = api.store.listTokenRates.useQuery();
   const rewardConfigsQuery = api.store.listRewardConfigs.useQuery();
+  const storeRewardConfigsQuery = api.store.listStoreRewardConfigs.useQuery();
   const pickupCentersQuery = api.store.listPickupCenters.useQuery();
-  const rewardCentersQuery = api.store.listRewardCenters.useQuery();
   const ordersQuery = api.store.listOrders.useQuery({
     status: orderStatusFilter === "all" ? undefined : [orderStatusFilter.toUpperCase() as Order["status"]],
   });
 
   const upsertProduct = api.store.adminUpsertProduct.useMutation();
+  const deleteProduct = api.store.adminDeleteProduct.useMutation();
   const upsertTokenRate = api.store.adminUpsertTokenRate.useMutation();
   const upsertRewardConfig = api.store.adminUpsertRewardConfig.useMutation();
-  const upsertPickupCenter = api.store.adminUpsertPickupCenter.useMutation();
-  const upsertRewardCenter = api.store.adminUpsertRewardCenter.useMutation();
   const updateOrderStatus = api.store.adminUpdateOrderStatus.useMutation();
+  const upsertStoreRewardConfig = api.store.adminUpsertStoreRewardConfig.useMutation();
+  const deleteStoreRewardConfig = api.store.adminDeleteStoreRewardConfig.useMutation();
+  const linkProductReferralConfig = api.store.adminLinkProductReferralConfig.useMutation();
+  const upsertStoreRewardLevel = api.store.adminUpsertStoreRewardLevel.useMutation();
+  const deleteStoreRewardLevel = api.store.adminDeleteStoreRewardLevel.useMutation();
 
   const products = (productsQuery.data ?? []) as Product[];
   const activeCount = useMemo(() => products.filter((p: Product) => p.status === "active").length, [products]);
@@ -127,12 +166,16 @@ export default function AdminStorePage() {
 
   const handlePauseToggle = async (product: Product, nextStatus: "ACTIVE" | "PAUSED") => {
     try {
+      setPausingProductId(product.product_id);
       const payload: UpsertProductInput = {
         id: product.product_id,
         name: product.name,
         description: product.description,
         productType: product.product_type.toUpperCase() as any,
+        pricingMode: (product.pricing_mode || "fiat").toUpperCase() as any,
         basePriceFiat: product.base_price_fiat,
+        tokenUnitSymbol: (product as any).token_unit_symbol ?? null,
+        tokenUnitAmount: (product as any).token_unit_amount ?? null,
         acceptedTokens: product.accepted_tokens,
         tokenPaymentLimits: product.token_payment_limits || {},
         rewardConfigId: product.reward_config?.[0]?.reward_id,
@@ -151,6 +194,8 @@ export default function AdminStorePage() {
       await productsQuery.refetch();
     } catch (err: any) {
       toast.error(err?.message || "Failed to update status");
+    } finally {
+      setPausingProductId(null);
     }
   };
 
@@ -178,8 +223,13 @@ export default function AdminStorePage() {
         id: editingProduct.product_id === "new-product" ? undefined : editingProduct.product_id,
         name: editingProduct.name,
         description: editingProduct.description,
+        vendor: (editingProduct as any).vendor ?? null,
+        category: (editingProduct as any).category ?? null,
         productType: (editingProduct.product_type || "physical").toUpperCase() as any,
+        pricingMode: (editingProduct.pricing_mode || "fiat").toUpperCase() as any,
         basePriceFiat: editingProduct.base_price_fiat || 0,
+        tokenUnitSymbol: (editingProduct as any).token_unit_symbol ?? null,
+        tokenUnitAmount: (editingProduct as any).token_unit_amount ?? null,
         acceptedTokens,
         tokenPaymentLimits,
         rewardConfigId: editingProduct.reward_config?.[0]?.reward_id,
@@ -193,7 +243,12 @@ export default function AdminStorePage() {
         featured: Boolean(editingProduct.featured),
       };
 
-      await upsertProduct.mutateAsync(payload);
+      const saved = await upsertProduct.mutateAsync(payload);
+      // Link (or unlink) the selected store referral config to this product
+      await linkProductReferralConfig.mutateAsync({
+        productId: saved.product_id,
+        configId: editingProduct.store_reward_config_id ?? null,
+      });
       toast.success("Product saved");
       await productsQuery.refetch();
       setEditingProduct(null);
@@ -303,6 +358,8 @@ export default function AdminStorePage() {
               setStatusFilter("all");
               setTypeFilter("all");
               setQuery("");
+              setVendorFilter("");
+              setCategoryFilter("");
               productsQuery.refetch();
             }}
           >
@@ -441,6 +498,24 @@ export default function AdminStorePage() {
               className="bg-transparent text-sm focus:outline-none"
             />
           </div>
+          <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5 bg-background">
+            <Tags className="h-4 w-4 text-muted-foreground" />
+            <input
+              value={vendorFilter}
+              onChange={(e) => setVendorFilter(e.target.value)}
+              placeholder="Filter by vendor"
+              className="bg-transparent text-sm focus:outline-none w-28"
+            />
+          </div>
+          <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5 bg-background">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <input
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              placeholder="Filter by category"
+              className="bg-transparent text-sm focus:outline-none w-32"
+            />
+          </div>
         </div>
 
         <div className="overflow-hidden rounded-xl border border-border/70">
@@ -465,12 +540,14 @@ export default function AdminStorePage() {
                       <Badge variant="outline" className={cn("text-[10px]", p.status === "active" ? "text-emerald-600 border-emerald-500/60" : "text-amber-600 border-amber-500/60")}>{p.status}</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground line-clamp-1">{p.description}</div>
-                    <div className="flex gap-1 text-[11px] text-muted-foreground">
-                      <Tags className="h-3 w-3" /> {p.tags?.slice(0, 3).join(" • ")}
+                    <div className="flex gap-2 text-[11px] text-muted-foreground">
+                      {(p as any).vendor && <span><span className="font-medium">Vendor:</span> {(p as any).vendor}</span>}
+                      {(p as any).category && <span><span className="font-medium">Cat:</span> {(p as any).category}</span>}
+                      {!((p as any).vendor) && !((p as any).category) && p.tags?.length > 0 && <span><Tags className="h-3 w-3 inline" /> {p.tags?.slice(0, 3).join(" • ")}</span>}
                     </div>
                   </div>
                   <div className="col-span-2 text-sm capitalize text-foreground">{p.product_type}</div>
-                  <div className="col-span-2 text-sm font-semibold text-foreground">{formatCurrency(p.base_price_fiat)}</div>
+                  <div className="col-span-2 text-sm font-semibold text-foreground">{formatProductPrice(p)}</div>
                   <div className="col-span-3 text-xs text-muted-foreground space-y-1">
                     <div className="flex flex-wrap gap-1">
                       {p.accepted_tokens.map((t: string) => (
@@ -491,17 +568,48 @@ export default function AdminStorePage() {
                       ))}
                     </div>
                   </div>
-                  <div className="col-span-2 flex justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setEditingProduct({ ...p, product_id: p.product_id })}>
+                  <div className="col-span-2 flex justify-end gap-1.5">
+                    <Button size="sm" variant="outline" onClick={() => { setConfirmDeleteProductId(null); setEditingProduct({ ...p, product_id: p.product_id }); }}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     {p.status === "active" ? (
-                      <Button size="sm" variant="ghost" onClick={() => handlePauseToggle(p, "PAUSED")}>
-                        <PauseCircle className="h-4 w-4 text-amber-500" />
+                      <Button size="sm" variant="ghost" onClick={() => handlePauseToggle(p, "PAUSED")} disabled={pausingProductId === p.product_id}>
+                        {pausingProductId === p.product_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <PauseCircle className="h-4 w-4 text-amber-500" />}
                       </Button>
                     ) : (
-                      <Button size="sm" variant="ghost" onClick={() => handlePauseToggle(p, "ACTIVE")}>
-                        <PlayCircle className="h-4 w-4 text-emerald-500" />
+                      <Button size="sm" variant="ghost" onClick={() => handlePauseToggle(p, "ACTIVE")} disabled={pausingProductId === p.product_id}>
+                        {pausingProductId === p.product_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4 text-emerald-500" />}
+                      </Button>
+                    )}
+                    {confirmDeleteProductId === p.product_id ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={deletingProductId === p.product_id}
+                          onClick={async () => {
+                            try {
+                              setDeletingProductId(p.product_id);
+                              await deleteProduct.mutateAsync({ id: p.product_id });
+                              toast.success("Product deleted");
+                              productsQuery.refetch();
+                            } catch (err: any) {
+                              toast.error(err?.message || "Failed to delete product");
+                            } finally {
+                              setDeletingProductId(null);
+                              setConfirmDeleteProductId(null);
+                            }
+                          }}
+                        >
+                          {deletingProductId === p.product_id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteProductId(null)}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteProductId(p.product_id)}>
+                        <Trash2 className="h-4 w-4 text-rose-500" />
                       </Button>
                     )}
                   </div>
@@ -741,7 +849,8 @@ export default function AdminStorePage() {
               className="space-y-2"
               onSubmit={async (e) => {
                 e.preventDefault();
-                const form = new FormData(e.currentTarget);
+                const formEl = e.currentTarget as HTMLFormElement;
+                const form = new FormData(formEl);
                 const rewardType = (form.get("rewardType") as string) || "CASH";
                 const rewardValue = Number(form.get("rewardValue") || 0);
                 const rewardValueType = (form.get("rewardValueType") as string) || "FIXED";
@@ -760,7 +869,7 @@ export default function AdminStorePage() {
                   });
                   toast.success("Reward config saved");
                   rewardConfigsQuery.refetch();
-                  (e.currentTarget as HTMLFormElement).reset();
+                  formEl.reset();
                 } catch (err: any) {
                   toast.error(err?.message || "Failed to save reward config");
                 }
@@ -781,8 +890,8 @@ export default function AdminStorePage() {
               <label className="inline-flex items-center gap-2 text-sm text-foreground">
                 <input name="isActive" type="checkbox" defaultChecked className="h-4 w-4" /> Active
               </label>
-              <Button type="submit" size="sm" className="bg-gradient-to-r from-emerald-600 to-green-500 text-white w-full">
-                Save Config
+              <Button type="submit" size="sm" className="bg-gradient-to-r from-emerald-600 to-green-500 text-white w-full" disabled={upsertRewardConfig.isPending && togglingConfigId === null}>
+                {upsertRewardConfig.isPending && togglingConfigId === null ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Saving…</> : "Save Config"}
               </Button>
             </form>
           </Card>
@@ -809,8 +918,10 @@ export default function AdminStorePage() {
                       <Button
                         size="sm"
                         variant="outline"
+                        disabled={togglingConfigId === r.reward_id}
                         onClick={async () => {
                           try {
+                            setTogglingConfigId(r.reward_id);
                             await upsertRewardConfig.mutateAsync({
                               id: r.reward_id,
                               rewardType: r.reward_type as any,
@@ -825,10 +936,12 @@ export default function AdminStorePage() {
                             rewardConfigsQuery.refetch();
                           } catch (err: any) {
                             toast.error(err?.message || "Failed to update config");
+                          } finally {
+                            setTogglingConfigId(null);
                           }
                         }}
                       >
-                        {r.is_active ? "Pause" : "Activate"}
+                        {togglingConfigId === r.reward_id ? <Loader2 className="h-4 w-4 animate-spin" /> : (r.is_active ? "Pause" : "Activate")}
                       </Button>
                     </div>
                   </div>
@@ -840,77 +953,410 @@ export default function AdminStorePage() {
       </Card>
 
       <Card className="p-4 space-y-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-foreground"><MapPin className="h-4 w-4" /> Centers</div>
+        <div className="flex items-center gap-2 text-sm font-semibold text-foreground"><Gift className="h-4 w-4" /> Store Referral Rewards</div>
+        <div className="text-sm text-muted-foreground">
+          Configure sponsor payouts (L1–L4). Settlement runs after <strong>completeClaim</strong> and is idempotent per (order, recipient, level).
+        </div>
+
         <div className="grid gap-3 md:grid-cols-2">
           <Card className="p-3 space-y-2">
-            <div className="text-sm font-semibold">Add Pickup Center</div>
+            <div className="text-sm font-semibold">Create / Update Config</div>
             <form
               className="space-y-2"
               onSubmit={async (e) => {
                 e.preventDefault();
-                const form = new FormData(e.currentTarget);
+                const formEl = e.currentTarget as HTMLFormElement;
+                const form = new FormData(formEl);
+                const id = (form.get("id") as string) || undefined;
+                const productIdRaw = (form.get("productId") as string) || "";
+                const isActive = Boolean(form.get("isActive"));
+                const startsAtRaw = (form.get("startsAt") as string) || "";
+                const endsAtRaw = (form.get("endsAt") as string) || "";
+
                 try {
-                  await upsertPickupCenter.mutateAsync({
-                    name: (form.get("name") as string) || "",
-                    addressLine1: (form.get("addressLine1") as string) || "",
-                    addressLine2: (form.get("addressLine2") as string) || undefined,
-                    city: (form.get("city") as string) || "",
-                    state: (form.get("state") as string) || "",
-                    country: (form.get("country") as string) || "",
-                    contactName: (form.get("contactName") as string) || undefined,
-                    contactPhone: (form.get("contactPhone") as string) || undefined,
-                    isActive: true,
+                  await upsertStoreRewardConfig.mutateAsync({
+                    id,
+                    productId: productIdRaw ? productIdRaw : null,
+                    isActive,
+                    startsAt: startsAtRaw ? new Date(startsAtRaw) : null,
+                    endsAt: endsAtRaw ? new Date(endsAtRaw) : null,
                   });
-                  toast.success("Pickup center saved");
-                  pickupCentersQuery.refetch();
-                  (e.currentTarget as HTMLFormElement).reset();
+                  toast.success("Store reward config saved");
+                  storeRewardConfigsQuery.refetch();
+                  formEl.reset();
                 } catch (err: any) {
-                  toast.error(err?.message || "Failed to save center");
+                  toast.error(err?.message || "Failed to save store reward config");
                 }
               }}
             >
-              <input name="name" placeholder="Name" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-              <input name="addressLine1" placeholder="Address line 1" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-              <input name="addressLine2" placeholder="Address line 2" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-              <div className="grid grid-cols-3 gap-2">
-                <input name="city" placeholder="City" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-                <input name="state" placeholder="State" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-                <input name="country" placeholder="Country" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+              <input name="id" placeholder="Config ID (leave blank to create new)" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+              <div className="space-y-1">
+                <div className="text-xs font-medium text-muted-foreground">Scope (optional)</div>
+                <select name="productId" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
+                  <option value="">Global (all products)</option>
+                  {(productsQuery.data ?? []).map((p: Product) => (
+                    <option key={p.product_id} value={p.product_id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="text-[11px] text-muted-foreground">
+                  If set, this config applies only to that product and overrides the global config.
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <input name="contactName" placeholder="Contact name" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-                <input name="contactPhone" placeholder="Contact phone" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">Starts at (optional)</div>
+                  <input name="startsAt" type="datetime-local" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">Ends at (optional)</div>
+                  <input name="endsAt" type="datetime-local" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                </div>
               </div>
-              <Button type="submit" size="sm" className="bg-gradient-to-r from-emerald-600 to-green-500 text-white w-full">Save Pickup Center</Button>
+              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                <input name="isActive" type="checkbox" className="h-4 w-4" /> Set active (auto-deactivates others)
+              </label>
+              <Button type="submit" size="sm" className="bg-gradient-to-r from-emerald-600 to-green-500 text-white w-full" disabled={upsertStoreRewardConfig.isPending && togglingStoreConfigId === null}>
+                {upsertStoreRewardConfig.isPending && togglingStoreConfigId === null ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Saving…</> : "Save Config"}
+              </Button>
             </form>
-            <div className="text-xs text-muted-foreground">Existing: {pickupCentersQuery.data?.length ?? 0}</div>
           </Card>
+
           <Card className="p-3 space-y-2">
-            <div className="text-sm font-semibold">Add Reward Center</div>
-            <form
-              className="space-y-2"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const form = new FormData(e.currentTarget);
-                try {
-                  await upsertRewardCenter.mutateAsync({
-                    name: (form.get("name") as string) || "",
-                    description: (form.get("description") as string) || undefined,
-                    isActive: true,
-                  });
-                  toast.success("Reward center saved");
-                  rewardCentersQuery.refetch();
-                  (e.currentTarget as HTMLFormElement).reset();
-                } catch (err: any) {
-                  toast.error(err?.message || "Failed to save center");
-                }
-              }}
+            <div className="text-sm font-semibold">Existing Configs</div>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {(storeRewardConfigsQuery.data ?? []).length === 0 ? (
+                <div className="text-sm text-muted-foreground">None yet.</div>
+              ) : (
+                (storeRewardConfigsQuery.data ?? []).map((cfg: StoreRewardConfig) => (
+                  <div key={cfg.id} className="rounded-lg border border-border/70 p-2 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-semibold truncate">{cfg.id}</div>
+                      <Badge variant={cfg.is_active ? "secondary" : "outline"} className="text-[10px] uppercase">
+                        {cfg.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Scope: {(() => {
+                        const pid = (cfg as any).product_id as string | null | undefined;
+                        if (!pid) return "Global";
+                        const name = (productsQuery.data ?? []).find((p: Product) => p.product_id === pid)?.name;
+                        return name ? `Product • ${name}` : `Product • ${pid}`;
+                      })()}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Window: {cfg.starts_at ? new Date(cfg.starts_at).toLocaleString() : "—"} → {cfg.ends_at ? new Date(cfg.ends_at).toLocaleString() : "—"}
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={togglingStoreConfigId === cfg.id}
+                        onClick={async () => {
+                          try {
+                            setTogglingStoreConfigId(cfg.id);
+                            await upsertStoreRewardConfig.mutateAsync({
+                              id: cfg.id,
+                              productId: ((cfg as any).product_id as any) ?? null,
+                              isActive: !cfg.is_active,
+                              startsAt: cfg.starts_at ?? null,
+                              endsAt: cfg.ends_at ?? null,
+                            });
+                            toast.success(cfg.is_active ? "Deactivated" : "Activated");
+                            storeRewardConfigsQuery.refetch();
+                          } catch (err: any) {
+                            toast.error(err?.message || "Failed to update config");
+                          } finally {
+                            setTogglingStoreConfigId(null);
+                          }
+                        }}
+                      >
+                        {togglingStoreConfigId === cfg.id ? <Loader2 className="h-4 w-4 animate-spin" /> : (cfg.is_active ? "Deactivate" : "Activate")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={deletingConfigId === cfg.id}
+                        onClick={async () => {
+                          try {
+                            setDeletingConfigId(cfg.id);
+                            await deleteStoreRewardConfig.mutateAsync({ id: cfg.id });
+                            toast.success("Config deleted");
+                            storeRewardConfigsQuery.refetch();
+                          } catch (err: any) {
+                            toast.error(err?.message || "Failed to delete config");
+                          } finally {
+                            setDeletingConfigId(null);
+                          }
+                        }}
+                      >
+                        {deletingConfigId === cfg.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        </div>
+
+        <Card className="p-3 space-y-3">
+          <div className="text-sm font-semibold">Levels (L1–L4)</div>
+          <div className="text-sm text-muted-foreground">Add or update a level on a config. If the level already exists, it will be updated.</div>
+          <form
+            className="grid gap-2 md:grid-cols-6"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const formEl = e.currentTarget as HTMLFormElement;
+              const form = new FormData(formEl);
+              const configId = (form.get("configId") as string) || "";
+              const level = Number(form.get("level") || 1);
+              const rewardBasis = (form.get("rewardBasis") as string) || "PROFIT";
+              const rewardValueType = (form.get("rewardValueType") as string) || "PERCENTAGE";
+              const rewardValue = Number(form.get("rewardValue") || 0);
+              const payoutType = (form.get("payoutType") as string) || "CASH";
+              const maxRewardCap = (form.get("maxRewardCap") as string) ? Number(form.get("maxRewardCap")) : null;
+              const utilityTokenSymbol = (form.get("utilityTokenSymbol") as string) || null;
+
+              if (!configId) {
+                toast.error("Select a config");
+                return;
+              }
+
+              try {
+                await upsertStoreRewardLevel.mutateAsync({
+                  configId,
+                  level,
+                  rewardBasis: rewardBasis as any,
+                  rewardValueType: rewardValueType as any,
+                  rewardValue,
+                  payoutType: payoutType as any,
+                  maxRewardCap,
+                  utilityTokenSymbol,
+                });
+                toast.success("Level saved");
+                storeRewardConfigsQuery.refetch();
+                formEl.reset();
+              } catch (err: any) {
+                toast.error(err?.message || "Failed to save level");
+              }
+            }}
+          >
+            <select name="configId" className="rounded-lg border border-border bg-background px-3 py-2 text-sm md:col-span-2" defaultValue="">
+              <option value="" disabled>
+                Select config
+              </option>
+              {(storeRewardConfigsQuery.data ?? []).map((cfg: StoreRewardConfig) => (
+                <option key={cfg.id} value={cfg.id}>
+                  {cfg.is_active ? "(ACTIVE) " : ""}{cfg.id}
+                </option>
+              ))}
+            </select>
+            <select name="level" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" defaultValue="1">
+              {[1, 2, 3, 4].map((n) => (
+                <option key={n} value={n}>
+                  L{n}
+                </option>
+              ))}
+            </select>
+            <select name="rewardBasis" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" defaultValue="PROFIT">
+              {["PROFIT", "GROSS"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <select name="rewardValueType" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" defaultValue="PERCENTAGE">
+              {["PERCENTAGE", "FIXED"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <select name="payoutType" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" defaultValue="CASH">
+              {["CASH", "CASHBACK", "BPT", "UTILITY_TOKEN"].map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <input name="rewardValue" type="number" placeholder="Value" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+            <input name="maxRewardCap" type="number" placeholder="Cap (opt)" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+            <input name="utilityTokenSymbol" placeholder="Utility symbol (opt)" className="rounded-lg border border-border bg-background px-3 py-2 text-sm md:col-span-2" />
+            <Button type="submit" size="sm" className="bg-gradient-to-r from-emerald-600 to-green-500 text-white md:col-span-2" disabled={upsertStoreRewardLevel.isPending}>
+              {upsertStoreRewardLevel.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-1" />Saving…</> : "Save Level"}
+            </Button>
+          </form>
+
+          <Separator />
+
+          <div className="space-y-3">
+            {(storeRewardConfigsQuery.data ?? []).map((cfg: StoreRewardConfig) => (
+              <div key={cfg.id} className="rounded-xl border border-border/70 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold truncate">{cfg.id}</div>
+                  <Badge variant={cfg.is_active ? "secondary" : "outline"} className="text-[10px] uppercase">
+                    {cfg.is_active ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+                {(cfg.levels ?? []).length === 0 ? (
+                  <div className="text-sm text-muted-foreground">No levels yet.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {(cfg.levels ?? []).map((lvl: any) => (
+                      <div key={lvl.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/50 px-3 py-2">
+                        <div className="text-sm">
+                          <span className="font-semibold">L{lvl.level}</span> · {lvl.reward_basis} · {lvl.reward_value_type} {lvl.reward_value}{lvl.reward_value_type === "PERCENTAGE" ? "%" : ""} · {lvl.payout_type}{lvl.utility_token_symbol ? ` (${lvl.utility_token_symbol})` : ""}
+                          {lvl.max_reward_cap != null ? <span className="text-muted-foreground"> · cap {lvl.max_reward_cap}</span> : null}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={deletingLevelId === lvl.id}
+                          onClick={async () => {
+                            try {
+                              setDeletingLevelId(lvl.id);
+                              await deleteStoreRewardLevel.mutateAsync({ id: lvl.id });
+                              toast.success("Level deleted");
+                              storeRewardConfigsQuery.refetch();
+                            } catch (err: any) {
+                              toast.error(err?.message || "Failed to delete level");
+                            } finally {
+                              setDeletingLevelId(null);
+                            }
+                          }}
+                        >
+                          {deletingLevelId === lvl.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      </Card>
+
+      <Card className="p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground"><MapPin className="h-4 w-4" /> Pickup Centers</div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{pickupCentersQuery.data?.length ?? 0} centers</span>
+            <Button size="sm" variant="ghost" onClick={() => pickupCentersQuery.refetch()} disabled={pickupCentersQuery.isFetching}>
+              <RefreshCw className={cn("h-4 w-4", pickupCentersQuery.isFetching && "animate-spin")} />
+            </Button>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">Select a pickup center to preview its details. To add or manage centers, visit the <strong>Pickup Centers</strong> admin page.</p>
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Left: selector + list */}
+          <Card className="p-3 space-y-3">
+            <div className="text-sm font-semibold">Select a Center</div>
+            <select
+              value={previewCenterId ?? ""}
+              onChange={(e) => setPreviewCenterId(e.target.value || null)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
             >
-              <input name="name" placeholder="Name" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-              <textarea name="description" placeholder="Description (optional)" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" rows={2} />
-              <Button type="submit" size="sm" className="bg-gradient-to-r from-emerald-600 to-green-500 text-white w-full">Save Reward Center</Button>
-            </form>
-            <div className="text-xs text-muted-foreground">Existing: {rewardCentersQuery.data?.length ?? 0}</div>
+              <option value="">— Choose a pickup center —</option>
+              {(pickupCentersQuery.data ?? []).map((c: RouterOutputs["store"]["listPickupCenters"][number]) => (
+                <option key={c.id} value={c.id}>{c.name} {!c.isActive ? "(Inactive)" : ""}</option>
+              ))}
+            </select>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {pickupCentersQuery.isLoading ? (
+                Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-10 rounded-lg bg-muted animate-pulse" />)
+              ) : (pickupCentersQuery.data ?? []).length === 0 ? (
+                <div className="text-sm text-muted-foreground">No pickup centers found. Add them from the Pickup Centers page.</div>
+              ) : (
+                (pickupCentersQuery.data ?? []).map((c: RouterOutputs["store"]["listPickupCenters"][number]) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setPreviewCenterId(c.id)}
+                    className={cn(
+                      "w-full text-left rounded-lg border px-3 py-2 text-sm transition-colors",
+                      previewCenterId === c.id
+                        ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
+                        : "border-border bg-background hover:bg-muted/50"
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium truncate">{c.name}</span>
+                      <Badge variant={c.isActive ? "secondary" : "outline"} className="text-[10px] shrink-0">
+                        {c.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate mt-0.5">{[c.city, c.state, c.country].filter(Boolean).join(", ")}</div>
+                  </button>
+                ))
+              )}
+            </div>
+          </Card>
+
+          {/* Right: details panel */}
+          <Card className="p-3 space-y-3">
+            <div className="text-sm font-semibold">Center Details</div>
+            {(() => {
+              const center = (pickupCentersQuery.data ?? []).find(
+                (c: RouterOutputs["store"]["listPickupCenters"][number]) => c.id === previewCenterId
+              );
+              if (!center) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-2">
+                    <Building2 className="h-8 w-8 opacity-30" />
+                    <span className="text-sm">Select a center to view details</span>
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-3">
+                  {center.logoUrl ? (
+                    <div className="flex items-center gap-3">
+                      <img src={center.logoUrl} alt={center.name} className="h-14 w-14 rounded-xl object-cover border border-border" />
+                      <div>
+                        <div className="font-semibold text-foreground">{center.name}</div>
+                        <Badge variant={center.isActive ? "secondary" : "outline"} className="text-[10px] mt-1">
+                          {center.isActive ? <><CheckCircle2 className="h-3 w-3 mr-1" />Active</> : "Inactive"}
+                        </Badge>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div className="h-14 w-14 rounded-xl border border-border bg-muted flex items-center justify-center">
+                        <Building2 className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-foreground">{center.name}</div>
+                        <Badge variant={center.isActive ? "secondary" : "outline"} className="text-[10px] mt-1">
+                          {center.isActive ? <><CheckCircle2 className="h-3 w-3 mr-1" />Active</> : "Inactive"}
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
+                  <div className="space-y-1.5 text-sm">
+                    <div className="flex items-start gap-2 text-foreground">
+                      <MapPin className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                      <div>
+                        <div>{center.addressLine1}</div>
+                        {center.addressLine2 && <div>{center.addressLine2}</div>}
+                        <div className="text-muted-foreground">{[center.city, center.state, center.country].filter(Boolean).join(", ")}</div>
+                      </div>
+                    </div>
+                    {(center.contactName || center.contactPhone) && (
+                      <div className="flex items-center gap-2 text-foreground">
+                        <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span>{[center.contactName, center.contactPhone].filter(Boolean).join(" · ")}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground pt-1 border-t border-border">
+                    ID: <span className="font-mono">{center.id}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </Card>
         </div>
       </Card>
@@ -937,12 +1383,60 @@ export default function AdminStorePage() {
                 <label className="text-sm font-medium">Type</label>
                 <select
                   value={editingProduct.product_type}
-                  onChange={(e) => setEditingProduct((prev) => prev ? { ...prev, product_type: e.target.value as Product["product_type"] } : prev)}
+                  onChange={(e) => setEditingProduct((prev) => {
+                    if (!prev) return prev;
+                    const t = e.target.value as Product["product_type"];
+                    return {
+                      ...prev,
+                      product_type: t,
+                      pickup_center_id: ["digital", "license"].includes(t) ? undefined : prev.pickup_center_id,
+                    };
+                  })}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
                 >
                   {["physical", "digital", "license", "service", "utility"].map((t) => (
                     <option key={t} value={t}>{t}</option>
                   ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Vendor</label>
+                <input
+                  value={(editingProduct as any).vendor ?? ""}
+                  onChange={(e) => setEditingProduct((prev) => prev ? { ...prev, vendor: e.target.value || null } as any : prev)}
+                  placeholder="Supplier / brand name"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Category</label>
+                <input
+                  value={(editingProduct as any).category ?? ""}
+                  onChange={(e) => setEditingProduct((prev) => prev ? { ...prev, category: e.target.value || null } as any : prev)}
+                  placeholder="e.g. Electronics, Apparel"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Pricing Mode</label>
+                <select
+                  value={(editingProduct as any).pricing_mode ?? "fiat"}
+                  onChange={(e) => {
+                    const mode = e.target.value as any;
+                    setEditingProduct((prev) => prev
+                      ? {
+                          ...prev,
+                          pricing_mode: mode,
+                          token_unit_symbol: mode === "token_unit" ? (prev as any).token_unit_symbol : null,
+                          token_unit_amount: mode === "token_unit" ? (prev as any).token_unit_amount : null,
+                        }
+                      : prev
+                    );
+                  }}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="fiat">Fiat</option>
+                  <option value="token_unit">Token unit</option>
                 </select>
               </div>
               <div className="space-y-2">
@@ -954,6 +1448,29 @@ export default function AdminStorePage() {
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
                 />
               </div>
+              {String((editingProduct as any).pricing_mode ?? "fiat") === "token_unit" && (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Token Unit Symbol</label>
+                    <input
+                      value={(editingProduct as any).token_unit_symbol ?? ""}
+                      onChange={(e) => setEditingProduct((prev) => prev ? { ...prev, token_unit_symbol: e.target.value.toUpperCase() } : prev)}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      placeholder="e.g., USDT"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Token Units Per Item</label>
+                    <input
+                      type="number"
+                      value={Number((editingProduct as any).token_unit_amount ?? 0)}
+                      onChange={(e) => setEditingProduct((prev) => prev ? { ...prev, token_unit_amount: Number(e.target.value || 0) } : prev)}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                      placeholder="e.g., 10"
+                    />
+                  </div>
+                </>
+              )}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Status</label>
                 <select
@@ -1052,32 +1569,28 @@ export default function AdminStorePage() {
                   <span className="text-sm text-muted-foreground">Require fulfillment / shipping</span>
                 </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Pickup Center (optional)</label>
-                <select
-                  value={editingProduct.pickup_center_id ?? ""}
-                  onChange={(e) => setEditingProduct((prev) => prev ? { ...prev, pickup_center_id: e.target.value || undefined } : prev)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">None</option>
-                  {(pickupCentersQuery.data ?? []).map((c: RouterOutputs["store"]["listPickupCenters"][number]) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Reward Center (optional)</label>
-                <select
-                  value={editingProduct.reward_center_id ?? ""}
-                  onChange={(e) => setEditingProduct((prev) => prev ? { ...prev, reward_center_id: e.target.value || undefined } : prev)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">None</option>
-                  {(rewardCentersQuery.data ?? []).map((c: RouterOutputs["store"]["listRewardCenters"][number]) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
+              {!["digital", "license"].includes(editingProduct.product_type) ? (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Pickup Center <span className="text-muted-foreground font-normal">(optional)</span></label>
+                  <select
+                    value={editingProduct.pickup_center_id ?? ""}
+                    onChange={(e) => setEditingProduct((prev) => prev ? { ...prev, pickup_center_id: e.target.value || undefined } : prev)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">None</option>
+                    {(pickupCentersQuery.data ?? []).map((c: RouterOutputs["store"]["listPickupCenters"][number]) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Pickup Center</label>
+                  <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground italic">
+                    Not required — digital products are delivered instantly to the account.
+                  </div>
+                </div>
+              )}
               <div className="md:col-span-2 space-y-2">
                 <label className="text-sm font-medium">Description</label>
                 <textarea
@@ -1114,6 +1627,39 @@ export default function AdminStorePage() {
                 </div>
               </div>
               <div className="md:col-span-2 space-y-2">
+                <label className="text-sm font-medium">Store Referral Reward Config <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <p className="text-xs text-muted-foreground">Select which L1–L4 referral payout structure applies when this product is purchased via a referral link. Configs are created in the Store Referral Rewards section below.</p>
+                <select
+                  value={editingProduct.store_reward_config_id ?? ""}
+                  onChange={(e) => setEditingProduct((prev) => prev ? { ...prev, store_reward_config_id: e.target.value || null } : prev)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">None — no referral rewards for this product</option>
+                  {(storeRewardConfigsQuery.data ?? []).map((cfg: StoreRewardConfig) => (
+                    <option key={cfg.id} value={cfg.id}>
+                      {cfg.id.slice(0, 10)}… · {cfg.levels.length} level{cfg.levels.length !== 1 ? "s" : ""} {cfg.is_active ? "✓ Active" : "(Inactive)"}{cfg.product_id ? " · linked" : " · global"}
+                    </option>
+                  ))}
+                </select>
+                {editingProduct.store_reward_config_id && (() => {
+                  const cfg = (storeRewardConfigsQuery.data ?? []).find((c: StoreRewardConfig) => c.id === editingProduct.store_reward_config_id);
+                  if (!cfg || cfg.levels.length === 0) return <p className="text-xs text-muted-foreground">No levels configured on this config yet.</p>;
+                  return (
+                    <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-900/20 p-3 space-y-2">
+                      <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Referral Payout Levels</div>
+                      <div className="grid gap-1.5">
+                        {cfg.levels.map((lvl: any) => (
+                          <div key={lvl.id} className="flex items-center justify-between text-xs border-b border-emerald-100 dark:border-emerald-800/40 pb-1 last:border-0 last:pb-0">
+                            <span className="font-bold text-foreground">L{lvl.level}</span>
+                            <span className="text-muted-foreground">{lvl.reward_basis} · {lvl.reward_value_type === "PERCENTAGE" ? `${Number(lvl.reward_value) * 100}%` : `₦${lvl.reward_value}`} → {lvl.payout_type}{lvl.utility_token_symbol ? ` (${lvl.utility_token_symbol})` : ""}{lvl.max_reward_cap ? ` · cap ₦${lvl.max_reward_cap}` : ""}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+              <div className="md:col-span-2 space-y-2">
                 <label className="text-sm font-medium">Reward Config (optional)</label>
                 <select
                   value={editingProduct.reward_config?.[0]?.reward_id ?? ""}
@@ -1133,9 +1679,9 @@ export default function AdminStorePage() {
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditingProduct(null)}>Cancel</Button>
-              <Button className="bg-gradient-to-r from-emerald-600 to-green-500 text-white" onClick={handleSaveProduct}>
-                <Save className="h-4 w-4" /> Save
+              <Button variant="outline" onClick={() => setEditingProduct(null)} disabled={upsertProduct.isPending}>Cancel</Button>
+              <Button className="bg-gradient-to-r from-emerald-600 to-green-500 text-white" onClick={handleSaveProduct} disabled={upsertProduct.isPending}>
+                {upsertProduct.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : <><Save className="h-4 w-4" /> Save</>}
               </Button>
             </div>
           </Card>

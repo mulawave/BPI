@@ -1,0 +1,12 @@
+
+> next-trpc-prisma-auth-shadcn@1.0.0 build
+> next build
+
+  ▲ Next.js 14.2.33
+  - Environments: .env.local, .env
+  - Experiments (use with caution):
+    · turbotrace
+    · instrumentationHook
+
+   Creating an optimized production build ...
+Terminate batch job (Y/N)? Terminate batch job (Y/N)? Terminate batch job (Y/N)? Terminate batch job (Y/N)? 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/client/trpc";
 import { Button } from "@/components/ui/button";
-import { Loader2, Shield, ArrowLeft, AlertTriangle } from "lucide-react";
+import { Loader2, Shield, ArrowLeft, AlertTriangle, Wallet } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import type { AppRouter } from "@/server/trpc/router/_app";
@@ -24,6 +24,7 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [paymentMode, setPaymentMode] = useState<"fiat" | "hybrid" | "token">("fiat");
+  const [cashbackInsufficient, setCashbackInsufficient] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { data: product } = api.store.getProduct.useQuery({ id: productId }, { enabled: !!productId });
@@ -82,11 +83,12 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
       const res: ConfirmCheckoutIntent = await confirmCheckout.mutateAsync({
         intentId,
         paymentMode: paymentMode.toUpperCase() as "FIAT" | "HYBRID" | "TOKEN",
+        paymentSource: "cashback",
       });
 
       const tokenMsg = split && split.tokenPortionFiat > 0 && primaryToken
-        ? `Token ${primaryToken}: ${split.tokenUnits.toFixed(4)} (~${split.tokenPortionFiat.toFixed(2)} fiat), Fiat: ${split.fiatPortion.toFixed(2)}`
-        : `Fiat only: ${split?.gross?.toFixed(2) ?? product.base_price_fiat.toFixed(2)}`;
+        ? `Token ${primaryToken}: ${split.tokenUnits.toFixed(4)} (~\u20a6${split.tokenPortionFiat.toFixed(2)}), Cashback Wallet: \u20a6${split.fiatPortion.toFixed(2)}`
+        : `Cashback Wallet: \u20a6${(split?.gross ?? product.base_price_fiat).toFixed(2)}`;
 
       const claimMsg = res.claim_code ? `Claim code: ${res.claim_code}.` : "Claim code is being generated.";
 
@@ -94,7 +96,11 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
       router.push(`/store/orders${res.id ? `?orderId=${res.id}` : ""}`);
     } catch (err: any) {
       const message = err?.message || "Failed to confirm checkout";
-      toast.error(message);
+      const isInsufficientCashback =
+        message.toLowerCase().includes("cashback") &&
+        (message.toLowerCase().includes("insufficient") || message.toLowerCase().includes("balance"));
+      if (isInsufficientCashback) setCashbackInsufficient(true);
+      toast.error(isInsufficientCashback ? "Insufficient Cashback Wallet balance. Transfer from Main Wallet first." : message);
       setError(message);
     } finally {
       toast.dismiss(toastId);
@@ -113,7 +119,17 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
         </div>
 
         <div className="rounded-3xl border border-white/20 bg-white/90 dark:bg-bpi-dark-card/80 backdrop-blur shadow-2xl p-6 space-y-4">
-          {error && (
+          {cashbackInsufficient && (
+            <div className="flex items-start gap-3 rounded-xl border border-amber-400 bg-amber-50 text-amber-900 px-3 py-2 text-sm dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-100">
+              <Wallet className="h-4 w-4 mt-0.5 shrink-0" />
+              <div>
+                <div className="font-semibold">Insufficient Cashback Wallet balance</div>
+                <div className="mt-0.5">Your Cashback Wallet balance is too low to complete this purchase. Transfer funds from your <strong>Main Wallet</strong> to your <strong>Cashback Wallet</strong> first, then return here to pay.</div>
+                <Link href="/dashboard?tab=wallet" className="mt-1.5 inline-block text-amber-700 dark:text-amber-300 underline font-medium">Go to Wallet &rarr;</Link>
+              </div>
+            </div>
+          )}
+          {error && !cashbackInsufficient && (
             <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2 text-sm dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
               <AlertTriangle className="h-4 w-4 mt-0.5" />
               <div>
@@ -137,7 +153,8 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
           </div>
 
           <div className="rounded-2xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/80 dark:bg-emerald-900/20 p-4 text-sm text-emerald-900 dark:text-emerald-50 flex items-start gap-3">
-            <Shield className="h-4 w-4 text-emerald-600" /> Hybrid checkout applies per-token caps and splits the payment across fiat and tokens.
+            <Shield className="h-4 w-4 text-emerald-600 shrink-0" />
+            <span>Fiat payments use your <strong>Cashback Wallet</strong> — fund it first by transferring from your Main Wallet. BPT can be used alone or combined with your Cashback Wallet.</span>
           </div>
 
           {(!product || !primaryToken || !tokenAllowed) && (
@@ -148,10 +165,11 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
           )}
 
           <div className="rounded-2xl border border-border/50 bg-background/80 dark:bg-bpi-dark-card/70 backdrop-blur p-4 grid gap-3 text-sm">
+            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Payment method</p>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant={paymentMode === "fiat" ? "default" : "outline"} onClick={() => setPaymentMode("fiat")}>Fiat only</Button>
-              <Button size="sm" variant={paymentMode === "hybrid" ? "default" : "outline"} onClick={() => setPaymentMode("hybrid")} disabled={!tokenAllowed}>Hybrid (token + fiat)</Button>
-              <Button size="sm" variant={paymentMode === "token" ? "default" : "outline"} onClick={() => setPaymentMode("token")} disabled={!canTokenOnly}>Token only</Button>
+              <Button size="sm" variant={paymentMode === "fiat" ? "default" : "outline"} onClick={() => { setPaymentMode("fiat"); setCashbackInsufficient(false); }}>100% Cashback Wallet</Button>
+              <Button size="sm" variant={paymentMode === "hybrid" ? "default" : "outline"} onClick={() => { setPaymentMode("hybrid"); setCashbackInsufficient(false); }} disabled={!tokenAllowed}>BPT + Cashback Wallet</Button>
+              <Button size="sm" variant={paymentMode === "token" ? "default" : "outline"} onClick={() => { setPaymentMode("token"); setCashbackInsufficient(false); }} disabled={!canTokenOnly}>100% BPT</Button>
             </div>
 
             <div className="flex items-center justify-between">
@@ -165,7 +183,7 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
               </div>
             )}
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Fiat portion</span>
+              <span className="text-muted-foreground">Cashback Wallet portion</span>
               <span className="font-semibold text-foreground">{split ? split.fiatPortion.toFixed(2) : "—"}</span>
             </div>
           </div>

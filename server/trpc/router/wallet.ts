@@ -365,6 +365,12 @@ export const walletRouter = createTRPCRouter({
       if (!userId) throw new Error("UNAUTHORIZED");
 
       const { amount, withdrawalType, sourceWallet, pin, bankCode, accountNumber, accountName, bnbWalletAddress } = input;
+
+      // CTO policy: Cashback Wallet is for store spending/transfers-to-cashback only;
+      // users cannot withdraw cashback externally.
+      if (sourceWallet === 'cashback') {
+        throw new Error("Cashback wallet cannot be withdrawn. Fund main wallet separately for withdrawals.");
+      }
       const txReference = `WD-${withdrawalType.toUpperCase()}-${Date.now()}`;
 
       console.log("\n🔵 [WITHDRAWAL] Request initiated");
@@ -566,6 +572,20 @@ export const walletRouter = createTRPCRouter({
             currency: "NGN",
             sourceId: feeTransaction.id,
             description: `Withdrawal fee from ${sourceWallet} wallet (${withdrawalType})`,
+            userId,
+            programType: "WITHDRAWAL",
+            country: (fullUser as any).country ?? undefined,
+            state: (fullUser as any).state ?? undefined,
+            region: (fullUser as any).region ?? undefined,
+            metadata: {
+              withdrawalType,
+              sourceWallet,
+              txReference,
+              amount,
+              withdrawalFee,
+              taxAmount,
+              totalDeduction,
+            },
           });
         }
 
@@ -799,6 +819,12 @@ export const walletRouter = createTRPCRouter({
 
       if (fromWallet === toWallet) {
         throw new Error("Cannot transfer to the same wallet");
+      }
+
+      // CTO policy: users cannot transfer funds *out* of Cashback Wallet to other internal wallets.
+      // Cashback Wallet is the store fiat spending wallet and may be funded from Main Wallet.
+      if (fromWallet === 'cashback') {
+        throw new Error("Transfers out of Cashback Wallet are not allowed.");
       }
 
       // SECURITY: Verify PIN before processing transfer
@@ -1062,7 +1088,9 @@ export const walletRouter = createTRPCRouter({
         throw new Error(`Insufficient balance in ${sourceWallet} wallet. Available: ₦${sourceBalance.toLocaleString()}`);
       }
 
-      // Perform atomic transfer (sender -> recipient's main wallet)
+      const recipientWalletField = sourceWallet === 'cashback' ? 'cashback' : 'wallet';
+
+      // Perform atomic transfer (sender -> recipient)
       await prisma.$transaction([
         // Deduct from sender
         prisma.user.update({
@@ -1071,11 +1099,11 @@ export const walletRouter = createTRPCRouter({
             [sourceWallet]: { decrement: amount }
           }
         }),
-        // Add to recipient's main wallet
+        // Add to recipient's wallet (cashback->cashback, otherwise main wallet)
         prisma.user.update({
           where: { id: recipient.id },
           data: {
-            wallet: { increment: amount }
+            [recipientWalletField]: { increment: amount }
           }
         })
       ]);

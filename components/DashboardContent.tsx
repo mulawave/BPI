@@ -51,6 +51,7 @@ import { Share2 } from "lucide-react";
 import { PalliativeJourneyCard } from "./palliative/PalliativeJourneyCard";
 import { ActivatedPalliativeCard } from "./palliative/ActivatedPalliativeCard";
 import { PalliativeActivationModal } from "./palliative/PalliativeActivationModal";
+import { PALLIATIVE_THRESHOLD } from "@/lib/palliative";
 import DepositModal from "./wallet/DepositModal";
 import NotificationsModal from "./notifications/NotificationsModal";
 import CommunityStatsModal from "./community/CommunityStatsModal";
@@ -2177,32 +2178,34 @@ export default function DashboardContent({ session, customContent }: DashboardCo
                   </span>
                 </div>
 
-                {/* Shelter Activation - Green if active */}
-                <div className={`flex items-center justify-between p-3 rounded-lg border ${
-                  ((walletBalances?.community.find(w => w.name.toLowerCase().includes('shelter'))?.balance || 0) > 0)
-                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    <Home className={`w-4 h-4 ${
-                      ((walletBalances?.community.find(w => w.name.toLowerCase().includes('shelter'))?.balance || 0) > 0)
-                        ? 'text-green-500 animate-pulse'
-                        : 'text-red-500'
-                    }`} />
-                    <span className={`text-sm font-medium ${
-                      ((walletBalances?.community.find(w => w.name.toLowerCase().includes('shelter'))?.balance || 0) > 0)
-                        ? 'text-green-700 dark:text-green-400'
-                        : 'text-red-700 dark:text-red-400'
-                    }`}>Shelter Activation</span>
-                  </div>
-                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                    ((walletBalances?.community.find(w => w.name.toLowerCase().includes('shelter'))?.balance || 0) > 0)
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                      : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                  }`}>
-                    {((walletBalances?.community.find(w => w.name.toLowerCase().includes('shelter'))?.balance || 0) > 0) ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
+                {/* Shelter Activation - Active when: Gold/Platinum member, OR palliative already activated, OR palliative balance >= ₦200k threshold */}
+                {(() => {
+                  const isShelterActive =
+                    userProfile?.palliativeActivated ||
+                    (userProfile?.palliative || 0) >= PALLIATIVE_THRESHOLD ||
+                    ['gold', 'platinum'].some(t => userDetails?.activeMembership?.name?.toLowerCase().includes(t));
+                  return (
+                    <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                      isShelterActive
+                        ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                        : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <Home className={`w-4 h-4 ${isShelterActive ? 'text-green-500 animate-pulse' : 'text-red-500'}`} />
+                        <span className={`text-sm font-medium ${isShelterActive ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+                          Shelter Activation
+                        </span>
+                      </div>
+                      <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                        isShelterActive
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                          : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                      }`}>
+                        {isShelterActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 {/* Community Support - Green if eligible (has active membership + complete profile) */}
                 <div className={`flex items-center justify-between p-3 rounded-lg border ${

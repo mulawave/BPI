@@ -3,7 +3,6 @@
  * Centralized service for recording revenue from all sources
  */
 
-import { prisma } from "@/lib/prisma";
 import type { PrismaClient } from "@prisma/client";
 
 export type RevenueSource =
@@ -25,6 +24,129 @@ export interface RecordRevenueParams {
   currency?: "NGN" | "USD";
   sourceId?: string;
   description?: string;
+  // Extended dimensions for reporting / governance.
+  sourceKey?: string;
+  userId?: string;
+  programType?: string;
+  productId?: string;
+  orderId?: string;
+  packageId?: string;
+  country?: string;
+  state?: string;
+  region?: string;
+  tokenSymbol?: string;
+  metadata?: Record<string, unknown>;
+}
+
+const REVENUE_SPLIT_SETTING_KEYS = {
+  companyPercent: "revenue_split_company_percent",
+  executivePercent: "revenue_split_executive_percent",
+  strategicPercent: "revenue_split_strategic_percent",
+} as const;
+
+const DEFAULT_SPLIT = {
+  companyPercent: 50,
+  executivePercent: 30,
+  strategicPercent: 20,
+} as const;
+
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) return null;
+  if (value < 0 || value > 100) return null;
+  return value;
+}
+
+type SplitConfig = {
+  companyPercent: number;
+  executivePercent: number;
+  strategicPercent: number;
+  versionId: string | null;
+  version: number | null;
+};
+
+async function getSplitConfig(tx: any): Promise<SplitConfig> {
+  // Preferred: versioned config
+  try {
+    const active = await tx.profitPoolConfigVersion.findFirst({
+      where: { isActive: true },
+      orderBy: { version: "desc" },
+    });
+
+    if (active) {
+      const companyPercent = clampPercent(Number(active.companyPercent ?? DEFAULT_SPLIT.companyPercent));
+      const executivePercent = clampPercent(Number(active.executivePercent ?? DEFAULT_SPLIT.executivePercent));
+      const strategicPercent = clampPercent(Number(active.strategicPercent ?? DEFAULT_SPLIT.strategicPercent));
+
+      if (
+        companyPercent != null &&
+        executivePercent != null &&
+        strategicPercent != null &&
+        Math.abs(companyPercent + executivePercent + strategicPercent - 100) <= 0.0001
+      ) {
+        return {
+          companyPercent,
+          executivePercent,
+          strategicPercent,
+          versionId: String(active.id),
+          version: Number(active.version ?? 0),
+        };
+      }
+
+      console.warn("[REVENUE SERVICE] Invalid ProfitPoolConfigVersion split; falling back", {
+        id: active.id,
+        version: active.version,
+        companyPercent,
+        executivePercent,
+        strategicPercent,
+      });
+    }
+  } catch (error: any) {
+    console.warn("[REVENUE SERVICE] Failed reading ProfitPoolConfigVersion; falling back", {
+      error: error?.message,
+    });
+  }
+
+  // Fallback: legacy admin settings keys
+  try {
+    const [company, executive, strategic] = await Promise.all([
+      tx.adminSettings.findUnique({ where: { settingKey: REVENUE_SPLIT_SETTING_KEYS.companyPercent } }),
+      tx.adminSettings.findUnique({ where: { settingKey: REVENUE_SPLIT_SETTING_KEYS.executivePercent } }),
+      tx.adminSettings.findUnique({ where: { settingKey: REVENUE_SPLIT_SETTING_KEYS.strategicPercent } }),
+    ]);
+
+    const companyPercent = clampPercent(company ? parseFloat(company.settingValue) : DEFAULT_SPLIT.companyPercent);
+    const executivePercent = clampPercent(executive ? parseFloat(executive.settingValue) : DEFAULT_SPLIT.executivePercent);
+    const strategicPercent = clampPercent(strategic ? parseFloat(strategic.settingValue) : DEFAULT_SPLIT.strategicPercent);
+
+    if (
+      companyPercent == null ||
+      executivePercent == null ||
+      strategicPercent == null ||
+      Math.abs(companyPercent + executivePercent + strategicPercent - 100) > 0.0001
+    ) {
+      console.warn("[REVENUE SERVICE] Invalid revenue split settings; falling back to defaults", {
+        companyPercent,
+        executivePercent,
+        strategicPercent,
+      });
+      return { ...DEFAULT_SPLIT, versionId: null, version: null };
+    }
+
+    return { companyPercent, executivePercent, strategicPercent, versionId: null, version: null };
+  } catch (error: any) {
+    console.warn("[REVENUE SERVICE] Failed reading split settings; falling back to defaults", {
+      error: error?.message,
+    });
+    return { ...DEFAULT_SPLIT, versionId: null, version: null };
+  }
+}
+
+function toCents(amount: number) {
+  return Math.round(amount * 100);
+}
+
+function fromCents(cents: number) {
+  return cents / 100;
 }
 
 /**
@@ -34,7 +156,24 @@ export async function recordRevenue(
   prisma: PrismaClient,
   params: RecordRevenueParams
 ) {
-  const { source, amount, currency = "NGN", sourceId, description } = params;
+  const {
+    source,
+    amount,
+    currency = "NGN",
+    sourceId,
+    description,
+    sourceKey,
+    userId,
+    programType,
+    productId,
+    orderId,
+    packageId,
+    country,
+    state,
+    region,
+    tokenSymbol,
+    metadata,
+  } = params;
 
   // Validate amount
   if (amount <= 0) {
@@ -44,20 +183,33 @@ export async function recordRevenue(
   try {
     // Use transaction for atomicity
     return await prisma.$transaction(async (tx: any) => {
-      // Record revenue transaction (unique constraint on sourceId prevents duplicates)
+      const splitConfig = await getSplitConfig(tx);
+      // Record revenue transaction (composite constraint on (source, sourceId) prevents duplicates)
       const revenueTransaction = await tx.revenueTransaction.create({
-      data: {
-        source,
-        amount,
-        currency,
-        sourceId,
-        description,
-        allocationStatus: "PENDING",
-      },
-    });
+        data: {
+          source,
+          sourceKey: sourceKey ?? null,
+          amount,
+          currency,
+          sourceId,
+          description,
+          userId: userId ?? null,
+          programType: programType ?? null,
+          productId: productId ?? null,
+          orderId: orderId ?? null,
+          packageId: packageId ?? null,
+          country: country ?? null,
+          state: state ?? null,
+          region: region ?? null,
+          tokenSymbol: tokenSymbol ?? null,
+          metadata: metadata ?? null,
+          profitPoolConfigVersionId: splitConfig.versionId,
+          allocationStatus: "PENDING",
+        },
+      });
 
-    // Allocate revenue (50/30/20 split)
-    await allocateRevenue(tx, revenueTransaction.id, amount);
+    // Allocate revenue (config-driven split)
+    await allocateRevenue(tx, revenueTransaction.id, amount, splitConfig);
 
     // Mark as allocated
     await tx.revenueTransaction.update({
@@ -80,9 +232,9 @@ export async function recordRevenue(
       stack: error.stack,
     });
     
-    // Handle duplicate sourceId error from unique constraint
+    // Handle duplicate idempotency key error from unique constraint
     if (error.code === "P2002" && sourceId) {
-      throw new Error(`Revenue already recorded for sourceId: ${sourceId}`);
+      throw new Error(`Revenue already recorded for source=${source} sourceId=${sourceId}`);
     }
     
     throw error;
@@ -98,20 +250,26 @@ export async function recordRevenue(
 async function allocateRevenue(
   prisma: any, // Transaction client
   transactionId: string,
-  amount: number
+  amount: number,
+  split: { companyPercent: number; executivePercent: number; strategicPercent: number }
 ) {
   const COMPANY_RESERVE_ID = "company-reserve";
   try {
     console.log(`[REVENUE SERVICE] Allocating revenue: ₦${amount.toLocaleString()} for transaction ${transactionId}`);
+
+    const totalCents = toCents(amount);
+    const companyCents = Math.floor((totalCents * split.companyPercent) / 100);
+    const executiveCents = Math.floor((totalCents * split.executivePercent) / 100);
+    const strategicCents = totalCents - companyCents - executiveCents;
     
-    // 50% to Company Reserve
-    const companyAmount = amount * 0.5;
+    // Company Reserve
+    const companyAmount = fromCents(companyCents);
     await prisma.revenueAllocation.create({
       data: {
         revenueTransactionId: transactionId,
         destinationType: "COMPANY_RESERVE",
         amount: companyAmount,
-        percentage: 50,
+        percentage: split.companyPercent,
         status: "ALLOCATED",
       },
     });
@@ -128,20 +286,23 @@ async function allocateRevenue(
       },
     });
 
-    // 30% to Executive Pool (pending daily distribution)
-    const executiveAmount = amount * 0.3;
+    // Executive Pool (pending daily distribution)
+    const executiveAmount = fromCents(executiveCents);
     await prisma.revenueAllocation.create({
       data: {
         revenueTransactionId: transactionId,
         destinationType: "EXECUTIVE_POOL",
         amount: executiveAmount,
-        percentage: 30,
+        percentage: split.executivePercent,
         status: "PENDING",
       },
     });
 
-    // 20% split among 5 strategic pools (4% each)
-    const poolAmount = amount * 0.04;
+    // Strategic Pools split among 5 pools (equal share)
+    const poolCount = 5;
+    const basePoolCents = Math.floor(strategicCents / poolCount);
+    const poolRemainderCents = strategicCents - basePoolCents * poolCount;
+    const poolPercent = split.strategicPercent / poolCount;
     const poolConfigs = [
       { type: "LEADERSHIP", name: "Leadership Pool" },
       { type: "STATE", name: "State Pool" },
@@ -150,7 +311,11 @@ async function allocateRevenue(
       { type: "INVESTORS", name: "Investors Pool" },
     ] as const;
 
-    for (const { type: poolType, name } of poolConfigs) {
+    for (let idx = 0; idx < poolConfigs.length; idx++) {
+      const { type: poolType, name } = poolConfigs[idx]!;
+      const poolCents = basePoolCents + (idx < poolRemainderCents ? 1 : 0);
+      const poolAmount = fromCents(poolCents);
+
       // Get or create pool
       const pool = await prisma.strategyPool.upsert({
         where: { type: poolType },
@@ -169,13 +334,17 @@ async function allocateRevenue(
           destinationType: "STRATEGY_POOL",
           destinationId: pool.id,
           amount: poolAmount,
-          percentage: 4,
+          percentage: poolPercent,
           status: "PENDING",
         },
       });
     }
 
-    console.log(`[REVENUE SERVICE] Allocation complete: Company ₦${companyAmount.toLocaleString()}, Executive ₦${(amount * 0.3).toLocaleString()}, Strategic ₦${(amount * 0.2).toLocaleString()}`);
+    console.log(
+      `[REVENUE SERVICE] Allocation complete: Company ₦${companyAmount.toLocaleString()} (${split.companyPercent}%), ` +
+        `Executive ₦${executiveAmount.toLocaleString()} (${split.executivePercent}%), ` +
+        `Strategic ₦${fromCents(strategicCents).toLocaleString()} (${split.strategicPercent}%)`
+    );
   } catch (error: any) {
     console.error("[REVENUE SERVICE] Error in allocation:", {
       transactionId,

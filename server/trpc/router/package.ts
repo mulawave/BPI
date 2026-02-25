@@ -9,6 +9,7 @@ import { PaymentGateway, PaymentPurpose, PaymentStatus } from "@/server/services
 import { randomUUID } from "crypto";
 import { getPalliativeTier, isHighTierPackage, getWalletFieldName } from "@/lib/palliative";
 import { recordRevenue } from "@/server/services/revenue.service";
+import { getNigerianRegion } from "@/lib/nigeria-regions";
 import { activateMembershipAfterExternalPayment } from "@/server/services/membershipPayments.service";
 import {
   notifyMembershipActivation,
@@ -47,6 +48,39 @@ const qualifiesForCspCommunityCredit = (packageName: string) => {
   ];
   return qualifyingNames.some((name) => name.toLowerCase() === packageName.toLowerCase());
 };
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizePercent(maybePercent: number, fallback: number): number {
+  if (!Number.isFinite(maybePercent)) return fallback;
+  if (maybePercent < 0) return fallback;
+  return maybePercent > 1 ? maybePercent / 100 : maybePercent;
+}
+
+function computeProfitFiat(params: {
+  profitMode: "PERCENT" | "FIXED" | "HYBRID";
+  profitPercent: number;
+  profitFixedAmountFiat: number;
+  baseFiat: number;
+}): number {
+  const profitPercent = normalizePercent(params.profitPercent, 0);
+  const fixed = Number(params.profitFixedAmountFiat ?? 0);
+  const baseFiat = Number(params.baseFiat ?? 0);
+
+  let profitFiat = 0;
+  if (params.profitMode === "PERCENT") {
+    profitFiat = baseFiat * profitPercent;
+  } else if (params.profitMode === "FIXED") {
+    profitFiat = fixed;
+  } else {
+    profitFiat = baseFiat * profitPercent + fixed;
+  }
+
+  return clampNumber(profitFiat, 0, baseFiat);
+}
 
 async function finalizeEmpowermentPackage(params: {
   sponsorId: string;
@@ -92,10 +126,21 @@ async function finalizeEmpowermentPackage(params: {
 
   await recordRevenue(prisma, {
     source: "OTHER",
+    sourceKey: "EMPOWERMENT_PACKAGE_FEE",
     amount: totalCost,
     currency: "NGN",
     sourceId: empowermentPackage.id,
     description: `Empowerment package fee paid by ${sponsorId} for ${beneficiary.name || beneficiary.email || "beneficiary"}`,
+    userId: sponsorId,
+    programType: "EMPOWERMENT",
+    metadata: {
+      sponsorId,
+      beneficiaryId: beneficiary.id,
+      empowermentType,
+      packageFee,
+      vat,
+      totalCost,
+    },
   });
 
   await prisma.user.update({
@@ -143,7 +188,10 @@ export const packageRouter = createTRPCRouter({
       const totalCost = membershipPackage.price + membershipPackage.vat;
 
       if (input.gateway === "wallet") {
-        const user = await prisma.user.findUnique({ where: { id: userId }, select: { wallet: true } });
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { wallet: true, country: true, state: true },
+        });
         if (!user) throw new Error("User not found");
         if ((user.wallet ?? 0) < totalCost) {
           throw new Error(`Insufficient wallet balance. You need NGN ${totalCost.toLocaleString()}`);
@@ -178,12 +226,32 @@ export const packageRouter = createTRPCRouter({
           activatorName: ctx.session?.user?.name || ctx.session?.user?.email || "Member",
         });
 
+        const membershipProfitFiat = computeProfitFiat({
+          profitMode: ((membershipPackage.profitMode ?? "PERCENT") as any) as "PERCENT" | "FIXED" | "HYBRID",
+          profitPercent: Number(membershipPackage.profitPercent ?? 1),
+          profitFixedAmountFiat: Number(membershipPackage.profitFixedAmountFiat ?? 0),
+          baseFiat: Number(membershipPackage.price ?? 0),
+        });
+
         await recordRevenue(prisma, {
           source: "MEMBERSHIP_REGISTRATION",
-          amount: totalCost,
+          amount: membershipProfitFiat,
           currency: "NGN",
-          sourceId: input.packageId,
+          sourceId: `MEMBERSHIP_REGISTRATION:${walletReference}`,
           description: `Membership purchase: ${membershipPackage.name}`,
+          userId,
+          packageId: membershipPackage.id,
+          programType: "MEMBERSHIP",
+          country: user.country ?? undefined,
+          state: user.state ?? undefined,
+          region: getNigerianRegion(user.state),
+          metadata: {
+            totalPaid: totalCost,
+            basePrice: membershipPackage.price,
+            vat: membershipPackage.vat,
+            paymentMethod: "WALLET",
+            selectedPalliative: input.selectedPalliative ?? null,
+          },
         });
 
         return { success: true, gateway: "wallet", paymentUrl: null, reference: walletReference };
@@ -299,6 +367,11 @@ export const packageRouter = createTRPCRouter({
         throw new Error("Membership package not found.");
       }
 
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { country: true, state: true },
+      });
+
       const totalCost = membershipPackage.price + membershipPackage.vat;
       if (verification.amount && Math.abs(verification.amount - totalCost) > 5) {
         console.warn("[WARN] [MEMBERSHIP] Verification amount mismatch", {
@@ -353,10 +426,30 @@ export const packageRouter = createTRPCRouter({
 
       await recordRevenue(prisma, {
         source: "MEMBERSHIP_REGISTRATION",
-        amount: totalCost,
+        amount: computeProfitFiat({
+          profitMode: ((membershipPackage.profitMode ?? "PERCENT") as any) as "PERCENT" | "FIXED" | "HYBRID",
+          profitPercent: Number(membershipPackage.profitPercent ?? 1),
+          profitFixedAmountFiat: Number(membershipPackage.profitFixedAmountFiat ?? 0),
+          baseFiat: Number(membershipPackage.price ?? 0),
+        }),
         currency: "NGN",
-        sourceId: packageId,
+        sourceId: `MEMBERSHIP_REGISTRATION:${input.reference}`,
         description: `Membership purchase: ${membershipPackage.name}`,
+        userId,
+        packageId: membershipPackage.id,
+        programType: "MEMBERSHIP",
+        country: user?.country ?? undefined,
+        state: user?.state ?? undefined,
+        region: getNigerianRegion(user?.state),
+        metadata: {
+          totalPaid: totalCost,
+          basePrice: membershipPackage.price,
+          vat: membershipPackage.vat,
+          paymentMethod: input.gateway,
+          selectedPalliative: selectedPalliative ?? null,
+          verificationAmount: verification.amount ?? null,
+          verificationReference: verification.reference ?? null,
+        },
       });
 
       return {
@@ -1505,7 +1598,7 @@ export const packageRouter = createTRPCRouter({
       });
 
       // 8. Create renewal history record
-      await prisma.renewalHistory.create({
+      const renewalHistory = await prisma.renewalHistory.create({
         data: {
           id: randomUUID(),
           userId,
@@ -1527,12 +1620,31 @@ export const packageRouter = createTRPCRouter({
       });
 
       // Record revenue from membership renewal
+      const renewalProfitFiat = computeProfitFiat({
+        profitMode: ((membershipPackage.profitMode ?? "PERCENT") as any) as "PERCENT" | "FIXED" | "HYBRID",
+        profitPercent: Number(membershipPackage.profitPercent ?? 1),
+        profitFixedAmountFiat: Number(membershipPackage.profitFixedAmountFiat ?? 0),
+        baseFiat: Number(renewalFee ?? 0),
+      });
       await recordRevenue(prisma, {
         source: "MEMBERSHIP_RENEWAL",
-        amount: renewalFee,
+        amount: renewalProfitFiat,
         currency: "NGN",
-        sourceId: packageId,
+        sourceId: `MEMBERSHIP_RENEWAL:${renewalHistory.id}`,
         description: `Membership renewal: ${membershipPackage.name}`,
+        userId,
+        packageId: membershipPackage.id,
+        programType: "MEMBERSHIP_RENEWAL",
+        country: (user as any).country ?? undefined,
+        state: (user as any).state ?? undefined,
+        region: (user as any).region ?? undefined,
+        metadata: {
+          totalPaid: totalCost,
+          renewalFee,
+          vat,
+          renewalNumber: user.renewalCount + 1,
+          renewalHistoryId: renewalHistory.id,
+        },
       });
 
       // Send renewal notification

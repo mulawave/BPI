@@ -4,11 +4,14 @@ import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { randomUUID } from "crypto";
 import { 
   PALLIATIVE_THRESHOLD, 
+  PALLIATIVE_OPTIONS,
   getPalliativeTier, 
   getWalletFieldName,
+  getOptionTargetAmount,
   calculateThresholdProgress,
   canActivatePalliative 
 } from "@/lib/palliative";
+import { recordRevenue } from "@/server/services/revenue.service";
 
 function requireAdmin(session: any) {
   const userRole = (session?.user as any)?.role;
@@ -91,10 +94,21 @@ export const palliativeRouter = createTRPCRouter({
         throw new Error("Palliative already activated");
       }
 
+      // Stage 1 gate: shelter-activation milestone (₦200k) must be reached first
       if (user.palliative < PALLIATIVE_THRESHOLD) {
-        throw new Error(
-          `Minimum threshold of ₦${PALLIATIVE_THRESHOLD.toLocaleString()} not reached. Current balance: ₦${user.palliative.toLocaleString()}`
-        );
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `Shelter activation not yet complete. Reach ₦${PALLIATIVE_THRESHOLD.toLocaleString()} to unlock.  Current palliative balance: ₦${user.palliative.toLocaleString()}`
+        });
+      }
+
+      // Stage 2 gate: palliative wallet must reach the selected option's target amount
+      const optionTargetAmount = getOptionTargetAmount(input.palliativeType);
+      if (optionTargetAmount > 0 && user.palliative < optionTargetAmount) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `Palliative target not yet reached. Your ${input.palliativeType} option requires ₦${optionTargetAmount.toLocaleString()}. Current balance: ₦${user.palliative.toLocaleString()}`
+        });
       }
 
       // Get the wallet field name for the selected palliative type
@@ -421,6 +435,13 @@ export const palliativeRouter = createTRPCRouter({
       orderBy: { dateCompleted: 'desc' }
     });
 
+    // Get activation type (instant = Open Palliative; threshold = Shelter/Accumulated)
+    const activationRecord = await ctx.prisma.palliativeWalletActivation.findFirst({
+      where: { userId, palliativeType: user.selectedPalliative },
+      orderBy: { activatedAt: 'desc' },
+      select: { activationType: true, thresholdAmount: true },
+    });
+
     return {
       palliativeType: user.selectedPalliative,
       palliativeName: option.name,
@@ -433,6 +454,8 @@ export const palliativeRouter = createTRPCRouter({
       maturityRecord,
       icon: option.icon,
       description: option.description,
+      activationType: activationRecord?.activationType ?? "threshold", // "instant" | "threshold"
+      thresholdAmount: activationRecord?.thresholdAmount ?? null,
     };
   }),
 
@@ -497,6 +520,39 @@ export const palliativeRouter = createTRPCRouter({
       return { matured: true, message: "Maturity already recorded", record: existingMaturity };
     }
 
+    // Shelter overflow routing (house only): cap wallet to target and route overflow into revenue pools
+    let effectiveCompletedAmount = currentBalance;
+    if (user.selectedPalliative === "house" && currentBalance > option.targetAmount) {
+      const overflow = currentBalance - option.targetAmount;
+      effectiveCompletedAmount = option.targetAmount;
+
+      await ctx.prisma.user.update({
+        where: { id: userId },
+        data: {
+          [walletField]: option.targetAmount,
+        },
+      });
+
+      await recordRevenue(ctx.prisma, {
+        source: "PALLIATIVE_PROGRAM",
+        amount: overflow,
+        currency: "NGN",
+        sourceId: `PALLIATIVE_SHELTER_OVERFLOW:${userId}:${Date.now()}`,
+        description: `Shelter overflow routed to profit pools (excess above ₦${option.targetAmount.toLocaleString()})`,
+        userId,
+        programType: "PALLIATIVE",
+        country: (user as any).country ?? undefined,
+        state: (user as any).state ?? undefined,
+        region: (user as any).region ?? undefined,
+        metadata: {
+          palliativeType: user.selectedPalliative,
+          targetAmount: option.targetAmount,
+          currentBalance,
+          overflow,
+        },
+      });
+    }
+
     // Create maturity record
     const maturityRecord = await ctx.prisma.palliativeMaturity.create({
       data: {
@@ -504,7 +560,7 @@ export const palliativeRouter = createTRPCRouter({
         userId,
         palliativeType: user.selectedPalliative,
         targetAmount: option.targetAmount,
-        completedAmount: currentBalance,
+        completedAmount: effectiveCompletedAmount,
         status: "pending",
       }
     });

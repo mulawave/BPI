@@ -41,14 +41,14 @@ class NewsletterQueueService {
   private isProcessing = false;
 
   constructor() {
-    // Start queue processor (checks every minute)
-    this.startProcessor();
+    // Lazy start: processor starts when first job is scheduled.
   }
 
   /**
    * Schedule a newsletter campaign
    */
   async scheduleNewsletter(job: Omit<NewsletterJob, 'id' | 'status' | 'createdAt'>): Promise<NewsletterJob> {
+    this.startProcessor();
     const newsletterJob: NewsletterJob = {
       id: randomUUID(),
       status: 'pending',

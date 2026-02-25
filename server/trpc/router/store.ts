@@ -3,6 +3,340 @@ import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { sendEmail } from "@/lib/email";
 import { recordRevenue } from "@/server/services/revenue.service";
+import { randomUUID } from "crypto";
+
+async function getAdminSettingNumber(prisma: any, key: string, defaultValue: number): Promise<number> {
+  try {
+    const setting = await prisma.adminSettings.findUnique({ where: { settingKey: key } });
+    if (!setting?.settingValue) return defaultValue;
+    const parsed = Number(setting.settingValue);
+    return Number.isFinite(parsed) ? parsed : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
+
+function normalizePercent(maybePercent: number, fallback: number): number {
+  if (!Number.isFinite(maybePercent) || maybePercent < 0) return fallback;
+  if (maybePercent > 1) return maybePercent / 100;
+  return maybePercent;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeRewardPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const normalized = value > 1 ? value / 100 : value;
+  return clampNumber(normalized, 0, 1);
+}
+
+async function resolveSponsorChain(prisma: any, buyerUserId: string, maxLevels = 4): Promise<string[]> {
+  const chain: string[] = [];
+  let current = buyerUserId;
+
+  for (let i = 0; i < maxLevels; i++) {
+    const referral = await prisma.referral.findFirst({
+      where: { referredId: current, status: "active" },
+      select: { referrerId: true },
+    });
+
+    const next = referral?.referrerId;
+    if (!next) break;
+    if (chain.includes(next)) break;
+
+    chain.push(next);
+    current = next;
+  }
+
+  return chain;
+}
+
+async function settleStoreReferralRewards(prisma: any, orderId: string): Promise<void> {
+  try {
+    await prisma.$transaction(async (tx: any) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: {
+          id: true,
+          productId: true,
+          userId: true,
+          createdAt: true,
+          pricingSnapshot: true,
+          rewardSettlementState: true,
+          claimStatus: true,
+          status: true,
+        },
+      });
+
+      if (!order) return;
+      if (order.rewardSettlementState === "ISSUED") return;
+      if (order.claimStatus !== "COMPLETED" || order.status !== "COMPLETED") return;
+
+      const now = new Date();
+      const commonWhere: any = {
+        isActive: true,
+        OR: [{ startsAt: null }, { startsAt: { lte: now } }],
+        AND: [{ OR: [{ endsAt: null }, { endsAt: { gte: now } }] }],
+      };
+
+      const productScopedConfig = order.productId
+        ? await tx.storeRewardConfig.findFirst({
+            where: { ...commonWhere, productId: order.productId },
+            include: { levels: true },
+            orderBy: { updatedAt: "desc" },
+          })
+        : null;
+
+      const globalConfig = await tx.storeRewardConfig.findFirst({
+        where: { ...commonWhere, productId: null },
+        include: { levels: true },
+        orderBy: { updatedAt: "desc" },
+      });
+
+      const activeConfig = productScopedConfig ?? globalConfig;
+
+      const levels = (activeConfig?.levels ?? [])
+        .filter((l: any) => Number.isFinite(l.level) && l.level >= 1 && l.level <= 4)
+        .sort((a: any, b: any) => a.level - b.level);
+
+      // No active config means nothing to pay; mark as settled to prevent repeated attempts.
+      if (!activeConfig || levels.length === 0) {
+        await tx.order.update({
+          where: { id: order.id },
+          data: { rewardSettlementState: "ISSUED" },
+        });
+        return;
+      }
+
+      const pricing = (order.pricingSnapshot as any) ?? {};
+      const grossFiat = Number(pricing.total_fiat ?? pricing.totalFiat ?? pricing.base_price_fiat ?? 0);
+      const profitFiat = Number(pricing.profit_fiat ?? 0);
+
+      const sponsorChain = await resolveSponsorChain(tx, order.userId, 4);
+
+      for (const levelConfig of levels) {
+        const level = Number(levelConfig.level);
+        const recipientUserId = sponsorChain[level - 1];
+        if (!recipientUserId) continue;
+
+        const basis = levelConfig.rewardBasis;
+        const basisAmountFiat = basis === "PROFIT" ? profitFiat : grossFiat;
+        if (!Number.isFinite(basisAmountFiat) || basisAmountFiat <= 0) continue;
+
+        let payoutFiat = 0;
+        if (levelConfig.rewardValueType === "PERCENTAGE") {
+          const pct = normalizeRewardPercent(Number(levelConfig.rewardValue));
+          payoutFiat = basisAmountFiat * pct;
+        } else {
+          payoutFiat = Number(levelConfig.rewardValue);
+        }
+
+        if (levelConfig.maxRewardCap != null) {
+          payoutFiat = Math.min(payoutFiat, Number(levelConfig.maxRewardCap));
+        }
+
+        payoutFiat = clampNumber(payoutFiat, 0, Number.MAX_SAFE_INTEGER);
+        if (payoutFiat <= 0) continue;
+
+        // Idempotency guard: only credit if we successfully create the ledger row.
+        let createdLedger = false;
+        try {
+          await tx.storeReferralRewardLedger.create({
+            data: {
+              orderId: order.id,
+              buyerUserId: order.userId,
+              recipientUserId,
+              level,
+              basis,
+              basisAmountFiat: basisAmountFiat.toFixed(2),
+              payoutType: levelConfig.payoutType,
+              payoutAmountFiat: ["CASH", "CASHBACK"].includes(levelConfig.payoutType) ? payoutFiat.toFixed(2) : null,
+              tokenSymbol: null,
+              tokenAmount: null,
+            },
+          });
+          createdLedger = true;
+        } catch (e: any) {
+          if (e?.code === "P2002") {
+            createdLedger = false;
+          } else {
+            throw e;
+          }
+        }
+
+        if (!createdLedger) continue;
+
+        if (levelConfig.payoutType === "CASH") {
+          await tx.user.update({
+            where: { id: recipientUserId },
+            data: { wallet: { increment: payoutFiat } },
+          });
+
+          await tx.transaction.create({
+            data: {
+              userId: recipientUserId,
+              transactionType: "STORE_REFERRAL_REWARD_CASH",
+              amount: payoutFiat,
+              description: `Store referral reward (L${level}) for order ${order.id}`,
+              status: "completed",
+              reference: `STORE-REF-${order.id}-L${level}-${Date.now()}`,
+              walletType: "wallet",
+            },
+          });
+        } else if (levelConfig.payoutType === "CASHBACK") {
+          await tx.user.update({
+            where: { id: recipientUserId },
+            data: { cashback: { increment: payoutFiat } },
+          });
+
+          await tx.transaction.create({
+            data: {
+              userId: recipientUserId,
+              transactionType: "STORE_REFERRAL_REWARD_CASHBACK",
+              amount: payoutFiat,
+              description: `Store referral reward cashback (L${level}) for order ${order.id}`,
+              status: "completed",
+              reference: `STORE-REF-CB-${order.id}-L${level}-${Date.now()}`,
+              walletType: "cashback",
+            },
+          });
+        } else if (levelConfig.payoutType === "BPT") {
+          const symbol = "BPT";
+          const rate = await tx.tokenRate.findFirst({
+            where: { symbol },
+            orderBy: { effectiveAt: "desc" },
+          });
+          const rateToFiat = Number(rate?.rateToFiat ?? 0);
+          if (!Number.isFinite(rateToFiat) || rateToFiat <= 0) {
+            throw new Error(`Missing token rate for ${symbol}`);
+          }
+
+          const tokenAmount = payoutFiat / rateToFiat;
+          await tx.user.update({
+            where: { id: recipientUserId },
+            data: { bpiTokenWallet: { increment: tokenAmount } },
+          });
+
+          await tx.storeReferralRewardLedger.update({
+            where: { orderId_recipientUserId_level: { orderId: order.id, recipientUserId, level } },
+            data: { tokenSymbol: symbol, tokenAmount: tokenAmount.toFixed(8) },
+          });
+
+          await tx.transaction.create({
+            data: {
+              userId: recipientUserId,
+              transactionType: "STORE_REFERRAL_REWARD_BPT",
+              amount: tokenAmount,
+              description: `Store referral reward BPT (L${level}) for order ${order.id}`,
+              status: "completed",
+              reference: `STORE-REF-BPT-${order.id}-L${level}-${Date.now()}`,
+              walletType: "bpiToken",
+            },
+          });
+        } else if (levelConfig.payoutType === "UTILITY_TOKEN") {
+          const symbol = levelConfig.utilityTokenSymbol;
+          if (!symbol) {
+            throw new Error("UTILITY_TOKEN payout requires utilityTokenSymbol");
+          }
+
+          const rate = await tx.tokenRate.findFirst({
+            where: { symbol },
+            orderBy: { effectiveAt: "desc" },
+          });
+          const rateToFiat = Number(rate?.rateToFiat ?? 0);
+          if (!Number.isFinite(rateToFiat) || rateToFiat <= 0) {
+            throw new Error(`Missing token rate for ${symbol}`);
+          }
+          const tokenAmount = payoutFiat / rateToFiat;
+
+          const existing = await tx.walletBalance.findFirst({
+            where: { userId: recipientUserId, walletType: "UTILITY", symbol },
+          });
+
+          if (existing) {
+            await tx.walletBalance.update({
+              where: { id: existing.id },
+              data: { balance: { increment: tokenAmount.toFixed(8) } },
+            });
+          } else {
+            await tx.walletBalance.create({
+              data: {
+                userId: recipientUserId,
+                walletType: "UTILITY",
+                symbol,
+                balance: tokenAmount.toFixed(8),
+              },
+            });
+          }
+
+          await tx.storeReferralRewardLedger.update({
+            where: { orderId_recipientUserId_level: { orderId: order.id, recipientUserId, level } },
+            data: { tokenSymbol: symbol, tokenAmount: tokenAmount.toFixed(8) },
+          });
+
+          await tx.transaction.create({
+            data: {
+              userId: recipientUserId,
+              transactionType: "STORE_REFERRAL_REWARD_UTILITY_TOKEN",
+              amount: tokenAmount,
+              description: `Store referral reward ${symbol} (L${level}) for order ${order.id}`,
+              status: "completed",
+              reference: `STORE-REF-UTIL-${order.id}-L${level}-${Date.now()}`,
+              walletType: "utility",
+            },
+          });
+        }
+      }
+
+      await tx.order.update({
+        where: { id: order.id },
+        data: { rewardSettlementState: "ISSUED" },
+      });
+    });
+  } catch (e) {
+    console.error("[store.settleStoreReferralRewards] Failed", e);
+    try {
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { rewardSettlementState: "FAILED" },
+      });
+    } catch (e2) {
+      console.error("[store.settleStoreReferralRewards] Failed to mark FAILED", e2);
+    }
+  }
+}
+
+const mapStoreRewardLevel = (level: any) => {
+  return {
+    id: level.id,
+    config_id: level.configId,
+    level: level.level,
+    reward_basis: level.rewardBasis,
+    reward_value_type: level.rewardValueType,
+    reward_value: Number(level.rewardValue ?? 0),
+    payout_type: level.payoutType,
+    max_reward_cap: level.maxRewardCap == null ? null : Number(level.maxRewardCap ?? 0),
+    utility_token_symbol: level.utilityTokenSymbol ?? null,
+    created_at: level.createdAt,
+    updated_at: level.updatedAt,
+  };
+};
+
+const mapStoreRewardConfig = (config: any) => {
+  return {
+    id: config.id,
+    product_id: config.productId ?? null,
+    is_active: Boolean(config.isActive),
+    starts_at: config.startsAt ?? null,
+    ends_at: config.endsAt ?? null,
+    created_at: config.createdAt,
+    updated_at: config.updatedAt,
+    levels: (config.levels ?? []).slice().sort((a: any, b: any) => a.level - b.level).map(mapStoreRewardLevel),
+  };
+};
 
 const mapRewardConfig = (rc?: any) => {
   if (!rc) return [] as any[];
@@ -25,11 +359,21 @@ const mapProduct = (product: any) => {
     product_id: product.id,
     name: product.name,
     description: product.description,
+    vendor: product.vendor ?? null,
+    category: product.category ?? null,
     product_type: product.productType?.toLowerCase?.() ?? product.productType,
+    pricing_mode: product.pricingMode?.toLowerCase?.() ?? product.pricingMode ?? "fiat",
     base_price_fiat: Number(product.basePriceFiat ?? 0),
+    token_unit_symbol: product.tokenUnitSymbol ?? null,
+    token_unit_amount: product.tokenUnitAmount == null ? null : Number(product.tokenUnitAmount ?? 0),
+    profit_mode: product.profitMode?.toLowerCase?.() ?? product.profitMode,
+    profit_percent: Number(product.profitPercent ?? 0),
+    profit_fixed_amount_fiat: Number(product.profitFixedAmountFiat ?? 0),
+    min_token_percent: product.minTokenPercent == null ? null : Number(product.minTokenPercent ?? 0),
     accepted_tokens: product.acceptedTokens ?? [],
     token_payment_limits: (product.tokenPaymentLimits as Record<string, number>) ?? {},
     reward_config: mapRewardConfig(product.rewardConfig),
+    store_reward_config_id: product.storeRewardConfigs?.[0]?.id ?? null,
     inventory_type: product.inventoryType?.toLowerCase?.() ?? product.inventoryType,
     status: product.status?.toLowerCase?.() ?? product.status,
     hero_badge: product.heroBadge,
@@ -143,11 +487,13 @@ const resolvePickupCenterLocations = async (centers: any[], prisma: any) => {
 
 export const storeRouter = createTRPCRouter({
   listProducts: protectedProcedure
-    .input(z.object({ status: z.string().optional(), type: z.string().optional(), query: z.string().optional() }).optional())
+    .input(z.object({ status: z.string().optional(), type: z.string().optional(), query: z.string().optional(), vendor: z.string().optional(), category: z.string().optional() }).optional())
     .query(async ({ ctx, input }) => {
       const status = input?.status ?? "all";
       const type = input?.type ?? "all";
       const query = input?.query?.toLowerCase?.() ?? "";
+      const vendor = input?.vendor?.trim() ?? "";
+      const category = input?.category?.trim() ?? "";
 
       const products = await (ctx.prisma as any).product.findMany({
         where: {
@@ -162,9 +508,11 @@ export const storeRouter = createTRPCRouter({
                   ],
                 }
               : {},
+            vendor ? { vendor: { contains: vendor, mode: "insensitive" } } : {},
+            category ? { category: { contains: category, mode: "insensitive" } } : {},
           ],
         },
-        include: { rewardConfig: true },
+        include: { rewardConfig: true, storeRewardConfigs: { include: { levels: true } } },
         orderBy: [{ createdAt: "desc" }],
       });
 
@@ -174,7 +522,7 @@ export const storeRouter = createTRPCRouter({
   getProduct: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
     const product = await (ctx.prisma as any).product.findUnique({
       where: { id: input.id },
-      include: { rewardConfig: true },
+      include: { rewardConfig: true, storeRewardConfigs: { include: { levels: true } } },
     });
     return product ? mapProduct(product) : null;
   }),
@@ -190,33 +538,194 @@ export const storeRouter = createTRPCRouter({
     }));
   }),
 
-  adminUpsertProduct: protectedProcedure
+  listStoreRewardConfigs: protectedProcedure.query(async ({ ctx }) => {
+    const configs = await (ctx.prisma as any).storeRewardConfig.findMany({
+      include: { levels: true },
+      orderBy: [{ updatedAt: "desc" }],
+    });
+    return configs.map(mapStoreRewardConfig);
+  }),
+
+  adminUpsertStoreRewardConfig: protectedProcedure
     .input(
       z.object({
         id: z.string().optional(),
-        name: z.string().min(1),
-        description: z.string().min(1),
-        productType: z.enum(["PHYSICAL", "DIGITAL", "LICENSE", "SERVICE", "UTILITY"]),
-        basePriceFiat: z.number().positive(),
-        acceptedTokens: z.array(z.string().min(1)).optional().default([]),
-        tokenPaymentLimits: z.record(z.number().min(0).max(1)),
-        rewardConfigId: z.string().optional(),
-        inventoryType: z.enum(["UNLIMITED", "LIMITED", "TIME_BOUND"]).default("UNLIMITED"),
-        status: z.enum(["ACTIVE", "PAUSED", "RETIRED"]).default("ACTIVE"),
-        pickupCenterId: z.string().optional(),
-        rewardCenterId: z.string().optional(),
-        deliveryRequired: z.boolean().default(false),
-        heroBadge: z.string().optional().nullable(),
-        featured: z.boolean().default(false),
-        images: z.array(z.string()).default([]),
+        productId: z.string().nullable().optional(),
+        isActive: z.boolean().default(false),
+        startsAt: z.coerce.date().nullable().optional(),
+        endsAt: z.coerce.date().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const data = {
+      const startsAt = input.startsAt ?? null;
+      const endsAt = input.endsAt ?? null;
+      if (startsAt && endsAt && startsAt > endsAt) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "startsAt must be before endsAt" });
+      }
+
+      const config = await (ctx.prisma as any).$transaction(async (tx: any) => {
+        const existing = input.id
+          ? await tx.storeRewardConfig.findUnique({ where: { id: input.id }, select: { productId: true } })
+          : null;
+
+        const scopeProductId = input.productId !== undefined
+          ? input.productId
+          : existing?.productId ?? null;
+
+        const data: any = {
+          startsAt,
+          endsAt,
+          isActive: Boolean(input.isActive),
+        };
+
+        // Only change product scope when explicitly provided.
+        if (input.productId !== undefined) {
+          data.productId = input.productId;
+        }
+
+        const createdOrUpdated = input.id
+          ? await tx.storeRewardConfig.update({ where: { id: input.id }, data, include: { levels: true } })
+          : await tx.storeRewardConfig.create({ data, include: { levels: true } });
+
+        return createdOrUpdated;
+      });
+
+      return mapStoreRewardConfig(config);
+    }),
+
+  adminDeleteStoreRewardConfig: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await (ctx.prisma as any).storeRewardConfig.delete({ where: { id: input.id } });
+      return { ok: true };
+    }),
+
+  adminLinkProductReferralConfig: protectedProcedure
+    .input(
+      z.object({
+        productId: z.string(),
+        configId: z.string().nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Unlink all currently linked configs for this product
+      await (ctx.prisma as any).storeRewardConfig.updateMany({
+        where: { productId: input.productId },
+        data: { productId: null },
+      });
+      // Link the chosen config if provided
+      if (input.configId) {
+        await (ctx.prisma as any).storeRewardConfig.update({
+          where: { id: input.configId },
+          data: { productId: input.productId },
+        });
+      }
+      return { ok: true };
+    }),
+
+  adminUpsertStoreRewardLevel: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().optional(),
+        configId: z.string(),
+        level: z.number().int().min(1).max(4),
+        rewardBasis: z.enum(["GROSS", "PROFIT"]),
+        rewardValueType: z.enum(["FIXED", "PERCENTAGE"]),
+        rewardValue: z.number().min(0),
+        payoutType: z.enum(["CASH", "CASHBACK", "BPT", "UTILITY_TOKEN"]),
+        maxRewardCap: z.number().min(0).nullable().optional(),
+        utilityTokenSymbol: z.string().min(1).nullable().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.payoutType === "UTILITY_TOKEN" && !input.utilityTokenSymbol) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "utilityTokenSymbol is required for UTILITY_TOKEN payouts" });
+      }
+
+      const data: any = {
+        configId: input.configId,
+        level: input.level,
+        rewardBasis: input.rewardBasis,
+        rewardValueType: input.rewardValueType,
+        rewardValue: input.rewardValue,
+        payoutType: input.payoutType,
+        maxRewardCap: input.maxRewardCap ?? undefined,
+        utilityTokenSymbol: input.utilityTokenSymbol ?? undefined,
+      };
+
+      const saved = await (ctx.prisma as any).storeRewardLevel.upsert({
+        where: input.id
+          ? { id: input.id }
+          : { configId_level: { configId: input.configId, level: input.level } },
+        create: data,
+        update: data,
+      });
+
+      return mapStoreRewardLevel(saved);
+    }),
+
+  adminDeleteStoreRewardLevel: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await (ctx.prisma as any).storeRewardLevel.delete({ where: { id: input.id } });
+      return { ok: true };
+    }),
+
+  adminUpsertProduct: protectedProcedure
+    .input(
+      z
+        .object({
+          id: z.string().optional(),
+          name: z.string().min(1),
+          description: z.string().min(1),
+          vendor: z.string().optional().nullable(),
+          category: z.string().optional().nullable(),
+          productType: z.enum(["PHYSICAL", "DIGITAL", "LICENSE", "SERVICE", "UTILITY"]),
+          pricingMode: z.enum(["FIAT", "TOKEN_UNIT"]).default("FIAT"),
+          basePriceFiat: z.number().min(0),
+          tokenUnitSymbol: z.string().trim().min(1).nullable().optional(),
+          tokenUnitAmount: z.number().positive().nullable().optional(),
+          profitMode: z.enum(["PERCENT", "FIXED", "HYBRID"]).optional(),
+          // Accept 0-1 (preferred) or 0-100; normalized server-side.
+          profitPercent: z.number().min(0).optional(),
+          // Per-unit fixed profit component in fiat.
+          profitFixedAmountFiat: z.number().min(0).optional(),
+          // Optional min token percent (0-1 or 0-100; normalized). Applies to HYBRID.
+          minTokenPercent: z.number().min(0).nullable().optional(),
+          acceptedTokens: z.array(z.string().min(1)).optional().default([]),
+          tokenPaymentLimits: z.record(z.number().min(0).max(1)),
+          rewardConfigId: z.string().optional(),
+          inventoryType: z.enum(["UNLIMITED", "LIMITED", "TIME_BOUND"]).default("UNLIMITED"),
+          status: z.enum(["ACTIVE", "PAUSED", "RETIRED"]).default("ACTIVE"),
+          pickupCenterId: z.string().optional(),
+          rewardCenterId: z.string().optional(),
+          deliveryRequired: z.boolean().default(false),
+          heroBadge: z.string().optional().nullable(),
+          featured: z.boolean().default(false),
+          images: z.array(z.string()).default([]),
+        })
+        .superRefine((val, ctx) => {
+          if (val.pricingMode === "TOKEN_UNIT") {
+            if (!val.tokenUnitSymbol) {
+              ctx.addIssue({ code: z.ZodIssueCode.custom, message: "tokenUnitSymbol is required for TOKEN_UNIT pricing", path: ["tokenUnitSymbol"] });
+            }
+            if (val.tokenUnitAmount == null || !Number.isFinite(val.tokenUnitAmount) || val.tokenUnitAmount <= 0) {
+              ctx.addIssue({ code: z.ZodIssueCode.custom, message: "tokenUnitAmount must be > 0 for TOKEN_UNIT pricing", path: ["tokenUnitAmount"] });
+            }
+          }
+        })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const data: any = {
         name: input.name,
         description: input.description,
+        vendor: input.vendor ?? null,
+        category: input.category ?? null,
         productType: input.productType,
+        pricingMode: input.pricingMode,
         basePriceFiat: input.basePriceFiat,
+        tokenUnitSymbol: input.pricingMode === "TOKEN_UNIT" ? (input.tokenUnitSymbol ?? undefined) : null,
+        tokenUnitAmount: input.pricingMode === "TOKEN_UNIT" ? (input.tokenUnitAmount ?? undefined) : null,
         acceptedTokens: input.acceptedTokens,
         tokenPaymentLimits: input.tokenPaymentLimits,
         rewardConfigId: input.rewardConfigId,
@@ -230,11 +739,25 @@ export const storeRouter = createTRPCRouter({
         featured: input.featured,
       };
 
+      if (input.profitMode) data.profitMode = input.profitMode;
+      if (input.profitPercent !== undefined) data.profitPercent = normalizePercent(input.profitPercent, 1);
+      if (input.profitFixedAmountFiat !== undefined) data.profitFixedAmountFiat = input.profitFixedAmountFiat;
+      if (input.minTokenPercent !== undefined) {
+        data.minTokenPercent = input.minTokenPercent === null ? null : normalizePercent(input.minTokenPercent, 0);
+      }
+
       const product = input.id
-        ? await (ctx.prisma as any).product.update({ where: { id: input.id }, data, include: { rewardConfig: true } })
-        : await (ctx.prisma as any).product.create({ data, include: { rewardConfig: true } });
+        ? await (ctx.prisma as any).product.update({ where: { id: input.id }, data, include: { rewardConfig: true, storeRewardConfigs: { include: { levels: true } } } })
+        : await (ctx.prisma as any).product.create({ data, include: { rewardConfig: true, storeRewardConfigs: { include: { levels: true } } } });
 
       return mapProduct(product);
+    }),
+
+  adminDeleteProduct: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await (ctx.prisma as any).product.delete({ where: { id: input.id } });
+      return { ok: true };
     }),
 
   adminUpsertRewardConfig: protectedProcedure
@@ -436,9 +959,16 @@ export const storeRouter = createTRPCRouter({
         data: {
           status: input.status,
           rewardSettlementState: input.rewardSettlementState ?? undefined,
+          // Advance claimStatus so the settlement guard is satisfied for non-physical orders.
+          ...(input.status === "COMPLETED" ? { claimStatus: "COMPLETED" } : {}),
         },
         include: { product: { include: { rewardConfig: true } }, pickupCenter: true, pickupExperienceRating: true },
       });
+
+      // Settle store referral rewards when any order is marked COMPLETED (covers external-token / manual orders).
+      if (input.status === "COMPLETED" && order.rewardSettlementState === "PENDING") {
+        await settleStoreReferralRewards(ctx.prisma, order.id);
+      }
 
       return mapOrder(order);
     }),
@@ -470,6 +1000,13 @@ export const storeRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "No accepted token configured" });
       }
 
+      if (symbol !== "BPT") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only BPT token payments are supported at this time.",
+        });
+      }
+
       const tokenLimitMap = (product.tokenPaymentLimits as Record<string, number>) || {};
       const tokenLimit = tokenLimitMap[symbol] ?? 0;
 
@@ -481,6 +1018,21 @@ export const storeRouter = createTRPCRouter({
       const basePriceFiat = Number(product.basePriceFiat ?? 0);
       const quantity = input.quantity;
       const totalFiat = basePriceFiat * quantity;
+
+      const profitMode = (product.profitMode ?? "PERCENT") as "PERCENT" | "FIXED" | "HYBRID";
+      const profitPercent = normalizePercent(Number(product.profitPercent ?? 1), 1);
+      const profitFixedPerUnitFiat = Number(product.profitFixedAmountFiat ?? 0);
+      const minTokenPercent = product.minTokenPercent == null ? null : normalizePercent(Number(product.minTokenPercent ?? 0), 0);
+
+      let profitFiat = 0;
+      if (profitMode === "PERCENT") {
+        profitFiat = totalFiat * profitPercent;
+      } else if (profitMode === "FIXED") {
+        profitFiat = profitFixedPerUnitFiat * quantity;
+      } else {
+        profitFiat = totalFiat * profitPercent + profitFixedPerUnitFiat * quantity;
+      }
+      profitFiat = clampNumber(profitFiat, 0, totalFiat);
       const tokenPortionFiat = Math.min(totalFiat * tokenLimit, totalFiat);
       const tokenAmount = tokenPortionFiat > 0 ? tokenPortionFiat / Number(tokenRate.rateToFiat ?? 1) : 0;
       const fiatPortion = totalFiat - tokenPortionFiat;
@@ -506,6 +1058,11 @@ export const storeRouter = createTRPCRouter({
           pricingSnapshot: {
             base_price_fiat: basePriceFiat,
             quantity,
+            profit_mode: profitMode,
+            profit_percent: profitPercent,
+            profit_fixed_per_unit_fiat: profitFixedPerUnitFiat,
+            profit_fiat: profitFiat,
+            min_token_percent: minTokenPercent,
             token_symbol: symbol,
             token_limit: tokenLimit,
             token_portion_fiat: tokenPortionFiat,
@@ -542,12 +1099,322 @@ export const storeRouter = createTRPCRouter({
       };
     }),
 
+  createExternalTokenCheckoutIntent: protectedProcedure
+    .input(
+      z.object({
+        productId: z.string(),
+        quantity: z.number().int().min(1).max(10).default(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (process.env.STORE_CHECKOUT_PAUSED === "true") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Checkout is temporarily paused" });
+      }
+
+      const product = await (ctx.prisma as any).product.findUnique({
+        where: { id: input.productId },
+        include: { rewardConfig: true },
+      });
+      if (!product) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Product not found" });
+      }
+
+      if (product.status !== "ACTIVE") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Product is not available for checkout" });
+      }
+
+      const cryptoGateway = await (ctx.prisma as any).paymentGatewayConfig.findFirst({
+        where: { gatewayName: "crypto", isActive: true },
+      });
+
+      const depositAddress = cryptoGateway?.cryptoPublicKey;
+      if (!depositAddress) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Crypto payments are not configured yet. Please contact admin.",
+        });
+      }
+
+      const pricingMode = String(product.pricingMode ?? "FIAT").toUpperCase() as "FIAT" | "TOKEN_UNIT";
+      const externalTokenSymbol = (
+        (pricingMode === "TOKEN_UNIT" ? product.tokenUnitSymbol : null) ||
+        cryptoGateway?.tokenSymbol ||
+        "USDT"
+      ).toUpperCase();
+      const tokenRate = await (ctx.prisma as any).tokenRate.findFirst({
+        where: { symbol: externalTokenSymbol },
+        orderBy: { effectiveAt: "desc" },
+      });
+
+      if (!tokenRate) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `No rate available for ${externalTokenSymbol}` });
+      }
+
+      const basePriceFiat = Number(product.basePriceFiat ?? 0);
+      const quantity = input.quantity;
+      const tokenUnitAmountPerUnit = pricingMode === "TOKEN_UNIT" ? Number(product.tokenUnitAmount ?? 0) : null;
+
+      const profitMode = (product.profitMode ?? "PERCENT") as "PERCENT" | "FIXED" | "HYBRID";
+      const profitPercent = normalizePercent(Number(product.profitPercent ?? 1), 1);
+      const profitFixedPerUnitFiat = Number(product.profitFixedAmountFiat ?? 0);
+      const minTokenPercent = product.minTokenPercent == null ? null : normalizePercent(Number(product.minTokenPercent ?? 0), 0);
+
+      const rateToFiat = Number(tokenRate.rateToFiat ?? 0);
+      if (!Number.isFinite(rateToFiat) || rateToFiat <= 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `Invalid rate for ${externalTokenSymbol}` });
+      }
+
+      let expectedTokenAmount = 0;
+      let totalFiat = 0;
+      if (pricingMode === "TOKEN_UNIT") {
+        if (!tokenUnitAmountPerUnit || !Number.isFinite(tokenUnitAmountPerUnit) || tokenUnitAmountPerUnit <= 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Token-unit pricing is not configured for this product" });
+        }
+        expectedTokenAmount = tokenUnitAmountPerUnit * quantity;
+        totalFiat = expectedTokenAmount * rateToFiat;
+      } else {
+        totalFiat = basePriceFiat * quantity;
+        expectedTokenAmount = totalFiat > 0 ? totalFiat / rateToFiat : 0;
+      }
+
+      let profitFiat = 0;
+      if (profitMode === "PERCENT") {
+        profitFiat = totalFiat * profitPercent;
+      } else if (profitMode === "FIXED") {
+        profitFiat = profitFixedPerUnitFiat * quantity;
+      } else {
+        profitFiat = totalFiat * profitPercent + profitFixedPerUnitFiat * quantity;
+      }
+      profitFiat = clampNumber(profitFiat, 0, totalFiat);
+
+      const rewardSnapshot = product.rewardConfig && product.rewardConfig.isActive
+        ? {
+            reward_id: product.rewardConfig.id,
+            reward_type: product.rewardConfig.rewardType,
+            reward_value: Number(product.rewardConfig.rewardValue ?? 0),
+            reward_value_type: product.rewardConfig.rewardValueType,
+            vesting_rule: product.rewardConfig.vestingRule,
+            max_reward_cap: product.rewardConfig.maxRewardCap ? Number(product.rewardConfig.maxRewardCap) : null,
+            utility_token_symbol: product.rewardConfig.utilityTokenSymbol,
+            is_active: product.rewardConfig.isActive,
+          }
+        : null;
+
+      const order = await (ctx.prisma as any).order.create({
+        data: {
+          productId: product.id,
+          userId: ctx.user.id,
+          quantity,
+          pricingSnapshot: {
+            base_price_fiat: basePriceFiat,
+            quantity,
+            pricing_mode: pricingMode,
+            token_unit_symbol: pricingMode === "TOKEN_UNIT" ? externalTokenSymbol : null,
+            token_unit_amount_per_unit: pricingMode === "TOKEN_UNIT" ? tokenUnitAmountPerUnit : null,
+            profit_mode: profitMode,
+            profit_percent: profitPercent,
+            profit_fixed_per_unit_fiat: profitFixedPerUnitFiat,
+            profit_fiat: profitFiat,
+            min_token_percent: minTokenPercent,
+            token_symbol: externalTokenSymbol,
+            token_rate_to_fiat: rateToFiat,
+            token_amount_expected: expectedTokenAmount,
+            total_fiat: totalFiat,
+            payment_mode: "EXTERNAL_TOKEN",
+          },
+          paymentBreakdown: {
+            token: null,
+            fiat: 0,
+            payment_mode: "EXTERNAL_TOKEN",
+            external_token: {
+              symbol: externalTokenSymbol,
+              expected_amount: expectedTokenAmount,
+              expected_fiat: totalFiat,
+              deposit_address: depositAddress,
+              pricing_mode: pricingMode,
+              token_unit_amount_per_unit: pricingMode === "TOKEN_UNIT" ? tokenUnitAmountPerUnit : null,
+            },
+          },
+          rewardConfigSnapshot: rewardSnapshot,
+          tokenRateSnapshot: {
+            symbol: externalTokenSymbol,
+            rate_to_fiat: rateToFiat,
+            effective_at: tokenRate.effectiveAt,
+          },
+          pickupCenterId: product.pickupCenterId ?? null,
+          rewardCenterId: product.rewardCenterId ?? null,
+        },
+        include: { product: true },
+      });
+
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const gatewayReference = `STORE-EXT-${order.id}`;
+
+      const pendingPayment = await (ctx.prisma as any).pendingPayment.create({
+        data: {
+          id: randomUUID(),
+          userId: ctx.user.id,
+          transactionType: "STORE_PURCHASE",
+          amount: totalFiat,
+          currency: "NGN",
+          paymentMethod: "crypto",
+          gatewayReference,
+          status: "pending",
+          metadata: {
+            orderId: order.id,
+            productId: order.productId,
+            quantity: order.quantity,
+            depositAddress,
+            tokenSymbol: externalTokenSymbol,
+            tokenRateToFiat: rateToFiat,
+            expectedTokenAmount,
+            totalFiat,
+            profitFiat,
+            pricingMode,
+            tokenUnitAmountPerUnit: pricingMode === "TOKEN_UNIT" ? tokenUnitAmountPerUnit : null,
+            pricingSnapshot: order.pricingSnapshot ?? null,
+          },
+          expiresAt,
+          updatedAt: now,
+        },
+      });
+
+      return {
+        intentId: order.id,
+        orderId: order.id,
+        pendingPaymentId: pendingPayment.id,
+        gatewayReference,
+        depositAddress,
+        tokenSymbol: externalTokenSymbol,
+        expectedTokenAmount,
+        expectedFiat: totalFiat,
+        expiresAt,
+        redirectUrl: `/checkout/external-token?orderId=${order.id}`,
+      };
+    }),
+
+  getExternalTokenCheckoutIntent: protectedProcedure
+    .input(z.object({ orderId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const order = await (ctx.prisma as any).order.findUnique({
+        where: { id: input.orderId },
+        include: { product: true },
+      });
+
+      if (!order) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+      }
+
+      if (order.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "You cannot access this order" });
+      }
+
+      const gatewayReference = `STORE-EXT-${order.id}`;
+      const pendingPayment = await (ctx.prisma as any).pendingPayment.findFirst({
+        where: {
+          userId: ctx.user.id,
+          gatewayReference,
+          paymentMethod: "crypto",
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!pendingPayment) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "External payment intent not found" });
+      }
+
+      const meta = (pendingPayment.metadata ?? {}) as any;
+      const externalToken = ((order.paymentBreakdown as any)?.external_token ?? {}) as any;
+
+      return {
+        orderId: order.id,
+        status: order.status,
+        claimStatus: order.claimStatus,
+        pendingPaymentId: pendingPayment.id,
+        pendingPaymentStatus: pendingPayment.status,
+        gatewayReference: pendingPayment.gatewayReference,
+        expiresAt: pendingPayment.expiresAt,
+        depositAddress: meta.depositAddress ?? externalToken.deposit_address ?? null,
+        tokenSymbol: meta.tokenSymbol ?? externalToken.symbol ?? null,
+        expectedTokenAmount: meta.expectedTokenAmount ?? externalToken.expected_amount ?? null,
+        expectedFiat: meta.totalFiat ?? externalToken.expected_fiat ?? null,
+        txHash: pendingPayment.proofOfPayment ?? meta.txHash ?? null,
+      };
+    }),
+
+  submitExternalTokenPaymentTxHash: protectedProcedure
+    .input(
+      z.object({
+        pendingPaymentId: z.string(),
+        txHash: z.string().trim().min(6),
+        note: z.string().max(500).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const payment = await (ctx.prisma as any).pendingPayment.findUnique({
+        where: { id: input.pendingPaymentId },
+      });
+
+      if (!payment) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pending payment not found" });
+      }
+
+      const transactionType = String(payment.transactionType ?? "").toUpperCase();
+      if (transactionType !== "STORE_PURCHASE") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Unsupported payment type" });
+      }
+
+      const paymentMethod = String(payment.paymentMethod ?? "").toLowerCase();
+      if (paymentMethod !== "crypto") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Unsupported payment method" });
+      }
+
+      if (payment.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "You cannot update this payment" });
+      }
+
+      const status = String(payment.status ?? "").toLowerCase();
+      if (status !== "pending") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Payment has already been reviewed" });
+      }
+
+      if (payment.expiresAt && new Date(payment.expiresAt).getTime() < Date.now()) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Payment request has expired" });
+      }
+
+      const existingMetadata = (payment.metadata ?? {}) as Record<string, unknown>;
+      const now = new Date();
+
+      const updated = await (ctx.prisma as any).pendingPayment.update({
+        where: { id: payment.id },
+        data: {
+          proofOfPayment: input.txHash,
+          metadata: {
+            ...existingMetadata,
+            txHash: input.txHash,
+            note: input.note ?? null,
+            submittedAt: now.toISOString(),
+          },
+          updatedAt: now,
+        },
+      });
+
+      return {
+        success: true,
+        pendingPaymentId: updated.id,
+        status: updated.status,
+        message: "Transaction hash submitted. Awaiting admin verification.",
+      };
+    }),
+
   confirmCheckoutIntent: protectedProcedure
     .input(
       z.object({
         intentId: z.string(),
         paymentMode: z.enum(["FIAT", "HYBRID", "TOKEN"]).default("FIAT"),
-        paymentSource: z.enum(["wallet", "cashback", "bpiToken"]).default("wallet"),
+        // CTO policy: Store fiat spending uses Cashback Wallet; Main Wallet is funding-only.
+        paymentSource: z.enum(["cashback"]).default("cashback"),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -568,6 +1435,17 @@ export const storeRouter = createTRPCRouter({
         return mapOrder(existing);
       }
 
+      const existingPaymentMode =
+        (existing.pricingSnapshot as any)?.payment_mode ??
+        (existing.paymentBreakdown as any)?.payment_mode ??
+        null;
+      if (existingPaymentMode === "EXTERNAL_TOKEN") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This order uses external token payment. Submit your transaction hash and await admin verification.",
+        });
+      }
+
       const paymentBreakdown = {
         ...(existing.paymentBreakdown as Record<string, unknown>),
         payment_mode: input.paymentMode,
@@ -585,27 +1463,81 @@ export const storeRouter = createTRPCRouter({
       const tokenPortion = Number(paymentBreakdown?.token?.amount ?? 0);
       const tokenSymbol = paymentBreakdown?.token?.symbol ?? null;
 
+      if (tokenPortion > 0 && tokenSymbol && tokenSymbol !== "BPT") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only BPT token payments are supported at this time.",
+        });
+      }
+
+      const tokenPortionFiat = Number(
+        paymentBreakdown?.token?.fiat_value ??
+        (existing.pricingSnapshot as any)?.token_portion_fiat ??
+        0
+      );
+
+      const grossFiat = Number(
+        (existing.pricingSnapshot as any)?.total_fiat ??
+        (existing.pricingSnapshot as any)?.totalFiat ??
+        (existing.pricingSnapshot as any)?.base_price_fiat ??
+        0
+      );
+
+      const snapMinTokenPercent = (existing.pricingSnapshot as any)?.min_token_percent;
+      const productMinTokenPercent = existing.product?.minTokenPercent;
+      const minTokenPercentOverride = productMinTokenPercent == null
+        ? (snapMinTokenPercent == null ? null : normalizePercent(Number(snapMinTokenPercent), 0))
+        : normalizePercent(Number(productMinTokenPercent), 0);
+
+      const minBptPercentSetting = await getAdminSettingNumber(ctx.prisma, "STORE_MIN_BPT_PERCENT", 0.2);
+      const minBptPercent = normalizePercent(minBptPercentSetting, 0.2);
+      const effectiveMinTokenPercent = minTokenPercentOverride ?? minBptPercent;
+
+      if (input.paymentMode === "TOKEN" && fiatPortion > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Token-only checkout cannot include a fiat portion.",
+        });
+      }
+
+      if (input.paymentMode === "HYBRID") {
+        const gross = grossFiat > 0 ? grossFiat : Math.max(0, fiatPortion + tokenPortionFiat);
+        const requiredTokenFiat = gross * effectiveMinTokenPercent;
+
+        if (requiredTokenFiat > 0 && tokenPortionFiat + 1e-9 < requiredTokenFiat) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Mixed checkout requires at least ${(effectiveMinTokenPercent * 100).toFixed(0)}% in BPT. Increase your token portion or choose 100% Cashback / 100% BPT.`,
+          });
+        }
+      }
+
       const user = await (ctx.prisma as any).user.findUnique({
         where: { id: ctx.user.id },
-        select: { wallet: true, cashback: true, bpiToken: true },
+        select: { wallet: true, cashback: true, bpiTokenWallet: true },
       });
 
       if (!user) {
         throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
       }
 
-      const sourceField = input.paymentSource === "wallet" ? "wallet" : input.paymentSource === "cashback" ? "cashback" : "bpiToken";
+      const sourceField = "cashback";
       const sourceBalance = (user as any)[sourceField] ?? 0;
 
       if (fiatPortion > 0 && sourceBalance < fiatPortion) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Insufficient balance for purchase" });
       }
 
-      if (tokenPortion > 0 && typeof user.bpiToken !== "number") {
+      if (tokenPortion > 0 && typeof user.bpiTokenWallet !== "number") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Token wallet not available" });
       }
 
-      const claimCode = await generateClaimCode(ctx.prisma as any);
+      // Non-physical products (DIGITAL, LICENSE, SERVICE, UTILITY) complete immediately on payment;
+      // physical products follow the CODE_ISSUED → VERIFIED → COMPLETED pickup flow.
+      const productType = (existing.product?.productType ?? "PHYSICAL").toUpperCase();
+      const isPhysical = productType === "PHYSICAL";
+
+      const claimCode = isPhysical ? await generateClaimCode(ctx.prisma as any) : null;
 
       const updated = await (ctx.prisma as any).$transaction(async (tx: any) => {
         // Deduct fiat portion from selected source
@@ -623,16 +1555,16 @@ export const storeRouter = createTRPCRouter({
               description: `Store purchase: ${existing.product?.name || "Product"} (source: ${sourceField}, order: ${existing.id})`,
               status: "completed",
               reference: `STORE-${existing.id}-${Date.now()}`,
-              walletType: sourceField === "wallet" ? "main" : sourceField,
+              walletType: sourceField,
             },
           });
         }
 
-        // Deduct token portion from bpiToken
+        // Deduct token portion from BPT wallet
         if (tokenPortion > 0) {
           await tx.user.update({
             where: { id: ctx.user.id },
-            data: { bpiToken: { decrement: tokenPortion } },
+            data: { bpiTokenWallet: { decrement: tokenPortion } },
           });
 
           await tx.transaction.create({
@@ -648,13 +1580,13 @@ export const storeRouter = createTRPCRouter({
           });
         }
 
-        // Update order and issue claim code only after payment success
+        // Update order status — non-physical products auto-complete on payment; physical products get a claim code.
         const order = await tx.order.update({
           where: { id: existing.id },
           data: {
-            status: "PROCESSING",
-            claimStatus: "CODE_ISSUED",
-            claimCode,
+            status: isPhysical ? "PROCESSING" : "COMPLETED",
+            claimStatus: isPhysical ? "CODE_ISSUED" : "COMPLETED",
+            claimCode: isPhysical ? claimCode : null,
             paymentBreakdown,
           },
           include: { product: { include: { rewardConfig: true, pickupCenter: true } }, user: true, pickupCenter: true },
@@ -663,16 +1595,29 @@ export const storeRouter = createTRPCRouter({
         return order;
       });
 
+      // Settle referral rewards immediately for non-physical products since they are already COMPLETED.
+      if (!isPhysical && updated.rewardSettlementState === "PENDING") {
+        await settleStoreReferralRewards(ctx.prisma, updated.id);
+      }
+
       if (ctx.user?.email) {
-        await sendEmail({
-          to: ctx.user.email,
-          subject: "Your BPI pickup claim code",
-          html: `<p>Hello ${ctx.user.name ?? ""},</p><p>Your order for <strong>${updated.product?.name ?? "your item"}</strong> is confirmed.</p><p><strong>Claim Code:</strong> ${claimCode}</p><p>Please present this code and a valid ID at the pickup center to receive your item.</p>`,
-        });
+        if (isPhysical) {
+          await sendEmail({
+            to: ctx.user.email,
+            subject: "Your BPI pickup claim code",
+            html: `<p>Hello ${ctx.user.name ?? ""},</p><p>Your order for <strong>${updated.product?.name ?? "your item"}</strong> is confirmed.</p><p><strong>Claim Code:</strong> ${claimCode}</p><p>Please present this code and a valid ID at the pickup center to receive your item.</p>`,
+          });
+        } else {
+          await sendEmail({
+            to: ctx.user.email,
+            subject: "Order confirmed — thank you!",
+            html: `<p>Hello ${ctx.user.name ?? ""},</p><p>Your order for <strong>${updated.product?.name ?? "your item"}</strong> is confirmed and completed.</p><p>Thank you for your purchase!</p>`,
+          });
+        }
       }
 
       const pickupEmail = updated.pickupCenter?.contactEmail;
-      if (pickupEmail) {
+      if (isPhysical && pickupEmail) {
         await sendEmail({
           to: pickupEmail,
           subject: "New pickup order assigned",
@@ -680,15 +1625,41 @@ export const storeRouter = createTRPCRouter({
         });
       }
 
-      // Record revenue from store purchase
-      const fiatAmount = fiatPortion || paymentBreakdown?.total_fiat || 0;
-      if (fiatAmount > 0) {
+      // Record profit from store purchase (not gross).
+      const profitFiat = Number(
+        (updated.pricingSnapshot as any)?.profit_fiat ??
+        (existing.pricingSnapshot as any)?.profit_fiat ??
+        0
+      );
+      const amountForPools = profitFiat > 0
+        ? profitFiat
+        : Number((updated.pricingSnapshot as any)?.total_fiat ?? fiatPortion ?? paymentBreakdown?.total_fiat ?? 0);
+
+      if (amountForPools > 0) {
         await recordRevenue(ctx.prisma, {
           source: "STORE_PURCHASE",
-          amount: fiatAmount,
+          amount: amountForPools,
           currency: "NGN",
           sourceId: updated.id,
-          description: `Store purchase: ${updated.product?.name || 'Product'}`,
+          description: `Store purchase profit: ${updated.product?.name || 'Product'}`,
+          userId: updated.userId,
+          orderId: updated.id,
+          productId: updated.productId,
+          programType: "STORE",
+          country: updated.user?.country ?? undefined,
+          state: updated.user?.state ?? undefined,
+          region: updated.user?.region ?? undefined,
+          tokenSymbol:
+            (updated.pricingSnapshot as any)?.token_symbol ??
+            (existing.pricingSnapshot as any)?.token_symbol ??
+            (updated.paymentBreakdown as any)?.token?.symbol ??
+            undefined,
+          metadata: {
+            quantity: updated.quantity,
+            profitFiat,
+            pricingSnapshot: updated.pricingSnapshot ?? null,
+            paymentBreakdown: updated.paymentBreakdown ?? null,
+          },
         });
       }
 
@@ -787,7 +1758,16 @@ export const storeRouter = createTRPCRouter({
         include: { product: true, pickupCenter: true, user: true },
       });
 
-      const pickupEmail = updated.pickupCenter?.contactEmail;
+      if (updated.rewardSettlementState === "PENDING") {
+        await settleStoreReferralRewards(ctx.prisma, updated.id);
+      }
+
+      const refreshed = await (ctx.prisma as any).order.findUnique({
+        where: { id: updated.id },
+        include: { product: true, pickupCenter: true, user: true },
+      });
+
+      const pickupEmail = (refreshed ?? updated).pickupCenter?.contactEmail;
       if (pickupEmail) {
         await sendEmail({
           to: pickupEmail,
@@ -796,15 +1776,15 @@ export const storeRouter = createTRPCRouter({
         });
       }
 
-      if (updated.user?.email) {
+      if ((refreshed ?? updated).user?.email) {
         await sendEmail({
-          to: updated.user.email,
+          to: (refreshed ?? updated).user.email,
           subject: "Thanks for confirming pickup — please rate",
           html: `<p>Hello ${updated.user.name ?? ""},</p><p>Thanks for confirming your pickup for <strong>${updated.product?.name ?? "your item"}</strong>.</p><p>Please share a quick rating of your pickup experience:</p><p><a href="${process.env.NEXTAUTH_URL ?? ""}/store/orders" target="_blank" rel="noreferrer">Rate pickup</a></p>`,
         });
       }
 
-      return mapOrder(updated);
+      return mapOrder(refreshed ?? updated);
     }),
 
   submitPickupRating: protectedProcedure

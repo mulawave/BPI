@@ -802,6 +802,12 @@ model MembershipPackage {
   name                  String   @unique
   price                 Float
   vat                   Float
+  // Profit Pool configuration for this package (defaults preserve current behavior)
+  profitMode            StoreProfitMode @default(PERCENT)
+  // 1.0 = 100% of basis amount treated as profit unless overridden.
+  profitPercent         Float    @default(1)
+  // Fixed profit component added per purchase/renewal (fiat).
+  profitFixedAmountFiat Float    @default(0)
   baseMembershipPackageId String?
   cash_l1               Float    @default(0)
   bpt_l1                Float    @default(0)
@@ -1172,6 +1178,17 @@ enum TokenRateSource {
   ORACLE_FUTURE
 }
 
+enum StoreProfitMode {
+  PERCENT
+  FIXED
+  HYBRID
+}
+
+enum StoreRewardBasis {
+  GROSS
+  PROFIT
+}
+
 enum OrderStatus {
   PENDING
   PAID
@@ -1252,7 +1269,18 @@ model Product {
   name                String
   description         String
   productType         ProductType
+  pricingMode         ProductPricingMode @default(FIAT)
   basePriceFiat       Decimal         @db.Decimal(18, 2)
+  // For TOKEN_UNIT pricing: each unit costs a fixed amount of `tokenUnitSymbol`.
+  tokenUnitSymbol     String?
+  tokenUnitAmount     Decimal?        @db.Decimal(28, 8)
+  profitMode          StoreProfitMode @default(PERCENT)
+  // Default 100% to preserve current behavior until configured.
+  profitPercent       Decimal         @db.Decimal(5, 4) @default(1.0000)
+  // Per-unit fixed profit component in fiat currency.
+  profitFixedAmountFiat Decimal       @db.Decimal(18, 2) @default(0)
+  // Optional per-product minimum token percent (0-1) for HYBRID checkout.
+  minTokenPercent     Decimal?        @db.Decimal(5, 4)
   acceptedTokens      String[]
   tokenPaymentLimits  Json
   rewardConfigId      String?
@@ -1264,16 +1292,27 @@ model Product {
   heroBadge           String?
   images              String[]        @default([])
   featured            Boolean         @default(false)
+  // Store analytics dimensions
+  vendor              String?         // Vendor or partner name for this product
+  category            String?         // Product category label (e.g. "Real Estate", "Certification", "Leadership", "Third-Party Service")
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
   rewardConfig        RewardConfig?   @relation(fields: [rewardConfigId], references: [id])
   pickupCenter        PickupCenter?   @relation(fields: [pickupCenterId], references: [id])
   rewardCenter        RewardCenter?   @relation(fields: [rewardCenterId], references: [id])
   orders              Order[]
+  storeRewardConfigs   StoreRewardConfig[]
 
   @@index([productType, status])
   @@index([pickupCenterId])
   @@index([rewardCenterId])
+  @@index([vendor])
+  @@index([category])
+}
+
+enum ProductPricingMode {
+  FIAT
+  TOKEN_UNIT
 }
 
 model TokenRate {
@@ -1316,10 +1355,69 @@ model Order {
   pickupCenter           PickupCenter?          @relation(fields: [pickupCenterId], references: [id])
   rewardCenter           RewardCenter?          @relation(fields: [rewardCenterId], references: [id])
   pickupExperienceRating PickupExperienceRating?
+  referralRewards        StoreReferralRewardLedger[]
 
   @@index([userId, status])
   @@index([productId])
   @@index([pickupCenterId])
+}
+
+model StoreRewardConfig {
+  id        String            @id @default(cuid())
+  // Optional per-product reward rules. When null, this config acts as the global default.
+  productId String?
+  isActive  Boolean           @default(false)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  levels    StoreRewardLevel[]
+
+  product   Product?          @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([isActive])
+  @@index([productId, isActive])
+}
+
+model StoreRewardLevel {
+  id                 String           @id @default(cuid())
+  configId           String
+  level              Int
+  rewardBasis        StoreRewardBasis
+  rewardValueType    RewardValueType
+  rewardValue        Decimal          @db.Decimal(18, 4)
+  payoutType         RewardType
+  maxRewardCap       Decimal?         @db.Decimal(18, 4)
+  utilityTokenSymbol String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  config             StoreRewardConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@unique([configId, level])
+  @@index([configId])
+}
+
+model StoreReferralRewardLedger {
+  id              String           @id @default(cuid())
+  orderId         String
+  buyerUserId     String
+  recipientUserId String
+  level           Int
+  basis           StoreRewardBasis
+  basisAmountFiat Decimal          @db.Decimal(18, 2)
+  payoutType      RewardType
+  payoutAmountFiat Decimal?        @db.Decimal(18, 2)
+  tokenSymbol     String?
+  tokenAmount     Decimal?         @db.Decimal(28, 8)
+  createdAt       DateTime         @default(now())
+
+  order           Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  buyer           User             @relation("StoreRewardBuyer", fields: [buyerUserId], references: [id], onDelete: Cascade)
+  recipient       User             @relation("StoreRewardRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, recipientUserId, level])
+  @@index([recipientUserId, createdAt])
+  @@index([orderId])
 }
 
 model PickupExperienceRating {
@@ -1755,6 +1853,8 @@ model User {
   SolarAssessment                                                      SolarAssessment[]
   StoreOrder                                                           StoreOrder[]
   Order                                                                Order[]
+  StoreReferralRewardsAsBuyer                                          StoreReferralRewardLedger[] @relation("StoreRewardBuyer")
+  StoreReferralRewardsReceived                                         StoreReferralRewardLedger[] @relation("StoreRewardRecipient")
   WalletBalance                                                        WalletBalance[]
   ThirdPartyRegistration_ThirdPartyRegistration_referredByUserIdToUser ThirdPartyRegistration[]     @relation("ThirdPartyRegistration_referredByUserIdToUser")
   ThirdPartyRegistration_ThirdPartyRegistration_userIdToUser           ThirdPartyRegistration[]     @relation("ThirdPartyRegistration_userIdToUser")
@@ -1769,6 +1869,7 @@ model User {
   UpdateRead                                                           UpdateRead[]
   CspSupportRequests                                                   CspSupportRequest[]
   CspContributions                                                     CspContribution[]
+  CspWaitReductionLogs                                                 CspWaitReductionLog[]
   FarmPlots                                                            FarmPlot[]
   ImpersonationTokensAsAdmin                                           ImpersonationToken[]         @relation("ImpersonationTokenAdmin")
   ImpersonationTokensAsTarget                                          ImpersonationToken[]         @relation("ImpersonationTokenTarget")
@@ -1796,6 +1897,9 @@ model User {
   RevenueAdminActions                                                  RevenueAdminAction[]         @relation("RevenueAdminActions")
   PoolAdminActions                                                     PoolAdminAction[]            @relation("PoolAdminActions")
   CompanyReserveApprovals                                              CompanyReserveTransaction[]  @relation("CompanyReserveApprovals")
+  TechProjectsProposed                                                 TechPoolProject[]            @relation("TechProjectProposed")
+  TechProjectsApproved                                                 TechPoolProject[]            @relation("TechProjectApproved")
+  TechPoolSpends                                                       TechPoolSpend[]              @relation("TechPoolSpendUser")
 
   @@index([cityId])
   @@index([stateId])
@@ -2095,30 +2199,73 @@ model UserBankRecord {
 }
 
 model CspSupportRequest {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   userId             String
-  category           String   // "national" | "global"
+  category           String    // "national" | "global"
   amount             Int
+  requestedAmount    Int?      // original user-requested amount before 20% markup
   purpose            String
   notes              String?
-  status             String   @default("pending") // pending | approved | rejected | broadcasting | closed
+  status             String    @default("pending") // pending | approved | rejected | broadcasting | ready_for_release | released | closed
   thresholdAmount    Int
-  raisedAmount       Int      @default(0)
-  contributorsCount  Int      @default(0)
+  raisedAmount       Int       @default(0)
+  contributorsCount  Int       @default(0)
   broadcastExpiresAt DateTime?
   approvedBy         String?
   approvedAt         DateTime?
-  isAdminDefault     Boolean  @default(false) // Admin-created base requests
-  isActive           Boolean  @default(true)  // Admin can turn off default requests
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  User               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  releasedAt         DateTime?
+  rejectionReason    String?
+  cooldownMonths     Int?      // set at approval: 6 | 12 | 24 | 36
+  cooldownEndsAt     DateTime? // computed at release time
+  countryCode        String?   // ISO country code for national geo-scoping
+  isAdminDefault     Boolean   @default(false) // Admin-created base requests
+  isActive           Boolean   @default(true)  // Admin can turn off default requests
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  User               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   Contributions      CspContribution[]
   Extensions         CspBroadcastExtension[]
+  WaitReductions     CspWaitReductionLog[]
 
   @@index([userId, status])
   @@index([status, broadcastExpiresAt])
   @@index([isAdminDefault, isActive])
+  @@index([countryCode, status])
+}
+
+/// Tracks monthly contributions made after a CSP release, used to reduce the cooldown wait period.
+/// ₦10,000 contributed in a single calendar month = 1 month deducted from cooldownEndsAt.
+model CspWaitReductionLog {
+  id              String   @id @default(cuid())
+  userId          String
+  requestId       String   // The released request that triggered the cooldown
+  monthKey        String   // "YYYY-MM" — the calendar month this reduction covers
+  amountContrib   Int      @default(0) // cumulative contributions in this month (capped at 10000 for reduction)
+  monthReduced    Boolean  @default(false) // whether this month's threshold was hit and reduction applied
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  Request         CspSupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  User            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, requestId, monthKey])
+  @@index([userId, requestId])
+}
+
+/// Tracks CSP country activation state. A country becomes CSP-active when it reaches the activation threshold.
+model CspCountry {
+  id                    String    @id @default(cuid())
+  countryCode           String    @unique // ISO alpha-2 code e.g. "NG"
+  countryName           String
+  isNationalActive      Boolean   @default(false)
+  isGlobalActive        Boolean   @default(false)
+  regularActivationCount Int      @default(0) // running count toward national activation
+  activationThreshold   Int       @default(10000) // configurable
+  activatedAt           DateTime?
+  notes                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([isNationalActive])
 }
 
 model CspContribution {
@@ -2264,6 +2411,14 @@ enum DistributionStatus {
   FAILED
 }
 
+enum DistributionFrequency {
+  MANUAL      // Distribute on-demand only
+  MONTHLY     // Distribute monthly (State Pool)
+  QUARTERLY   // Distribute quarterly
+  BI_ANNUAL   // Distribute every 6 months (Investors Pool)
+  ANNUAL      // Distribute annually (Directors Pool)
+}
+
 enum WalletTransactionType {
   DISTRIBUTION
   WITHDRAWAL
@@ -2274,26 +2429,63 @@ enum WalletTransactionType {
 model RevenueTransaction {
   id              String         @id @default(cuid())
   source          RevenueSource
+  // Optional extended source key for management-configurable future sources.
+  // Example: source=OTHER, sourceKey="CERTIFICATION_PROGRAM".
+  sourceKey        String?
   amount          Decimal        @db.Decimal(18, 2)
   currency        String         @default("NGN")
   description     String?
-  sourceId        String?        @unique // Original transaction/payment ID - unique to prevent duplicates
+  sourceId        String?        // Original transaction/payment ID (idempotency key scoped by source)
   userId          String?        // User who generated the revenue (if applicable)
+  // Optional dimensions for reporting (product/geography/program/time). Caller is responsible for populating.
+  programType     String?
+  productId       String?
+  orderId         String?
+  packageId       String?
+  country         String?
+  state           String?
+  region          String?
+  tokenSymbol     String?
+  metadata        Json?
+  profitPoolConfigVersionId String?
   createdAt       DateTime       @default(now())
   allocatedAt     DateTime?
   allocationStatus AllocationStatus @default(PENDING)
   
   User            User?          @relation("RevenueFromUser", fields: [userId], references: [id])
+  ProfitPoolConfigVersion ProfitPoolConfigVersion? @relation(fields: [profitPoolConfigVersionId], references: [id])
   Allocations     RevenueAllocation[]
   AdminActions    RevenueAdminAction[]
 
   @@index([source])
+  @@index([sourceKey])
   @@index([userId])
   @@index([allocationStatus])
   @@index([createdAt])
   @@index([userId, source, createdAt])
+  @@index([productId, createdAt])
+  @@index([orderId])
+  @@index([packageId, createdAt])
+  @@index([country, state, createdAt])
   @@index([allocationStatus, createdAt])
   @@index([sourceId])
+  @@index([profitPoolConfigVersionId])
+  @@unique([source, sourceId])
+}
+
+model ProfitPoolConfigVersion {
+  id               String   @id @default(cuid())
+  version          Int      @unique
+  isActive         Boolean  @default(false)
+  companyPercent   Decimal  @db.Decimal(5, 2) @default(50.00)
+  executivePercent Decimal  @db.Decimal(5, 2) @default(30.00)
+  strategicPercent Decimal  @db.Decimal(5, 2) @default(20.00)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  revenueTransactions RevenueTransaction[]
+
+  @@index([isActive, version])
 }
 
 model RevenueAllocation {
@@ -2382,36 +2574,48 @@ model ExecutiveWalletTransaction {
 }
 
 model StrategyPool {
-  id              String          @id @default(cuid())
-  type            PoolType        @unique
-  name            String
-  description     String?
-  percentage      Decimal         @db.Decimal(5, 2) @default(4.00) // 4% each
-  balance         Decimal         @db.Decimal(18, 2) @default(0) // Current pool balance
-  isActive        Boolean         @default(true)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id                   String               @id @default(cuid())
+  type                 PoolType             @unique
+  name                 String
+  description          String?
+  percentage           Decimal              @db.Decimal(5, 2) @default(4.00) // 4% each (configurable)
+  balance              Decimal              @db.Decimal(18, 2) @default(0) // Current pool balance
+  isActive             Boolean              @default(true)
+  // Distribution scheduling
+  distributionFrequency DistributionFrequency @default(MANUAL) // How often to distribute
+  lastDistributedAt    DateTime?            // When last distribution was executed
+  nextDistributionAt   DateTime?            // When next distribution is due (computed/set by admin)
+  // Leadership pool cap
+  maxMembers           Int?                 // Max beneficiaries (null = unlimited; 1000 for LEADERSHIP)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
-  Members         PoolMember[]
-  Distributions   PoolDistribution[]
-  AdminActions    PoolAdminAction[]
+  Members              PoolMember[]
+  Distributions        PoolDistribution[]
+  AdminActions         PoolAdminAction[]
+  TechProjects         TechPoolProject[]
 
   @@index([type])
   @@index([isActive])
+  @@index([distributionFrequency])
 }
 
 model PoolMember {
-  id              String          @id @default(cuid())
-  poolId          String
-  userId          String
-  customPercentage Decimal?       @db.Decimal(5, 2) // If null, split equally
-  isActive        Boolean         @default(true)
-  totalEarned     Decimal         @db.Decimal(18, 2) @default(0) // Lifetime total earned from this pool
-  currentBalance  Decimal         @db.Decimal(18, 2) @default(0) // Available wallet balance from this pool
-  lastDistributionAt DateTime?    // Last distribution received
-  joinedAt        DateTime        @default(now())
-  addedBy         String          // Admin user ID
-  leftAt          DateTime?
+  id                   String          @id @default(cuid())
+  poolId               String
+  userId               String
+  customPercentage     Decimal?        @db.Decimal(5, 2) // If null, split equally
+  isActive             Boolean         @default(true)
+  totalEarned          Decimal         @db.Decimal(18, 2) @default(0) // Lifetime total earned from this pool
+  currentBalance       Decimal         @db.Decimal(18, 2) @default(0) // Available wallet balance from this pool
+  lastDistributionAt   DateTime?       // Last distribution received
+  joinedAt             DateTime        @default(now())
+  addedBy              String          // Admin user ID
+  leftAt               DateTime?
+  // Eligibility & governance
+  eligibilityCriteria  String?         // Human-readable criteria used to qualify member (e.g. "Min ₦500K investment, 12-month lock-up")
+  qualificationNote    String?         // Admin note at time of addition
+  qualificationStatus  String?         // e.g. "ACTIVE", "PENDING_REVIEW", "SUSPENDED"
   
   Pool            StrategyPool    @relation(fields: [poolId], references: [id], onDelete: Cascade)
   User            User            @relation("PoolMemberUser", fields: [userId], references: [id])
@@ -2519,6 +2723,61 @@ model PoolAdminAction {
   @@index([poolId])
   @@index([adminId])
   @@index([createdAt])
+}
+
+// Technology Pool project budget tracking
+model TechPoolProject {
+  id              String          @id @default(cuid())
+  poolId          String          // References StrategyPool TECHNOLOGY
+  title           String
+  description     String?
+  category        String?         // "PRODUCT_DEV" | "INFRASTRUCTURE" | "SECURITY" | "R_AND_D" | "TOOLING" | "OTHER"
+  approvedBudget  Decimal         @db.Decimal(18, 2) // Approved budget in NGN
+  totalSpent      Decimal         @db.Decimal(18, 2) @default(0) // Running total spent
+  status          TechProjectStatus @default(PROPOSED)
+  proposedBy      String          // Admin user ID
+  approvedBy      String?         // Admin user ID (null until approved)
+  approvedAt      DateTime?
+  startDate       DateTime?
+  endDate         DateTime?
+  milestones      String?         // JSON array of milestone strings
+  roiNotes        String?         // Admin-entered ROI / outcome notes
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  Pool            StrategyPool    @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  ProposedBy      User            @relation("TechProjectProposed", fields: [proposedBy], references: [id])
+  ApprovedBy      User?           @relation("TechProjectApproved", fields: [approvedBy], references: [id])
+  Spends          TechPoolSpend[]
+
+  @@index([poolId])
+  @@index([status])
+  @@index([proposedBy])
+}
+
+model TechPoolSpend {
+  id          String          @id @default(cuid())
+  projectId   String
+  amount      Decimal         @db.Decimal(18, 2)
+  description String
+  spentBy     String          // Admin user ID
+  receipt     String?         // URL or reference to receipt/invoice
+  createdAt   DateTime        @default(now())
+
+  Project     TechPoolProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  SpentBy     User            @relation("TechPoolSpendUser", fields: [spentBy], references: [id])
+
+  @@index([projectId])
+  @@index([createdAt])
+}
+
+enum TechProjectStatus {
+  PROPOSED
+  APPROVED
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+  ON_HOLD
 }
 
 // Monthly snapshot for historical tracking

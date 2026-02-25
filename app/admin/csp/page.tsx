@@ -18,6 +18,13 @@ import {
   TimerReset,
   CheckCircle2,
   AlertCircle,
+  Globe,
+  MapPin,
+  Settings,
+  Wallet,
+  Building2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import AdminPageGuide from "@/components/admin/AdminPageGuide";
@@ -85,8 +92,21 @@ export default function CspAdminQueuePage() {
   const [detailTarget, setDetailTarget] = useState<QueueItem | null>(null);
   const [rejectTarget, setRejectTarget] = useState<QueueItem | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [cooldownMonths, setCooldownMonths] = useState<6 | 12 | 24 | 36>(12);
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<{ id: string; name: string | null; email: string } | null>(null);
+
+  // Country management state
+  const [showCountryPanel, setShowCountryPanel] = useState(false);
+  const [countryForm, setCountryForm] = useState({ countryCode: "", countryName: "", isNationalActive: false, isGlobalActive: false, activationThreshold: 10000, notes: "" });
+
+  // Reserve transfer state
+  const [showReservePanel, setShowReservePanel] = useState(false);
+  const [reserveForm, setReserveForm] = useState({ userId: "", amount: 0, reason: "" });
+  const [reserveUserSearch, setReserveUserSearch] = useState("");
+
+  // Eligibility config state
+  const [showConfigPanel, setShowConfigPanel] = useState(false);
   const [defaultForm, setDefaultForm] = useState({
     category: "national" as "national" | "global",
     amount: 10000,
@@ -102,9 +122,17 @@ export default function CspAdminQueuePage() {
 
   const { data: defaultRequests, refetch: refetchDefaults } = api.csp.listAdminDefaultRequests.useQuery();
 
+  const { data: cspCountries, refetch: refetchCountries } = api.csp.listCspCountries.useQuery();
+  const { data: eligibilityConfig, refetch: refetchEligibilityConfig } = api.csp.getCspEligibilityConfig.useQuery();
+
   const { data: searchedUsers } = api.user.searchUsers.useQuery(
     { term: userSearchTerm },
     { enabled: userSearchTerm.length >= 2 }
+  );
+
+  const { data: reserveSearchedUsers } = api.user.searchUsers.useQuery(
+    { term: reserveUserSearch },
+    { enabled: reserveUserSearch.length >= 2 }
   );
 
   const approveMutation = api.csp.approveRequest.useMutation({
@@ -173,6 +201,21 @@ export default function CspAdminQueuePage() {
       setRejectReason("");
       refetch();
     },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const upsertCountryMutation = api.csp.upsertCspCountry.useMutation({
+    onSuccess: () => { toast.success("Country record saved"); refetchCountries(); setCountryForm({ countryCode: "", countryName: "", isNationalActive: false, isGlobalActive: false, activationThreshold: 10000, notes: "" }); },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const transferReserveMutation = api.csp.transferReserveToUser.useMutation({
+    onSuccess: () => { toast.success("Reserve funds transferred to user's community wallet"); setReserveForm({ userId: "", amount: 0, reason: "" }); setReserveUserSearch(""); },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const updateEligibilityConfigMutation = api.csp.updateCspEligibilityConfig.useMutation({
+    onSuccess: () => { toast.success("Eligibility config updated"); refetchEligibilityConfig(); },
     onError: (err) => toast.error(err.message),
   });
 
@@ -593,6 +636,188 @@ export default function CspAdminQueuePage() {
         )}
       </div>
 
+      {/* ─── Country Management Panel ─────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card/70 p-6 shadow-sm">
+        <button
+          onClick={() => setShowCountryPanel((v) => !v)}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <div className="flex items-center gap-3">
+            <Globe className="h-5 w-5 text-blue-600" />
+            <div>
+              <h2 className="text-lg font-bold text-foreground">Country Activation</h2>
+              <p className="text-sm text-muted-foreground">Manage which countries are CSP-active for National and Global broadcasts.</p>
+            </div>
+          </div>
+          {showCountryPanel ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+
+        {showCountryPanel && (
+          <div className="mt-6 space-y-6">
+            {/* Existing countries */}
+            <div className="overflow-hidden rounded-xl border border-border">
+              <div className="grid grid-cols-6 bg-muted/50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <div className="col-span-1">Code</div>
+                <div className="col-span-2">Country</div>
+                <div className="col-span-1">National</div>
+                <div className="col-span-1">Global</div>
+                <div className="col-span-1 text-right">Count/Target</div>
+              </div>
+              <div className="divide-y divide-border bg-card">
+                {(!cspCountries || cspCountries.length === 0) && (
+                  <p className="p-4 text-sm text-muted-foreground">No country records yet.</p>
+                )}
+                {cspCountries?.map((c: any) => (
+                  <div key={c.countryCode} className="grid grid-cols-6 items-center px-4 py-3 text-sm gap-2">
+                    <div className="col-span-1 font-mono font-bold text-foreground">{c.countryCode}</div>
+                    <div className="col-span-2 text-foreground">{c.countryName}</div>
+                    <div className="col-span-1">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${c.isNationalActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                        {c.isNationalActive ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                    <div className="col-span-1">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${c.isGlobalActive ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
+                        {c.isGlobalActive ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                    <div className="col-span-1 text-right text-xs text-muted-foreground">
+                      {c.regularActivationCount.toLocaleString()} / {c.activationThreshold.toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Add / update country form */}
+            <div className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-4 space-y-3">
+              <h3 className="text-sm font-bold text-foreground flex items-center gap-2"><MapPin className="h-4 w-4 text-blue-600" /> Add / Update Country</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">ISO Code (e.g. NG)</label>
+                  <input value={countryForm.countryCode} onChange={(e) => setCountryForm((f) => ({ ...f, countryCode: e.target.value.toUpperCase() }))}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="NG" maxLength={3} />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">Country Name</label>
+                  <input value={countryForm.countryName} onChange={(e) => setCountryForm((f) => ({ ...f, countryName: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="Nigeria" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">Activation Threshold</label>
+                  <input type="number" value={countryForm.activationThreshold} onChange={(e) => setCountryForm((f) => ({ ...f, activationThreshold: parseInt(e.target.value) || 10000 }))}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">Notes</label>
+                  <input value={countryForm.notes} onChange={(e) => setCountryForm((f) => ({ ...f, notes: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="Optional notes" />
+                </div>
+                <div className="flex items-center gap-3 col-span-2">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={countryForm.isNationalActive} onChange={(e) => setCountryForm((f) => ({ ...f, isNationalActive: e.target.checked }))} className="rounded" />
+                    National Active
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked={countryForm.isGlobalActive} onChange={(e) => setCountryForm((f) => ({ ...f, isGlobalActive: e.target.checked }))} className="rounded" />
+                    Global Active
+                  </label>
+                </div>
+              </div>
+              <button
+                onClick={() => upsertCountryMutation.mutate(countryForm)}
+                disabled={upsertCountryMutation.isPending || !countryForm.countryCode || !countryForm.countryName}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {upsertCountryMutation.isPending ? "Saving..." : "Save Country"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ─── CSP Eligibility Config Panel ────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card/70 p-6 shadow-sm">
+        <button
+          onClick={() => setShowConfigPanel((v) => !v)}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <div className="flex items-center gap-3">
+            <Settings className="h-5 w-5 text-purple-600" />
+            <div>
+              <h2 className="text-lg font-bold text-foreground">Eligibility & Threshold Config</h2>
+              <p className="text-sm text-muted-foreground">Configure membership tier, direct invite minimums, contribution thresholds, and broadcast hours.</p>
+            </div>
+          </div>
+          {showConfigPanel ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+
+        {showConfigPanel && eligibilityConfig && (
+          <EligibilityConfigForm config={eligibilityConfig} onSave={(data) => updateEligibilityConfigMutation.mutate(data)} isPending={updateEligibilityConfigMutation.isPending} />
+        )}
+        {showConfigPanel && !eligibilityConfig && (
+          <p className="mt-4 text-sm text-muted-foreground">Loading config...</p>
+        )}
+      </div>
+
+      {/* ─── Reserve Pool Transfer ────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card/70 p-6 shadow-sm">
+        <button
+          onClick={() => setShowReservePanel((v) => !v)}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <div className="flex items-center gap-3">
+            <Wallet className="h-5 w-5 text-amber-600" />
+            <div>
+              <h2 className="text-lg font-bold text-foreground">Reserve Pool Transfer</h2>
+              <p className="text-sm text-muted-foreground">Transfer from the CSP Reserve Wallet to a member's community wallet for under-funded campaigns.</p>
+            </div>
+          </div>
+          {showReservePanel ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+
+        {showReservePanel && (
+          <div className="mt-6 space-y-4">
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground">Search Recipient User</label>
+                <input value={reserveUserSearch} onChange={(e) => setReserveUserSearch(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="Search by name or email..." />
+                {reserveSearchedUsers && reserveSearchedUsers.length > 0 && !reserveForm.userId && (
+                  <div className="mt-1 rounded-lg border border-border bg-card shadow-lg max-h-40 overflow-y-auto">
+                    {reserveSearchedUsers.map((u: any) => (
+                      <button key={u.id} onClick={() => { setReserveForm((f) => ({ ...f, userId: u.id })); setReserveUserSearch(`${u.name ?? ""} (${u.email})`); }}
+                        className="w-full text-left px-3 py-2 hover:bg-muted text-sm border-b border-border last:border-0">
+                        <span className="font-medium">{u.name ?? "Unnamed"}</span> <span className="text-muted-foreground text-xs">{u.email}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">Amount (₦)</label>
+                  <input type="number" value={reserveForm.amount || ""} onChange={(e) => setReserveForm((f) => ({ ...f, amount: parseInt(e.target.value) || 0 }))}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="e.g. 50000" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">Reason</label>
+                  <input value={reserveForm.reason} onChange={(e) => setReserveForm((f) => ({ ...f, reason: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="e.g. Campaign did not meet target" />
+                </div>
+              </div>
+              <button
+                onClick={() => transferReserveMutation.mutate(reserveForm)}
+                disabled={transferReserveMutation.isPending || !reserveForm.userId || reserveForm.amount <= 0 || !reserveForm.reason}
+                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {transferReserveMutation.isPending ? "Transferring..." : "Transfer from Reserve"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {approveTarget && (
         <ModalShell onClose={() => setApproveTarget(null)}>
           <div className="space-y-4">
@@ -602,12 +827,33 @@ export default function CspAdminQueuePage() {
               <p className="font-semibold text-foreground">{approveTarget.User?.name ?? "Member"}</p>
               <p className="text-muted-foreground">{approveTarget.category} • ₦{formatAmount(approveTarget.amount)}</p>
             </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">Cooldown Period (after release)</label>
+              <p className="text-xs text-muted-foreground">How long before this member can make another request once funds are released.</p>
+              <div className="grid grid-cols-4 gap-2">
+                {([6, 12, 24, 36] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setCooldownMonths(m)}
+                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                      cooldownMonths === m
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200"
+                        : "border-border text-muted-foreground hover:border-emerald-400"
+                    }`}
+                  >
+                    {m}mo
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <button
-              onClick={() => approveMutation.mutate({ requestId: approveTarget.id })}
+              onClick={() => approveMutation.mutate({ requestId: approveTarget.id, cooldownMonths })}
               disabled={approveMutation.isPending}
               className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700 disabled:opacity-60"
             >
-              {approveMutation.isPending ? "Approving..." : "Approve & broadcast"}
+              {approveMutation.isPending ? "Approving..." : `Approve & broadcast (${cooldownMonths}mo cooldown)`}
             </button>
             <button
               onClick={() => setApproveTarget(null)}
@@ -1094,6 +1340,69 @@ export default function CspAdminQueuePage() {
           </motion.div>
         </div>
       )}
+    </div>
+  );
+}
+
+function EligibilityConfigForm({ config, onSave, isPending }: { config: any; onSave: (data: any) => void; isPending: boolean }) {
+  const [form, setForm] = useState({
+    minPerContribution: config.minPerContribution,
+    national_minDirects: config.national.minDirects,
+    national_minCumulativeContrib: config.national.minCumulativeContrib,
+    national_minDistinctRequests: config.national.minDistinctRequests,
+    national_broadcastHours: config.national.broadcastHours,
+    national_minThreshold: config.national.minThreshold,
+    national_minMembership: config.national.minMembership,
+    global_minDirects: config.global.minDirects,
+    global_minCumulativeContrib: config.global.minCumulativeContrib,
+    global_minDistinctRequests: config.global.minDistinctRequests,
+    global_broadcastHours: config.global.broadcastHours,
+    global_minThreshold: config.global.minThreshold,
+    global_minMembership: config.global.minMembership,
+    waitReductionMonthlyTarget: config.waitReductionMonthlyTarget,
+  });
+  const field = (key: string, label: string, type: "number" | "text" = "number") => (
+    <div>
+      <label className="text-xs font-semibold text-muted-foreground">{label}</label>
+      <input type={type} value={(form as any)[key]} onChange={(e) => setForm((f) => ({ ...f, [key]: type === "number" ? (parseInt(e.target.value) || 0) : e.target.value }))}
+        className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+    </div>
+  );
+  return (
+    <div className="mt-6 space-y-5">
+      <div>
+        <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2"><Building2 className="h-4 w-4 text-emerald-600" /> General</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {field("minPerContribution", "Min per contribution (₦)")}
+          {field("waitReductionMonthlyTarget", "Wait reduction monthly target (₦)")}
+        </div>
+      </div>
+      <div>
+        <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2"><MapPin className="h-4 w-4 text-blue-600" /> National</h3>
+        <div className="grid grid-cols-3 gap-3">
+          {field("national_minMembership", "Min membership tier", "text")}
+          {field("national_minDirects", "Min qualifying directs")}
+          {field("national_minCumulativeContrib", "Min cumulative contribution (₦)")}
+          {field("national_minDistinctRequests", "Min distinct recipients")}
+          {field("national_broadcastHours", "Default broadcast hours")}
+          {field("national_minThreshold", "Min request threshold (₦)")}
+        </div>
+      </div>
+      <div>
+        <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2"><Globe className="h-4 w-4 text-purple-600" /> Global</h3>
+        <div className="grid grid-cols-3 gap-3">
+          {field("global_minMembership", "Min membership tier", "text")}
+          {field("global_minDirects", "Min qualifying directs (Path A)")}
+          {field("global_minCumulativeContrib", "Min cumulative contribution (₦)")}
+          {field("global_minDistinctRequests", "Min distinct recipients")}
+          {field("global_broadcastHours", "Default broadcast hours")}
+          {field("global_minThreshold", "Min request threshold (₦)")}
+        </div>
+      </div>
+      <button onClick={() => onSave(form)} disabled={isPending}
+        className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50">
+        {isPending ? "Saving..." : "Save Eligibility Config"}
+      </button>
     </div>
   );
 }

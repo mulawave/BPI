@@ -5,10 +5,14 @@
   "scripts": {
     "prisma:pull": "prisma db pull",
     "prisma:generate": "prisma generate",
+    "prisma:generate:fixdns": "node -r ./scripts/dns-override.cjs ./node_modules/prisma/build/index.js generate",
     "prisma:deploy": "prisma migrate deploy",
+    "fix:prisma-dns": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fixPrismaDns.ps1",
     "dev": "next dev",
-    "build": "next build",
+    "prebuild": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true });\"",
+    "build": "node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build",
     "type-check": "tsc --noEmit",
+    "test": "npm run lint && npm run type-check && npm run build",
     "start": "next start -p 3000",
     "smoke:backups": "npx tsx scripts/smokeAdminBackups.ts",
     "smoke:payments": "npx tsx scripts/smokeAdminPayments.ts",
@@ -41,6 +45,10 @@
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
+  },
+  "engines": {
+    "node": ">=20 <24",
+    "npm": ">=9"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.0",
