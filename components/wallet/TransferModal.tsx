@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FiX, FiCheck, FiAlertCircle } from "react-icons/fi";
 import { Wallet, ArrowRightLeft, Users, CheckCircle, Loader2, AlertTriangle, BadgeCheck } from "lucide-react";
 import { api } from "@/client/trpc";
@@ -88,9 +88,21 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
         setError('Please select different wallets for transfer');
         return;
       }
+      // Pre-flight balance check — prevents confusing server error
+      const sourceBalance = getWalletBalance(fromWallet);
+      if (numAmount > sourceBalance) {
+        setError(`Insufficient balance. Your ${fromWallet} wallet only has ${formatAmount(sourceBalance)} available.`);
+        return;
+      }
     } else {
       if (!recipientIdentifier.trim()) {
         setError('Please enter recipient username or email');
+        return;
+      }
+      // Pre-flight balance check for user-to-user transfers
+      const sourceBalance = getWalletBalance(fromWallet);
+      if (numAmount > sourceBalance) {
+        setError(`Insufficient balance. Your ${fromWallet} wallet only has ${formatAmount(sourceBalance)} available.`);
         return;
       }
     }
@@ -152,6 +164,21 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
     { value: 'car', label: 'Car Wallet', description: 'Car savings', balance: getWalletBalance('car') },
     { value: 'business', label: 'Business Wallet', description: 'Business capital', balance: getWalletBalance('business') }
   ];
+
+  const fromWalletOptions = useMemo(() => {
+    // CTO policy: cashback cannot be transferred out to other internal wallets.
+    // (cashback->cashback via user-to-user transfer is allowed)
+    if (transferType === 'inter-wallet') {
+      return walletOptions.filter((o) => o.value !== 'cashback');
+    }
+    return walletOptions;
+  }, [transferType, walletOptions]);
+
+  useEffect(() => {
+    if (transferType === 'inter-wallet' && fromWallet === 'cashback') {
+      setFromWallet('wallet');
+    }
+  }, [transferType, fromWallet]);
 
   return (
     <div className="fixed inset-0 z-[9999] bg-white dark:bg-bpi-dark-card overflow-y-auto">
@@ -304,7 +331,7 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
                       onChange={(e) => setFromWallet(e.target.value as WalletType)}
                       className="w-full px-4 py-3 rounded-lg border border-input bg-background"
                     >
-                      {walletOptions.map(option => (
+                      {fromWalletOptions.map(option => (
                         <option key={option.value} value={option.value}>
                           {option.label} ({formatAmount(option.balance)}) - {option.description}
                         </option>

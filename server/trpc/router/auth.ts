@@ -79,7 +79,29 @@ export const authRouter = createTRPCRouter({
         }
       }
 
-      // Create user with invite code
+      // Resolve referrer before creating the user so we can set sponsorId/referredBy atomically
+      let resolvedReferrerId: string | null = null;
+      if (ref_id && ref_id !== "1") {
+        // Try by invite code first (normal flow)
+        const referrerByCode = await ctx.prisma.user.findUnique({
+          where: { inviteCode: ref_id },
+          select: { id: true },
+        });
+        if (referrerByCode) {
+          resolvedReferrerId = referrerByCode.id;
+        } else {
+          // Fallback: legacy links use raw user ID as ref
+          const referrerById = await ctx.prisma.user.findUnique({
+            where: { id: ref_id },
+            select: { id: true },
+          });
+          if (referrerById) {
+            resolvedReferrerId = referrerById.id;
+          }
+        }
+      }
+
+      // Create user with invite code, and set sponsor/referredBy if a valid referrer was found
       const user = await ctx.prisma.user.create({
         data: {
           id: randomUUID(),
@@ -92,43 +114,23 @@ export const authRouter = createTRPCRouter({
           role: "user",
           inviteCode,
           referralLink: `https://beepagro.com/register?ref=${inviteCode}`,
+          ...(resolvedReferrerId && {
+            sponsorId: resolvedReferrerId,
+            referredBy: resolvedReferrerId,
+          }),
         },
       });
 
-      // Create referral record if referred by someone
-      if (ref_id && ref_id !== "1") {
-        // Find the referrer by invite code (encrypted format)
-        const referrer = await ctx.prisma.user.findUnique({
-          where: { inviteCode: ref_id },
-        });
-
-        if (referrer) {
-          // Using raw query since Prisma types may not be updated yet
-          try {
-            await ctx.prisma.$executeRaw`
-              INSERT INTO "Referral" (id, "referrerId", "referredId", status, "rewardPaid", "createdAt", "updatedAt")
-              VALUES (${randomUUID()}, ${referrer.id}, ${user.id}, 'active', false, NOW(), NOW())
-            `;
-          } catch (error) {
-            console.error("Failed to create referral record:", error);
-            // Don't fail registration if referral creation fails
-          }
-        } else {
-          // If no referrer found with invite code, try as user ID (backward compatibility for old links)
-          const referrerById = await ctx.prisma.user.findUnique({
-            where: { id: ref_id },
-          });
-          
-          if (referrerById) {
-            try {
-              await ctx.prisma.$executeRaw`
-                INSERT INTO "Referral" (id, "referrerId", "referredId", status, "rewardPaid", "createdAt", "updatedAt")
-                VALUES (${randomUUID()}, ${ref_id}, ${user.id}, 'active', false, NOW(), NOW())
-              `;
-            } catch (error) {
-              console.error("Failed to create referral record:", error);
-            }
-          }
+      // Create Referral table record for commission tracking
+      if (resolvedReferrerId) {
+        try {
+          await ctx.prisma.$executeRaw`
+            INSERT INTO "Referral" (id, "referrerId", "referredId", status, "rewardPaid", "createdAt", "updatedAt")
+            VALUES (${randomUUID()}, ${resolvedReferrerId}, ${user.id}, 'active', false, NOW(), NOW())
+          `;
+        } catch (error) {
+          console.error("Failed to create referral record:", error);
+          // Don't fail registration if referral record creation fails
         }
       }
       // TODO: Send welcome email
