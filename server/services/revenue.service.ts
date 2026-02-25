@@ -16,6 +16,8 @@ export type RevenueSource =
   | "PALLIATIVE_PROGRAM"
   | "LEADERSHIP_POOL_FEE"
   | "TRAINING_CENTER"
+  | "ELITE_CLUB_OPS"
+  | "ELITE_CLUB_INVESTMENT_PROFIT"
   | "OTHER";
 
 export interface RecordRevenueParams {

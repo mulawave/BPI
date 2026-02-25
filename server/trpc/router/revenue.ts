@@ -1755,7 +1755,7 @@ export const revenueRouter = createTRPCRouter({
       });
 
       // Calculate totals by source
-      const bySource = {
+      const bySource: Record<string, number> = {
         COMMUNITY_SUPPORT: 0,
         MEMBERSHIP_REGISTRATION: 0,
         MEMBERSHIP_RENEWAL: 0,
@@ -1766,11 +1766,13 @@ export const revenueRouter = createTRPCRouter({
         PALLIATIVE_PROGRAM: 0,
         LEADERSHIP_POOL_FEE: 0,
         TRAINING_CENTER: 0,
+        ELITE_CLUB_OPS: 0,
+        ELITE_CLUB_INVESTMENT_PROFIT: 0,
         OTHER: 0,
       };
 
       let totalRevenue = 0;
-      transactions.forEach((t: { amount: unknown; source: keyof typeof bySource }) => {
+      transactions.forEach((t: { amount: unknown; source: string }) => {
         const amount = Number(t.amount);
         totalRevenue += amount;
         bySource[t.source as keyof typeof bySource] += amount;

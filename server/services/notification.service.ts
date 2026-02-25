@@ -31,7 +31,24 @@ export type NotificationType =
   | "CSP_REQUEST_REJECTED"
   | "CSP_BROADCAST_EXTENDED"
   | "CSP_CONTRIBUTION_RECEIVED"
-  | "CSP_CONTRIBUTION_SENT";
+  | "CSP_CONTRIBUTION_SENT"
+  // Elite Club
+  | "ELITE_CLUB_ACTIVATED"
+  | "ELITE_CLUB_APP_SUBMITTED"
+  | "ELITE_CLUB_APP_APPROVED"
+  | "ELITE_CLUB_APP_REJECTED"
+  | "ELITE_CLUB_TOKEN_VERIFIED"
+  | "ELITE_CLUB_CONTRIBUTION_RECORDED"
+  | "ELITE_CLUB_PAYOUT_SCHEDULED"
+  | "ELITE_CLUB_PAYOUT_RELEASED"
+  | "ELITE_CLUB_PAYOUT_BLOCKED"
+  | "ELITE_CLUB_SWAP_REQUEST"
+  | "ELITE_CLUB_SWAP_ACCEPTED"
+  | "ELITE_CLUB_SWAP_REJECTED"
+  | "ELITE_CLUB_VOTE_OPEN"
+  | "ELITE_CLUB_INVESTMENT_REJECTED"
+  | "ELITE_CLUB_SUSPENDED"
+  | "ELITE_CLUB_REINSTATED";
 
 interface NotificationData {
   userId: string;
@@ -456,4 +473,65 @@ export async function notifyWithdrawalStatus(
     message: config.message,
     actionUrl: receiptUrl || "/dashboard",
   });
+}
+// ─── Elite Club Notification Helpers ─────────────────────────────────────────
+
+export async function notifyEliteClubActivated(userId: string, clubName: string, tier: string) {
+  await sendNotification({ userId, type: "ELITE_CLUB_ACTIVATED", title: "Your Elite Club is Now Active!", message: `Your ${tier} tier Elite Club "${clubName}" has been activated. Your empowerment rotation begins now.`, actionUrl: "/elite-club" });
+}
+
+export async function notifyEliteClubAppApproved(userId: string, tier: string, rotationNumber: number, clubName: string) {
+  await sendNotification({ userId, type: "ELITE_CLUB_APP_APPROVED", title: "Elite Club Application Approved!", message: `Congratulations! You have been assigned rotation #${rotationNumber} in "${clubName}" ${tier} Elite Club.`, actionUrl: "/elite-club" });
+}
+
+export async function notifyEliteClubAppRejected(userId: string, tier: string, reason: string) {
+  await sendNotification({ userId, type: "ELITE_CLUB_APP_REJECTED", title: "Elite Club Application Rejected", message: `Your ${tier} tier Elite Club application was not approved. Reason: ${reason}`, actionUrl: "/elite-club/application" });
+}
+
+export async function notifyEliteClubTokenVerified(userId: string, tier: string) {
+  await sendNotification({ userId, type: "ELITE_CLUB_TOKEN_VERIFIED", title: "Token Holdings Verified", message: `Your BPT/PACToken holdings for ${tier} tier have been verified.`, actionUrl: "/elite-club/application" });
+}
+
+export async function notifyEliteClubContributionRecorded(userId: string, amount: number, month: number, year: number) {
+  await sendNotification({ userId, type: "ELITE_CLUB_CONTRIBUTION_RECORDED", title: "Monthly Contribution Recorded", message: `Your ₦${amount.toLocaleString()} Elite Club contribution for ${month}/${year} has been recorded.`, actionUrl: "/elite-club" });
+}
+
+export async function notifyEliteClubPayoutScheduled(userId: string, amount: number, month: number, year: number) {
+  await sendNotification({ userId, type: "ELITE_CLUB_PAYOUT_SCHEDULED", title: "Empowerment Payout Scheduled", message: `Your empowerment payout of ₦${amount.toLocaleString()} is scheduled for ${month}/${year}.`, actionUrl: "/elite-club" });
+}
+
+export async function notifyEliteClubPayoutReleased(userId: string, amount: number) {
+  await sendNotification({ userId, type: "ELITE_CLUB_PAYOUT_RELEASED", title: "Empowerment Payout Released!", message: `Your empowerment payout of ₦${amount.toLocaleString()} has been released to your wallet. Congratulations!`, actionUrl: "/elite-club" });
+}
+
+export async function notifyEliteClubPayoutBlocked(userId: string, amount: number, reason: string) {
+  await sendNotification({ userId, type: "ELITE_CLUB_PAYOUT_BLOCKED", title: "Empowerment Payout Blocked", message: `Your empowerment payout of ₦${amount.toLocaleString()} has been blocked. Reason: ${reason}`, actionUrl: "/elite-club" });
+}
+
+export async function notifyEliteClubSwapRequest(userId: string, fromRotation: number, toRotation: number) {
+  await sendNotification({ userId, type: "ELITE_CLUB_SWAP_REQUEST", title: "Rotation Swap Request", message: `A member has requested to swap rotation numbers with you (#${fromRotation} ↔ #${toRotation}).`, actionUrl: "/elite-club" });
+}
+
+export async function notifyEliteClubSwapAccepted(userId: string, newRotation: number) {
+  await sendNotification({ userId, type: "ELITE_CLUB_SWAP_ACCEPTED", title: "Rotation Swap Accepted", message: `Your rotation swap request was accepted. You are now at rotation #${newRotation}.`, actionUrl: "/elite-club" });
+}
+
+export async function notifyEliteClubSwapRejected(userId: string) {
+  await sendNotification({ userId, type: "ELITE_CLUB_SWAP_REJECTED", title: "Rotation Swap Declined", message: `Your rotation swap request was declined.`, actionUrl: "/elite-club" });
+}
+
+export async function notifyEliteClubVoteOpen(userId: string, investmentTitle: string) {
+  await sendNotification({ userId, type: "ELITE_CLUB_VOTE_OPEN", title: "Investment Vote Open", message: `"${investmentTitle}" is open for vote. Review the legal documents and cast your vote.`, actionUrl: "/elite-club/investments" });
+}
+
+export async function notifyEliteClubInvestmentRejected(userId: string, title: string, reason?: string) {
+  await sendNotification({ userId, type: "ELITE_CLUB_INVESTMENT_REJECTED", title: "Investment Recommendation Rejected", message: `Your investment "${title}" was not approved.${reason ? ` Reason: ${reason}` : ""}`, actionUrl: "/elite-club/investments" });
+}
+
+export async function notifyEliteClubSuspended(userId: string, defaultCount: number) {
+  await sendNotification({ userId, type: "ELITE_CLUB_SUSPENDED", title: "Elite Club Membership Suspended", message: `Your membership has been suspended due to ${defaultCount} recorded defaults.`, actionUrl: "/elite-club" });
+}
+
+export async function notifyEliteClubReinstated(userId: string) {
+  await sendNotification({ userId, type: "ELITE_CLUB_REINSTATED", title: "Elite Club Membership Reinstated", message: `Your Elite Club membership has been reinstated. Welcome back!`, actionUrl: "/elite-club" });
 }

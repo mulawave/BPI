@@ -1901,6 +1901,14 @@ model User {
   TechProjectsApproved                                                 TechPoolProject[]            @relation("TechProjectApproved")
   TechPoolSpends                                                       TechPoolSpend[]              @relation("TechPoolSpendUser")
 
+  // Elite Club Relations
+  EliteClubApplications                                                EliteClubApplication[]
+  EliteClubMemberships                                                 EliteClubMember[]            @relation("EliteClubMemberUser")
+  EliteClubTokenHoldings                                               EliteClubTokenHolding[]
+  EliteClubContributions                                               EliteClubContribution[]
+  EliteClubVotes                                                       EliteClubVote[]
+  EliteClubGuarantors                                                  EliteClubGuarantor[]
+
   @@index([cityId])
   @@index([stateId])
   @@index([countryId])
@@ -2383,9 +2391,11 @@ enum RevenueSource {
   YOUTUBE_SUBSCRIPTION   // YouTube plan subscriptions
   THIRD_PARTY_SERVICES   // Third-party integrations
   PALLIATIVE_PROGRAM     // Palliative related
-  LEADERSHIP_POOL_FEE    // Leadership pool entries
-  TRAINING_CENTER        // Training center fees
-  OTHER                  // Other revenue streams
+  LEADERSHIP_POOL_FEE            // Leadership pool entries
+  TRAINING_CENTER                // Training center fees
+  ELITE_CLUB_OPS                 // Elite Club operations fee (5% of monthly investment allocation)
+  ELITE_CLUB_INVESTMENT_PROFIT   // BPI share of Elite Club investment profits (optional, max 5%)
+  OTHER                          // Other revenue streams
 }
 
 enum AllocationStatus {
@@ -2818,4 +2828,428 @@ model RevenueSnapshot {
   
   @@unique([month, year])
   @@index([year, month])
+}
+
+// ============================================
+// ELITE CLUB SYSTEM
+// ============================================
+
+enum EliteClubTier {
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+}
+
+enum EliteClubFormationStatus {
+  OPEN
+  PAUSED
+  CLOSED
+}
+
+enum EliteClubStatus {
+  FORMING
+  ACTIVE
+  SUSPENDED
+  DISSOLVED
+}
+
+enum EliteClubMemberStatus {
+  ACTIVE
+  DEFAULTED
+  SUSPENDED
+  OPTED_OUT
+  REPLACED
+}
+
+enum EliteClubAppStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum EliteClubDocType {
+  BANK_STATEMENT
+  BUSINESS_PROOF
+  TRAVEL_PROOF
+  PROPERTY_PROOF
+  CONTRIBUTION_DECLARATION
+}
+
+enum EliteClubContribStatus {
+  PAID
+  PENDING
+  MISSED
+  PARTIAL
+}
+
+enum EliteClubPayoutStatus {
+  PENDING
+  PAID
+  BLOCKED
+}
+
+enum EliteClubSwapStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum EliteClubInvestmentCategory {
+  DIGITAL_WEB3
+  OFFLINE
+}
+
+enum EliteClubInvestmentStatus {
+  DRAFT
+  UNDER_REVIEW
+  VOTED
+  APPROVED
+  FUNDED
+  ACTIVE
+  COMPLETED
+  REJECTED
+}
+
+enum EliteClubVoteChoice {
+  ACCEPT
+  REJECT
+  ABSTAIN
+}
+
+enum EliteClubCredEventType {
+  CONTRIBUTION_PAID
+  CONTRIBUTION_MISSED
+  DEFAULT
+  SUSPENSION
+  OPT_OUT
+  PAYOUT_RECEIVED
+  GUARANTEE_DEFAULT
+  POSITIVE_VOTE
+  ADMIN_ADJUSTMENT
+}
+
+enum EliteClubTokenVerifMethod {
+  WALLET_CONNECT
+  PROOF_UPLOAD
+}
+
+// Core club entity
+model EliteClub {
+  id              String                   @id @default(cuid())
+  name            String
+  tier            EliteClubTier
+  status          EliteClubStatus          @default(FORMING)
+  formationStatus EliteClubFormationStatus @default(OPEN)
+  membersCount    Int                      @default(0)
+  activatedAt     DateTime?
+  dissolvedAt     DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  members         EliteClubMember[]
+  applications    EliteClubApplication[]
+  contributions   EliteClubContribution[]
+  payouts         EliteClubEmpowermentPayout[]
+  swapRequests    EliteClubSwapRequest[]
+  investmentPools EliteClubInvestmentPool[]
+  investments     EliteClubInvestment[]
+
+  @@index([tier, status])
+}
+
+// Candidate application
+model EliteClubApplication {
+  id               String             @id @default(cuid())
+  userId           String
+  clubId           String?
+  tier             EliteClubTier
+  status           EliteClubAppStatus @default(PENDING)
+  bptVerified      Boolean            @default(false)
+  pacTokenVerified Boolean            @default(false)
+  submittedAt      DateTime           @default(now())
+  reviewedAt       DateTime?
+  reviewedBy       String?
+  rejectionReason  String?
+  notes            String?
+  updatedAt        DateTime           @updatedAt
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club             EliteClub?         @relation(fields: [clubId], references: [id], onDelete: SetNull)
+  documents        EliteClubDocument[]
+  tokenHoldings    EliteClubTokenHolding[]
+
+  @@index([userId, status])
+  @@index([clubId])
+  @@index([tier, status])
+}
+
+// Uploaded application documents
+model EliteClubDocument {
+  id            String           @id @default(cuid())
+  applicationId String
+  docType       EliteClubDocType
+  fileUrl       String
+  uploadedAt    DateTime         @default(now())
+  verifiedAt    DateTime?
+  verifiedBy    String?
+  rejected      Boolean          @default(false)
+  rejectReason  String?
+  application   EliteClubApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+}
+
+// Token holding verification (BPT + PACToken)
+model EliteClubTokenHolding {
+  id                  String                    @id @default(cuid())
+  userId              String
+  applicationId       String?
+  tier                EliteClubTier
+  bptAmount           Decimal                   @default(0) @db.Decimal(20, 8)
+  pacTokenAmount      Decimal                   @default(0) @db.Decimal(20, 8)
+  verifiedAt          DateTime?
+  verificationMethod  EliteClubTokenVerifMethod @default(PROOF_UPLOAD)
+  proofUrl            String?
+  walletAddress       String?
+  adminApproved       Boolean                   @default(false)
+  adminApprovedBy     String?
+  createdAt           DateTime                  @default(now())
+  user                User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application         EliteClubApplication?     @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([applicationId])
+}
+
+// Active club member
+model EliteClubMember {
+  id                   String                @id @default(cuid())
+  userId               String
+  clubId               String
+  rotationNumber       Int                   // 1–11
+  status               EliteClubMemberStatus @default(ACTIVE)
+  credibilityScore     Decimal               @default(5) @db.Decimal(5, 2)
+  totalContributed     Decimal               @default(0)
+  empowermentReceived  Boolean               @default(false)
+  empowermentPending   Boolean               @default(false)
+  defaultCount         Int                   @default(0)
+  joinedAt             DateTime              @default(now())
+  suspendedAt          DateTime?
+  replacedAt           DateTime?
+  legalFlaggedAt       DateTime?
+  updatedAt            DateTime              @updatedAt
+  user                 User                  @relation("EliteClubMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+  club                 EliteClub             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  contributions        EliteClubContribution[]
+  payouts              EliteClubEmpowermentPayout[]
+  swapRequestsFrom     EliteClubSwapRequest[]       @relation("SwapRequester")
+  swapRequestsTo       EliteClubSwapRequest[]       @relation("SwapTarget")
+  credibilityEvents    EliteClubCredibilityEvent[]
+  guarantorRecords     EliteClubGuarantor[]
+  votes                EliteClubVote[]
+  legalEvents          EliteClubLegalEvent[]
+
+  @@unique([clubId, rotationNumber])
+  @@unique([userId, clubId])
+  @@index([clubId, status])
+  @@index([userId])
+}
+
+// Monthly contribution ledger
+model EliteClubContribution {
+  id                String                 @id @default(cuid())
+  memberId          String
+  clubId            String
+  userId            String
+  month             Int
+  year              Int
+  totalAmount       Decimal
+  empowermentShare  Decimal
+  investmentShare   Decimal
+  status            EliteClubContribStatus @default(PENDING)
+  paidAt            DateTime?
+  dueAt             DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  member            EliteClubMember        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  club              EliteClub              @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, month, year])
+  @@index([clubId, month, year])
+  @@index([status])
+}
+
+// Empowerment rotation payout
+model EliteClubEmpowermentPayout {
+  id               String                @id @default(cuid())
+  clubId           String
+  memberId         String
+  rotationNumber   Int
+  amount           Decimal
+  scheduledMonth   Int
+  scheduledYear    Int
+  status           EliteClubPayoutStatus @default(PENDING)
+  paidAt           DateTime?
+  blockedReason    String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  club             EliteClub             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  member           EliteClubMember       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, scheduledMonth, scheduledYear])
+  @@index([clubId])
+  @@index([memberId])
+  @@index([status])
+}
+
+// Rotation number swap request
+model EliteClubSwapRequest {
+  id             String              @id @default(cuid())
+  clubId         String
+  requesterId    String
+  targetId       String
+  fromRotation   Int
+  toRotation     Int
+  status         EliteClubSwapStatus @default(PENDING)
+  requestedAt    DateTime            @default(now())
+  resolvedAt     DateTime?
+  resolvedBy     String?
+  club           EliteClub           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  requester      EliteClubMember     @relation("SwapRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  target         EliteClubMember     @relation("SwapTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
+  @@index([requesterId])
+  @@index([targetId])
+  @@index([status])
+}
+
+// Investment pool balance per club per month
+model EliteClubInvestmentPool {
+  id               String    @id @default(cuid())
+  clubId           String
+  month            Int
+  year             Int
+  grossAmount      Decimal   @default(0)
+  netAmount        Decimal   @default(0)
+  opsFeeBpi        Decimal   @default(0)
+  opsFeeElite      Decimal   @default(0)
+  digitalBalance   Decimal   @default(0)
+  offlineBalance   Decimal   @default(0)
+  available        Decimal   @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  club             EliteClub @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  investments      EliteClubInvestment[]
+
+  @@unique([clubId, month, year])
+  @@index([clubId])
+}
+
+// Investment record
+model EliteClubInvestment {
+  id                     String                      @id @default(cuid())
+  clubId                 String
+  poolId                 String
+  recommendedBy          String
+  title                  String
+  description            String
+  category               EliteClubInvestmentCategory
+  amountRequested        Decimal
+  expectedReturn         Decimal?
+  durationMonths         Int?
+  riskNotes              String?
+  bpiProfitShareEnabled  Boolean                     @default(false)
+  bpiProfitSharePct      Decimal                     @default(0) @db.Decimal(5, 2)
+  status                 EliteClubInvestmentStatus   @default(DRAFT)
+  legalReviewUrl         String?
+  legalReviewedAt        DateTime?
+  legalReviewedBy        String?
+  proofOfDepositUrl      String?
+  proofUploadedAt        DateTime?
+  proofUploadedBy        String?
+  approvedAt             DateTime?
+  fundedAt               DateTime?
+  completedAt            DateTime?
+  actualReturn           Decimal?
+  bpiProfitShareAmount   Decimal?
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  club                   EliteClub                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  pool                   EliteClubInvestmentPool     @relation(fields: [poolId], references: [id])
+  votes                  EliteClubVote[]
+  guarantors             EliteClubGuarantor[]
+
+  @@index([clubId, status])
+  @@index([poolId])
+}
+
+// Member vote on investment
+model EliteClubVote {
+  id           String              @id @default(cuid())
+  investmentId String
+  memberId     String
+  userId       String
+  vote         EliteClubVoteChoice
+  comment      String?
+  votedAt      DateTime            @default(now())
+  investment   EliteClubInvestment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  member       EliteClubMember     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([investmentId, memberId])
+  @@index([investmentId])
+  @@index([memberId])
+}
+
+// Credibility score change audit log
+model EliteClubCredibilityEvent {
+  id         String                 @id @default(cuid())
+  memberId   String
+  event      EliteClubCredEventType
+  delta      Decimal                @db.Decimal(5, 2)
+  scoreBefore Decimal               @db.Decimal(5, 2)
+  scoreAfter  Decimal               @db.Decimal(5, 2)
+  reason     String?
+  referenceId String?               // investmentId, contributionId, etc.
+  createdAt  DateTime               @default(now())
+  member     EliteClubMember        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@index([event])
+}
+
+// Guarantor assignment per investment
+model EliteClubGuarantor {
+  id           String              @id @default(cuid())
+  memberId     String
+  userId       String
+  investmentId String
+  level        Int                 // 1, 2, 3, 4
+  qualifiedAt  DateTime            @default(now())
+  isActive     Boolean             @default(true)
+  member       EliteClubMember     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  investment   EliteClubInvestment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@index([investmentId])
+}
+
+// Legal event / suspension flag
+model EliteClubLegalEvent {
+  id         String          @id @default(cuid())
+  memberId   String
+  eventType  String          // DEFAULT, SUSPENSION, LEGAL_ACTION
+  notes      String?
+  moustRef   String?
+  raisedBy   String?
+  resolvedAt DateTime?
+  resolvedBy String?
+  createdAt  DateTime        @default(now())
+  member     EliteClubMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
 }

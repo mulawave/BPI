@@ -45,6 +45,7 @@ import { securityRouter } from "./security";
 import { adminReferralsRouter } from "./adminReferrals";
 import { contentRouter } from "./content";
 import { cspRouter } from "./csp";
+import { eliteClubRouter } from "./eliteClub";
 import { adminBlogRouter } from "./adminBlog";
 import { storeRouter } from "./store";
 import { helpRouter } from "./help";
@@ -98,6 +99,7 @@ export const appRouter = createTRPCRouter({
   adminReferrals: adminReferralsRouter,
   content: contentRouter,
   csp: cspRouter,
+  eliteClub: eliteClubRouter,
   store: storeRouter,
   help: helpRouter,
   adminCurrency: adminCurrencyRouter,
