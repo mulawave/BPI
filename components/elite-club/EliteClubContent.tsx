@@ -890,7 +890,7 @@ export default function EliteClubContent() {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
+    <div className="p-4 sm:p-6 lg:p-8 bg-white dark:bg-[#0f1621] min-h-full">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
