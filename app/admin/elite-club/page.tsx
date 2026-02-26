@@ -135,35 +135,59 @@ function OverviewTab() {
         <StatCard icon={<Vote size={22} className="text-indigo-600" />} label="Open Votes" value={stats.openInvestments} color="bg-indigo-50 dark:bg-indigo-900/20" />
       </div>
 
-      {/* Formation status card */}
+      {/* Formation status card — per-tier controls */}
       <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
-              <Activity size={20} className="text-amber-600" />
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
+            <Activity size={20} className="text-amber-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900 dark:text-white">Club Formation Status</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Controls whether new applications can be submitted per tier</p>
+          </div>
+        </div>
+
+        {/* Global row */}
+        <div className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Global (all tiers)</span>
+              <StatusBadge status={formationQuery.data?.formationStatus ?? "—"} />
             </div>
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">Club Formation Status</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Controls whether new members can apply to form clubs</p>
+            <div className="flex gap-2">
+              {(["OPEN", "PAUSED", "CLOSED"] as const).map((s) => (
+                <button key={s} onClick={() => setStatus.mutate({ status: s })}
+                  disabled={setStatus.isPending || formationQuery.data?.formationStatus === s}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${formationQuery.data?.formationStatus === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#0d3b29] hover:text-[#0d3b29]"}`}>
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
-          <StatusBadge status={formationQuery.data?.formationStatus ?? "..."} />
         </div>
-        <div className="flex gap-3 flex-wrap">
-          {(["OPEN", "PAUSED", "CLOSED"] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatus.mutate({ status: s })}
-              disabled={setStatus.isPending || formationQuery.data?.formationStatus === s}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all border ${
-                formationQuery.data?.formationStatus === s
-                  ? "bg-[#0d3b29] text-white border-[#0d3b29]"
-                  : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#0d3b29] hover:text-[#0d3b29]"
-              }`}
-            >
-              {s}
-            </button>
-          ))}
+
+        {/* Per-tier rows */}
+        <div className="space-y-3">
+          {(["SILVER", "GOLD", "PLATINUM", "DIAMOND"] as const).map((tier) => {
+            const tierStatus = formationQuery.data?.tierFormationStatus?.[tier] ?? "OPEN";
+            return (
+              <div key={tier} className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-2">
+                  <TierBadge tier={tier} />
+                  <StatusBadge status={tierStatus} />
+                </div>
+                <div className="flex gap-2">
+                  {(["OPEN", "PAUSED", "CLOSED"] as const).map((s) => (
+                    <button key={s} onClick={() => setStatus.mutate({ status: s, tier })}
+                      disabled={setStatus.isPending || tierStatus === s}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${tierStatus === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#0d3b29] hover:text-[#0d3b29]"}`}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -484,10 +508,18 @@ function PayoutsTab() {
 function InvestmentsTab() {
   const [clubId, setClubId] = useState("");
   const [searchClubId, setSearchClubId] = useState("__placeholder__");
+  const [poolClubId, setPoolClubId] = useState("__placeholder__");
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const { data, isLoading, refetch } = api.eliteClub.listInvestments.useQuery(
     { clubId: searchClubId, status: statusFilter as any },
     { enabled: searchClubId !== "__placeholder__" },
+  );
+  const { data: poolHistoryData, isLoading: poolHistoryLoading } = api.eliteClub.getInvestmentPoolHistory.useQuery(
+    { clubId: poolClubId },
+    { enabled: poolClubId !== "__placeholder__" },
+  );
+  const { data: opsData } = api.eliteClub.getEliteOpsBalance.useQuery(
+    { clubId: poolClubId !== "__placeholder__" ? poolClubId : undefined },
   );
   const submitLegal = api.eliteClub.submitLegalReview.useMutation({
     onSuccess: () => { toast.success("Legal review submitted — voting opened."); refetch(); },
@@ -504,13 +536,131 @@ function InvestmentsTab() {
 
   const [legalUrl, setLegalUrl] = useState<Record<string, string>>({});
 
+  const pools = poolHistoryData?.pools ?? [];
+  const latestPool = pools[0] ?? null;
+  const opsBalances = opsData?.balances ?? [];
+  const totalEliteOps = opsBalances.reduce((sum, b) => sum + Number(b._sum.eliteShare ?? 0), 0);
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
+      {/* Club selector for pool data */}
       <div className="flex gap-3 flex-wrap">
         <input value={clubId} onChange={(e) => setClubId(e.target.value)} placeholder="Enter Club ID..."
           className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none max-w-xs" />
-        <button onClick={() => setSearchClubId(clubId)} disabled={!clubId}
+        <button onClick={() => { setSearchClubId(clubId); setPoolClubId(clubId); }} disabled={!clubId}
           className="px-4 py-2 bg-[#0d3b29] text-white rounded-xl text-sm font-semibold disabled:opacity-50">Load</button>
+      </div>
+
+      {/* Investment Pool Balance + Breakdown */}
+      {poolClubId !== "__placeholder__" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Current pool balance */}
+          <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+            <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
+              <BarChart3 size={15} className="text-indigo-600" /> Current Month Pool
+            </h3>
+            {poolHistoryLoading ? (
+              <div className="flex items-center gap-2 text-gray-400 text-sm"><RefreshCw size={14} className="animate-spin" />Loading...</div>
+            ) : latestPool ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Gross Contributed</p>
+                    <p className="font-bold text-gray-900 dark:text-white text-sm">₦{Number(latestPool.grossAmount).toLocaleString()}</p>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Net Available</p>
+                    <p className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">₦{Number(latestPool.netAmount).toLocaleString()}</p>
+                  </div>
+                  <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl p-3">
+                    <p className="text-xs text-indigo-600 dark:text-indigo-400 mb-1">Digital / Web3</p>
+                    <p className="font-bold text-indigo-700 dark:text-indigo-300 text-sm">₦{Number(latestPool.digitalBalance).toLocaleString()}</p>
+                  </div>
+                  <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3">
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mb-1">Offline</p>
+                    <p className="font-bold text-amber-700 dark:text-amber-300 text-sm">₦{Number(latestPool.offlineBalance).toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3">
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-1">Total Available (unallocated)</p>
+                  <p className="font-bold text-emerald-700 dark:text-emerald-300">₦{Number(latestPool.available).toLocaleString()}</p>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Period: {latestPool.month}/{latestPool.year}</p>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 py-4 text-center">No pool data for this club.</p>
+            )}
+          </div>
+
+          {/* Elite Ops Wallet */}
+          <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+            <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
+              <Wallet size={15} className="text-rose-600" /> Elite Ops Wallet
+            </h3>
+            <div className="space-y-3">
+              <div className="bg-rose-50 dark:bg-rose-900/20 rounded-xl p-4">
+                <p className="text-xs text-rose-600 dark:text-rose-400 mb-1">Accumulated Elite Ops Fee</p>
+                <p className="text-2xl font-bold text-rose-700 dark:text-rose-300">₦{totalEliteOps.toLocaleString()}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">5% ops share from all contributions</p>
+              </div>
+              {opsBalances.length > 1 && (
+                <div className="space-y-2">
+                  {opsBalances.map((b) => (
+                    <div key={b.clubId} className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2">
+                      <span className="font-mono text-gray-400 truncate max-w-[120px]">{b.clubId}</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">₦{Number(b._sum.eliteShare ?? 0).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-700/40 rounded-xl px-3 py-2.5">
+                <p className="text-xs text-amber-700 dark:text-amber-300 flex items-start gap-1.5">
+                  <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
+                  Disbursement to elite members is managed off-platform. Use this balance for reconciliation.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Monthly Inflow History */}
+      {pools.length > 0 && (
+        <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+          <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
+            <TrendingUp size={15} className="text-[#0d3b29]" /> Monthly Inflow History
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700">
+                  <th className="text-left px-3 py-2 font-medium">Period</th>
+                  <th className="text-right px-3 py-2 font-medium">Gross</th>
+                  <th className="text-right px-3 py-2 font-medium">Net</th>
+                  <th className="text-right px-3 py-2 font-medium">Digital</th>
+                  <th className="text-right px-3 py-2 font-medium">Offline</th>
+                  <th className="text-right px-3 py-2 font-medium">Available</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/40">
+                {pools.map((p) => (
+                  <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                    <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-white">{p.month}/{p.year}</td>
+                    <td className="px-3 py-2.5 text-right text-gray-700 dark:text-gray-300">₦{Number(p.grossAmount).toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right text-emerald-700 dark:text-emerald-400">₦{Number(p.netAmount).toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right text-indigo-700 dark:text-indigo-400">₦{Number(p.digitalBalance).toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right text-amber-700 dark:text-amber-400">₦{Number(p.offlineBalance).toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold text-gray-900 dark:text-white">₦{Number(p.available).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Filter bar for investments list */}
+      <div className="flex gap-3 flex-wrap">
         {(["DRAFT","UNDER_REVIEW","APPROVED","FUNDED","COMPLETED","REJECTED"] as const).map((s) => (
           <button key={s} onClick={() => setStatusFilter(statusFilter === s ? undefined : s)}
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${statusFilter === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"}`}>
@@ -852,6 +1002,7 @@ function SettingsTab() {
     "elite_club_ops_fee_bpi_pct": "BPI Ops Fee % (of investment share)",
     "elite_club_ops_fee_elite_pct": "Elite Ops Fee % (of investment share)",
     "elite_min_gold_plus_invites": "Min Gold Plus Invites Required",
+    "elite_recommender_min_coop_size": "Min Gold Plus Co-op Count to Recommend Investment (default 2)",
     "elite_token_gate_enabled_silver": "SILVER: Token Gate Enabled (true/false)",
     "elite_token_gate_enabled_gold": "GOLD: Token Gate Enabled (true/false)",
     "elite_token_gate_enabled_platinum": "PLATINUM: Token Gate Enabled (true/false)",

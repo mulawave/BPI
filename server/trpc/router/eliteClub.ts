@@ -113,29 +113,48 @@ export const eliteClubRouter = createTRPCRouter({
 
   // ── 1. CLUB FORMATION & LIFECYCLE ─────────────────────────────────────────
 
-  /** Get overall formation status + tier-specific club counts */
+  /** Get overall formation status + per-tier overrides + club counts */
   getFormationStatus: protectedProcedure.query(async ({ ctx }) => {
-    const [formationSetting, clubs] = await Promise.all([
+    const [silverSetting, goldSetting, platSetting, diamondSetting, globalSetting, clubs] = await Promise.all([
+      prisma.adminSettings.findUnique({ where: { settingKey: "elite_formation_status_silver" } }),
+      prisma.adminSettings.findUnique({ where: { settingKey: "elite_formation_status_gold" } }),
+      prisma.adminSettings.findUnique({ where: { settingKey: "elite_formation_status_platinum" } }),
+      prisma.adminSettings.findUnique({ where: { settingKey: "elite_formation_status_diamond" } }),
       prisma.adminSettings.findUnique({ where: { settingKey: "elite_club_formation_status" } }),
       prisma.eliteClub.groupBy({
         by: ["tier", "status"],
         _count: { id: true },
       }),
     ]);
-    const status = (formationSetting?.settingValue as EliteClubFormationStatus) ?? "OPEN";
-    return { formationStatus: status, tierBreakdown: clubs };
+    const globalStatus = (globalSetting?.settingValue as EliteClubFormationStatus) ?? "OPEN";
+    return {
+      formationStatus: globalStatus,
+      tierFormationStatus: {
+        SILVER:   ((silverSetting?.settingValue  as EliteClubFormationStatus) ?? globalStatus),
+        GOLD:     ((goldSetting?.settingValue    as EliteClubFormationStatus) ?? globalStatus),
+        PLATINUM: ((platSetting?.settingValue    as EliteClubFormationStatus) ?? globalStatus),
+        DIAMOND:  ((diamondSetting?.settingValue as EliteClubFormationStatus) ?? globalStatus),
+      },
+      tierBreakdown: clubs,
+    };
   }),
 
-  /** Admin: set formation open/paused/closed */
+  /** Admin: set formation open/paused/closed — optionally scoped to a single tier */
   setFormationStatus: protectedProcedure
-    .input(z.object({ status: z.enum(["OPEN", "PAUSED", "CLOSED"]) }))
+    .input(z.object({
+      status: z.enum(["OPEN", "PAUSED", "CLOSED"]),
+      tier: z.enum(["SILVER", "GOLD", "PLATINUM", "DIAMOND"]).optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
       assertAdmin(ctx.session);
+      const settingKey = input.tier
+        ? `elite_formation_status_${input.tier.toLowerCase()}`
+        : "elite_club_formation_status";
       await prisma.adminSettings.upsert({
-        where: { settingKey: "elite_club_formation_status" },
+        where: { settingKey },
         create: {
           id: randomUUID(),
-          settingKey: "elite_club_formation_status",
+          settingKey,
           settingValue: input.status,
           updatedAt: new Date(),
         },
@@ -383,13 +402,15 @@ export const eliteClubRouter = createTRPCRouter({
       assertMember(ctx.session);
       const userId = ctx.session!.user.id;
 
-      // Block if formation is PAUSED or CLOSED
-      const formationSetting = await prisma.adminSettings.findUnique({
-        where: { settingKey: "elite_club_formation_status" },
-      });
-      const formationStatus = formationSetting?.settingValue ?? "OPEN";
-      if (formationStatus === "CLOSED") throw new Error("Elite Club formation is currently closed. Applications are not being accepted.");
-      if (formationStatus === "PAUSED") throw new Error("Elite Club formation is currently paused. Please check back later.");
+      // Block if formation is PAUSED or CLOSED — check per-tier key first, fall back to global
+      const tierFormationKey = `elite_formation_status_${input.tier.toLowerCase()}`;
+      const [tierFormationSetting, globalFormationSetting] = await Promise.all([
+        prisma.adminSettings.findUnique({ where: { settingKey: tierFormationKey } }),
+        prisma.adminSettings.findUnique({ where: { settingKey: "elite_club_formation_status" } }),
+      ]);
+      const formationStatus = tierFormationSetting?.settingValue ?? globalFormationSetting?.settingValue ?? "OPEN";
+      if (formationStatus === "CLOSED") throw new Error(`${input.tier} tier formation is currently closed. Applications are not being accepted.`);
+      if (formationStatus === "PAUSED") throw new Error(`${input.tier} tier formation is currently paused. Please check back later.`);
 
       // Block duplicate pending
       const existing = await prisma.eliteClubApplication.findFirst({
@@ -1325,6 +1346,18 @@ export const eliteClubRouter = createTRPCRouter({
       return { pool: updated };
     }),
 
+  /** Get all investment pool records for a club (monthly inflow history) */
+  getInvestmentPoolHistory: protectedProcedure
+    .input(z.object({ clubId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      assertMember(ctx.session);
+      const pools = await prisma.eliteClubInvestmentPool.findMany({
+        where: { clubId: input.clubId },
+        orderBy: [{ year: "desc" }, { month: "desc" }],
+      });
+      return { pools };
+    }),
+
   // ── 7. INVESTMENT RECOMMENDATION & GOVERNANCE ─────────────────────────────
 
   /** Check if member is eligible to recommend an investment */
@@ -1335,18 +1368,68 @@ export const eliteClubRouter = createTRPCRouter({
       const userId = ctx.session!.user.id;
       const member = await prisma.eliteClubMember.findFirst({
         where: { userId, clubId: input.clubId, status: "ACTIVE" },
+        include: { club: { select: { tier: true } } },
       });
       if (!member) return { eligible: false, reason: "Not an active member." };
-      const minRecommenderCredibility = await loadNumericSetting("elite_club_recommender_min_credibility", 7);
+
+      // 1. Credibility check — CMS-driven, spec default is 10
+      const minRecommenderCredibility = await loadNumericSetting("elite_club_recommender_min_credibility", 10);
       if (Number(member.credibilityScore) < minRecommenderCredibility) {
-        return { eligible: false, reason: `Credibility score ${member.credibilityScore} below minimum ${minRecommenderCredibility}` };
+        return { eligible: false, reason: `Credibility score ${member.credibilityScore} below minimum ${minRecommenderCredibility}.` };
       }
+
+      // 2. Active guarantor assignment check
       const guarantorRecords = await prisma.eliteClubGuarantor.count({
         where: { memberId: member.id, isActive: true },
       });
       if (guarantorRecords < 1) {
         return { eligible: false, reason: "No active guarantor assignment." };
       }
+
+      // 3. Gold Plus co-op count — how many Gold Plus members you directly recruited
+      const minCoopSize = await loadNumericSetting("elite_recommender_min_coop_size", 2);
+      if (minCoopSize > 0) {
+        const referralUsers = await prisma.user.findMany({
+          where: { referredBy: userId, activated: true, activeMembershipPackageId: { not: null } },
+          select: { activeMembershipPackageId: true },
+        });
+        const refPkgIds = [...new Set(referralUsers.map((u) => u.activeMembershipPackageId).filter(Boolean))] as string[];
+        let goldPlusCoopCount = 0;
+        if (refPkgIds.length > 0) {
+          const gpPkgs = await (prisma as any).membershipPackage.findMany({
+            where: { id: { in: refPkgIds }, packageType: "GOLD_PLUS" },
+            select: { id: true },
+          });
+          const gpIdSet = new Set((gpPkgs as any[]).map((p: any) => p.id));
+          goldPlusCoopCount = referralUsers.filter(
+            (u) => u.activeMembershipPackageId && gpIdSet.has(u.activeMembershipPackageId),
+          ).length;
+        }
+        if (goldPlusCoopCount < minCoopSize) {
+          return { eligible: false, reason: `Gold Plus co-op count ${goldPlusCoopCount} below minimum ${minCoopSize} required to recommend investments.` };
+        }
+      }
+
+      // 4. BPT / PACToken holdings — same gate logic as checkEligibility
+      const tier = (member as any).club?.tier as EliteClubTier;
+      if (tier) {
+        const thresholds = TIER_THRESHOLDS[tier] ?? { bpt: 0, pac: 0, monthly: 0, clubSize: 11 };
+        const tierLower = tier.toLowerCase();
+        const tokenGateRaw = await loadStringSetting(`elite_token_gate_enabled_${tierLower}`, "true");
+        const gateEnabled = tokenGateRaw !== "false";
+        if (gateEnabled && (thresholds.bpt > 0 || thresholds.pac > 0)) {
+          const holdings = await prisma.eliteClubTokenHolding.findFirst({
+            where: { userId, tier, adminApproved: true },
+          });
+          if (!holdings || Number(holdings.bptAmount) < thresholds.bpt) {
+            return { eligible: false, reason: `Insufficient BPT holdings. Required: ${thresholds.bpt}, have: ${holdings ? Number(holdings.bptAmount) : 0}.` };
+          }
+          if (Number(holdings.pacTokenAmount) < thresholds.pac) {
+            return { eligible: false, reason: `Insufficient PACToken holdings. Required: ${thresholds.pac}, have: ${Number(holdings.pacTokenAmount)}.` };
+          }
+        }
+      }
+
       return { eligible: true, reason: null, member };
     }),
 
@@ -1373,7 +1456,7 @@ export const eliteClubRouter = createTRPCRouter({
         where: { userId, clubId: input.clubId, status: "ACTIVE" },
       });
       if (!member) throw new Error("Not an active member.");
-      const minRecommenderCred = await loadNumericSetting("elite_club_recommender_min_credibility", 7);
+      const minRecommenderCred = await loadNumericSetting("elite_club_recommender_min_credibility", 10);
       if (Number(member.credibilityScore) < minRecommenderCred) throw new Error(`Credibility score below ${minRecommenderCred} required to recommend investments.`);
 
       // Verify pool availability
@@ -2122,6 +2205,7 @@ export const eliteClubRouter = createTRPCRouter({
       "elite_club_ops_fee_elite_pct",
       // Gate controls
       "elite_min_gold_plus_invites",
+      "elite_recommender_min_coop_size",
       "elite_token_gate_enabled_silver",
       "elite_token_gate_enabled_gold",
       "elite_token_gate_enabled_platinum",

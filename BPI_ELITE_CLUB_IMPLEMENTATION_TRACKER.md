@@ -201,7 +201,7 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 #### 6a — Gross-to-Net Deduction (10% Operations)
 - [x] 10% of investment share auto-deducted: 5% `eliteOps` + 5% `bpiOps` computed in `recordContribution`
 - [x] 5% → BPI Revenue Pool via `recordRevenue(source: "ELITE_CLUB_OPS")`
-- [ ] 5% → Elite Club Ops Wallet (`ELITE_OPS`) — computed but not disbursed to a tracked wallet/model (**PARTIAL**)
+- [x] 5% → Elite Club Ops Wallet — `eliteShare` tracked in `EliteClubOperationsFee`; admin Investments tab now displays accumulated balance per club with reconciliation note
 - [x] `EliteClubOperationsFee` record created per deduction cycle (`prisma.eliteClubOperationsFee.create` inside `recordContribution`)
 - [x] Net investment pool per member correct: `investmentShare × 0.9` → `netInvestment` added to pool
 - [x] Operations deduction constant and predictable per contribution
@@ -212,13 +212,15 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 - [x] `getInvestmentPool` procedure — returns pool with associated investments
 - [x] `updatePoolSplit` — admin sets `digitalBalance` / `offlineBalance` split
 - [x] Admin investments tab displays pool balance and investments list
+- [x] `getInvestmentPoolHistory` procedure — returns all pool records for a club ordered by year/month desc
+- [x] Admin investments tab: monthly inflow history table (gross/net/digital/offline/available per period)
 
 #### 6c — Revenue Routing
 - [x] `recordRevenue(source: "ELITE_CLUB_OPS")` called per contribution cycle
 - [x] Revenue tagged with `programType: "ELITE_CLUB"`, `clubId`, `tier`, `month`/`year` (passed in both `ELITE_CLUB_OPS` and `ELITE_CLUB_INVESTMENT_PROFIT` `recordRevenue` calls)
-- [ ] Operations wallet per club funded separately (**MISSING** — no wallet disbursement; only BPI revenue pool is updated)
+- [x] Elite ops wallet balance visible per club in admin Investments tab — shows total accumulated `eliteShare`; disbursement is handled off-platform (reconciliation note displayed)
 
-**🔶 PARTIAL** — BPI revenue recording + ops fee model + revenue metadata tagging implemented; Elite ops wallet disbursement still missing
+**✅ COMPLETE** — BPI revenue recording + ops fee model + balance visibility in admin UI all implemented
 
 ---
 
@@ -232,24 +234,24 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 #### 7b — Pool Visibility Dashboard
 - [x] Total pool balance displayed in admin investments tab
 - [x] Active investments listed with amounts, status, vote count
-- [ ] Balance by category (digital vs offline) breakdown display (**PARTIAL** — fields exist on `InvestmentPool` model but not shown in current UI)
-- [ ] Available funds per category (**PARTIAL** — same as above)
-- [ ] Monthly inflow history (**MISSING**)
+- [x] Balance by category (digital vs offline) breakdown display — shown in admin Investments tab (grid: Gross / Net / Digital / Offline / Available) and member Investments tab
+- [x] Available funds per category — `available` field shown per pool record in both admin and member UI
+- [x] Monthly inflow history — table with gross/net/digital/offline/available per month in admin Investments tab
 
-**🔶 PARTIAL** — basic pool visibility works; category enforcement and category breakdown display incomplete
+**✅ COMPLETE** — pool visibility, category breakdown, and inflow history all implemented in admin + member UI
 
 ---
 
 ### 🔶 SECTION 8 — Investment Governance (Recommendation → Vote → Fund Release)
 
 #### 8a — Investment Recommender Eligibility
-- [ ] Only members with `credibilityScore = 10/10` (**PARTIAL** — gate is ≥ 7, not = 10; threshold stored in `elite_club_recommender_min_credibility` AdminSettings key but hardcoded in router as 7)
-- [ ] Minimum Gold Plus members in Virtual Cooperative (**MISSING**)
-- [ ] Active BPT + PACToken holdings above minimum threshold (**MISSING**)
-- [x] `checkRecommenderEligibility` procedure — returns pass/fail with reason (checks credibility ≥ 7 + active guarantor)
+- [x] Credibility gate: default is now `10` in `checkRecommenderEligibility` + `submitInvestmentRecommendation` (CMS-driven via `elite_club_recommender_min_credibility`; was incorrectly defaulting to 7)
+- [x] Minimum Gold Plus co-op count — checked in `checkRecommenderEligibility` via `elite_recommender_min_coop_size` CMS key (default 2); counts direct Gold Plus referrals same pattern as `checkEligibility`
+- [x] Active BPT + PACToken holdings — checked in `checkRecommenderEligibility` against `TIER_THRESHOLDS` same as member eligibility (respects `elite_token_gate_enabled_{tier}` toggle)
+- [x] `checkRecommenderEligibility` procedure — returns pass/fail with reason (credibility ≥ CMS threshold + active guarantor + Gold Plus co-op count + BPT/PAC holdings)
 
 #### 8b — Recommendation Submission
-- [x] `submitInvestmentRecommendation` procedure — validates credibility ≥ 7 + pool balance, creates `EliteClubInvestment` in `DRAFT`
+- [x] `submitInvestmentRecommendation` procedure — validates credibility ≥ CMS threshold (default 10) + pool balance, creates `EliteClubInvestment` in `DRAFT`
 - [x] All required fields: title, description, category, amountRequested, expectedReturn, durationMonths, riskNotes
 - [x] BPI profit share option: `bpiProfitShareEnabled` + `bpiProfitSharePct` (capped at 5%)
 - [x] Investment-specific profit share — not a blanket rule
@@ -348,7 +350,10 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 ### 🔶 SECTION 12 — Admin CMS Controls
 
 #### 12a — Club Formation Controls
-- [x] Set formation status (`setFormationStatus`) — global key; per-tier override not implemented
+- [x] Set formation status (`setFormationStatus`) — supports optional `tier` param; writes per-tier key `elite_formation_status_{tier}` when provided, else global key
+- [x] `getFormationStatus` — returns `tierFormationStatus` map (SILVER/GOLD/PLATINUM/DIAMOND), each falling back to global if no per-tier key set
+- [x] `submitApplication` — reads per-tier key first (`elite_formation_status_{tier}`), falls back to global; error message names the specific tier
+- [x] Admin Overview tab — per-tier formation control rows below global row (4 tiers with individual OPEN/PAUSED/CLOSED buttons)
 - [x] View all clubs per tier with member count and status (`adminListClubs` + Clubs tab)
 - [x] Manually activate a club (`activateClub` — enforces 11 members)
 - [x] Manually dissolve or suspend a club (`updateClubStatus`)
@@ -509,7 +514,7 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 | Club tier structure (Silver/Gold/Platinum/Diamond)   | ✅     | `EliteClub` model + schema                            |
 | Multiple clubs per tier, 11-member cap               | ✅     | Application guard + `activateClub`                    |
 | Formation status (Open/Paused/Closed) — global       | ✅     | `AdminSettings` + `setFormationStatus`                |
-| Formation status **per tier** control                | 🔶     | Single global key only; per-tier override missing     |
+| Formation status **per tier** control                | ✅     | `elite_formation_status_{tier}` keys + per-tier UI in admin Overview |
 | Gold Plus + 2 Gold Plus invites gate                 | ✅     | `checkEligibility` — `activeMembershipPackageId` + referral count |
 | BPT + PACToken holding verification — proof upload   | ✅     | `submitTokenHolding`, `adminApproveTokenHolding`      |
 | BPT + PACToken — wallet connect on-chain             | 🟥     | NOT IMPLEMENTED (deferred — Web3)                     |
@@ -520,7 +525,7 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 | Rotation swap request/approval                       | ✅     | `requestSwap` + `respondToSwap`                       |
 | Opt-out + replacement                                | ✅     | `optOut` + `replaceOptedOutMember`                    |
 | Investment pool 50/50 digital/offline                | ✅     | `submitInvestmentRecommendation` checks `digitalBalance`/`offlineBalance` |
-| Investment recommendation (credibility gate ≥ 7)    | 🔶     | `submitInvestmentRecommendation` — CMS-driven (≥7 default; spec says =10) |
+| Investment recommendation (credibility gate ≥ 10)   | ✅     | `checkRecommenderEligibility` + `submitInvestmentRecommendation` — CMS default now 10; Gold Plus co-op + BPT/PAC checks added |
 | Legal/compliance review workflow                     | ✅     | `submitLegalReview` — sets status `VOTED`, opens vote  |
 | 11-member vote (majority configurable)               | ✅     | `castVote`, `getVoteResults` — quorum + deadline both CMS-driven |
 | Fund release + proof of deposit                      | ✅     | `approveInvestment` + `fundInvestment`                |

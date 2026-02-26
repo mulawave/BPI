@@ -278,6 +278,10 @@ function InvestmentsTab() {
     { clubId: activeClubId },
     { enabled: !!activeClubId },
   );
+  const { data: poolHistoryData } = api.eliteClub.getInvestmentPoolHistory.useQuery(
+    { clubId: activeClubId },
+    { enabled: !!activeClubId },
+  );
   const castVote = api.eliteClub.castVote.useMutation({
     onSuccess: () => { toast.success("Vote recorded!"); refetch(); },
     onError: (e) => toast.error(e.message),
@@ -285,6 +289,7 @@ function InvestmentsTab() {
   const [voteComment, setVoteComment] = useState<Record<string, string>>({});
 
   const memberships = clubsData?.memberships ?? [];
+  const latestPool = poolHistoryData?.pools?.[0] ?? null;
 
   return (
     <div className="space-y-5">
@@ -301,6 +306,33 @@ function InvestmentsTab() {
       )}
 
       {!activeClubId && <div className="text-center py-10 text-gray-400 dark:text-gray-500 text-sm">Select a club above to view investments.</div>}
+
+      {/* Investment Pool Balance Breakdown */}
+      {activeClubId && latestPool && (
+        <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+          <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
+            <TrendingUp size={14} className="text-[#0d3b29]" /> Investment Pool — {latestPool.month}/{latestPool.year}
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Gross</p>
+              <p className="font-bold text-gray-900 dark:text-white text-sm">₦{Number(latestPool.grossAmount).toLocaleString()}</p>
+            </div>
+            <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3">
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-1">Available</p>
+              <p className="font-bold text-emerald-700 dark:text-emerald-300 text-sm">₦{Number(latestPool.available).toLocaleString()}</p>
+            </div>
+            <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl p-3">
+              <p className="text-xs text-indigo-600 dark:text-indigo-400 mb-1">Digital / Web3</p>
+              <p className="font-bold text-indigo-700 dark:text-indigo-300 text-sm">₦{Number(latestPool.digitalBalance).toLocaleString()}</p>
+            </div>
+            <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3">
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-1">Offline</p>
+              <p className="font-bold text-amber-700 dark:text-amber-300 text-sm">₦{Number(latestPool.offlineBalance).toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isLoading && <div className="flex items-center gap-2 text-gray-400 py-10 justify-center"><RefreshCw size={18} className="animate-spin" />Loading...</div>}
 
