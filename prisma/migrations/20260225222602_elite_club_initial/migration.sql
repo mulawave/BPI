@@ -41,12 +41,20 @@ CREATE TYPE "EliteClubCredEventType" AS ENUM ('CONTRIBUTION_PAID', 'CONTRIBUTION
 CREATE TYPE "EliteClubTokenVerifMethod" AS ENUM ('WALLET_CONNECT', 'PROOF_UPLOAD');
 
 -- AlterEnum
--- Runs outside transaction to satisfy PostgreSQL restriction on
--- ALTER TYPE ... ADD VALUE inside a transaction block (error 25001).
-COMMIT;
-ALTER TYPE "RevenueSource" ADD VALUE IF NOT EXISTS 'ELITE_CLUB_OPS';
-ALTER TYPE "RevenueSource" ADD VALUE IF NOT EXISTS 'ELITE_CLUB_INVESTMENT_PROFIT';
-BEGIN;
+-- Uses direct pg_enum insert to avoid error 25001
+-- (ALTER TYPE ADD VALUE cannot run inside a transaction block)
+INSERT INTO pg_enum (enumtypid, enumlabel, enumsortorder)
+SELECT 'RevenueSource'::regtype::oid, 'ELITE_CLUB_OPS',
+  (SELECT MAX(enumsortorder) + 1 FROM pg_enum WHERE enumtypid = 'RevenueSource'::regtype::oid)
+WHERE NOT EXISTS (
+  SELECT 1 FROM pg_enum WHERE enumtypid = 'RevenueSource'::regtype::oid AND enumlabel = 'ELITE_CLUB_OPS'
+);
+INSERT INTO pg_enum (enumtypid, enumlabel, enumsortorder)
+SELECT 'RevenueSource'::regtype::oid, 'ELITE_CLUB_INVESTMENT_PROFIT',
+  (SELECT MAX(enumsortorder) + 1 FROM pg_enum WHERE enumtypid = 'RevenueSource'::regtype::oid)
+WHERE NOT EXISTS (
+  SELECT 1 FROM pg_enum WHERE enumtypid = 'RevenueSource'::regtype::oid AND enumlabel = 'ELITE_CLUB_INVESTMENT_PROFIT'
+);
 
 -- CreateTable
 CREATE TABLE "EliteClub" (
