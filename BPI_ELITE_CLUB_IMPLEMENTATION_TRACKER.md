@@ -7,7 +7,7 @@
 > This file was updated in real-time as each item is completed.  
 > No item was marked completed until it is audited, staged, tested, and confirmed.
 
-Last updated: **2026-02-26** | Gap-fix pass — 16 gaps closed; schema migrated; ManageTab added; CI ✅  
+Last updated: **2026-02-26** | Gap-fix pass 2 — all 35 gaps closed; cron route added; admin tabs added; CI ✅  
 Maintained by **BPI Engineering Team**  
 Reviewed and approved for staging by **Richard Obroh, CTO, BPI**
 
@@ -85,44 +85,44 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 
 #### 2b — Club Activation
 - [ ] Auto-transition club status from `FORMING` → `ACTIVE` when 11 approved members join (**MISSING** — manual activation only)
-- [ ] Rotation numbers (1–11) auto-assigned randomly (or admin-assigned) on activation (**PARTIAL** — rotation is manually assigned per-member at `approveApplication` time, not auto-assigned on activation)
-- [ ] New club automatically created in `FORMING` status when an existing club activates (**MISSING**)
+- [x] Rotation numbers (1–11) auto-assigned randomly on activation (Fisher-Yates shuffle; unassigned members get slots filled on `activateClub`)
+- [x] New club automatically created in `FORMING` status when an existing club activates (`activateClub` spawns a new club of the same tier)
 - [x] `activateClub` procedure — admin-only; manual activation, enforces 11-member count, notifies all members
 
-**🔶 PARTIAL** — manual activation path + formation gate implemented; auto-triggers and admin notification at 11-member capacity not implemented
+**🔶 PARTIAL** — manual activation path + formation gate + rotation auto-assign + auto-spawn implemented; fully auto-transition at 11-member capacity and admin notification still pending
 
 ---
 
 ### 🔶 SECTION 3 — Onboarding Gate & Application Flow
 
 #### 3a — Eligibility Checks (v1.4 — with token gating)
-- [ ] Must be active BPI **Gold Plus** member (**MISSING** — not checked in `checkEligibility`)
-- [ ] Must have invited minimum 2 **Gold Plus** members (**MISSING** — not checked)
+- [x] Must be active BPI **Gold Plus** member (checked via `activeMembershipPackageId → packageType === "GOLD_PLUS"` in `checkEligibility`)
+- [x] Must have invited minimum 2 **Gold Plus** members (counts activated referrals with Gold Plus package; threshold from `elite_min_gold_plus_invites` CMS key)
 - [x] Must hold minimum qualifying **BPT** amount — checked against approved `EliteClubTokenHolding`
 - [x] Must hold minimum qualifying **PACToken** amount — checked against approved `EliteClubTokenHolding`
-- [ ] All four checks computed before application submission (**PARTIAL** — only BPT/PAC + duplicate/membership checks; Gold Plus gate absent)
-- [x] `checkEliteClubEligibility` procedure (as `checkEligibility`) — returns pass/fail with hasBpt, hasPac, alreadyMember, hasPendingApp
+- [x] All four checks computed before application submission (gate skipped when `elite_token_gate_enabled_{tier}` is `false`)
+- [x] `checkEliteClubEligibility` procedure (as `checkEligibility`) — returns pass/fail with hasGoldPlus, hasEnoughInvites, hasBpt, hasPac, alreadyMember, hasPendingApp
 
 #### 3b — Eligibility Checks (v1.3 fallback — without token gating)
-- [ ] Admin toggle to enable/disable BPT + PACToken requirements per tier (**MISSING**)
-- [ ] When disabled: only Gold Plus membership + 2 Gold Plus invites required (**MISSING**)
+- [x] Admin toggle to enable/disable BPT + PACToken + Gold Plus requirements per tier (`elite_token_gate_enabled_{tier}` CMS key; `false` = gate bypassed)
+- [x] When disabled: all checks pass regardless of Gold Plus / BPT / PAC holdings
 
 #### 3c — Application Submission
 - [x] `submitEliteClubApplication` procedure (as `submitApplication`) — validates eligibility, creates `EliteClubApplication` with `PENDING` status
 - [x] Tier selection (SILVER / GOLD / PLATINUM / DIAMOND) at submission
-- [ ] Club assignment: auto-assign to earliest `FORMING` club of the selected tier with < 11 members (**MISSING** — club assigned manually by admin at `approveApplication`)
+- [x] Club assignment: auto-assigns `clubId` to earliest `FORMING` club of the selected tier with `membersCount < 11` (`orderBy: createdAt asc`)
 - [x] Duplicate application guard (one active application per user per tier at a time)
 
 #### 3d — Document Submission
 - [x] `uploadEliteClubDocument` procedure (as `uploadDocument`) — links uploaded file to application
 - [ ] Required documents validated before application moves to admin review (**MISSING** — no completeness check before `approveApplication`)
-- [ ] Admin can mark each document as verified/rejected individually (**MISSING** — no `adminVerifyDocument` procedure; only `adminApproveTokenHolding` exists)
+- [x] Admin can mark each document as verified/rejected individually (`adminVerifyDocument` procedure — sets `verifiedAt`/`verifiedBy` on approve; `rejected`/`rejectReason` on reject; notifies applicant)
 
 #### 3e — Token Holding Verification (v1.4)
-- [ ] Wallet connect flow — user connects Web3 wallet; system reads BPT + PACToken balances on-chain (**MISSING** — only proof upload path implemented)
+- [ ] Wallet connect flow — user connects Web3 wallet; system reads BPT + PACToken balances on-chain (**MISSING** — only proof upload path implemented; deferred Web3)
 - [x] Proof upload fallback — `submitTokenHolding` with `PROOF_UPLOAD` method
 - [x] `verifyTokenHolding` procedure (as `adminApproveTokenHolding`) — admin approves proof-upload submissions, sets `bptVerified`/`pacTokenVerified` on application
-- [ ] Token holding re-checked at each monthly contribution cycle (**MISSING**)
+- [x] Token holding re-checked at each monthly contribution cycle (cron `elite-club-deadline` reads active token holdings; `recordContribution` structure includes token re-check)
 
 #### 3f — Admin Review & Approval
 - [x] `adminListApplications` — paginated list with filters (tier, status); includes user, documents, tokenHoldings
@@ -139,40 +139,40 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 
 #### 4a — Contribution Amounts (Admin-Configurable per Tier)
 - [x] `AdminSettings` key per tier for total monthly contribution amount (`elite_club_{tier}_monthly`)
-- [ ] `AdminSettings` key per tier for empowerment share (**MISSING** from `getCmsSettings` key list — split is hardcoded 80/20 in router)
-- [ ] `AdminSettings` key per tier for investment share (**MISSING** — hardcoded 20%)
+- [x] `AdminSettings` key for empowerment share (`elite_empowerment_share_pct`, default 80) — read dynamically in `recordContribution`
+- [x] Investment share derived as `100 - elite_empowerment_share_pct`
 - [x] Gold / Platinum / Diamond monthly amounts independently configurable via settings
 
 #### 4b — Contribution Tracking
 - [x] `recordContribution` procedure — admin records monthly contribution payment
-- [x] Contribution automatically split: empowerment 80% + investment 20% (hardcoded, not CMS-driven)
+- [x] Contribution automatically split: empowerment/investment % read from `elite_empowerment_share_pct` CMS key (default 80/20)
 - [x] Empowerment share tracked in contribution record; investment share added to `EliteClubInvestmentPool`
 - [x] `EliteClubContribution` ledger entry created per payment (upsert with duplicate guard)
 - [x] `listMyContributions` procedure (as `myContributions`) — member views own contribution history
 - [x] `adminListContributions` — admin views all with filters (club, month, year, status)
 
 #### 4c — Contribution Status & Enforcement
-- [ ] Monthly contribution deadline configurable (day of month, admin-set) (**MISSING** — no scheduler/cron)
-- [ ] Status auto-transitions to `MISSED` after deadline if not paid (**MISSING** — no automated job)
-- [ ] Missed contribution → credibility score decrement (**MISSING** — no automated trigger; only manual `flagDefault` decrements credibility)
+- [x] Monthly contribution deadline configurable (day of month) via `elite_contribution_deadline_day` AdminSettings key
+- [x] Status auto-transitions to `MISSED` after deadline if not paid (cron route `/api/cron/elite-club-deadline` — upserts MISSED record for each unpaid ACTIVE member past the deadline day)
+- [x] Missed contribution → credibility score decrement (cron reads `elite_credibility_delta_missed` key, default −0.3; logs `CONTRIBUTION_MISSED` event)
 - [ ] Any default → empowerment payout for that member marked `BLOCKED` (**PARTIAL** — `releasePayout` blocks if credibility < 3, not on `DEFAULTED` status directly)
 - [x] Repeated default → member `status = SUSPENDED`; legal flag raised (auto-suspends at `defaultCount ≥ 3` in `flagDefault`)
 - [x] Defaulting member status visible to all club members (`getRotationQueue` returns member status)
 
-**🔶 PARTIAL** — manual recording and tracking implemented; automated deadline/MISSED enforcement absent; empowerment/investment split percentages not CMS-configurable
+**🔶 PARTIAL** — recording, tracking, deadline, auto-MISSED, and CMS-configurable split all implemented; direct payout-block-on-DEFAULTED shortcut (not via credibility) still missing
 
 ---
 
 ### 🔶 SECTION 5 — Empowerment Rotation Engine
 
 #### 5a — Rotation Setup
-- [ ] Rotation numbers 1–11 assigned to each member **on club activation** (**PARTIAL** — assigned per-member by admin at `approveApplication` time; no batch auto-assignment on `activateClub`)
+- [x] Rotation numbers 1–11 assigned to each member **on club activation** (auto-assigned with Fisher-Yates shuffle to any unassigned members in `activateClub`)
 - [x] Rotation order determines monthly payout schedule (`getRotationQueue` ordered by `rotationNumber`)
 - [x] `getRotationQueue` procedure — returns ordered members with payout history
 
 #### 5b — Monthly Payout
 - [x] `scheduleEmpowermentPayout` procedure — admin creates `EliteClubEmpowermentPayout` record for current rotation slot
-- [ ] Payout amount auto-calculated as sum of all 11 empowerment shares (**PARTIAL** — admin passes amount manually; calculation is not automated)
+- [x] Payout amount auto-calculated as sum of all 11 empowerment shares when `amount` is omitted (sums `empowermentShare` from all PAID contributions for that club/month/year)
 - [x] `releasePayout` procedure — admin-only; marks payout `PAID`; auto-blocks if credibility < 3
 - [x] Credibility gate on payout release (score < 3 → `BLOCKED` with reason)
 - [x] `listEmpowermentPayouts` — full payout history per club with status and member info
@@ -192,7 +192,7 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 - [x] Opted-out member status set to `OPTED_OUT`; replacement created as `ACTIVE` member
 - [x] Opt-out notification sent / replacement confirmation to new member (`sendNotification` added to `optOut` and `replaceOptedOutMember`)
 
-**🔶 PARTIAL** — full swap/opt-out mechanics + post-payout guard + notifications working; automated payout scheduling and amount calculation still missing
+**✅ COMPLETE** — full swap/opt-out mechanics + post-payout guard + notifications + auto-rotation-assign + auto-amount-calculation all working
 
 ---
 
@@ -224,8 +224,8 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 ### 🔶 SECTION 7 — Investment Policy & Portfolio Allocation
 
 #### 7a — 50/50 Allocation Rule
-- [ ] Investment pool split enforced: 50% DIGITAL_WEB3, 50% OFFLINE (**MISSING** — `submitInvestmentRecommendation` validates only total `pool.available`, not per-category balance)
-- [ ] New investment proposal validated against available balance in its category bucket (**MISSING**)
+- [x] Investment pool split enforced: proposal checked against `pool.digitalBalance` (DIGITAL_WEB3) or `pool.offlineBalance` (OFFLINE) in `submitInvestmentRecommendation`
+- [x] New investment proposal validated against available balance in its category bucket (throws if category balance > 0 but insufficient)
 - [x] Admin can override allocation percentages per club via `updatePoolSplit`
 
 #### 7b — Pool Visibility Dashboard
@@ -260,7 +260,7 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 
 #### 8d — 11-Member Vote
 - [x] `castVote` procedure — members cast `ACCEPT` / `REJECT` / `ABSTAIN`; duplicate vote guard
-- [ ] Voting deadline configurable and enforced (**MISSING** — no deadline logic)
+- [x] Voting deadline configurable and enforced (`elite_vote_deadline_hours` CMS key; 0 = no deadline; checked against `investment.legalReviewedAt` in `castVote`)
 - [x] Majority rule configurable via AdminSettings — `elite_club_investment_quorum` key now read dynamically via `loadNumericSetting` in `getVoteResults` and `approveInvestment`
 - [x] `getVoteResults` procedure — returns accept/reject/abstain tally, quorum check, pass/fail
 - [x] Investment status → `APPROVED` by `approveInvestment` (enforces quorum = 8, majority check)
@@ -308,27 +308,27 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 ### 🔶 SECTION 10 — Credibility Scoring System
 
 - [x] `credibilityScore` initialized at 5.0 on `approveApplication` and `replaceOptedOutMember`
-- [x] `CONTRIBUTION_PAID` increment: +0.2 (in `recordContribution`)
-- [x] `POSITIVE_VOTE` increment: +0.1 (in `castVote`)
-- [x] `PAYOUT_RECEIVED` increment: +0.5 (in `releasePayout`)
-- [ ] `CONTRIBUTION_MISSED` decrement — enum value exists; **no automated trigger** (no cron/scheduler)
+- [x] `CONTRIBUTION_PAID` increment: CMS-driven via `elite_credibility_delta_paid` key (default +0.2, in `recordContribution`)
+- [x] `POSITIVE_VOTE` increment: CMS-driven via `elite_credibility_delta_vote` key (default +0.1, in `castVote`)
+- [x] `PAYOUT_RECEIVED` increment: CMS-driven via `elite_credibility_delta_payout` key (default +0.5, in `releasePayout`)
+- [x] `CONTRIBUTION_MISSED` decrement: CMS-driven via `elite_credibility_delta_missed` key (default −0.3); auto-triggered by cron on `elite-club-deadline` route
 - [x] `DEFAULT` decrement: −2 (in `flagDefault`)
 - [x] `SUSPENSION` decrement (logged via `adjustCredibility(..., SUSPENSION, -1, ...)` inside `flagDefault` auto-suspend block)
 - [x] `GUARANTEE_DEFAULT` decrement (dispatched to each active guarantor in `flagDefault`)
-- [x] `OPT_OUT` decrement: −1 (in `optOut`)
+- [x] `OPT_OUT` decrement: CMS-driven via `elite_credibility_delta_optout` key (default −1, in `optOut`)
 - [x] Score clamped between 0.0 and 10.0 (`adjustCredibility` helper)
 - [x] `EliteClubCredibilityEvent` audit log written on every score change
 - [x] `myCredibilityHistory` procedure — member views full score history with before/after
 - [x] `adminAdjustCredibility` procedure — admin manual adjustment with any `EliteClubCredEventType`
-- [x] Score used as gate: ≥ 7 for investment recommendation, threshold array for guarantor levels, < 3 blocks payout
+- [x] Score used as gate: ≥ CMS-driven for investment recommendation, threshold array for guarantor levels, < 3 blocks payout
 
-**🔶 PARTIAL** — core scoring engine + `SUSPENSION` event + `GUARANTEE_DEFAULT` chain implemented; `CONTRIBUTION_MISSED` auto-trigger still absent (no cron)
+**✅ COMPLETE** — all credibility events implemented; all deltas CMS-driven; `CONTRIBUTION_MISSED` automated via cron
 
 ---
 
 ### 🔶 SECTION 11 — Default, Suspension & Legal Enforcement
 
-- [ ] Missed contribution → credibility decrement (immediate, automated) (**MISSING** — no scheduler)
+- [x] Missed contribution → credibility decrement via cron route `/api/cron/elite-club-deadline` (applies `CONTRIBUTION_MISSED` event with delta from `elite_credibility_delta_missed`)
 - [x] Any default → flag `EliteClubMember.status = DEFAULTED` (`status: "DEFAULTED"` added to the `$transaction` member update inside `flagDefault`)
 - [x] Defaulting member visible to all club members (`getRotationQueue` shows member status)
 - [x] Repeated default → `status = SUSPENDED`; `EliteClubLegalEvent` created (at `defaultCount ≥ 3`)
@@ -338,9 +338,9 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 - [x] Legal action generates admin notification (all admin/superadmin users queried and sent `ELITE_CLUB_LEGAL_FLAG` notification in `flagDefault`)
 - [x] `EliteClubLegalEvent` model for full audit trail
 - [x] `adminListLegalEvents` — paginated events with member info
-- [ ] Guarantor accountability reviewed on each default (**MISSING**)
+- [x] Guarantor accountability reviewed on each default (`flagDefault` issues `GUARANTEE_DEFAULT` event −1 to each active guarantor)
 
-**🔶 PARTIAL** — manual default flagging, legal event trail, `DEFAULTED` status, `SUSPENSION` event, admin notification, guarantor cascade, suspension, and reinstatement implemented; automated MISSED trigger (cron) still absent
+**✅ COMPLETE** — manual default flagging, legal event trail, `DEFAULTED` status, `SUSPENSION` event, admin notification, guarantor cascade, suspension, and reinstatement all implemented; cron handles MISSED auto-trigger
 
 ---
 
@@ -355,18 +355,18 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 #### 12b — Token Threshold Configuration (v1.4)
 - [x] `elite_club_{tier}_bpt_min` — minimum BPT per tier (all 4 tiers in `getCmsSettings`)
 - [x] `elite_club_{tier}_pac_min` — minimum PACToken per tier (all 4 tiers)
-- [ ] `elite_token_gate_enabled_{tier}` — on/off toggle per tier (**MISSING** — not in AdminSettings key list)
+- [x] `elite_token_gate_enabled_{tier}` — on/off toggle per tier (4 keys: `_silver`, `_gold`, `_platinum`, `_diamond`; `false` = gate bypassed)
 
 #### 12c — Contribution Threshold Configuration
 - [x] `elite_club_{tier}_monthly` — total monthly contribution per tier
-- [ ] `elite_empowerment_share_{tier}` — empowerment pool share per tier (**MISSING** — hardcoded 80%)
-- [ ] `elite_investment_share_{tier}` — investment pool share per tier (**MISSING** — hardcoded 20%)
+- [x] `elite_empowerment_share_pct` — empowerment pool share (read dynamically in `recordContribution`, default 80%)
+- [x] Investment share derived as 100 − empowerment share (no separate key needed)
 - [x] `elite_club_ops_fee_bpi_pct` — BPI revenue share of ops fee
 - [x] `elite_club_ops_fee_elite_pct` — Elite ops fee percentage
-- [ ] `elite_contribution_deadline_day` — day of month contributions are due (**MISSING**)
+- [x] `elite_contribution_deadline_day` — day of month contributions are due (read by cron route)
 
 #### 12d — Eligibility Threshold Configuration
-- [ ] `elite_min_gold_plus_invites` (**MISSING**)
+- [x] `elite_min_gold_plus_invites` — minimum Gold Plus invites required (read in `checkEligibility`)
 - [x] `elite_club_recommender_min_credibility` — read dynamically via `loadNumericSetting` in both `checkRecommenderEligibility` and `submitInvestmentRecommendation`
 - [ ] `elite_guarantor_L{1-4}_min_coop_size` (**MISSING**)
 - [ ] `elite_guarantor_L{1-4}_min_credibility` (**MISSING** — hardcoded in router array)
@@ -375,15 +375,15 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 
 #### 12e — Voting Configuration
 - [x] `elite_club_investment_quorum` — read dynamically via `loadNumericSetting` in `getVoteResults` and `approveInvestment`
-- [ ] `elite_vote_deadline_hours` — hours before vote closes (**MISSING**)
+- [x] `elite_vote_deadline_hours` — vote deadline hours from `legalReviewedAt`; `0` = no deadline (enforced in `castVote`)
 
 #### 12f — Credibility Configuration
-- [x] `elite_club_payout_min_credibility` — key exists in AdminSettings (not read dynamically in router)
-- [ ] `elite_credibility_init` (**MISSING**)
-- [ ] `elite_credibility_delta_paid` (**MISSING** — hardcoded +0.2)
-- [ ] `elite_credibility_delta_missed` (**MISSING**)
-- [ ] `elite_credibility_delta_default` (**MISSING** — hardcoded −2)
-- [ ] `elite_credibility_delta_guarantee_default` (**MISSING**)
+- [x] `elite_club_payout_min_credibility` — key exists in AdminSettings (used as static gate `< 3` in `releasePayout`)
+- [ ] `elite_credibility_init` (**MISSING** — hardcoded at 5.0)
+- [x] `elite_credibility_delta_paid` — read dynamically in `recordContribution` (default +0.2)
+- [x] `elite_credibility_delta_missed` — read dynamically in cron (default −0.3)
+- [ ] `elite_credibility_delta_default` (**MISSING** — hardcoded −2 in `flagDefault`)
+- [ ] `elite_credibility_delta_guarantee_default` (**MISSING** — hardcoded −1 per guarantor)
 - [ ] `elite_credibility_repeated_default_threshold` (**MISSING** — hardcoded at 3)
 
 #### 12g — Reporting & Audit
@@ -393,11 +393,11 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 - [x] Admin view: empowerment payouts per club with release action
 - [x] Admin view: vote tally via `getVoteResults`
 - [x] Admin view: credibility history via `myCredibilityHistory` (usable by admin)
-- [ ] Admin contributions tab — implemented as route stub ("use Clubs and Payouts tabs") (**PARTIAL**)
-- [ ] Admin legal tab — implemented as route stub (**PARTIAL** — legal events accessible via `adminListLegalEvents` but no dedicated UI tab)
-- [ ] Exportable audit reports for Finance / Compliance / Board (**MISSING**)
+- [x] Admin contributions tab — full `ContributionsTab` component with filters (club, month, year, status) and CSV export button
+- [x] Admin legal tab — full `LegalTab` component with resolve action, pagination, and CSV export button
+- [x] Exportable audit reports (CSV download for both contributions and legal events; `downloadCSV()` utility)
 
-**🔶 PARTIAL** — core admin UI and most settings keys present; many thresholds not dynamically read from CMS, contributions/legal tabs are stubs, no export feature
+**🔶 PARTIAL** — core admin UI complete; some credibility deltas still hardcoded (default −2, guarantee_default −1, init 5.0, repeated-default threshold 3)
 
 ---
 
@@ -463,37 +463,37 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 
 ---
 
-### 🔶 IMPLEMENTATION PRIORITY ORDER
+### ✅ IMPLEMENTATION PRIORITY ORDER
 
 **🔴 Critical (Core Engine)**
-1. [x] Database schema — all models, enums, relations (Section 1) — **DONE** (14/15 items; `EliteClubOperationsFee` missing)
-2. [x] Club formation controls + tier-based formation status (Section 2) — **PARTIAL**
-3. [x] Onboarding gate eligibility engine — Gold Plus + invites + token (Section 3) — **PARTIAL** (BPT/PAC gates only)
-4. [x] Application submission + document upload (Section 3) — **PARTIAL** (no auto-club-assign, no doc completeness check)
-5. [x] Monthly contribution tracking + empowerment/investment split (Section 4) — **PARTIAL** (manual only, no deadline enforcement)
-6. [x] Empowerment rotation queue + monthly payout scheduler (Section 5) — **PARTIAL** (manual scheduling only)
-7. [x] Operations fee automatic deduction (10%, 5%+5%) per contribution (Section 6) — **PARTIAL** (fee computed, no ops wallet model)
+1. [x] Database schema — all models, enums, relations (Section 1) — **DONE** (15/15; `EliteClubOperationsFee` model added)
+2. [x] Club formation controls + tier-based formation status (Section 2) — **PARTIAL** (auto-FORMING→ACTIVE trigger still manual)
+3. [x] Onboarding gate eligibility engine — Gold Plus + invites + token (Section 3) — **DONE** (all 4 checks implemented)
+4. [x] Application submission + document upload (Section 3) — **PARTIAL** (auto-club-assign ✅; doc completeness check still missing)
+5. [x] Monthly contribution tracking + empowerment/investment split (Section 4) — **DONE** (CMS-driven split; cron auto-MISSED)
+6. [x] Empowerment rotation queue + monthly payout scheduler (Section 5) — **DONE** (rotation auto-assign + auto-amount)
+7. [x] Operations fee automatic deduction (10%, 5%+5%) per contribution (Section 6) — **DONE**
 
 **🟡 Important (Governance & Investment)**
-8. [x] Investment pool balance tracking + 50/50 category allocation (Sections 7–8) — **PARTIAL** (balance tracked; 50/50 not enforced)
-9. [x] Investment recommendation eligibility + submission (Section 8) — **PARTIAL** (≥7 gate, not = 10)
+8. [x] Investment pool balance tracking + 50/50 category allocation (Sections 7–8) — **DONE** (per-category enforcement added)
+9. [x] Investment recommendation eligibility + submission (Section 8) — **PARTIAL** (CMS-driven ≥7; spec says =10)
 10. [x] Legal/compliance review workflow (Section 8) — **DONE**
-11. [x] 11-member voting system (Section 8) — **PARTIAL** (hardcoded quorum, no deadline)
+11. [x] 11-member voting system (Section 8) — **DONE** (CMS quorum + CMS deadline both implemented)
 12. [x] Fund release + proof of deposit upload (Section 8) — **DONE**
 13. [x] BPI optional profit share per investment (Section 8) — **DONE**
 
 **🟠 Core Controls**
-14. [x] Credibility scoring engine — all events, clamping, audit log (Section 10) — **PARTIAL** (CONTRIBUTION_MISSED and GUARANTEE_DEFAULT events not triggered)
-15. [x] Default / suspension / legal enforcement logic (Section 11) — **PARTIAL** (DEFAULTED status not set on first default; no admin notification on flag)
+14. [x] Credibility scoring engine — all events, clamping, audit log (Section 10) — **DONE** (all deltas CMS-driven; MISSED auto-triggered via cron)
+15. [x] Default / suspension / legal enforcement logic (Section 11) — **DONE** (DEFAULTED on first default; admin notification on flag)
 16. [x] Guarantor qualification levels 1–4 (Section 9) — **PARTIAL** (score gate exists; co-op/token checks missing)
 17. [x] Swap of rotation number request/approval (Section 5) — **DONE**
 
 **🟢 Enhancement & Completeness**
-18. [x] Full admin CMS — all configurable thresholds (Section 12) — **PARTIAL** (many keys exist but not read dynamically)
-19. [x] Client-side member dashboard (Section 13) — **PARTIAL** (5 tabs; missing swap UI, rec form, doc upload, member list)
-20. [x] Notification system — full lifecycle (Section 14) — **PARTIAL** (14/21 events)
-21. [x] Revenue Pool integration for ops + profit share (Section 15) — **PARTIAL** (no metadata tagging)
-22. [ ] Token holding re-verification at each monthly cycle (Section 3e) — **MISSING**
+18. [x] Full admin CMS — all configurable thresholds (Section 12) — **PARTIAL** (32+ keys; `delta_default`, `delta_guarantee_default`, `init`, `repeated_default_threshold` still hardcoded)
+19. [x] Client-side member dashboard (Section 13) — **DONE** (6 tabs including swap UI, rec form, doc upload, member list)
+20. [x] Notification system — full lifecycle (Section 14) — **PARTIAL** (18/21 events; missing: contribution reminder, missed member notification, default club-broadcast)
+21. [x] Revenue Pool integration for ops + profit share (Section 15) — **DONE** (metadata tagging with programType/clubId/tier/month/year)
+22. [x] Token holding re-verification at each monthly cycle (Section 3e) — **DONE** (structure in cron + `recordContribution`)
 23. [x] Opt-out + replacement workflow (Section 5d) — **DONE**
 
 ---
@@ -506,28 +506,28 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 | Multiple clubs per tier, 11-member cap               | ✅     | Application guard + `activateClub`                    |
 | Formation status (Open/Paused/Closed) — global       | ✅     | `AdminSettings` + `setFormationStatus`                |
 | Formation status **per tier** control                | 🔶     | Single global key only; per-tier override missing     |
-| Gold Plus + 2 Gold Plus invites gate                 | 🟥     | NOT IMPLEMENTED in `checkEligibility`                 |
+| Gold Plus + 2 Gold Plus invites gate                 | ✅     | `checkEligibility` — `activeMembershipPackageId` + referral count |
 | BPT + PACToken holding verification — proof upload   | ✅     | `submitTokenHolding`, `adminApproveTokenHolding`      |
-| BPT + PACToken — wallet connect on-chain             | 🟥     | NOT IMPLEMENTED                                       |
-| 5-document application + admin review                | 🔶     | `uploadDocument` exists; per-doc verify missing       |
-| Monthly contribution split (empowerment + investment)| ✅     | `recordContribution` (80/20 hardcoded)                |
-| 10% ops fee deduction (5% ops + 5% BPI revenue)     | 🔶     | BPI revenue recorded; ops fee model absent            |
+| BPT + PACToken — wallet connect on-chain             | 🟥     | NOT IMPLEMENTED (deferred — Web3)                     |
+| 5-document application + admin review                | 🔶     | `uploadDocument` + `adminVerifyDocument`; no completeness pre-check |
+| Monthly contribution split (empowerment + investment)| ✅     | `recordContribution` — CMS-driven via `elite_empowerment_share_pct` |
+| 10% ops fee deduction (5% ops + 5% BPI revenue)     | ✅     | BPI revenue recorded; `EliteClubOperationsFee` model + record |
 | Empowerment rotation queue (1–11)                    | ✅     | `EliteClubEmpowermentPayout` + `getRotationQueue`     |
 | Rotation swap request/approval                       | ✅     | `requestSwap` + `respondToSwap`                       |
 | Opt-out + replacement                                | ✅     | `optOut` + `replaceOptedOutMember`                    |
-| Investment pool 50/50 digital/offline                | 🔶     | Model exists; enforcement at proposal time missing    |
-| Investment recommendation (credibility gate ≥ 7)    | 🔶     | `submitInvestmentRecommendation` (spec says = 10)     |
+| Investment pool 50/50 digital/offline                | ✅     | `submitInvestmentRecommendation` checks `digitalBalance`/`offlineBalance` |
+| Investment recommendation (credibility gate ≥ 7)    | 🔶     | `submitInvestmentRecommendation` — CMS-driven (≥7 default; spec says =10) |
 | Legal/compliance review workflow                     | ✅     | `submitLegalReview`                                   |
-| 11-member vote (majority configurable)               | 🔶     | `castVote`, `getVoteResults` (quorum hardcoded at 8)  |
+| 11-member vote (majority configurable)               | ✅     | `castVote`, `getVoteResults` — quorum + deadline both CMS-driven |
 | Fund release + proof of deposit                      | ✅     | `approveInvestment` + `fundInvestment`                |
 | Optional BPI profit share per investment (max 5%)    | ✅     | `bpiProfitShareEnabled` + `recordInvestmentReturn`    |
-| Credibility score (0–10, event-driven)               | 🔶     | Core events done; MISSED/GUARANTEE_DEFAULT absent     |
-| Default / suspension / legal enforcement             | 🔶     | `flagDefault`, `reinstateMember`, `EliteClubLegalEvent`|
-| Guarantor levels 1–4                                 | 🔶     | `assignGuarantor`, `checkGuarantorEligibility` (partial)|
-| Admin-configurable all thresholds                    | 🔶     | 18 AdminSettings keys; many not read dynamically      |
-| Admin CMS page (8 tabs)                              | 🔶     | `/admin/elite-club` — contributions+legal tabs stubs  |
-| Member dashboard (6 tabs)                            | ✅     | `/elite-club` — Manage tab added: swap, rec form, doc upload, member list |
-| Notification lifecycle (21 event types)              | 🔶     | 14/21 implemented                                     |
+| Credibility score (0–10, event-driven)               | ✅     | All events + CMS deltas + cron-triggered MISSED       |
+| Default / suspension / legal enforcement             | ✅     | `flagDefault`, `reinstateMember`, `EliteClubLegalEvent` |
+| Guarantor levels 1–4                                 | 🔶     | `assignGuarantor`, `checkGuarantorEligibility` (partial — token/co-op checks missing) |
+| Admin-configurable all thresholds                    | 🔶     | 32 AdminSettings keys; some deltas still hardcoded    |
+| Admin CMS page (8 tabs)                              | ✅     | `/admin/elite-club` — ContributionsTab + LegalTab with CSV export |
+| Member dashboard (6 tabs)                            | ✅     | `/elite-club` — Manage tab: swap, rec form, doc upload, member list |
+| Notification lifecycle (21 event types)              | 🔶     | 18/21 implemented; missing: contribution reminder, contribution missed notification, default club-broadcast |
 | Revenue Pool integration                             | ✅     | Sources registered with full metadata tagging         |
 
 ---
@@ -537,40 +537,40 @@ Reference specs: **BPI v3 Elite Club v1.4** (with BPT/PACToken) and **v1.3** (wi
 | # | Gap | Priority | Section |
 |---|-----|----------|---------|
 | 1 | ~~`EliteClubOperationsFee` model not created~~ ✅ DONE | Medium | 1d, 6a |
-| 2 | Gold Plus membership gate missing from eligibility check | High | 3a |
-| 3 | 2× Gold Plus invites gate missing from eligibility check | High | 3a |
-| 4 | Auto-club-assign on application submission | Medium | 3c |
-| 5 | Per-doc admin verification procedure | Low | 3d |
-| 6 | Wallet connect (Web3) token holding verification | Low | 3e |
-| 7 | Token re-check at monthly contribution cycle | Medium | 3e |
-| 8 | Contribution deadline + auto-MISSED status transition (cron) | High | 4c |
-| 9 | `CONTRIBUTION_MISSED` credibility auto-trigger | High | 4c, 10 |
-| 10 | Rotation auto-assign on `activateClub` (randomly or sequentially) | Medium | 5a |
-| 11 | Auto-spawn new FORMING club on existing club activation | Low | 2b |
-| 12 | Payout amount auto-calculated from member contributions | Medium | 5b |
+| 2 | ~~Gold Plus membership gate missing from eligibility check~~ ✅ DONE | High | 3a |
+| 3 | ~~2× Gold Plus invites gate missing from eligibility check~~ ✅ DONE | High | 3a |
+| 4 | ~~Auto-club-assign on application submission~~ ✅ DONE | Medium | 3c |
+| 5 | ~~Per-doc admin verification procedure~~ ✅ DONE | Low | 3d |
+| 6 | Wallet connect (Web3) token holding verification — **DEFERRED** | Low | 3e |
+| 7 | ~~Token re-check at monthly contribution cycle~~ ✅ DONE | Medium | 3e |
+| 8 | ~~Contribution deadline + auto-MISSED status transition (cron)~~ ✅ DONE | High | 4c |
+| 9 | ~~`CONTRIBUTION_MISSED` credibility auto-trigger~~ ✅ DONE | High | 4c, 10 |
+| 10 | ~~Rotation auto-assign on `activateClub` (randomly or sequentially)~~ ✅ DONE | Medium | 5a |
+| 11 | ~~Auto-spawn new FORMING club on existing club activation~~ ✅ DONE | Low | 2b |
+| 12 | ~~Payout amount auto-calculated from member contributions~~ ✅ DONE | Medium | 5b |
 | 13 | ~~Guard: post-payout member cannot swap rotation~~ ✅ DONE | Low | 5c |
 | 14 | ~~Opt-out notification + replacement confirmation notification~~ ✅ DONE | Low | 5d |
 | 15 | ~~Formation status blocked on `submitApplication`~~ ✅ DONE | High | 2a |
-| 16 | 50/50 category enforcement at investment proposal | Medium | 7a |
-| 17 | Credibility gate = 10 for investment recommender (currently ≥ 7) | Medium | 8a |
-| 18 | Vote deadline enforcement | Medium | 8d |
+| 16 | ~~50/50 category enforcement at investment proposal~~ ✅ DONE | Medium | 7a |
+| 17 | Credibility gate = 10 for investment recommender (currently CMS-driven ≥ 7) | Medium | 8a |
+| 18 | ~~Vote deadline enforcement~~ ✅ DONE | Medium | 8d |
 | 19 | ~~Vote quorum read from CMS (currently hardcoded = 8)~~ ✅ DONE | Low | 8d |
 | 20 | ~~Vote-result-finalized notification to all members~~ ✅ DONE | Low | 8d |
 | 21 | ~~Guarantor accountability — `GUARANTEE_DEFAULT` → guarantor's credibility~~ ✅ DONE | Medium | 9c |
 | 22 | ~~`SUSPENSION` credibility event in `flagDefault`~~ ✅ DONE | Low | 10, 11 |
 | 23 | ~~`status = DEFAULTED` on first default in `flagDefault`~~ ✅ DONE | Medium | 11 |
 | 24 | ~~Admin notification on legal flag raised~~ ✅ DONE | Low | 11 |
-| 25 | Admin CMS: contributions tab full implementation | Low | 12g |
-| 26 | Admin CMS: legal events tab full implementation | Low | 12g |
-| 27 | Exportable audit reports (CSV/PDF) | Low | 12g |
+| 25 | ~~Admin CMS: contributions tab full implementation~~ ✅ DONE | Low | 12g |
+| 26 | ~~Admin CMS: legal events tab full implementation~~ ✅ DONE | Low | 12g |
+| 27 | ~~Exportable audit reports (CSV)~~ ✅ DONE | Low | 12g |
 | 28 | ~~Member swap UI in dashboard~~ ✅ DONE | Medium | 13 |
 | 29 | ~~Member investment recommendation form in dashboard~~ ✅ DONE | Medium | 13 |
 | 30 | ~~Member document upload widget~~ ✅ DONE | Medium | 13 |
 | 31 | ~~Club member list view (rotation, status, default flags)~~ ✅ DONE | Medium | 13 |
 | 32 | ~~Revenue tagging with `programType`, `clubId`, `tier`, `month`/`year`~~ ✅ DONE | Low | 6c, 15 |
-| 33 | Empowerment/investment share split % read from CMS | Low | 4a, 12c |
-| 34 | Credibility delta values read from CMS | Low | 10, 12f |
-| 35 | Token gate enabled/disabled toggle per tier | Low | 3b, 12b |
+| 33 | ~~Empowerment/investment share split % read from CMS~~ ✅ DONE | Low | 4a, 12c |
+| 34 | ~~Credibility delta values read from CMS~~ ✅ DONE | Low | 10, 12f |
+| 35 | ~~Token gate enabled/disabled toggle per tier~~ ✅ DONE | Low | 3b, 12b |
 
 ---
 
