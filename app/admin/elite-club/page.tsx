@@ -864,6 +864,28 @@ function SettingsTab() {
     "elite_credibility_delta_missed": "Credibility Delta: Missed Contribution (applied as −, default 0.3)",
     "elite_vote_deadline_hours": "Vote Deadline Hours (0 = no deadline)",
     "elite_contribution_deadline_day": "Contribution Deadline Day of Month (default 15)",
+    // Credibility — previously hardcoded
+    "elite_credibility_init": "Credibility Init Score for New Members (default 5.0)",
+    "elite_credibility_delta_default": "Credibility Delta: Default (applied as −, default 2)",
+    "elite_credibility_delta_guarantee_default": "Credibility Delta: Guarantee Default (applied as −, default 1)",
+    "elite_credibility_repeated_default_threshold": "Auto-Suspend Threshold: defaults before suspension (default 3)",
+    // Guarantor thresholds
+    "elite_guarantor_l1_min_credibility": "Guarantor L1: Min Credibility Score (default 7.0)",
+    "elite_guarantor_l1_min_coop_size": "Guarantor L1: Min Gold Plus Co-op Members (default 0)",
+    "elite_guarantor_l1_bpt_min": "Guarantor L1: Min BPT Holdings (default 0)",
+    "elite_guarantor_l1_pactoken_min": "Guarantor L1: Min PACToken Holdings (default 0)",
+    "elite_guarantor_l2_min_credibility": "Guarantor L2: Min Credibility Score (default 7.5)",
+    "elite_guarantor_l2_min_coop_size": "Guarantor L2: Min Gold Plus Co-op Members (default 0)",
+    "elite_guarantor_l2_bpt_min": "Guarantor L2: Min BPT Holdings (default 0)",
+    "elite_guarantor_l2_pactoken_min": "Guarantor L2: Min PACToken Holdings (default 0)",
+    "elite_guarantor_l3_min_credibility": "Guarantor L3: Min Credibility Score (default 8.0)",
+    "elite_guarantor_l3_min_coop_size": "Guarantor L3: Min Gold Plus Co-op Members (default 0)",
+    "elite_guarantor_l3_bpt_min": "Guarantor L3: Min BPT Holdings (default 0)",
+    "elite_guarantor_l3_pactoken_min": "Guarantor L3: Min PACToken Holdings (default 0)",
+    "elite_guarantor_l4_min_credibility": "Guarantor L4 (Senior): Min Credibility Score (default 9.0)",
+    "elite_guarantor_l4_min_coop_size": "Guarantor L4 (Senior): Min Gold Plus Co-op Members (default 0)",
+    "elite_guarantor_l4_bpt_min": "Guarantor L4 (Senior): Min BPT Holdings (default 0)",
+    "elite_guarantor_l4_pactoken_min": "Guarantor L4 (Senior): Min PACToken Holdings (default 0)",
   };
 
   return (

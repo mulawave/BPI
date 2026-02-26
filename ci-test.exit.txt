@@ -1,2 +1,1 @@
-FAIL exitCode=1
-Build failed with exit code 1
+OK

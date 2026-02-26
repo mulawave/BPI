@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
+import { sendNotification } from "@/server/services/notification.service";
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
@@ -135,6 +136,15 @@ async function handleCron(req: NextRequest) {
       });
 
       marked++;
+
+      // Notify member of missed contribution
+      await sendNotification({
+        userId: member.userId,
+        type: "ELITE_CLUB_CONTRIBUTION_MISSED" as any,
+        title: "Elite Club Contribution Missed",
+        message: `Your Elite Club contribution for ${month}/${year} has been marked as missed. This may affect your credibility score and empowerment payout eligibility.`,
+        actionUrl: "/elite-club",
+      });
     } catch (err: any) {
       errors.push(`Member ${member.id}: ${err?.message ?? "Unknown error"}`);
     }
