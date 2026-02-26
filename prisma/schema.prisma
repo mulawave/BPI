@@ -2955,6 +2955,7 @@ model EliteClub {
   swapRequests    EliteClubSwapRequest[]
   investmentPools EliteClubInvestmentPool[]
   investments     EliteClubInvestment[]
+  opsFees         EliteClubOperationsFee[]
 
   @@index([tier, status])
 }
@@ -3049,6 +3050,7 @@ model EliteClubMember {
   guarantorRecords     EliteClubGuarantor[]
   votes                EliteClubVote[]
   legalEvents          EliteClubLegalEvent[]
+  opsFees              EliteClubOperationsFee[]
 
   @@unique([clubId, rotationNumber])
   @@unique([userId, clubId])
@@ -3075,10 +3077,32 @@ model EliteClubContribution {
   member            EliteClubMember        @relation(fields: [memberId], references: [id], onDelete: Cascade)
   club              EliteClub              @relation(fields: [clubId], references: [id], onDelete: Cascade)
   user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opsFee            EliteClubOperationsFee?
 
   @@unique([memberId, month, year])
   @@index([clubId, month, year])
   @@index([status])
+}
+
+// Operations fee split record per contribution
+model EliteClubOperationsFee {
+  id             String   @id @default(cuid())
+  clubId         String
+  memberId       String
+  contributionId String   @unique
+  month          Int
+  year           Int
+  grossOps       Float
+  bpiShare       Float
+  eliteShare     Float
+  createdAt      DateTime @default(now())
+
+  club         EliteClub             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  member       EliteClubMember       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  contribution EliteClubContribution @relation(fields: [contributionId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
+  @@index([memberId])
 }
 
 // Empowerment rotation payout

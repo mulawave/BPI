@@ -25,11 +25,13 @@ import {
   Plus,
   Upload,
   Info,
+  Settings,
+  ArrowLeftRight,
 } from "lucide-react";
 import { format } from "date-fns";
 
 type Tier = "SILVER" | "GOLD" | "PLATINUM" | "DIAMOND";
-type Tab = "overview" | "contribute" | "investments" | "credibility" | "apply";
+type Tab = "overview" | "contribute" | "investments" | "credibility" | "apply" | "manage";
 
 const TIER_COLORS: Record<Tier, { gradient: string; bg: string; text: string; ring: string; badge: string }> = {
   SILVER:   { gradient: "from-slate-400 to-slate-600",   bg: "bg-slate-100 dark:bg-slate-800",   text: "text-slate-700 dark:text-slate-200",   ring: "ring-slate-300",  badge: "bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200" },
@@ -565,6 +567,315 @@ function ApplyTab() {
   );
 }
 
+// ─── Manage Tab ──────────────────────────────────────────────────────────────
+
+function ManageTab() {
+  const { data: clubsData } = api.eliteClub.myClubs.useQuery();
+  const memberships = clubsData?.memberships ?? [];
+  const [selectedClubId, setSelectedClubId] = useState<string>("");
+  const clubId = selectedClubId || memberships[0]?.clubId || "";
+
+  // Rotation queue
+  const { data: queueData, isLoading: queueLoading, refetch: refetchQueue } =
+    api.eliteClub.getRotationQueue.useQuery({ clubId }, { enabled: !!clubId });
+  const members = queueData?.members ?? [];
+
+  // Swap UI
+  const [swapTargetId, setSwapTargetId] = useState("");
+  const requestSwap = api.eliteClub.requestSwap.useMutation({
+    onSuccess: () => { toast.success("Swap request sent."); setSwapTargetId(""); refetchQueue(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const respondSwap = api.eliteClub.respondToSwap.useMutation({
+    onSuccess: (_, vars) => { toast.success(vars.accept ? "Swap accepted." : "Swap declined."); refetchQueue(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // Document upload
+  const [docApp, setDocApp] = useState("");
+  const [docType, setDocType] = useState("GOVERNMENT_ID");
+  const [docUrl, setDocUrl] = useState("");
+  const uploadDoc = api.eliteClub.uploadDocument.useMutation({
+    onSuccess: () => { toast.success("Document uploaded."); setDocUrl(""); setDocApp(""); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // Investment pool (current month)
+  const now = new Date();
+  const { data: poolData } = api.eliteClub.getInvestmentPool.useQuery(
+    { clubId, month: now.getMonth() + 1, year: now.getFullYear() },
+    { enabled: !!clubId }
+  );
+  const pool = poolData?.pool;
+
+  // Recommender eligibility
+  const { data: eligData } = api.eliteClub.checkRecommenderEligibility.useQuery(
+    { clubId }, { enabled: !!clubId }
+  );
+
+  // Investment recommendation form
+  const [recForm, setRecForm] = useState({
+    title: "", description: "", category: "REAL_ESTATE" as string,
+    amountRequested: "", expectedReturn: "", durationMonths: "",
+    riskNotes: "", bpiProfitShareEnabled: false, bpiProfitSharePct: "0",
+  });
+  const submitRec = api.eliteClub.submitInvestmentRecommendation.useMutation({
+    onSuccess: () => { toast.success("Investment recommendation submitted."); setRecForm({ title: "", description: "", category: "REAL_ESTATE", amountRequested: "", expectedReturn: "", durationMonths: "", riskNotes: "", bpiProfitShareEnabled: false, bpiProfitSharePct: "0" }); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  if (memberships.length === 0) {
+    return (
+      <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-10 text-center shadow-sm">
+        <Settings size={28} className="text-gray-400 mx-auto mb-3" />
+        <p className="text-gray-500 dark:text-gray-400 text-sm">You need an active club membership to access manage tools.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Club Selector */}
+      {memberships.length > 1 && (
+        <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-4 shadow-sm">
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Select Club</label>
+          <select value={clubId} onChange={(e) => setSelectedClubId(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white focus:border-[#0d3b29] outline-none">
+            {memberships.map((m) => (
+              <option key={m.clubId} value={m.clubId}>{m.club.name} ({m.club.tier})</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* ── Rotation Queue / Member List ── */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+        className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+        <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
+          <Users size={15} className="text-[#0d3b29]" /> Rotation Queue
+        </h3>
+        {queueLoading ? (
+          <div className="flex items-center gap-2 text-gray-400 py-6 justify-center text-sm">
+            <RefreshCw size={16} className="animate-spin" /> Loading members...
+          </div>
+        ) : members.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-6">No active members found in this club.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-700">
+                  <th className="text-left py-2 pr-4 font-medium">#</th>
+                  <th className="text-left py-2 pr-4 font-medium">Member</th>
+                  <th className="text-left py-2 pr-4 font-medium">Status</th>
+                  <th className="text-left py-2 pr-4 font-medium">Credibility</th>
+                  <th className="text-left py-2 font-medium">Payout</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/40">
+                {members.map((m) => (
+                  <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                    <td className="py-2.5 pr-4 font-bold text-[#0d3b29] dark:text-emerald-400">#{m.rotationNumber}</td>
+                    <td className="py-2.5 pr-4">
+                      <div className="font-medium text-gray-900 dark:text-white">{m.user.name ?? "—"}</div>
+                      <div className="text-xs text-gray-400">{m.user.email}</div>
+                    </td>
+                    <td className="py-2.5 pr-4"><StatusBadge status={m.status} /></td>
+                    <td className="py-2.5 pr-4">
+                      <span className={`font-semibold ${Number(m.credibilityScore) >= 7 ? "text-emerald-600" : Number(m.credibilityScore) >= 4 ? "text-amber-600" : "text-rose-600"}`}>
+                        {Number(m.credibilityScore).toFixed(1)}
+                      </span>
+                    </td>
+                    <td className="py-2.5">
+                      {m.empowermentReceived ? (
+                        <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1"><CheckCircle2 size={12} />Done</span>
+                      ) : m.empowermentPending ? (
+                        <span className="text-xs text-amber-600 font-semibold flex items-center gap-1"><Clock size={12} />Pending</span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </motion.div>
+
+      {/* ── Swap Request ── */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+        className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+        <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
+          <ArrowLeftRight size={15} className="text-[#0d3b29]" /> Request Rotation Swap
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Select a member from the queue above to request swapping rotation numbers. The target member must accept.
+        </p>
+        <div className="flex gap-3">
+          <select value={swapTargetId} onChange={(e) => setSwapTargetId(e.target.value)}
+            className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white focus:border-[#0d3b29] outline-none">
+            <option value="">Select target member...</option>
+            {members.filter((m) => m.status === "ACTIVE" && !m.empowermentReceived).map((m) => (
+              <option key={m.id} value={m.id}>#{m.rotationNumber} — {m.user.name ?? m.user.email}</option>
+            ))}
+          </select>
+          <button onClick={() => swapTargetId && requestSwap.mutate({ clubId, targetMemberId: swapTargetId })}
+            disabled={!swapTargetId || requestSwap.isPending}
+            className="px-5 py-2.5 bg-[#0d3b29] text-white rounded-xl text-sm font-semibold hover:bg-[#0a2e20] transition-all disabled:opacity-50 flex items-center gap-2">
+            {requestSwap.isPending ? <RefreshCw size={14} className="animate-spin" /> : <ArrowLeftRight size={14} />}
+            Request
+          </button>
+        </div>
+
+        <p className="mt-3 text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
+          <Info size={11} /> To respond to incoming swap requests, check your notifications panel.
+        </p>
+      </motion.div>
+
+      {/* ── Document Upload ── */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+        className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+        <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
+          <Upload size={15} className="text-[#0d3b29]" /> Upload Document
+        </h3>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Application ID</label>
+            <input value={docApp} onChange={(e) => setDocApp(e.target.value)} placeholder="Paste your application ID..."
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Document Type</label>
+              <select value={docType} onChange={(e) => setDocType(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white focus:border-[#0d3b29] outline-none">
+                {["GOVERNMENT_ID","PROOF_OF_ADDRESS","INCOME_STATEMENT","TOKEN_HOLDING_PROOF","OTHER"].map((t) => (
+                  <option key={t} value={t}>{t.replace(/_/g, " ")}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">File URL</label>
+              <input value={docUrl} onChange={(e) => setDocUrl(e.target.value)} placeholder="https://..." type="url"
+                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
+            </div>
+          </div>
+          <button
+            onClick={() => uploadDoc.mutate({ applicationId: docApp, docType: docType as any, fileUrl: docUrl })}
+            disabled={!docApp || !docUrl || uploadDoc.isPending}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#0d3b29] text-white rounded-xl text-sm font-semibold hover:bg-[#0a2e20] transition-all disabled:opacity-50">
+            {uploadDoc.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
+            Upload Document
+          </button>
+        </div>
+      </motion.div>
+
+      {/* ── Investment Recommendation ── */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+        className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+        <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-1 flex items-center gap-2">
+          <TrendingUp size={15} className="text-[#0d3b29]" /> Recommend an Investment
+        </h3>
+        {!eligData?.eligible ? (
+          <div className="mt-3 flex items-start gap-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3">
+            <AlertTriangle size={16} className="text-amber-600 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-amber-800 dark:text-amber-200">{eligData?.reason ?? "Checking eligibility..."}</p>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {!pool && (
+              <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-700 rounded-xl px-3 py-2">
+                <AlertTriangle size={13} /> No investment pool found for current month. Contribute to create one.
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Title</label>
+                <input value={recForm.title} onChange={(e) => setRecForm((f) => ({ ...f, title: e.target.value }))}
+                  placeholder="Investment opportunity title..."
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Description</label>
+                <textarea value={recForm.description} onChange={(e) => setRecForm((f) => ({ ...f, description: e.target.value }))}
+                  rows={3} placeholder="Describe the investment opportunity in detail..."
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none resize-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Category</label>
+                <select value={recForm.category} onChange={(e) => setRecForm((f) => ({ ...f, category: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white focus:border-[#0d3b29] outline-none">
+                  {["REAL_ESTATE","STOCKS","CRYPTO","FOREX","COMMODITIES","BUSINESS","OTHER"].map((c) => (
+                    <option key={c} value={c}>{c.replace(/_/g, " ")}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Amount Requested (₦)</label>
+                <input value={recForm.amountRequested} onChange={(e) => setRecForm((f) => ({ ...f, amountRequested: e.target.value }))}
+                  type="number" placeholder="0"
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Expected Return (₦, optional)</label>
+                <input value={recForm.expectedReturn} onChange={(e) => setRecForm((f) => ({ ...f, expectedReturn: e.target.value }))}
+                  type="number" placeholder="0"
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Duration (months, optional)</label>
+                <input value={recForm.durationMonths} onChange={(e) => setRecForm((f) => ({ ...f, durationMonths: e.target.value }))}
+                  type="number" placeholder="e.g. 6"
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Risk Notes (optional)</label>
+                <textarea value={recForm.riskNotes} onChange={(e) => setRecForm((f) => ({ ...f, riskNotes: e.target.value }))}
+                  rows={2} placeholder="Describe any known risks..."
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none resize-none" />
+              </div>
+              <div className="sm:col-span-2 flex items-center gap-3">
+                <input type="checkbox" id="bpi-share" checked={recForm.bpiProfitShareEnabled}
+                  onChange={(e) => setRecForm((f) => ({ ...f, bpiProfitShareEnabled: e.target.checked }))}
+                  className="rounded border-gray-300 text-[#0d3b29]" />
+                <label htmlFor="bpi-share" className="text-xs text-gray-600 dark:text-gray-400">Enable BPI Profit Share</label>
+                {recForm.bpiProfitShareEnabled && (
+                  <input value={recForm.bpiProfitSharePct} onChange={(e) => setRecForm((f) => ({ ...f, bpiProfitSharePct: e.target.value }))}
+                    type="number" min="0" max="5" step="0.5" placeholder="%"
+                    className="w-20 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white focus:border-[#0d3b29] outline-none" />
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                if (!pool) return toast.error("No investment pool available for current month.");
+                submitRec.mutate({
+                  clubId,
+                  poolId: pool.id,
+                  title: recForm.title,
+                  description: recForm.description,
+                  category: recForm.category as any,
+                  amountRequested: parseFloat(recForm.amountRequested) || 0,
+                  expectedReturn: recForm.expectedReturn ? parseFloat(recForm.expectedReturn) : undefined,
+                  durationMonths: recForm.durationMonths ? parseInt(recForm.durationMonths) : undefined,
+                  riskNotes: recForm.riskNotes || undefined,
+                  bpiProfitShareEnabled: recForm.bpiProfitShareEnabled,
+                  bpiProfitSharePct: parseFloat(recForm.bpiProfitSharePct) || 0,
+                });
+              }}
+              disabled={!recForm.title || !recForm.description || !recForm.amountRequested || submitRec.isPending}
+              className="flex items-center gap-2 px-5 py-2.5 bg-[#0d3b29] text-white rounded-xl text-sm font-semibold hover:bg-[#0a2e20] transition-all disabled:opacity-50">
+              {submitRec.isPending ? <RefreshCw size={14} className="animate-spin" /> : <TrendingUp size={14} />}
+              Submit Recommendation
+            </button>
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
 // ─── Root Page ────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -573,6 +884,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "investments",   label: "Investments",     icon: <TrendingUp size={15} /> },
   { id: "credibility",   label: "Credibility",     icon: <Star size={15} /> },
   { id: "apply",         label: "Apply",           icon: <Plus size={15} /> },
+  { id: "manage",        label: "Manage",          icon: <Settings size={15} /> },
 ];
 
 export default function EliteClubPage() {
@@ -617,6 +929,7 @@ export default function EliteClubPage() {
             {activeTab === "investments" && <InvestmentsTab />}
             {activeTab === "credibility" && <CredibilityTab />}
             {activeTab === "apply"       && <ApplyTab />}
+            {activeTab === "manage"      && <ManageTab />}
           </motion.div>
         </AnimatePresence>
       </div>

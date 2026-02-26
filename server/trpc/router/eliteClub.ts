@@ -301,6 +301,14 @@ export const eliteClubRouter = createTRPCRouter({
       assertMember(ctx.session);
       const userId = ctx.session!.user.id;
 
+      // Block if formation is PAUSED or CLOSED
+      const formationSetting = await prisma.adminSettings.findUnique({
+        where: { settingKey: "elite_club_formation_status" },
+      });
+      const formationStatus = formationSetting?.settingValue ?? "OPEN";
+      if (formationStatus === "CLOSED") throw new Error("Elite Club formation is currently closed. Applications are not being accepted.");
+      if (formationStatus === "PAUSED") throw new Error("Elite Club formation is currently paused. Please check back later.");
+
       // Block duplicate pending
       const existing = await prisma.eliteClubApplication.findFirst({
         where: { userId, tier: input.tier, status: { in: ["PENDING", "APPROVED"] } },
@@ -635,6 +643,28 @@ export const eliteClubRouter = createTRPCRouter({
           userId: member.userId,
           sourceId: contribution.id,
           description: `Elite Club ops fee – ${member.club!.tier} club ${member.clubId} M${input.month}/${input.year}`,
+          programType: "ELITE_CLUB",
+          metadata: {
+            clubId: member.clubId,
+            tier: member.club!.tier,
+            month: input.month,
+            year: input.year,
+          },
+        });
+        // Insert EliteClubOperationsFee record
+        await prisma.eliteClubOperationsFee.create({
+          data: {
+            id: randomUUID(),
+            clubId: member.clubId,
+            memberId: input.memberId,
+            contributionId: contribution.id,
+            month: input.month,
+            year: input.year,
+            grossOps: input.totalAmount * 0.2 * 0.1,
+            bpiShare: bpiOps,
+            eliteShare: input.totalAmount * 0.2 * 0.05,
+            createdAt: new Date(),
+          },
         });
       }
 
@@ -852,6 +882,7 @@ export const eliteClubRouter = createTRPCRouter({
         where: { userId, clubId: input.clubId, status: "ACTIVE" },
       });
       if (!requester) throw new Error("You are not an active member of this club.");
+      if (requester.empowermentReceived) throw new Error("You have already received your empowerment payout and cannot request a swap.");
 
       const target = await prisma.eliteClubMember.findUnique({
         where: { id: input.targetMemberId },
@@ -972,6 +1003,13 @@ export const eliteClubRouter = createTRPCRouter({
         data: { status: "OPTED_OUT", updatedAt: new Date() },
       });
       await adjustCredibility(undefined as any, member.id, EliteClubCredEventType.OPT_OUT, -1, input.reason ?? "Member opted out");
+      await sendNotification({
+        userId,
+        type: "ELITE_CLUB_OPT_OUT" as any,
+        title: "Rotation Opt-Out Recorded",
+        message: `Your opt-out request has been recorded. An admin will assign a replacement to rotation #${member.rotationNumber}. Your credibility score has been adjusted.`,
+        actionUrl: "/elite-club",
+      });
       return { success: true };
     }),
 
@@ -1003,6 +1041,14 @@ export const eliteClubRouter = createTRPCRouter({
             updatedAt: new Date(),
           },
         });
+      });
+      const club = await prisma.eliteClub.findUnique({ where: { id: oldMember.clubId } });
+      await sendNotification({
+        userId: input.newUserId,
+        type: "ELITE_CLUB_APP_APPROVED" as any,
+        title: "You Have Been Assigned to an Elite Club",
+        message: `You have been assigned rotation #${oldMember.rotationNumber} in the "${club?.name ?? "Elite Club"}" as a replacement member. Welcome!`,
+        actionUrl: "/elite-club",
       });
       return { success: true };
     }),
@@ -1057,8 +1103,9 @@ export const eliteClubRouter = createTRPCRouter({
         where: { userId, clubId: input.clubId, status: "ACTIVE" },
       });
       if (!member) return { eligible: false, reason: "Not an active member." };
-      if (Number(member.credibilityScore) < 7) {
-        return { eligible: false, reason: `Credibility score ${member.credibilityScore} below minimum 7.0` };
+      const minRecommenderCredibility = await loadNumericSetting("elite_club_recommender_min_credibility", 7);
+      if (Number(member.credibilityScore) < minRecommenderCredibility) {
+        return { eligible: false, reason: `Credibility score ${member.credibilityScore} below minimum ${minRecommenderCredibility}` };
       }
       const guarantorRecords = await prisma.eliteClubGuarantor.count({
         where: { memberId: member.id, isActive: true },
@@ -1092,7 +1139,8 @@ export const eliteClubRouter = createTRPCRouter({
         where: { userId, clubId: input.clubId, status: "ACTIVE" },
       });
       if (!member) throw new Error("Not an active member.");
-      if (Number(member.credibilityScore) < 7) throw new Error("Credibility score below 7.0 required to recommend investments.");
+      const minRecommenderCred = await loadNumericSetting("elite_club_recommender_min_credibility", 7);
+      if (Number(member.credibilityScore) < minRecommenderCred) throw new Error(`Credibility score below ${minRecommenderCred} required to recommend investments.`);
 
       // Verify pool availability
       const pool = await prisma.eliteClubInvestmentPool.findUnique({ where: { id: input.poolId } });
@@ -1213,7 +1261,7 @@ export const eliteClubRouter = createTRPCRouter({
       const reject = votes.filter((v) => v.vote === "REJECT").length;
       const abstain = votes.filter((v) => v.vote === "ABSTAIN").length;
       const total = votes.length;
-      const quorum = 8; // 8 of 11 required
+      const quorum = await loadNumericSetting("elite_club_investment_quorum", 8);
       const passed = total >= quorum && accept > reject;
       return { accept, reject, abstain, total, quorum, passed, votes };
     }),
@@ -1235,7 +1283,8 @@ export const eliteClubRouter = createTRPCRouter({
       const votes = await prisma.eliteClubVote.findMany({ where: { investmentId: input.investmentId } });
       const accept = votes.filter((v) => v.vote === "ACCEPT").length;
       const reject = votes.filter((v) => v.vote === "REJECT").length;
-      if (votes.length < 8) throw new Error("Quorum not reached (8 votes required).");
+      const voteQuorum = await loadNumericSetting("elite_club_investment_quorum", 8);
+      if (votes.length < voteQuorum) throw new Error(`Quorum not reached (${voteQuorum} votes required).`);
       if (accept <= reject) throw new Error("Majority not reached.");
 
       await prisma.$transaction(async (tx) => {
@@ -1249,6 +1298,20 @@ export const eliteClubRouter = createTRPCRouter({
           data: { available: { decrement: Number(investment.amountRequested) } },
         });
       });
+
+      // Notify all club members of approval
+      const approvalMembers = await prisma.eliteClubMember.findMany({
+        where: { clubId: investment.clubId, status: "ACTIVE" },
+      });
+      await Promise.all(approvalMembers.map((m) =>
+        sendNotification({
+          userId: m.userId,
+          type: "ELITE_CLUB_INVESTMENT_APPROVED" as any,
+          title: "Investment Approved",
+          message: `The investment "${investment.title}" has passed the member vote and been approved. Awaiting fund release.`,
+          actionUrl: "/elite-club",
+        }),
+      ));
 
       return { success: true };
     }),
@@ -1272,6 +1335,19 @@ export const eliteClubRouter = createTRPCRouter({
           updatedAt: new Date(),
         },
       });
+      // Notify all active club members
+      const clubMembers = await prisma.eliteClubMember.findMany({
+        where: { clubId: updated.clubId, status: "ACTIVE" },
+      });
+      await Promise.all(clubMembers.map((m) =>
+        sendNotification({
+          userId: m.userId,
+          type: "ELITE_CLUB_INVESTMENT_FUNDED" as any,
+          title: "Investment Funded",
+          message: `The investment "${updated.title}" has been funded. Proof of deposit is now available for review.`,
+          actionUrl: "/elite-club",
+        }),
+      ));
       return { investment: updated };
     }),
 
@@ -1318,6 +1394,11 @@ export const eliteClubRouter = createTRPCRouter({
           amount: bpiShare,
           sourceId: input.investmentId,
           description: `BPI profit share from Elite Club investment: ${investment.title}`,
+          programType: "ELITE_CLUB",
+          metadata: {
+            clubId: investment.clubId,
+            title: investment.title,
+          },
         });
       }
 
@@ -1355,6 +1436,19 @@ export const eliteClubRouter = createTRPCRouter({
           actionUrl: "/elite-club/investments",
         });
       }
+      // Notify all club members of rejection result
+      const rejectedMembers = await prisma.eliteClubMember.findMany({
+        where: { clubId: investment.clubId, status: "ACTIVE" },
+      });
+      await Promise.all(rejectedMembers.map((m) =>
+        sendNotification({
+          userId: m.userId,
+          type: "ELITE_CLUB_INVESTMENT_REJECTED" as any,
+          title: "Investment Vote Result: Rejected",
+          message: `The investment "${investment.title}" was not approved.${input.reason ? ` Reason: ${input.reason}` : ""}`,
+          actionUrl: "/elite-club",
+        }),
+      ));
       return { success: true };
     }),
 
@@ -1495,6 +1589,7 @@ export const eliteClubRouter = createTRPCRouter({
         await tx.eliteClubMember.update({
           where: { id: input.memberId },
           data: {
+            status: "DEFAULTED",
             defaultCount: { increment: 1 },
             legalFlaggedAt: new Date(),
             updatedAt: new Date(),
@@ -1506,9 +1601,12 @@ export const eliteClubRouter = createTRPCRouter({
       // Auto-suspend if 3 defaults
       const updatedMember = await prisma.eliteClubMember.findUnique({ where: { id: input.memberId } });
       if (updatedMember && updatedMember.defaultCount >= 3) {
-        await prisma.eliteClubMember.update({
-          where: { id: input.memberId },
-          data: { status: "SUSPENDED", suspendedAt: new Date() },
+        await prisma.$transaction(async (tx) => {
+          await tx.eliteClubMember.update({
+            where: { id: input.memberId },
+            data: { status: "SUSPENDED", suspendedAt: new Date() },
+          });
+          await adjustCredibility(tx, input.memberId, EliteClubCredEventType.SUSPENSION, -1, `Membership suspended after ${updatedMember!.defaultCount} defaults`);
         });
         await sendNotification({
           userId: updatedMember.userId,
@@ -1517,6 +1615,30 @@ export const eliteClubRouter = createTRPCRouter({
           message: `Your Elite Club membership has been suspended due to ${updatedMember.defaultCount} recorded defaults.`,
           actionUrl: "/elite-club",
         });
+      }
+
+      // Notify admins about this legal flag
+      const admins = await prisma.user.findMany({ where: { role: { in: ["admin", "superadmin"] } }, select: { id: true } });
+      await Promise.all(admins.map((a) =>
+        sendNotification({
+          userId: a.id,
+          type: "ELITE_CLUB_LEGAL_FLAG" as any,
+          title: "Elite Club Default Flagged",
+          message: `A default has been recorded for member in club ${member.clubId}.${input.moustRef ? ` MOU Ref: ${input.moustRef}` : ""}`,
+          actionUrl: "/admin/elite-club",
+        }),
+      ));
+
+      // Cascade credibility penalty to active guarantors of this member
+      const guarantors = await prisma.eliteClubGuarantor.findMany({
+        where: { userId: member.userId, isActive: true },
+      });
+      if (guarantors.length > 0) {
+        await Promise.all(guarantors.map((g) =>
+          prisma.$transaction((tx) =>
+            adjustCredibility(tx, g.memberId, EliteClubCredEventType.GUARANTEE_DEFAULT, -1, `Default by guaranteed member ${input.memberId}`),
+          ),
+        ));
       }
 
       return { success: true };
