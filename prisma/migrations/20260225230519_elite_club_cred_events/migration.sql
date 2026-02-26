@@ -1,13 +1,10 @@
 -- AlterEnum
--- This migration adds more than one value to an enum.
--- With PostgreSQL versions 11 and earlier, this is not possible
--- in a single migration. This can be worked around by creating
--- multiple migrations, each migration adding only one value to
--- the enum.
-
-
-ALTER TYPE "EliteClubCredEventType" ADD VALUE 'OPT_OUT';
-ALTER TYPE "EliteClubCredEventType" ADD VALUE 'PAYOUT_RECEIVED';
+-- Runs outside transaction to satisfy PostgreSQL restriction on
+-- ALTER TYPE ... ADD VALUE inside a transaction block (error 25001).
+COMMIT;
+ALTER TYPE "EliteClubCredEventType" ADD VALUE IF NOT EXISTS 'OPT_OUT';
+ALTER TYPE "EliteClubCredEventType" ADD VALUE IF NOT EXISTS 'PAYOUT_RECEIVED';
+BEGIN;
 
 -- AlterTable
 ALTER TABLE "EliteClub" ADD COLUMN     "formationStatus" "EliteClubFormationStatus" NOT NULL DEFAULT 'OPEN';

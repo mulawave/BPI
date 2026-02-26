@@ -41,15 +41,12 @@ CREATE TYPE "EliteClubCredEventType" AS ENUM ('CONTRIBUTION_PAID', 'CONTRIBUTION
 CREATE TYPE "EliteClubTokenVerifMethod" AS ENUM ('WALLET_CONNECT', 'PROOF_UPLOAD');
 
 -- AlterEnum
--- This migration adds more than one value to an enum.
--- With PostgreSQL versions 11 and earlier, this is not possible
--- in a single migration. This can be worked around by creating
--- multiple migrations, each migration adding only one value to
--- the enum.
-
-
-ALTER TYPE "RevenueSource" ADD VALUE 'ELITE_CLUB_OPS';
-ALTER TYPE "RevenueSource" ADD VALUE 'ELITE_CLUB_INVESTMENT_PROFIT';
+-- Runs outside transaction to satisfy PostgreSQL restriction on
+-- ALTER TYPE ... ADD VALUE inside a transaction block (error 25001).
+COMMIT;
+ALTER TYPE "RevenueSource" ADD VALUE IF NOT EXISTS 'ELITE_CLUB_OPS';
+ALTER TYPE "RevenueSource" ADD VALUE IF NOT EXISTS 'ELITE_CLUB_INVESTMENT_PROFIT';
+BEGIN;
 
 -- CreateTable
 CREATE TABLE "EliteClub" (
