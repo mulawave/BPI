@@ -34,6 +34,7 @@ import {
   Activity,
   Mail,
   Gift,
+  Crown,
 } from "lucide-react";
 import { FiBookOpen } from "react-icons/fi";
 import { useEffect, useState } from "react";
@@ -117,6 +118,12 @@ const navigation = [
     href: "/admin/empowerment", 
     icon: FiBookOpen,
     description: "Manage empowerment lifecycle"
+  },
+  { 
+    name: "Elite Club", 
+    href: "/admin/elite-club", 
+    icon: Crown,
+    description: "Elite Club management & CMS"
   },
   { 
     name: "Palliatives", 

@@ -13,7 +13,7 @@ import {
   User, Calendar, DollarSign, Users, TrendingUp, 
   Bell, Settings, LogOut, ChevronDown, Play,
   CreditCard, BarChart3, Wallet, Gift, Award,
-  Shield, BookOpen, Youtube, Calculator,
+  Shield, BookOpen, Youtube, Calculator, Crown,
   Globe, Zap, Target, Home, Cpu, LifeBuoy,
   Store, Grid3x3, Wrench, HelpCircle, ShoppingCart,
   Archive, Database, Server, FileImage, Moon, Sun, X,
@@ -3065,6 +3065,15 @@ export default function DashboardContent({ session, customContent }: DashboardCo
                   onClick={() => setIsCalculatorModalOpen(true)}
                 />
               )}
+
+              {/* Elite Club Card */}
+              <CommunityCard
+                title="Elite Club"
+                description="Exclusive investment & empowerment circle"
+                icon={Crown}
+                state="active"
+                onClick={() => router.push("/elite-club")}
+              />
 
               {/* Leadership Pool Card - Only show if enabled by admin */}
               {leadershipPoolSettings?.enabled && (
