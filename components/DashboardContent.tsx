@@ -339,6 +339,16 @@ export default function DashboardContent({ session, customContent }: DashboardCo
         </div>
 
         <div className="group">
+          <Link href="/elite-club" className={navItemClass(isActive("/elite-club"))}
+            onClick={() => setNavLoadingHref("/elite-club")}>
+            {navLoadingHref === "/elite-club" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <Crown className="w-4 h-4 flex-shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium">Elite Club</div>
+            </div>
+          </Link>
+        </div>
+
+        <div className="group">
           <Link href="/settings" className={navItemClass(isActive("/settings"))}
             onClick={() => setNavLoadingHref("/settings")}>
             {navLoadingHref === "/settings" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <User className="w-4 h-4 flex-shrink-0" />}
@@ -3065,15 +3075,6 @@ export default function DashboardContent({ session, customContent }: DashboardCo
                   onClick={() => setIsCalculatorModalOpen(true)}
                 />
               )}
-
-              {/* Elite Club Card */}
-              <CommunityCard
-                title="Elite Club"
-                description="Exclusive investment & empowerment circle"
-                icon={Crown}
-                state="active"
-                onClick={() => router.push("/elite-club")}
-              />
 
               {/* Leadership Pool Card - Only show if enabled by admin */}
               {leadershipPoolSettings?.enabled && (
