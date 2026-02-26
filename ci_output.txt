@@ -1,0 +1,47 @@
+
+=== Lint ===
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+✔ No ESLint warnings or errors
+
+=== Type-check ===
+
+=== Build ===
+  ▲ Next.js 14.2.33
+  - Environments: .env.local, .env
+  - Experiments (use with caution):
+    · instrumentationHook
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+   Generating static pages (0/84) ...
+   Generating static pages (21/84) 
+   Generating static pages (42/84) 
+   Generating static pages (63/84) 
+ ✓ Generating static pages (84/84)
+
+> Build error occurred
+Error: ENOENT: no such file or directory, rename 'C:\Users\HomePC\Documents\bpi_main\.next\export\500.html' -> 'C:\Users\HomePC\Documents\bpi_main\.next\server\pages\500.html'
+    at async Object.rename (node:internal/fs/promises:781:10)
+    at async C:\Users\HomePC\Documents\bpi_main\node_modules\next\dist\build\index.js:1873:33
+    at async Span.traceAsyncFn (C:\Users\HomePC\Documents\bpi_main\node_modules\next\dist\trace\trace.js:154:20)
+    at async C:\Users\HomePC\Documents\bpi_main\node_modules\next\dist\build\index.js:1924:25
+    at async Span.traceAsyncFn (C:\Users\HomePC\Documents\bpi_main\node_modules\next\dist\trace\trace.js:154:20)
+    at async C:\Users\HomePC\Documents\bpi_main\node_modules\next\dist\build\index.js:1546:17
+    at async Span.traceAsyncFn (C:\Users\HomePC\Documents\bpi_main\node_modules\next\dist\trace\trace.js:154:20)
+    at async build (C:\Users\HomePC\Documents\bpi_main\node_modules\next\dist\build\index.js:368:9) {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'rename',
+  path: 'C:\\Users\\HomePC\\Documents\\bpi_main\\.next\\export\\500.html',
+  dest: 'C:\\Users\\HomePC\\Documents\\bpi_main\\.next\\server\\pages\\500.html'
+}
+
+CI FAILED: Build failed with exit code 1
+exit=1

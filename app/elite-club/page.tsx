@@ -615,12 +615,12 @@ function ManageTab() {
 
   // Investment recommendation form
   const [recForm, setRecForm] = useState({
-    title: "", description: "", category: "REAL_ESTATE" as string,
+    title: "", description: "", category: "DIGITAL_WEB3" as string,
     amountRequested: "", expectedReturn: "", durationMonths: "",
     riskNotes: "", bpiProfitShareEnabled: false, bpiProfitSharePct: "0",
   });
   const submitRec = api.eliteClub.submitInvestmentRecommendation.useMutation({
-    onSuccess: () => { toast.success("Investment recommendation submitted."); setRecForm({ title: "", description: "", category: "REAL_ESTATE", amountRequested: "", expectedReturn: "", durationMonths: "", riskNotes: "", bpiProfitShareEnabled: false, bpiProfitSharePct: "0" }); },
+    onSuccess: () => { toast.success("Investment recommendation submitted."); setRecForm({ title: "", description: "", category: "DIGITAL_WEB3", amountRequested: "", expectedReturn: "", durationMonths: "", riskNotes: "", bpiProfitShareEnabled: false, bpiProfitSharePct: "0" }); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -806,8 +806,8 @@ function ManageTab() {
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Category</label>
                 <select value={recForm.category} onChange={(e) => setRecForm((f) => ({ ...f, category: e.target.value }))}
                   className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white focus:border-[#0d3b29] outline-none">
-                  {["REAL_ESTATE","STOCKS","CRYPTO","FOREX","COMMODITIES","BUSINESS","OTHER"].map((c) => (
-                    <option key={c} value={c}>{c.replace(/_/g, " ")}</option>
+                  {(["DIGITAL_WEB3", "OFFLINE"] as const).map((c) => (
+                    <option key={c} value={c}>{c === "DIGITAL_WEB3" ? "Digital / Web3" : "Offline"}</option>
                   ))}
                 </select>
               </div>

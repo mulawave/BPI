@@ -30,6 +30,7 @@ import {
   Building2,
   FileText,
   Activity,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -575,6 +576,247 @@ function InvestmentsTab() {
   );
 }
 
+// ─── Contributions Tab ───────────────────────────────────────────────────────
+
+function downloadCSV(filename: string, rows: string[][]): void {
+  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ContributionsTab() {
+  const [clubId, setClubId] = useState("");
+  const [monthFilter, setMonthFilter] = useState<number | undefined>();
+  const [yearFilter, setYearFilter] = useState<number>(new Date().getFullYear());
+  const [statusFilter, setStatusFilter] = useState<string | undefined>();
+
+  const { data, isLoading, refetch } = api.eliteClub.adminListContributions.useQuery({
+    clubId: clubId || undefined,
+    month: monthFilter,
+    year: yearFilter,
+    status: statusFilter as any,
+  });
+
+  const rows = data?.contributions ?? [];
+
+  function handleExport() {
+    const headers = ["ID", "Member", "Email", "Club", "Month", "Year", "Total", "Empowerment", "Investment", "Status", "Paid At"];
+    const csvRows = rows.map((c) => [
+      c.id, c.member?.user?.name ?? "", c.member?.user?.email ?? "", c.clubId,
+      String(c.month), String(c.year), String(Number(c.totalAmount)),
+      String(Number(c.empowermentShare)), String(Number(c.investmentShare)),
+      c.status, c.paidAt ? new Date(c.paidAt).toISOString() : "",
+    ]);
+    downloadCSV(`contributions_${Date.now()}.csv`, [headers, ...csvRows]);
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Filters */}
+      <div className="flex gap-3 flex-wrap items-end">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Club ID</label>
+          <input value={clubId} onChange={(e) => setClubId(e.target.value)} placeholder="Leave blank for all..."
+            className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none w-48" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Month</label>
+          <select value={monthFilter ?? ""} onChange={(e) => setMonthFilter(e.target.value ? Number(e.target.value) : undefined)}
+            className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white focus:border-[#0d3b29] outline-none">
+            <option value="">All</option>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Year</label>
+          <input type="number" value={yearFilter} onChange={(e) => setYearFilter(Number(e.target.value))}
+            className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white focus:border-[#0d3b29] outline-none w-24" />
+        </div>
+        <div className="flex gap-1">
+          {(["PAID", "PENDING", "MISSED", "PARTIAL"] as const).map((s) => (
+            <button key={s} onClick={() => setStatusFilter(statusFilter === s ? undefined : s)}
+              className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                statusFilter === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"
+              }`}>
+              {s}
+            </button>
+          ))}
+        </div>
+        {rows.length > 0 && (
+          <button onClick={handleExport}
+            className="ml-auto flex items-center gap-2 px-4 py-2 border border-[#0d3b29] text-[#0d3b29] rounded-xl text-sm font-semibold hover:bg-[#0d3b29] hover:text-white transition-all">
+            <Download size={14} /> Export CSV
+          </button>
+        )}
+      </div>
+
+      {isLoading && <div className="flex items-center gap-2 text-gray-400 py-8 justify-center"><RefreshCw size={18} className="animate-spin" />Loading contributions...</div>}
+
+      {!isLoading && (
+        <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700">
+                  <th className="text-left px-4 py-3 font-medium">Member</th>
+                  <th className="text-left px-4 py-3 font-medium">Period</th>
+                  <th className="text-right px-4 py-3 font-medium">Total</th>
+                  <th className="text-right px-4 py-3 font-medium">Empowerment</th>
+                  <th className="text-right px-4 py-3 font-medium">Investment</th>
+                  <th className="text-left px-4 py-3 font-medium">Status</th>
+                  <th className="text-left px-4 py-3 font-medium">Paid At</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/40">
+                {rows.map((c) => (
+                  <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900 dark:text-white">{c.member?.user?.name ?? "—"}</div>
+                      <div className="text-xs text-gray-400">{c.member?.user?.email}</div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{c.month}/{c.year}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">₦{Number(c.totalAmount).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-emerald-700 dark:text-emerald-400">₦{Number(c.empowermentShare).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-indigo-700 dark:text-indigo-400">₦{Number(c.investmentShare).toLocaleString()}</td>
+                    <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                      {c.paidAt ? format(new Date(c.paidAt), "MMM d, yyyy") : "—"}
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">No contributions found.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {data && data.total > rows.length && (
+            <div className="px-4 py-3 text-xs text-gray-400 border-t border-gray-100 dark:border-gray-700 text-right">
+              Showing {rows.length} of {data.total} records
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Legal Tab ────────────────────────────────────────────────────────────────
+
+function LegalTab() {
+  const [clubIdFilter, setClubIdFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const { data, isLoading, refetch } = api.eliteClub.adminListLegalEvents.useQuery({
+    clubId: clubIdFilter || undefined,
+    page,
+    pageSize: 30,
+  });
+  const resolve = api.eliteClub.adminResolveDefault.useMutation({
+    onSuccess: () => { toast.success("Legal event resolved."); void refetch(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const [resolveNotes, setResolveNotes] = useState<Record<string, string>>({});
+
+  const events = (data?.events ?? []) as any[];
+
+  function handleExport() {
+    const headers = ["ID", "Member", "Email", "Event Type", "Defaults", "Defaulted Amount", "Notes", "Created At", "Resolved At"];
+    const csvRows = events.map((e) => [
+      e.id, e.member?.user?.name ?? "", e.member?.user?.email ?? "", e.eventType,
+      String(e.defaultCount ?? 0), String(Number(e.defaultedAmount ?? 0)),
+      e.notes ?? "", new Date(e.createdAt).toISOString(),
+      e.resolvedAt ? new Date(e.resolvedAt).toISOString() : "",
+    ]);
+    downloadCSV(`legal_events_${Date.now()}.csv`, [headers, ...csvRows]);
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex gap-3 items-end flex-wrap">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Filter by Club ID</label>
+          <input value={clubIdFilter} onChange={(e) => { setClubIdFilter(e.target.value); setPage(1); }}
+            placeholder="Leave blank for all..."
+            className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none w-56" />
+        </div>
+        {events.length > 0 && (
+          <button onClick={handleExport}
+            className="ml-auto flex items-center gap-2 px-4 py-2 border border-[#0d3b29] text-[#0d3b29] rounded-xl text-sm font-semibold hover:bg-[#0d3b29] hover:text-white transition-all">
+            <Download size={14} /> Export CSV
+          </button>
+        )}
+      </div>
+
+      {isLoading && <div className="flex items-center gap-2 text-gray-400 py-8 justify-center"><RefreshCw size={18} className="animate-spin" />Loading legal events...</div>}
+
+      {!isLoading && (
+        <div className="space-y-3">
+          {events.map((e) => (
+            <div key={e.id} className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE[e.eventType as string] ?? "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}>
+                      {e.eventType}
+                    </span>
+                    {e.resolvedAt ? (
+                      <span className="flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 size={12} />Resolved</span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs text-rose-600"><AlertTriangle size={12} />Open</span>
+                    )}
+                    <span className="text-xs text-gray-400">{format(new Date(e.createdAt), "MMM d, yyyy")}</span>
+                  </div>
+                  <p className="font-medium text-gray-900 dark:text-white">{e.member?.user?.name ?? "Unknown"}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{e.member?.user?.email}</p>
+                  {e.defaultCount > 0 && (
+                    <p className="text-xs text-rose-600 mt-1">{e.defaultCount} default(s) · ₦{Number(e.defaultedAmount ?? 0).toLocaleString()}</p>
+                  )}
+                  {e.notes && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">{e.notes}</p>}
+                  {e.resolvedAt && (
+                    <p className="text-xs text-emerald-600 mt-1">Resolved {format(new Date(e.resolvedAt), "MMM d, yyyy")}</p>
+                  )}
+                </div>
+                {!e.resolvedAt && (
+                  <div className="flex gap-2 items-end">
+                    <input value={resolveNotes[e.id] ?? ""} onChange={(ev) => setResolveNotes((p) => ({ ...p, [e.id]: ev.target.value }))}
+                      placeholder="Resolution notes..."
+                      className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-xl text-xs bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none w-48" />
+                    <button onClick={() => resolve.mutate({ legalEventId: e.id, notes: resolveNotes[e.id] })}
+                      disabled={resolve.isPending}
+                      className="px-4 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 whitespace-nowrap">
+                      Mark Resolved
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {events.length === 0 && (
+            <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-10 text-center text-gray-400 shadow-sm">
+              <Gavel size={28} className="mx-auto mb-3 opacity-40" />
+              <p className="text-sm">No legal events found.</p>
+            </div>
+          )}
+          {data && data.total > events.length && (
+            <div className="flex justify-center gap-3 pt-2">
+              <button disabled={page === 1} onClick={() => setPage((p) => p - 1)}
+                className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm disabled:opacity-50">Prev</button>
+              <span className="flex items-center text-sm text-gray-500 dark:text-gray-400">Page {page}</span>
+              <button onClick={() => setPage((p) => p + 1)} disabled={events.length < 30}
+                className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm disabled:opacity-50">Next</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Settings Tab ─────────────────────────────────────────────────────────────
 
 function SettingsTab() {
@@ -609,6 +851,19 @@ function SettingsTab() {
     "elite_club_payout_min_credibility": "Min Credibility to Receive Payout",
     "elite_club_ops_fee_bpi_pct": "BPI Ops Fee % (of investment share)",
     "elite_club_ops_fee_elite_pct": "Elite Ops Fee % (of investment share)",
+    "elite_min_gold_plus_invites": "Min Gold Plus Invites Required",
+    "elite_token_gate_enabled_silver": "SILVER: Token Gate Enabled (true/false)",
+    "elite_token_gate_enabled_gold": "GOLD: Token Gate Enabled (true/false)",
+    "elite_token_gate_enabled_platinum": "PLATINUM: Token Gate Enabled (true/false)",
+    "elite_token_gate_enabled_diamond": "DIAMOND: Token Gate Enabled (true/false)",
+    "elite_empowerment_share_pct": "Empowerment Share % (default 80)",
+    "elite_credibility_delta_paid": "Credibility Delta: Paid Contribution (+, default 0.2)",
+    "elite_credibility_delta_payout": "Credibility Delta: Payout Received (+, default 0.5)",
+    "elite_credibility_delta_vote": "Credibility Delta: Investment Vote (+, default 0.1)",
+    "elite_credibility_delta_optout": "Credibility Delta: Opt-Out (applied as −, default 1)",
+    "elite_credibility_delta_missed": "Credibility Delta: Missed Contribution (applied as −, default 0.3)",
+    "elite_vote_deadline_hours": "Vote Deadline Hours (0 = no deadline)",
+    "elite_contribution_deadline_day": "Contribution Deadline Day of Month (default 15)",
   };
 
   return (
@@ -688,12 +943,8 @@ export default function AdminEliteClubPage() {
             {activeTab === "payouts"       && <PayoutsTab />}
             {activeTab === "investments"   && <InvestmentsTab />}
             {activeTab === "settings"      && <SettingsTab />}
-            {(activeTab === "contributions" || activeTab === "legal") && (
-              <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-10 text-center text-gray-400 dark:text-gray-500 shadow-sm">
-                <Activity size={32} className="mx-auto mb-3 opacity-40" />
-                <p className="text-sm">This section is accessible via the full admin panel. Use the Clubs and Payouts tabs to manage {activeTab}.</p>
-              </div>
-            )}
+            {activeTab === "contributions" && <ContributionsTab />}
+            {activeTab === "legal"          && <LegalTab />}
           </motion.div>
         </AnimatePresence>
       </div>
