@@ -28,6 +28,12 @@ import {
   FiCheckSquare,
   FiSquare,
   FiDownload,
+  FiSettings,
+  FiEye,
+  FiGift,
+  FiSliders,
+  FiAlertTriangle,
+  FiLayers,
 } from 'react-icons/fi';
 import { api } from '@/client/trpc';
 import toast from 'react-hot-toast';
@@ -35,7 +41,7 @@ import AdminActivityTracker from '@/components/admin/AdminActivityTracker';
 
 const PACKAGE_COST = 354750; // ₦330,000 + ₦24,750 VAT
 
-type TabView = 'activate' | 'history' | 'analytics';
+type TabView = 'activate' | 'history' | 'analytics' | 'config';
 type StatusFilter = 'all' | 'active' | 'pending' | 'mature' | 'approved' | 'released' | 'fallback' | 'converted';
 type EmpowermentType = 'CHILD_EDUCATION' | 'VOCATIONAL_SKILL';
 type Gateway = 'wallet' | 'paystack' | 'flutterwave' | 'bank-transfer';
@@ -44,6 +50,50 @@ interface SelectedBeneficiary {
   id: string;
   name: string | null;
   email: string | null;
+}
+
+/** Renders per-package tranche history — lives outside main component so hooks are valid inside .map() */
+function PkgTranchesRow({
+  empowermentId,
+  formatAmt,
+  formatDt,
+}: {
+  empowermentId: string;
+  formatAmt: (v: number) => string;
+  formatDt: (v: any) => string;
+}) {
+  const { data, isLoading } = api.package.getEmpowermentTranches.useQuery({ empowermentId });
+  if (isLoading)
+    return <div className="animate-pulse h-8 rounded bg-gray-100 dark:bg-gray-800" />;
+  if (!data?.length)
+    return <p className="text-xs text-gray-400 dark:text-gray-500">No tranches released yet.</p>;
+  return (
+    <div className="space-y-2">
+      {(data as any[]).map((t) => (
+        <div
+          key={t.id}
+          className="flex items-center justify-between rounded-lg border border-gray-100 dark:border-gray-700 px-3 py-2 text-xs"
+        >
+          <div className="flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-bold text-[10px]">
+              {t.trancheNumber}
+            </span>
+            <span className="text-gray-700 dark:text-gray-300">{t.percent}%</span>
+            <span className="text-gray-400 dark:text-gray-500">· {formatDt(t.releasedAt)}</span>
+            {t.trancheNumber === 1 && (
+              <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                Sponsor rewarded
+              </span>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="font-semibold text-emerald-600 dark:text-emerald-400">{formatAmt(t.netAmount)}</p>
+            <p className="text-gray-400 dark:text-gray-500">net credited</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function EmpowermentContent() {
@@ -59,7 +109,21 @@ export default function EmpowermentContent() {
   const [packageSearch, setPackageSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [outcomeFilter, setOutcomeFilter] = useState<string>('all');
+  const [waiverFilter, setWaiverFilter] = useState<string>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Sprint 3 — outcome management & config
+  const [selectedPkg, setSelectedPkg] = useState<any | null>(null);
+  const [outcomeType, setOutcomeType] = useState<string>('');
+  const [customCreditPct, setCustomCreditPct] = useState<number>(50);
+  const [tranchePct, setTranchePct] = useState<number>(20);
+  const [configValues, setConfigValues] = useState<Record<string, string>>({});
+  const [expandedTranchePkgs, setExpandedTranchePkgs] = useState<Set<string>>(new Set());
+  // CSP waiver transfer form state
+  const [cspTransferPkgId, setCspTransferPkgId] = useState<string | null>(null);
+  const [cspTransferAmount, setCspTransferAmount] = useState<string>('');
+  const [cspTransferPin, setCspTransferPin] = useState<string>('');
+  const [cspTransferTarget, setCspTransferTarget] = useState<'community' | 'wallet'>('community');
 
   const formatAmount = (value: number) => `₦${value.toLocaleString()}`;
   const formatDate = (value?: Date | string | null) => {
@@ -169,6 +233,52 @@ export default function EmpowermentContent() {
     onError: (error) => toast.error(error.message || 'Conversion failed'),
   });
 
+  // Sprint 3 — new admin mutations / queries
+  const setOutcomeMut = api.package.setEmpowermentOutcome.useMutation({
+    onSuccess: () => {
+      toast.success('Outcome set successfully.');
+      utils.package.getMyEmpowermentPackages.invalidate();
+      setSelectedPkg(null);
+      setOutcomeType('');
+    },
+    onError: (e) => toast.error(e.message || 'Failed to set outcome'),
+  });
+
+  const releaseTrancheMut = api.package.releaseEmpowermentTranche.useMutation({
+    onSuccess: () => {
+      toast.success('Tranche released successfully.');
+      utils.package.getMyEmpowermentPackages.invalidate();
+      setTranchePct(20);
+    },
+    onError: (e) => toast.error(e.message || 'Tranche release failed'),
+  });
+
+  const trancheQuery = api.package.getEmpowermentTranches.useQuery(
+    { empowermentId: selectedPkg?.id ?? '' },
+    { enabled: !!(selectedPkg?.id) },
+  );
+
+  const empConfigQuery = api.package.getEmpowermentConfig.useQuery(undefined, { enabled: isAdminView });
+
+  const updateConfigMut = api.package.updateEmpowermentConfig.useMutation({
+    onSuccess: () => {
+      toast.success('Configuration saved.');
+      void empConfigQuery.refetch();
+    },
+    onError: (e) => toast.error(e.message || 'Failed to save config'),
+  });
+
+  const cspTransferMut = api.wallet.transferInterWallet.useMutation({
+    onSuccess: () => {
+      toast.success('CSP contribution transfer successful! Your CSP waiver has been applied.');
+      setCspTransferPkgId(null);
+      setCspTransferAmount('');
+      setCspTransferPin('');
+      utils.package.getMyEmpowermentPackages.invalidate();
+    },
+    onError: (e) => toast.error(e.message || 'Transfer failed'),
+  });
+
   // Handle payment verification from redirect
   useEffect(() => {
     const gatewayParam = searchParams?.get('gateway');
@@ -245,9 +355,25 @@ export default function EmpowermentContent() {
         if (!haystack.includes(search)) return false;
       }
 
+      // Outcome type filter
+      if (outcomeFilter !== 'all') {
+        if (outcomeFilter === 'none') {
+          if ((pkg as any).outcomeType) return false;
+        } else {
+          if ((pkg as any).outcomeType !== outcomeFilter) return false;
+        }
+      }
+
+      // CSP waiver filter
+      if (waiverFilter === 'active') {
+        if (!(pkg as any).cspWaiverEnabled || (pkg as any).cspWaiverUsed) return false;
+      } else if (waiverFilter === 'used') {
+        if (!(pkg as any).cspWaiverUsed) return false;
+      }
+
       return true;
     });
-  }, [empowermentPackages, statusFilter, packageSearch, dateFrom, dateTo]);
+  }, [empowermentPackages, statusFilter, packageSearch, dateFrom, dateTo, outcomeFilter, waiverFilter]);
 
   const selectedPackages = useMemo(() => {
     if (selectedIds.size === 0) return [];
@@ -342,6 +468,13 @@ export default function EmpowermentContent() {
     }
   }, [isAdminView, activeTab]);
 
+  // Sync config form with fetched values
+  useEffect(() => {
+    if (empConfigQuery.data) {
+      setConfigValues(empConfigQuery.data as Record<string, string>);
+    }
+  }, [empConfigQuery.data]);
+
   const handleBulkAction = async (action: 'mature' | 'approve' | 'release' | 'fallback') => {
     if (selectedPackages.length === 0) return;
 
@@ -417,6 +550,13 @@ export default function EmpowermentContent() {
       (sum, pkg) => sum + (pkg.netEmpowermentValue + pkg.netSponsorReward),
       0
     );
+    // Sprint 4 — outcome-aware metrics
+    const totalCredited = empowermentPackages.reduce((sum, pkg) => sum + ((pkg as any).totalReleasedAmount ?? 0), 0);
+    const totalSponsorRewardsPaid = empowermentPackages.reduce((sum, pkg) => sum + ((pkg as any).sponsorRewardAmount ?? 0), 0);
+    const cspWaiverActive = empowermentPackages.filter((pkg) => (pkg as any).cspWaiverEnabled && !(pkg as any).cspWaiverUsed).length;
+    const cspWaiverUsed = empowermentPackages.filter((pkg) => (pkg as any).cspWaiverUsed).length;
+    const fullApprovalPackages = empowermentPackages.filter((pkg) => (pkg as any).outcomeType === 'FULL_APPROVAL').length;
+    const declinePackages = empowermentPackages.filter((pkg) => (pkg as any).outcomeType && (pkg as any).outcomeType !== 'FULL_APPROVAL').length;
 
     return {
       totalPackages,
@@ -427,6 +567,12 @@ export default function EmpowermentContent() {
       convertedPackages,
       totalInvested,
       projectedReturns,
+      totalCredited,
+      totalSponsorRewardsPaid,
+      cspWaiverActive,
+      cspWaiverUsed,
+      fullApprovalPackages,
+      declinePackages,
     };
   }, [empowermentPackages]);
 
@@ -501,8 +647,9 @@ export default function EmpowermentContent() {
       <div className="flex items-center gap-4 mb-6 border-b border-gray-200 dark:border-gray-700">
         {[
           ...(!isAdminView ? [{ id: 'activate' as const, label: 'Activate Package', icon: FiBookOpen }] : []),
-          { id: 'history' as const, label: 'My Packages', icon: FiClock },
+          { id: 'history' as const, label: isAdminView ? 'All Packages' : 'My Packages', icon: FiClock },
           { id: 'analytics' as const, label: 'Analytics', icon: FiBarChart2 },
+          ...(isAdminView ? [{ id: 'config' as const, label: 'Configuration', icon: FiSettings }] : []),
         ].map((tab) => (
           <button
             key={tab.id}
@@ -914,6 +1061,41 @@ export default function EmpowermentContent() {
                         </button>
                       ))}
                     </div>
+                    {/* Outcome type + CSP waiver advanced filters (admin only) */}
+                    {isAdminView && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={outcomeFilter}
+                          onChange={(e) => setOutcomeFilter(e.target.value)}
+                          className="rounded-full border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 shadow-sm focus:border-emerald-400 focus:outline-none dark:border-gray-700 dark:bg-bpi-dark-card dark:text-gray-200"
+                        >
+                          <option value="all">All Outcomes</option>
+                          <option value="none">No Outcome Set</option>
+                          <option value="FULL_APPROVAL">Full Approval</option>
+                          <option value="PARTIAL_DECLINE_50">Partial Decline 50%</option>
+                          <option value="PARTIAL_DECLINE_75">Partial Decline 75%</option>
+                          <option value="PARTIAL_DECLINE_OTHER">Partial Decline Custom</option>
+                          <option value="FULL_DECLINE">Full Decline</option>
+                        </select>
+                        <select
+                          value={waiverFilter}
+                          onChange={(e) => setWaiverFilter(e.target.value)}
+                          className="rounded-full border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 shadow-sm focus:border-emerald-400 focus:outline-none dark:border-gray-700 dark:bg-bpi-dark-card dark:text-gray-200"
+                        >
+                          <option value="all">All Waiver Status</option>
+                          <option value="active">Waiver Active</option>
+                          <option value="used">Waiver Used</option>
+                        </select>
+                        {(outcomeFilter !== 'all' || waiverFilter !== 'all') && (
+                          <button
+                            onClick={() => { setOutcomeFilter('all'); setWaiverFilter('all'); }}
+                            className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 hover:border-gray-300 dark:border-gray-700 dark:text-gray-300"
+                          >
+                            <FiX className="h-3 w-3" /> Clear Filters
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {me?.role && (me.role === 'admin' || me.role === 'super_admin') && filteredPackages.length > 0 && (
@@ -1105,6 +1287,184 @@ export default function EmpowermentContent() {
                               </div>
                             </div>
 
+                            {/* Education wallet balance — beneficiary only */}
+                            {!isAdmin && !isSponsor && (
+                              <div className="rounded-lg border border-blue-100 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/20 p-3 flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-300">
+                                  <span className="flex h-6 w-6 items-center justify-center rounded-full border border-blue-200 bg-white dark:border-blue-700 dark:bg-blue-950">
+                                    <FiBookOpen className="h-3.5 w-3.5" />
+                                  </span>
+                                  Education Wallet Balance
+                                </div>
+                                <p className="text-sm font-bold text-blue-700 dark:text-blue-300">
+                                  {formatAmount((me as any)?.education ?? 0)}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Outcome Badge — visible to all users */}
+                            {(pkg as any).outcomeType && (
+                              <div className="flex flex-wrap gap-2 pt-1">
+                                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
+                                  (pkg as any).outcomeType === 'FULL_APPROVAL'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800'
+                                    : (pkg as any).outcomeType === 'FULL_DECLINE'
+                                    ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-800'
+                                    : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800'
+                                }`}>
+                                  <FiLayers className="h-3 w-3" />
+                                  {(pkg as any).outcomeType.replace(/_/g, ' ')}
+                                  {(pkg as any).outcomeType === 'FULL_APPROVAL' && (pkg as any).totalReleasedPercent > 0 && (
+                                    <span className="ml-1 opacity-75">· {Math.round((pkg as any).totalReleasedPercent)}% released</span>
+                                  )}
+                                </span>
+                                {(pkg as any).cspWaiverEnabled && (
+                                  <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
+                                    (pkg as any).cspWaiverUsed
+                                      ? 'bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-900/30 dark:text-gray-400 dark:border-gray-700'
+                                      : 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-300 dark:border-violet-800'
+                                  }`}>
+                                    <FiShield className="h-3 w-3" />
+                                    CSP Waiver {(pkg as any).cspWaiverUsed ? 'Used' : 'Available'}
+                                  </span>
+                                )}
+                                {(pkg as any).sponsorRewardPaid && (
+                                  <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800">
+                                    <FiGift className="h-3 w-3" />
+                                    Sponsor Reward Credited · {formatAmount((pkg as any).sponsorRewardAmount ?? 0)}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* User-facing Full Approval progress + Tranche history */}
+                            {!isAdmin && (pkg as any).outcomeType === 'FULL_APPROVAL' && (
+                              <div className="space-y-3">
+                                <div className="rounded-lg border border-emerald-100 dark:border-emerald-900 p-3 space-y-2">
+                                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                                    <span>Education wallet credited</span>
+                                    <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                                      {Math.round((pkg as any).totalReleasedPercent ?? 0)}% · {formatAmount((pkg as any).totalReleasedAmount ?? 0)}
+                                    </span>
+                                  </div>
+                                  <div className="h-2 w-full rounded-full bg-gray-100 dark:bg-gray-800">
+                                    <div
+                                      className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all"
+                                      style={{ width: `${(pkg as any).totalReleasedPercent ?? 0}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
+                                    <span>Remaining: {100 - Math.round((pkg as any).totalReleasedPercent ?? 0)}% unreleased</span>
+                                    {((pkg as any).totalReleasedPercent ?? 0) >= 100 && (
+                                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Fully released</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => setExpandedTranchePkgs((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(pkg.id)) next.delete(pkg.id); else next.add(pkg.id);
+                                    return next;
+                                  })}
+                                  className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:underline"
+                                >
+                                  <FiLayers className="h-3.5 w-3.5" />
+                                  {expandedTranchePkgs.has(pkg.id) ? 'Hide tranche history' : 'View tranche history'}
+                                </button>
+                                {expandedTranchePkgs.has(pkg.id) && (
+                                  <PkgTranchesRow
+                                    empowermentId={pkg.id}
+                                    formatAmt={formatAmount}
+                                    formatDt={formatDate}
+                                  />
+                                )}
+                              </div>
+                            )}
+
+                            {/* CSP Waiver transfer panel — beneficiary only */}
+                            {!isAdmin && !isSponsor && (pkg as any).cspWaiverEnabled && !(pkg as any).cspWaiverUsed && (
+                              <div className="rounded-lg border border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/20 p-4 space-y-3">
+                                <div className="flex items-start gap-2">
+                                  <FiShield className="h-4 w-4 text-violet-600 dark:text-violet-400 flex-shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="text-xs font-semibold text-violet-800 dark:text-violet-200">CSP Waiver Available</p>
+                                    <p className="text-xs text-violet-700 dark:text-violet-300 mt-0.5">
+                                      You can use your Education Wallet balance for a one-time CSP contribution. Transfer to Community Wallet or Cash Wallet.
+                                    </p>
+                                  </div>
+                                </div>
+                                {cspTransferPkgId !== pkg.id ? (
+                                  <button
+                                    onClick={() => setCspTransferPkgId(pkg.id)}
+                                    className="inline-flex items-center gap-2 rounded-lg border border-violet-300 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs font-semibold text-violet-700 dark:text-violet-300 hover:border-violet-400 transition"
+                                  >
+                                    <FiArrowRight className="h-3.5 w-3.5" />
+                                    Apply CSP Waiver Transfer
+                                  </button>
+                                ) : (
+                                  <div className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div>
+                                        <label className="block text-[11px] font-semibold text-violet-800 dark:text-violet-200 mb-1">Transfer To</label>
+                                        <select
+                                          value={cspTransferTarget}
+                                          onChange={(e) => setCspTransferTarget(e.target.value as 'community' | 'wallet')}
+                                          className="w-full rounded-lg border border-violet-200 dark:border-violet-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-violet-400"
+                                        >
+                                          <option value="community">Community Wallet</option>
+                                          <option value="wallet">Cash Wallet</option>
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label className="block text-[11px] font-semibold text-violet-800 dark:text-violet-200 mb-1">Amount (₦)</label>
+                                        <input
+                                          type="number"
+                                          placeholder="300000"
+                                          value={cspTransferAmount}
+                                          onChange={(e) => setCspTransferAmount(e.target.value)}
+                                          className="w-full rounded-lg border border-violet-200 dark:border-violet-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-white focus:outline-none focus:border-violet-400"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-violet-800 dark:text-violet-200 mb-1">Transaction PIN</label>
+                                      <input
+                                        type="password"
+                                        maxLength={4}
+                                        placeholder="••••"
+                                        value={cspTransferPin}
+                                        onChange={(e) => setCspTransferPin(e.target.value)}
+                                        className="w-32 rounded-lg border border-violet-200 dark:border-violet-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-900 dark:text-white tracking-widest focus:outline-none focus:border-violet-400"
+                                      />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        disabled={!cspTransferAmount || cspTransferPin.length !== 4 || cspTransferMut.status === 'pending'}
+                                        onClick={() => {
+                                          cspTransferMut.mutate({
+                                            amount: Number(cspTransferAmount),
+                                            fromWallet: 'education',
+                                            toWallet: cspTransferTarget,
+                                            pin: cspTransferPin,
+                                            reason: 'CSP_CONTRIBUTION',
+                                          });
+                                        }}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-4 py-1.5 text-xs font-semibold text-white transition"
+                                      >
+                                        {cspTransferMut.status === 'pending' ? 'Processing...' : 'Confirm Transfer'}
+                                      </button>
+                                      <button
+                                        onClick={() => { setCspTransferPkgId(null); setCspTransferAmount(''); setCspTransferPin(''); }}
+                                        className="text-xs text-gray-500 dark:text-gray-400 hover:underline"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
                             {isSponsor && !pkg.isConverted && (
                               <div className="flex flex-wrap gap-2 pt-2">
                                 <button
@@ -1160,6 +1520,13 @@ export default function EmpowermentContent() {
                                     Trigger Fallback
                                   </button>
                                 )}
+                                <button
+                                  onClick={() => { setSelectedPkg(pkg); setOutcomeType((pkg as any).outcomeType ?? ''); setTranchePct(20); }}
+                                  className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 transition hover:border-violet-300 dark:border-violet-700/50 dark:bg-violet-900/30 dark:text-violet-200"
+                                >
+                                  <FiEye className="h-3.5 w-3.5" />
+                                  {(pkg as any).outcomeType ? 'View / Tranches' : 'Set Outcome'}
+                                </button>
                               </div>
                             )}
                           </div>
@@ -1192,6 +1559,10 @@ export default function EmpowermentContent() {
                     { label: 'Pending Maturity', value: analytics.maturePackages, icon: FiClock },
                     { label: 'Released Packages', value: analytics.releasedPackages, icon: FiCheck },
                     { label: 'Converted Packages', value: analytics.convertedPackages, icon: FiTrendingUp },
+                    { label: 'Full Approval', value: analytics.fullApprovalPackages, icon: FiAward },
+                    { label: 'Decline Outcomes', value: analytics.declinePackages, icon: FiAlertTriangle },
+                    { label: 'CSP Waivers Active', value: analytics.cspWaiverActive, icon: FiShield },
+                    { label: 'CSP Waivers Used', value: analytics.cspWaiverUsed, icon: FiCheckCircle },
                   ].map((card) => (
                     <div key={card.label} className="bg-white dark:bg-bpi-dark-card rounded-lg p-5 border border-gray-200 dark:border-gray-700">
                       <div className="flex items-center justify-between">
@@ -1205,6 +1576,34 @@ export default function EmpowermentContent() {
                       </div>
                     </div>
                   ))}
+                </div>
+
+                {/* Outcome financial summary */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="bg-white dark:bg-bpi-dark-card rounded-lg p-5 border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Total Education Wallet Credited</p>
+                        <p className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400">{formatAmount(analytics.totalCredited)}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Across all tranche releases</p>
+                      </div>
+                      <span className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700/50 dark:bg-emerald-900/40 dark:text-emerald-200">
+                        <FiDollarSign className="h-5 w-5" />
+                      </span>
+                    </div>
+                  </div>
+                  <div className="bg-white dark:bg-bpi-dark-card rounded-lg p-5 border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Total Sponsor Rewards Paid</p>
+                        <p className="text-2xl font-semibold text-amber-600 dark:text-amber-400">{formatAmount(analytics.totalSponsorRewardsPaid)}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Across all outcome types</p>
+                      </div>
+                      <span className="flex h-10 w-10 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700/50 dark:bg-amber-900/40 dark:text-amber-200">
+                        <FiGift className="h-5 w-5" />
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
@@ -1296,6 +1695,91 @@ export default function EmpowermentContent() {
                 </div>
               </motion.div>
             )}
+
+            {activeTab === 'config' && isAdminView && (
+              <motion.div
+                key="config"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="space-y-6"
+              >
+                <div className="bg-white dark:bg-bpi-dark-card rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700/50 dark:bg-emerald-900/40 dark:text-emerald-200">
+                          <FiSliders className="h-4 w-4" />
+                        </span>
+                        Empowerment Program Configuration
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Adjust rates and thresholds. Changes are audit-logged.
+                      </p>
+                    </div>
+                  </div>
+
+                  {empConfigQuery.isLoading ? (
+                    <div className="animate-pulse space-y-4">
+                      {[...Array(9)].map((_, i) => (
+                        <div key={i} className="h-10 bg-gray-200 dark:bg-gray-700 rounded" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      {[
+                        { key: 'empowerment:countdown_months', label: 'Countdown Months', hint: 'Duration before maturity (months)' },
+                        { key: 'empowerment:gross_value', label: 'Gross Package Value (₦)', hint: 'Beneficiary gross value at release' },
+                        { key: 'empowerment:csp_min_threshold', label: 'CSP Min Threshold (₦)', hint: 'Min balance for normal CSP eligibility' },
+                        { key: 'empowerment:refund_interest_rate', label: 'Full Decline Interest Rate', hint: 'e.g. 0.15 = 15%' },
+                        { key: 'empowerment:min_first_tranche_pct', label: 'Min First Tranche (%)', hint: 'Minimum % for the first release' },
+                        { key: 'empowerment:sponsor_reward_pct_full_approval', label: 'Sponsor Reward % — Full Approval', hint: 'e.g. 0.20 = 20%' },
+                        { key: 'empowerment:sponsor_reward_pct_50', label: 'Sponsor Reward % — 50% Decline', hint: 'e.g. 0.10 = 10%' },
+                        { key: 'empowerment:sponsor_reward_pct_75', label: 'Sponsor Reward % — 75% Decline', hint: 'e.g. 0.05 = 5%' },
+                        { key: 'empowerment:sponsor_reward_pct_other', label: 'Sponsor Reward % — Other Decline', hint: 'e.g. 0.05 = 5%' },
+                      ].map(({ key, label, hint }) => (
+                        <div key={key}>
+                          <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">{label}</label>
+                          <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-1.5">{hint}</p>
+                          <input
+                            type="text"
+                            value={configValues[key] ?? ''}
+                            onChange={(e) => setConfigValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-emerald-400 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-6 flex justify-end gap-3">
+                    <button
+                      onClick={() => {
+                        if (empConfigQuery.data) setConfigValues(empConfigQuery.data as Record<string, string>);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:border-gray-300 transition dark:border-gray-700 dark:text-gray-300"
+                    >
+                      Reset
+                    </button>
+                    <button
+                      onClick={() => updateConfigMut.mutate({ values: configValues })}
+                      disabled={updateConfigMut.status === 'pending' || me?.role !== 'super_admin'}
+                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed px-5 py-2 text-sm font-semibold text-white shadow transition"
+                      title={me?.role !== 'super_admin' ? 'Only super-admins can save configuration changes' : undefined}
+                    >
+                      <FiSettings className="h-4 w-4" />
+                      {updateConfigMut.status === 'pending' ? 'Saving...' : 'Save Configuration'}
+                    </button>
+                  </div>
+                  {me?.role !== 'super_admin' && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
+                      <FiAlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                      Only super-admins can save configuration changes.
+                    </p>
+                  )}
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
 
@@ -1355,6 +1839,408 @@ export default function EmpowermentContent() {
           </div>
         </div>
       </div>
+
+      {/* ── Outcome / Tranche Modal Overlay ── */}
+      <AnimatePresence>
+        {selectedPkg && isAdminView && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-start justify-end bg-black/40 backdrop-blur-sm"
+            onClick={(e) => { if (e.target === e.currentTarget) { setSelectedPkg(null); setOutcomeType(''); } }}
+          >
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              className="relative h-full w-full max-w-xl overflow-y-auto bg-white dark:bg-bpi-dark-card shadow-2xl flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-bpi-dark-card px-6 py-4">
+                <div>
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    <FiLayers className="h-5 w-5 text-emerald-600" />
+                    Outcome Management
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {selectedPkg.User_EmpowermentPackage_beneficiaryIdToUser?.name ?? 'Beneficiary'} —{' '}
+                    {selectedPkg.empowermentType?.replace('_', ' ')}
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setSelectedPkg(null); setOutcomeType(''); }}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:border-gray-300 dark:border-gray-700"
+                >
+                  <FiX className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Package summary */}
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Sponsor</p>
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      {selectedPkg.User_EmpowermentPackage_sponsorIdToUser?.name ?? '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Status</p>
+                    <p className="font-medium text-gray-900 dark:text-white">{selectedPkg.status}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Net Value</p>
+                    <p className="font-semibold text-emerald-600 dark:text-emerald-400">{formatAmount(selectedPkg.netEmpowermentValue)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Package Fee + VAT</p>
+                    <p className="font-semibold text-gray-900 dark:text-white">{formatAmount(selectedPkg.packageFee + selectedPkg.vat)}</p>
+                  </div>
+                </div>
+
+                {/* ── Outcome Setter (only when no outcome set yet) ── */}
+                {!(selectedPkg as any).outcomeType ? (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                      <FiTarget className="h-4 w-4 text-emerald-600" />
+                      Set Outcome Type
+                    </h3>
+                    <div className="space-y-2">
+                      {[
+                        { value: 'FULL_APPROVAL', label: 'Full Approval', desc: 'Beneficiary receives 100% via tranches. Sponsor reward on first tranche.' },
+                        { value: 'PARTIAL_DECLINE_50', label: 'Partial Decline 50%', desc: '50% credited to beneficiary education wallet. Sponsor gets 10% reward.' },
+                        { value: 'PARTIAL_DECLINE_75', label: 'Partial Decline 75%', desc: '25% credited to beneficiary education wallet (75% declined). Sponsor gets 5% reward.' },
+                        { value: 'PARTIAL_DECLINE_OTHER', label: 'Partial Decline (Custom %)', desc: 'Specify custom credit %. Sponsor gets 5% reward.' },
+                        { value: 'FULL_DECLINE', label: 'Full Decline', desc: 'Sponsor refunded package cost + 15% interest. CSP waiver activated for beneficiary.' },
+                      ].map((opt) => (
+                        <label key={opt.value} className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                          outcomeType === opt.value
+                            ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-700'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                        }`}>
+                          <input
+                            type="radio"
+                            name="outcomeType"
+                            value={opt.value}
+                            checked={outcomeType === opt.value}
+                            onChange={() => setOutcomeType(opt.value)}
+                            className="mt-0.5 accent-emerald-600"
+                          />
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">{opt.label}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{opt.desc}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+
+                    {outcomeType === 'PARTIAL_DECLINE_OTHER' && (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Custom Credit Percentage</label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min={1}
+                            max={99}
+                            value={customCreditPct}
+                            onChange={(e) => setCustomCreditPct(Number(e.target.value))}
+                            className="flex-1 accent-emerald-600"
+                          />
+                          <span className="w-12 text-center text-sm font-bold text-emerald-700 dark:text-emerald-300">{customCreditPct}%</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {outcomeType && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-4 space-y-2">
+                        <h4 className="text-xs font-semibold text-blue-800 dark:text-blue-200 flex items-center gap-1.5">
+                          <FiPieChart className="h-3.5 w-3.5" />
+                          Outcome Preview
+                        </h4>
+                        {(() => {
+                          const net = selectedPkg.netEmpowermentValue ?? 0;
+                          const pkgCost = selectedPkg.packageFee ?? 0;
+                          if (outcomeType === 'FULL_APPROVAL') {
+                            return (
+                              <>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>Beneficiary (via tranches)</span>
+                                  <span className="font-semibold">{formatAmount(net)}</span>
+                                </div>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>Sponsor reward (30%)</span>
+                                  <span className="font-semibold">{formatAmount(Math.round(pkgCost * 0.3))}</span>
+                                </div>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>CSP Waiver activated?</span>
+                                  <span>No</span>
+                                </div>
+                              </>
+                            );
+                          }
+                          if (outcomeType === 'PARTIAL_DECLINE_50') {
+                            return (
+                              <>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>Beneficiary credit (50%)</span>
+                                  <span className="font-semibold">{formatAmount(Math.round(net * 0.5))}</span>
+                                </div>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>Sponsor reward (10%)</span>
+                                  <span className="font-semibold">{formatAmount(Math.round(pkgCost * 0.1))}</span>
+                                </div>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>CSP Waiver activated?</span>
+                                  <span>Yes</span>
+                                </div>
+                              </>
+                            );
+                          }
+                          if (outcomeType === 'PARTIAL_DECLINE_75') {
+                            return (
+                              <>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>Beneficiary credit (25% — 75% declined)</span>
+                                  <span className="font-semibold">{formatAmount(Math.round(net * 0.25))}</span>
+                                </div>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>Sponsor reward (5%)</span>
+                                  <span className="font-semibold">{formatAmount(Math.round(pkgCost * 0.05))}</span>
+                                </div>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>CSP Waiver activated?</span>
+                                  <span>Yes</span>
+                                </div>
+                              </>
+                            );
+                          }
+                          if (outcomeType === 'PARTIAL_DECLINE_OTHER') {
+                            return (
+                              <>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>Beneficiary credit ({customCreditPct}%)</span>
+                                  <span className="font-semibold">{formatAmount(Math.round(net * customCreditPct / 100))}</span>
+                                </div>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>Sponsor reward (5%)</span>
+                                  <span className="font-semibold">{formatAmount(Math.round(pkgCost * 0.05))}</span>
+                                </div>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>CSP Waiver activated?</span>
+                                  <span>Yes</span>
+                                </div>
+                              </>
+                            );
+                          }
+                          if (outcomeType === 'FULL_DECLINE') {
+                            return (
+                              <>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>Sponsor refund (cost + 15%)</span>
+                                  <span className="font-semibold">{formatAmount(Math.round(pkgCost * 1.15))}</span>
+                                </div>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>Beneficiary credit</span>
+                                  <span>₦0</span>
+                                </div>
+                                <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                                  <span>CSP Waiver activated?</span>
+                                  <span>Yes</span>
+                                </div>
+                              </>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    )}
+
+                    {outcomeType && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 flex items-start gap-2">
+                        <FiAlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-amber-800 dark:text-amber-200">
+                          This action is <strong>irreversible</strong>. Funds will be moved immediately upon confirmation.
+                        </p>
+                      </div>
+                    )}
+
+                    <button
+                      disabled={!outcomeType || setOutcomeMut.status === 'pending'}
+                      onClick={() => {
+                        if (!outcomeType) return;
+                        setOutcomeMut.mutate({
+                          empowermentId: selectedPkg.id,
+                          outcomeType,
+                          ...(outcomeType === 'PARTIAL_DECLINE_OTHER' ? { customCreditPct } : {}),
+                        });
+                      }}
+                      className="w-full py-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold shadow transition flex items-center justify-center gap-2"
+                    >
+                      {setOutcomeMut.status === 'pending' ? (
+                        <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-r-transparent" /> Processing...</>
+                      ) : (
+                        <><FiCheckCircle className="h-4 w-4" /> Confirm Outcome</>
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  /* Outcome already set — show tranche panel for FULL_APPROVAL */
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
+                        (selectedPkg as any).outcomeType === 'FULL_APPROVAL'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800'
+                          : (selectedPkg as any).outcomeType === 'FULL_DECLINE'
+                          ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-800'
+                          : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800'
+                      }`}>
+                        <FiLayers className="h-3 w-3" />
+                        Outcome: {(selectedPkg as any).outcomeType.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+
+                    {(selectedPkg as any).outcomeType === 'FULL_APPROVAL' && (
+                      <>
+                        {/* Release progress */}
+                        <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-400">Released</span>
+                            <span className="font-semibold text-gray-900 dark:text-white">
+                              {Math.round((selectedPkg as any).totalReleasedPercent ?? 0)}% ({formatAmount((selectedPkg as any).totalReleasedAmount ?? 0)})
+                            </span>
+                          </div>
+                          <div className="h-2.5 w-full rounded-full bg-gray-100 dark:bg-gray-800">
+                            <div
+                              className="h-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all"
+                              style={{ width: `${(selectedPkg as any).totalReleasedPercent ?? 0}%` }}
+                            />
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            Remaining: {100 - Math.round((selectedPkg as any).totalReleasedPercent ?? 0)}% (≈ {formatAmount(((selectedPkg.netEmpowermentValue ?? 0) * (1 - ((selectedPkg as any).totalReleasedPercent ?? 0) / 100)))})
+                          </div>
+                        </div>
+
+                        {/* Tranche release form */}
+                        {((selectedPkg as any).totalReleasedPercent ?? 0) < 100 && (
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                              <FiGift className="h-4 w-4 text-emerald-600" />
+                              Release New Tranche
+                            </h4>
+                            <div>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Release Percentage</label>
+                                <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{tranchePct}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={1}
+                                max={100 - Math.round((selectedPkg as any).totalReleasedPercent ?? 0)}
+                                value={tranchePct}
+                                onChange={(e) => setTranchePct(Number(e.target.value))}
+                                className="w-full accent-emerald-600"
+                              />
+                              <div className="flex justify-between text-[11px] text-gray-400 mt-1">
+                                <span>Min: {(selectedPkg as any).totalReleasedPercent === 0 ? '20%' : '1%'}</span>
+                                <span>Max: {100 - Math.round((selectedPkg as any).totalReleasedPercent ?? 0)}%</span>
+                              </div>
+                            </div>
+                            <button
+                              disabled={releaseTrancheMut.status === 'pending'}
+                              onClick={() => {
+                                releaseTrancheMut.mutate({ empowermentId: selectedPkg.id, percent: tranchePct });
+                              }}
+                              className="w-full py-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold shadow transition flex items-center justify-center gap-2"
+                            >
+                              {releaseTrancheMut.status === 'pending' ? (
+                                <><div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-r-transparent" /> Releasing...</>
+                              ) : (
+                                <><FiSend className="h-4 w-4" /> Release {tranchePct}% Tranche</>
+                              )}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Tranche history */}
+                        {trancheQuery.data && trancheQuery.data.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                <FiLayers className="h-4 w-4 text-gray-500" />
+                                Tranche History
+                              </h4>
+                              <button
+                                onClick={() => {
+                                  const rows = [
+                                    ['Tranche #', 'Percent', 'Net Amount', 'Tax Amount', 'Released At'],
+                                    ...(trancheQuery.data ?? []).map((t: any) => [
+                                      t.trancheNumber,
+                                      `${t.percent}%`,
+                                      t.netAmount,
+                                      t.taxAmount ?? 0,
+                                      t.releasedAt ? new Date(t.releasedAt).toLocaleDateString() : '',
+                                    ]),
+                                  ];
+                                  const csv = rows.map((r) => r.join(',')).join('\n');
+                                  const blob = new Blob([csv], { type: 'text/csv' });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `tranches-${selectedPkg?.id ?? 'pkg'}.csv`;
+                                  a.click();
+                                  URL.revokeObjectURL(url);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 hover:border-emerald-300 hover:text-emerald-700 transition dark:border-gray-700 dark:text-gray-400"
+                              >
+                                <FiDownload className="h-3 w-3" />
+                                Export CSV
+                              </button>
+                            </div>
+                            <div className="space-y-2">
+                              {trancheQuery.data.map((t: any) => (
+                                <div key={t.id} className="flex items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs">
+                                  <div className="flex items-center gap-2">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300 font-bold text-[10px]">
+                                      {t.trancheNumber}
+                                    </span>
+                                    <span className="text-gray-700 dark:text-gray-300">{t.percent}%</span>
+                                    <span className="text-gray-400 dark:text-gray-500">· {formatDate(t.releasedAt)}</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="font-semibold text-emerald-600 dark:text-emerald-400">{formatAmount(t.netAmount)}</p>
+                                    <p className="text-gray-400 dark:text-gray-500">net</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* CSP Waiver status */}
+                    {(selectedPkg as any).cspWaiverEnabled && (
+                      <div className="rounded-lg border border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30 p-3 flex items-start gap-2">
+                        <FiShield className="h-4 w-4 text-violet-600 dark:text-violet-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-semibold text-violet-800 dark:text-violet-200">CSP Waiver Active</p>
+                          <p className="text-xs text-violet-700 dark:text-violet-300 mt-0.5">
+                            Beneficiary is eligible for one CSP approval via education wallet transfer.{' '}
+                            {(selectedPkg as any).cspWaiverUsed ? <strong>Already used.</strong> : 'Not yet used.'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

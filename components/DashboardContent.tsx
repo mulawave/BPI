@@ -23,7 +23,7 @@ import {
   Lock, Coins, BadgeDollarSign, EyeOff, RefreshCw,
   Clock, Package, CircleDollarSign, AlertTriangle,
   Megaphone, Sparkles, TrendingUpIcon, Leaf, Sun as SolarIcon,
-  GraduationCap, Download, ChevronRight, Code, Building2, ChevronLeft, Pause, Loader2, MessageCircle
+  GraduationCap, Download, ChevronRight, Code, Building2, ChevronLeft, Pause, Loader2, MessageCircle, Trophy
 } from "lucide-react";
 import { AiOutlineRobot } from "react-icons/ai";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -344,6 +344,16 @@ export default function DashboardContent({ session, customContent }: DashboardCo
             {navLoadingHref === "/elite-club" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <Crown className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium">Elite Club</div>
+            </div>
+          </Link>
+        </div>
+
+        <div className="group">
+          <Link href="/techquiz" className={navItemClass(isActive("/techquiz"))}
+            onClick={() => setNavLoadingHref("/techquiz")}>
+            {navLoadingHref === "/techquiz" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <Trophy className="w-4 h-4 flex-shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium">TechQuiz</div>
             </div>
           </Link>
         </div>

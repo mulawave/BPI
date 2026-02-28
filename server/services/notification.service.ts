@@ -48,7 +48,25 @@ export type NotificationType =
   | "ELITE_CLUB_VOTE_OPEN"
   | "ELITE_CLUB_INVESTMENT_REJECTED"
   | "ELITE_CLUB_SUSPENDED"
-  | "ELITE_CLUB_REINSTATED";
+  | "ELITE_CLUB_REINSTATED"
+  // TechQuiz Competition
+  | "TECHQUIZ_EVENT_PUBLISHED"
+  | "TECHQUIZ_APPLICATION_SUBMITTED"
+  | "TECHQUIZ_APPLICATION_SLOT_RESERVED"
+  | "TECHQUIZ_APPLICATION_VERIFIED"
+  | "TECHQUIZ_APPLICATION_REJECTED"
+  | "TECHQUIZ_CBT_ACCESS_ISSUED"
+  | "TECHQUIZ_ROUND1_RESULT"
+  | "TECHQUIZ_QUALIFIER_NOTICE"
+  | "TECHQUIZ_ROUND2_SCHEDULE"
+  | "TECHQUIZ_ROUND2_RESULT"
+  | "TECHQUIZ_FINAL_RESULTS_PUBLISHED"
+  | "TECHQUIZ_WINNER_NOTIFICATION"
+  | "TECHQUIZ_SPONSORSHIP_CONFIRMED"
+  | "TECHQUIZ_SPONSORSHIP_ALLOCATED"
+  | "TECHQUIZ_SCHOOL_QUOTA_FULL"
+  | "TECHQUIZ_SCHOOL_MIN_NOT_REACHED"
+  | "TECHQUIZ_COMPLIANCE_FLAG";
 
 interface NotificationData {
   userId: string;
@@ -375,6 +393,137 @@ export async function notifyAdminEmpowermentPending(empowermentId: string, spons
   }));
 
   await sendBulkNotifications(notifications);
+}
+
+/**
+ * Notify sponsor + beneficiary when admin sets empowerment outcome
+ */
+export async function notifyEmpowermentOutcomeSet(
+  sponsorId: string,
+  beneficiaryId: string,
+  outcomeType: string,
+  creditedAmount: number
+) {
+  const outcomeLabel =
+    outcomeType === "FULL_APPROVAL"          ? "Full Approval (100%)" :
+    outcomeType === "PARTIAL_DECLINE_50"     ? "Partial Decline (50% credited)" :
+    outcomeType === "PARTIAL_DECLINE_75"     ? "Partial Decline (25% credited)" :
+    outcomeType === "PARTIAL_DECLINE_OTHER"  ? "Partial Decline (custom %)" :
+    "Full Decline (0% credited)";
+
+  const notifications = [
+    {
+      userId: sponsorId,
+      type: "EMPOWERMENT_RELEASED" as NotificationType,
+      title: `Empowerment Outcome Set: ${outcomeLabel}`,
+      message:
+        outcomeType === "FULL_DECLINE"
+          ? "A full decline has been recorded. Your subscription refund + interest will be credited to your Cash Wallet."
+          : `Outcome confirmed. ₦${creditedAmount.toLocaleString()} will be credited to the beneficiary's education wallet.`,
+      actionUrl: "/empowerment",
+    },
+    {
+      userId: beneficiaryId,
+      type: "EMPOWERMENT_RELEASED" as NotificationType,
+      title: `Your Empowerment Outcome: ${outcomeLabel}`,
+      message:
+        outcomeType === "FULL_DECLINE"
+          ? "A full decline has been recorded for your empowerment package. Please contact your sponsor for details."
+          : `₦${creditedAmount.toLocaleString()} has been approved for your education wallet.`,
+      actionUrl: "/empowerment",
+    },
+  ];
+  await sendBulkNotifications(notifications);
+}
+
+/**
+ * Notify sponsor + beneficiary when a tranche is released (Full Approval staged release)
+ */
+export async function notifyEmpowermentTrancheReleased(
+  sponsorId: string,
+  beneficiaryId: string,
+  trancheNumber: number,
+  netAmount: number,
+  remainingPercent: number
+) {
+  const notifications = [
+    {
+      userId: beneficiaryId,
+      type: "EMPOWERMENT_RELEASED" as NotificationType,
+      title: `Tranche #${trancheNumber} Released 🎓`,
+      message: `₦${netAmount.toLocaleString()} has been credited to your education wallet. ${remainingPercent > 0 ? `${remainingPercent}% remains to be released.` : "All tranches fully released!"}`,
+      actionUrl: "/empowerment",
+    },
+    {
+      userId: sponsorId,
+      type: "EMPOWERMENT_RELEASED" as NotificationType,
+      title: `Empowerment Tranche #${trancheNumber} Released`,
+      message: `₦${netAmount.toLocaleString()} released to beneficiary education wallet. ${remainingPercent > 0 ? `${remainingPercent}% still pending.` : "Full approval complete!"}`,
+      actionUrl: "/empowerment",
+    },
+  ];
+  await sendBulkNotifications(notifications);
+}
+
+/**
+ * Notify sponsor when empowerment sponsor reward is credited
+ */
+export async function notifyEmpowermentSponsorReward(
+  sponsorId: string,
+  rewardAmount: number,
+  outcomeType: string
+) {
+  await sendBulkNotifications([
+    {
+      userId: sponsorId,
+      type: "EMPOWERMENT_RELEASED" as NotificationType,
+      title: "Empowerment Sponsor Reward Credited 💰",
+      message: `₦${rewardAmount.toLocaleString()} sponsor reward has been credited to your wallet for the ${outcomeType === "FULL_APPROVAL" ? "Full Approval" : "Partial Decline"} outcome.`,
+      actionUrl: "/dashboard",
+    },
+  ]);
+}
+
+/**
+ * Notify beneficiary when CSP waiver is activated on their empowerment package
+ */
+export async function notifyEmpowermentCspWaiverActivated(
+  beneficiaryId: string,
+  minThreshold: number
+) {
+  await sendBulkNotifications([
+    {
+      userId: beneficiaryId,
+      type: "CSP_REQUEST_APPROVED" as NotificationType,
+      title: "CSP Waiver Activated 🛡️",
+      message: `A CSP Waiver has been activated for your empowerment package. You can transfer from your education wallet to meet the minimum contribution threshold of ₦${minThreshold.toLocaleString()} and submit a CSP request.`,
+      actionUrl: "/csp",
+    },
+  ]);
+}
+
+/**
+ * Notify all admins that an empowerment package has reached maturity but no outcome has been set (24h+ reminder).
+ */
+export async function notifyAdminOutcomeNotSet(
+  packageId: string,
+  beneficiaryName: string,
+  maturityDate: Date
+) {
+  const admins = await prisma.user.findMany({
+    where: { role: { in: ["admin", "super_admin"] } },
+    select: { id: true },
+  });
+  if (admins.length === 0) return;
+  await sendBulkNotifications(
+    admins.map((a) => ({
+      userId: a.id,
+      type: "SYSTEM_ANNOUNCEMENT" as NotificationType,
+      title: "⚠️ Empowerment Outcome Pending",
+      message: `Package for ${beneficiaryName} matured on ${maturityDate.toLocaleDateString()} and no outcome has been set yet. Please review and set an outcome.`,
+      actionUrl: `/admin/empowerment?pkg=${packageId}`,
+    }))
+  );
 }
 
 /**

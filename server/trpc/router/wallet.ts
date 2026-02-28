@@ -406,6 +406,7 @@ export const walletRouter = createTRPCRouter({
         throw new Error("Please set up a PIN in your security settings before making withdrawals");
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const bcrypt = require('bcryptjs');
       const isPinValid = await bcrypt.compare(pin, user.userProfilePin);
       if (!isPinValid) {
@@ -809,13 +810,14 @@ export const walletRouter = createTRPCRouter({
       amount: z.number().positive("Amount must be greater than 0"),
       fromWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business', 'shelter']),
       toWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business', 'shelter']),
-      pin: z.string().length(4, "PIN must be 4 digits")
+      pin: z.string().length(4, "PIN must be 4 digits"),
+      reason: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = (ctx.session?.user as any)?.id;
       if (!userId) throw new Error("UNAUTHORIZED");
 
-      const { amount, fromWallet, toWallet, pin } = input;
+      const { amount, fromWallet, toWallet, pin, reason } = input;
 
       if (fromWallet === toWallet) {
         throw new Error("Cannot transfer to the same wallet");
@@ -865,6 +867,7 @@ export const walletRouter = createTRPCRouter({
         throw new Error("Please set up a PIN in your security settings before making transfers");
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const bcrypt = require('bcryptjs');
       const isPinValid = await bcrypt.compare(pin, user.userProfilePin);
       if (!isPinValid) {
@@ -881,24 +884,63 @@ export const walletRouter = createTRPCRouter({
       }
 
       // EMPOWERMENT GATE: Block transfers from education & empowermentSponsorReward until final admin confirmation
+      // CSP WAIVER EXCEPTION: Allow education → community/wallet transfers for decline beneficiaries with active waiver
       if (fromWallet === 'education' || fromWallet === 'empowermentSponsorReward') {
-        const empowermentPackage = await prisma.empowermentPackage.findFirst({
-          where: {
-            OR: [
-              { beneficiaryId: userId },
-              { sponsorId: userId }
-            ],
-            status: "Empowerment Released (Tax At Withdrawal)"
-          },
-          orderBy: { releasedAt: 'desc' }
-        });
+        // Check for active CSP waiver (decline outcome only)
+        const waiverPackage = fromWallet === 'education'
+          ? await prisma.empowermentPackage.findFirst({
+              where: {
+                beneficiaryId: userId,
+                cspWaiverEnabled: true,
+                cspWaiverUsed: false,
+              },
+              orderBy: { outcomeSetAt: 'desc' },
+            })
+          : null;
 
-        if (!empowermentPackage) {
-          throw new Error(
-            fromWallet === 'education'
-              ? "Education funds are locked. Awaiting final admin confirmation before any transfers are allowed."
-              : "Empowerment sponsor reward is locked. Awaiting final admin confirmation before any transfers are allowed."
-          );
+        if (waiverPackage && fromWallet === 'education') {
+          // Waiver active: only allow transfers to community or wallet (cash) for CSP contribution
+          const allowedTargets = ['community', 'wallet'];
+          if (!allowedTargets.includes(toWallet)) {
+            throw new Error(
+              "CSP Waiver transfers from your education wallet may only go to your Community Wallet or Cash Wallet for CSP contribution purposes."
+            );
+          }
+          // Mark waiver as used after this transfer (done post-transfer below)
+        } else {
+          // No waiver — apply standard empowerment gate
+          const empowermentPackage = await prisma.empowermentPackage.findFirst({
+            where: {
+              OR: [
+                { beneficiaryId: userId },
+                { sponsorId: userId }
+              ],
+              status: "Empowerment Released (Tax At Withdrawal)"
+            },
+            orderBy: { releasedAt: 'desc' }
+          });
+
+          if (!empowermentPackage) {
+            // Also allow Full Approval Completed packages
+            const fullyReleased = await prisma.empowermentPackage.findFirst({
+              where: {
+                OR: [{ beneficiaryId: userId }, { sponsorId: userId }],
+                status: { contains: "Full Approval" },
+              },
+            });
+            if (!fullyReleased) {
+              throw new Error(
+                fromWallet === 'education'
+                  ? "Education funds are locked. Awaiting final admin confirmation before any transfers are allowed."
+                  : "Empowerment sponsor reward is locked. Awaiting final admin confirmation before any transfers are allowed."
+              );
+            }
+          }
+        }
+        // Store waiver package reference for post-transfer update
+        if (waiverPackage) {
+          // Will be marked used after successful transfer (handled after the transfer block)
+          (input as any).__waiverPackageId = waiverPackage.id;
         }
       }
 
@@ -938,6 +980,28 @@ export const walletRouter = createTRPCRouter({
           reference: txReference
         }
       });
+
+      // CSP WAIVER: Mark waiver as used after successful education → community/wallet transfer
+      const waiverPkgId = (input as any).__waiverPackageId as string | undefined;
+      if (waiverPkgId) {
+        await prisma.empowermentPackage.update({
+          where: { id: waiverPkgId },
+          data: { cspWaiverUsed: true },
+        }).catch(() => {});
+        // Audit log for CSP waiver-triggered transfer
+        await prisma.empowermentTransaction.create({
+          data: {
+            id: randomUUID(),
+            empowermentPackageId: waiverPkgId,
+            transactionType: "CSP_WAIVER_TRANSFER",
+            grossAmount: amount,
+            taxAmount: 0,
+            netAmount: amount,
+            description: `CSP waiver education→${toWallet} transfer (₦${amount.toLocaleString()})`,
+            performedBy: userId,
+          },
+        }).catch(() => {});
+      }
 
       // EMAIL NOTIFICATION: Send transfer confirmation to user
       try {
@@ -1013,6 +1077,7 @@ export const walletRouter = createTRPCRouter({
         throw new Error("Please set up a PIN in your security settings before making transfers");
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const bcrypt = require('bcryptjs');
       const isPinValid = await bcrypt.compare(pin, sender.userProfilePin);
       if (!isPinValid) {

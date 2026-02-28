@@ -350,7 +350,7 @@ export const cspRouter = createTRPCRouter({
         loadEligibilityConfig(prisma),
         prisma.user.findUnique({
           where: { id: userId },
-          select: { activeMembershipPackageId: true, membershipActivatedAt: true, country: true },
+          select: { activeMembershipPackageId: true, membershipActivatedAt: true, country: true, community: true },
         }),
       ]);
 
@@ -405,8 +405,30 @@ export const cspRouter = createTRPCRouter({
         config,
       });
 
-      if (!eligibilityFlags.eligible) {
+      // CSP WAIVER: Check if user has an active empowerment CSP waiver (bypasses eligibility)
+      const cspWaiverPkg = await prisma.empowermentPackage.findFirst({
+        where: { beneficiaryId: userId, cspWaiverEnabled: true, cspWaiverUsed: false },
+        select: { id: true },
+      });
+      const hasCspWaiver = !!cspWaiverPkg;
+
+      if (!eligibilityFlags.eligible && !hasCspWaiver) {
         throw new Error("You do not meet the eligibility requirements for this category.");
+      }
+
+      // CSP WAIVER: Enforce minimum community wallet balance threshold
+      if (hasCspWaiver) {
+        const cspMinThresholdRecord = await prisma.adminSettings.findUnique({
+          where: { settingKey: "empowerment:csp_min_threshold" },
+          select: { settingValue: true },
+        });
+        const cspMinThreshold = cspMinThresholdRecord ? Number(cspMinThresholdRecord.settingValue) : 300000;
+        const communityBalance = user?.community ?? 0;
+        if (communityBalance < cspMinThreshold) {
+          throw new Error(
+            `Your Community Wallet balance (₦${communityBalance.toLocaleString()}) must be at least ₦${cspMinThreshold.toLocaleString()} to apply your CSP waiver. Please transfer funds from your Education Wallet first.`
+          );
+        }
       }
 
       // Enforce cooldown from last released request
@@ -447,6 +469,27 @@ export const cspRouter = createTRPCRouter({
       });
 
       await notifyCspRequestSubmitted(userId, input.category, thresholdAmount);
+
+      // CSP WAIVER: Mark waiver as used after successful CSP request submission
+      if (hasCspWaiver && cspWaiverPkg) {
+        await prisma.empowermentPackage.update({
+          where: { id: cspWaiverPkg.id },
+          data: { cspWaiverUsed: true },
+        }).catch(() => {});
+        // Audit log the CSP waiver usage
+        await prisma.empowermentTransaction.create({
+          data: {
+            id: randomUUID(),
+            empowermentPackageId: cspWaiverPkg.id,
+            transactionType: "CSP_WAIVER_APPLIED",
+            grossAmount: thresholdAmount,
+            taxAmount: 0,
+            netAmount: thresholdAmount,
+            description: `CSP waiver applied on ${input.category} request (₦${thresholdAmount.toLocaleString()})`,
+            performedBy: userId,
+          },
+        }).catch(() => {});
+      }
 
       return { requestId: request.id, status: request.status, requestedAmount, thresholdAmount };
     }),

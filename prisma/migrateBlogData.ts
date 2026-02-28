@@ -45,7 +45,7 @@ interface LegacyComment {
 }
 
 async function generateUniqueSlug(title: string, existingSlugs: Set<string>): Promise<string> {
-  let slug = slugify(title, { lower: true, strict: true });
+  const slug = slugify(title, { lower: true, strict: true });
   let counter = 1;
   let finalSlug = slug;
 
@@ -144,7 +144,7 @@ async function migrateBlogPosts(
 
     // Parse image URL
     let imageUrl: string | null = null;
-    let image: string | null = null;
+    const image: string | null = null;
 
     if (post.image && post.image.trim()) {
       // Check if it's already a full URL

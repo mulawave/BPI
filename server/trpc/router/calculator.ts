@@ -41,7 +41,7 @@ export const bpiCalculatorRouter = createTRPCRouter({
 
       const config = membershipConfigs[membershipType];
       
-      let totalEarnings = {
+      const totalEarnings = {
         cash: 0,
         bpt: 0,
         palliative: 0,

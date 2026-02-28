@@ -689,9 +689,39 @@ model EmpowermentPackage {
   totalTaxDeducted                            Float                    @default(0)
   vat                                         Float                    @default(24750)
   walletCreditAmount                          Float?
+  // --- Outcome & Tranche Release Engine (spec v2) ---
+  outcomeType                                 String?
+  creditedPercent                             Float?
+  totalReleasedPercent                        Float                    @default(0)
+  totalReleasedAmount                         Float                    @default(0)
+  sponsorRewardPaid                           Boolean                  @default(false)
+  sponsorRewardAmount                         Float                    @default(0)
+  cspWaiverEnabled                            Boolean                  @default(false)
+  cspWaiverUsed                               Boolean                  @default(false)
+  refundInterestRate                          Float                    @default(0.15)
+  beneficiaryUpgraded                         Boolean                  @default(false)
+  outcomeSetAt                                DateTime?
+  outcomeSetBy                                String?
   User_EmpowermentPackage_beneficiaryIdToUser User                     @relation("EmpowermentPackage_beneficiaryIdToUser", fields: [beneficiaryId], references: [id])
   User_EmpowermentPackage_sponsorIdToUser     User                     @relation("EmpowermentPackage_sponsorIdToUser", fields: [sponsorId], references: [id])
   EmpowermentTransaction                      EmpowermentTransaction[]
+  EmpowermentTranche                          EmpowermentTranche[]
+}
+
+model EmpowermentTranche {
+  id                   String             @id
+  empowermentPackageId String
+  trancheNumber        Int
+  percent              Float
+  grossAmount          Float
+  netAmount            Float
+  taxAmount            Float
+  releasedAt           DateTime           @default(now())
+  performedBy          String?
+  notes                String?
+  EmpowermentPackage   EmpowermentPackage @relation(fields: [empowermentPackageId], references: [id])
+
+  @@index([empowermentPackageId])
 }
 
 model EmpowermentTransaction {
@@ -1908,6 +1938,15 @@ model User {
   EliteClubContributions                                               EliteClubContribution[]
   EliteClubVotes                                                       EliteClubVote[]
   EliteClubGuarantors                                                  EliteClubGuarantor[]
+
+  // TechQuiz Relations
+  SchoolAdminProfile                                                   SchoolAdminProfile?
+  TechQuizChildBeneficiaries                                           TechQuizChildBeneficiary[]
+  TechQuizApplicationsAsParent                                         TechQuizApplication[]        @relation("TechQuizApplicationParent")
+  TechQuizOnsiteScoresGiven                                            TechQuizOnsiteScore[]        @relation("TechQuizOnsiteScoreAssessor")
+  TechQuizAuditLogsAsActor                                             TechQuizAuditLog[]           @relation("TechQuizAuditActor")
+  TechQuizConsentLogsAsParent                                          TechQuizConsentLog[]         @relation("TechQuizConsentParent")
+  TechQuizSponsors                                                     TechQuizSponsor[]            @relation("TechQuizSponsorUser")
 
   @@index([cityId])
   @@index([stateId])
@@ -3276,4 +3315,505 @@ model EliteClubLegalEvent {
   member     EliteClubMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
   @@index([memberId])
+}
+
+// ============================================================
+// BPI TECHQUIZ COMPETITION — MODELS
+// ============================================================
+
+// ---- Enums ----
+
+enum TechQuizEventStatus {
+  DRAFT
+  APPROVED
+  PUBLISHED
+  COMPLETED
+  ARCHIVED
+}
+
+enum TechQuizSchoolStatus {
+  PENDING
+  APPROVED
+  SUSPENDED
+}
+
+enum TechQuizParticipationStatus {
+  APPROVED
+  ELIGIBLE
+  NOT_ELIGIBLE
+  CLOSED
+}
+
+enum TechQuizChildStatus {
+  INACTIVE
+  TECH_QUIZ_ENABLED
+  ACTIVE
+}
+
+enum TechQuizApplicationStatus {
+  APPLIED
+  SLOT_RESERVED
+  VERIFIED
+  REJECTED
+  ROUND1_ELIGIBLE
+  QUALIFIER
+  ROUND2_ELIGIBLE
+}
+
+enum TechQuizPaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+}
+
+enum TechQuizCBTRound {
+  ROUND1
+  ROUND2
+}
+
+enum TechQuizCBTSessionStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  SCORED
+}
+
+enum TechQuizSponsorType {
+  CHILD_PARENT
+  SCHOOL_COHORT
+  PRIZE_POOL
+}
+
+enum TechQuizAllocationPool {
+  SCHOOL_POOL
+  EVENT_PRIZE_POOL
+}
+
+// ---- Core Event Model ----
+
+model TechQuizEvent {
+  id                       String               @id @default(cuid())
+  title                    String
+  state                    String
+  status                   TechQuizEventStatus  @default(DRAFT)
+  frequencyType            String?              // MONTHLY, QUARTERLY, BIANNUAL, ANNUAL — informational tag
+  applicationWindowStart   DateTime?
+  applicationWindowEnd     DateTime?
+  sponsorshipPackagePrice  Decimal              @default(18000) @db.Decimal(12, 2)
+  topQualifiersPerSchool   Int                  @default(4)
+  cbtWeightPct             Int                  @default(55)    // must sum to 100 with onsiteWeightPct
+  onsiteWeightPct          Int                  @default(45)
+  isZonalOrNational        Boolean              @default(false)
+  zonalEventType           String?              // ZONAL, NATIONAL
+  publishedAt              DateTime?
+  completedAt              DateTime?
+  createdAt                DateTime             @default(now())
+  updatedAt                DateTime             @updatedAt
+  createdBy                String?
+
+  round1Schedules          TechQuizRound1Schedule[]
+  round2Schedules          TechQuizRound2Schedule[]
+  awardBrackets            TechQuizAwardBracket[]
+  scoringRubric            TechQuizScoringRubric?
+  eventSchools             TechQuizEventSchool[]
+  applications             TechQuizApplication[]
+  qualifiers               TechQuizQualifier[]
+  results                  TechQuizResult[]
+  cbtSessions              TechQuizCBTSession[]
+  onsiteScores             TechQuizOnsiteScore[]
+  sponsorshipPackages      TechQuizSponsorshipPackage[]
+  auditLogs                TechQuizAuditLog[]
+  legalEvents              TechQuizLegalEvent[]
+
+  @@index([state])
+  @@index([status])
+}
+
+// Round 1 schedule (per event — may have multiple venues)
+model TechQuizRound1Schedule {
+  id               String         @id @default(cuid())
+  eventId          String
+  venueDescription String?
+  cbtWindowStart   DateTime?
+  cbtWindowEnd     DateTime?
+  materialReleaseAt DateTime?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  event            TechQuizEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
+// Round 2 schedule (per event)
+model TechQuizRound2Schedule {
+  id               String         @id @default(cuid())
+  eventId          String
+  venueDescription String?
+  cbtWindowStart   DateTime?
+  cbtWindowEnd     DateTime?
+  onsiteDate       DateTime?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  event            TechQuizEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
+// Award brackets per event (e.g. 1–3 = Major, 4–10 = Merit, 11–20 = Consolation)
+model TechQuizAwardBracket {
+  id               String         @id @default(cuid())
+  eventId          String
+  minRank          Int
+  maxRank          Int
+  bracketLabel     String         // "Major", "Merit", "Consolation"
+  awardDescription String?
+  bpiActivationGranted Boolean    @default(true)
+  createdAt        DateTime       @default(now())
+  event            TechQuizEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
+// Onsite scoring rubric (one per event)
+model TechQuizScoringRubric {
+  id                    String        @id @default(cuid())
+  eventId               String        @unique
+  maxPresentation       Int           @default(40)
+  maxLogicalReasoning   Int           @default(30)
+  maxUseCase            Int           @default(30)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  event                 TechQuizEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+// ---- School Models ----
+
+// BPI-approved school entity
+model TechQuizSchool {
+  id             String                @id @default(cuid())
+  name           String
+  state          String
+  contactName    String?
+  contactEmail   String?
+  contactPhone   String?
+  mouSigned      Boolean               @default(false)
+  mouSignedAt    DateTime?
+  status         TechQuizSchoolStatus  @default(PENDING)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  adminProfiles  SchoolAdminProfile[]
+  eventSchools   TechQuizEventSchool[]
+  applications   TechQuizApplication[]
+  childProfiles  TechQuizChildProfile[]
+  childBeneficiaries TechQuizChildBeneficiary[]
+  sponsorships   TechQuizSponsorshipPackage[]
+
+  @@index([state])
+  @@index([status])
+}
+
+// Junction: which schools participate in which events + quota settings
+model TechQuizEventSchool {
+  id                  String                      @id @default(cuid())
+  eventId             String
+  schoolId            String
+  minStudents         Int                         @default(10)
+  maxStudents         Int                         @default(12)
+  participationStatus TechQuizParticipationStatus @default(APPROVED)
+  enrolledCount       Int                         @default(0)
+  approvedAt          DateTime?
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+  event               TechQuizEvent               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  school              TechQuizSchool              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, schoolId])
+  @@index([eventId])
+  @@index([schoolId])
+}
+
+// Lightweight school admin profile linked to a BPI user
+model SchoolAdminProfile {
+  id        String         @id @default(cuid())
+  userId    String         @unique
+  schoolId  String
+  isActive  Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school    TechQuizSchool @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+}
+
+// ---- Parent / Child Models ----
+
+// Child beneficiary record created by parent
+model TechQuizChildBeneficiary {
+  id                   String              @id @default(cuid())
+  parentUserId         String
+  childName            String
+  dateOfBirth          DateTime?
+  email                String?
+  schoolId             String?
+  state                String?
+  parentalConsentGiven Boolean             @default(false)
+  parentalConsentAt    DateTime?
+  status               TechQuizChildStatus @default(INACTIVE)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  parent               User                @relation(fields: [parentUserId], references: [id], onDelete: Cascade)
+  school               TechQuizSchool?     @relation(fields: [schoolId], references: [id])
+  childProfiles        TechQuizChildProfile[]
+  applications         TechQuizApplication[]
+  consentLogs          TechQuizConsentLog[]
+  results              TechQuizResult[]
+
+  @@index([parentUserId])
+  @@index([schoolId])
+  @@index([status])
+}
+
+// Child TechQuiz profile mapping (state + school, per child)
+model TechQuizChildProfile {
+  id                  String                   @id @default(cuid())
+  childBeneficiaryId  String
+  state               String
+  schoolId            String
+  createdAt           DateTime                 @default(now())
+  childBeneficiary    TechQuizChildBeneficiary @relation(fields: [childBeneficiaryId], references: [id], onDelete: Cascade)
+  school              TechQuizSchool           @relation(fields: [schoolId], references: [id])
+
+  @@index([childBeneficiaryId])
+  @@index([schoolId])
+}
+
+// ---- Application Model ----
+
+model TechQuizApplication {
+  id                 String                    @id @default(cuid())
+  parentUserId       String
+  childBeneficiaryId String
+  eventId            String
+  schoolId           String
+  state              String
+  paymentReference   String?
+  paymentStatus      TechQuizPaymentStatus     @default(PENDING)
+  status             TechQuizApplicationStatus @default(APPLIED)
+  rejectionReason    String?
+  verifiedAt         DateTime?
+  verifiedBy         String?
+  appliedAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  parent             User                     @relation("TechQuizApplicationParent", fields: [parentUserId], references: [id], onDelete: Cascade)
+  childBeneficiary   TechQuizChildBeneficiary @relation(fields: [childBeneficiaryId], references: [id], onDelete: Cascade)
+  event              TechQuizEvent            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  school             TechQuizSchool           @relation(fields: [schoolId], references: [id])
+  cbtSessions        TechQuizCBTSession[]
+  onsiteScore        TechQuizOnsiteScore?
+  result             TechQuizResult?
+  qualifier          TechQuizQualifier?
+
+  @@unique([childBeneficiaryId, eventId])
+  @@index([parentUserId])
+  @@index([eventId])
+  @@index([schoolId])
+  @@index([status])
+}
+
+// ---- CBT & Scoring Models ----
+
+// CBT session per child per round
+model TechQuizCBTSession {
+  id             String                  @id @default(cuid())
+  applicationId  String
+  eventId        String
+  round          TechQuizCBTRound
+  startedAt      DateTime?
+  submittedAt    DateTime?
+  score          Decimal?                @db.Decimal(8, 2)
+  totalQuestions Int?
+  status         TechQuizCBTSessionStatus @default(NOT_STARTED)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  application    TechQuizApplication    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  event          TechQuizEvent          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, round])
+  @@index([applicationId])
+  @@index([eventId])
+  @@index([round])
+}
+
+// Onsite assessment scores (presentation, logical reasoning, use-case)
+model TechQuizOnsiteScore {
+  id                    String              @id @default(cuid())
+  applicationId         String              @unique
+  eventId               String
+  assessorUserId        String
+  presentationScore     Decimal             @default(0) @db.Decimal(8, 2)
+  logicalReasoningScore Decimal             @default(0) @db.Decimal(8, 2)
+  useCaseScore          Decimal             @default(0) @db.Decimal(8, 2)
+  totalOnsiteScore      Decimal             @default(0) @db.Decimal(8, 2)
+  notes                 String?
+  scoredAt              DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  isLocked              Boolean             @default(false)
+
+  application           TechQuizApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  event                 TechQuizEvent       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  assessor              User                @relation("TechQuizOnsiteScoreAssessor", fields: [assessorUserId], references: [id])
+
+  @@index([eventId])
+  @@index([assessorUserId])
+}
+
+// ---- Results & Ranking Models ----
+
+// Per-student results record (all scores + final rank)
+model TechQuizResult {
+  id                 String               @id @default(cuid())
+  applicationId      String               @unique
+  childBeneficiaryId String
+  eventId            String
+  round1Score        Decimal?             @db.Decimal(8, 2)
+  intraSchoolRank    Int?
+  round2CbtScore     Decimal?             @db.Decimal(8, 2)
+  onsiteScore        Decimal?             @db.Decimal(8, 2)
+  finalScore         Decimal?             @db.Decimal(8, 2)
+  finalRank          Int?
+  awardBracket       String?              // "Major", "Merit", "Consolation"
+  round1Published    Boolean              @default(false)
+  finalPublished     Boolean              @default(false)
+  bpiActivationGranted Boolean            @default(false)
+  bpiActivationGrantedAt DateTime?
+  computedAt         DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  application        TechQuizApplication  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  childBeneficiary   TechQuizChildBeneficiary @relation(fields: [childBeneficiaryId], references: [id], onDelete: Cascade)
+  event              TechQuizEvent        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([finalRank])
+  @@index([childBeneficiaryId])
+}
+
+// Qualifier record (top-N per school post Round 1)
+model TechQuizQualifier {
+  id            String              @id @default(cuid())
+  applicationId String              @unique
+  eventId       String
+  schoolId      String
+  round1Rank    Int
+  qualifiedAt   DateTime            @default(now())
+
+  application   TechQuizApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  event         TechQuizEvent       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([schoolId])
+}
+
+// ---- Sponsorship Models ----
+
+// Sponsor entity (BPI member or external)
+model TechQuizSponsor {
+  id        String                     @id @default(cuid())
+  userId    String?                    // optional: linked to BPI user
+  name      String
+  email     String?
+  phone     String?
+  status    String                     @default("ACTIVE")
+  createdAt DateTime                   @default(now())
+  updatedAt DateTime                   @updatedAt
+
+  user      User?                      @relation("TechQuizSponsorUser", fields: [userId], references: [id])
+  packages  TechQuizSponsorshipPackage[]
+
+  @@index([userId])
+}
+
+// Sponsorship package (per sponsor per event)
+model TechQuizSponsorshipPackage {
+  id               String                 @id @default(cuid())
+  sponsorId        String
+  eventId          String
+  sponsorType      TechQuizSponsorType
+  childrenCount    Int                    @default(1)
+  schoolId         String?
+  totalAmount      Decimal                @db.Decimal(12, 2)
+  paymentReference String?
+  paymentStatus    TechQuizPaymentStatus  @default(PENDING)
+  allocationPool   TechQuizAllocationPool @default(EVENT_PRIZE_POOL)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  sponsor          TechQuizSponsor        @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
+  event            TechQuizEvent          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  school           TechQuizSchool?        @relation(fields: [schoolId], references: [id])
+
+  @@index([sponsorId])
+  @@index([eventId])
+  @@index([schoolId])
+}
+
+// ---- Compliance & Audit Models ----
+
+// Parental consent log (versioned)
+model TechQuizConsentLog {
+  id                 String                   @id @default(cuid())
+  parentUserId       String
+  childBeneficiaryId String
+  consentVersion     String                   @default("1.0")
+  consentText        String?
+  consentGivenAt     DateTime                 @default(now())
+  ipAddress          String?
+
+  parent             User                     @relation("TechQuizConsentParent", fields: [parentUserId], references: [id], onDelete: Cascade)
+  childBeneficiary   TechQuizChildBeneficiary @relation(fields: [childBeneficiaryId], references: [id], onDelete: Cascade)
+
+  @@index([parentUserId])
+  @@index([childBeneficiaryId])
+}
+
+// Full audit trail for all critical TechQuiz actions
+model TechQuizAuditLog {
+  id          String         @id @default(cuid())
+  actorId     String?
+  actorRole   String?
+  action      String
+  entityType  String
+  entityId    String?
+  eventId     String?
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+
+  actor       User?          @relation("TechQuizAuditActor", fields: [actorId], references: [id])
+  event       TechQuizEvent? @relation(fields: [eventId], references: [id])
+
+  @@index([actorId])
+  @@index([eventId])
+  @@index([entityType])
+  @@index([action])
+}
+
+// Legal / compliance events per event
+model TechQuizLegalEvent {
+  id          String         @id @default(cuid())
+  eventId     String
+  description String
+  raisedBy    String?
+  raisedAt    DateTime       @default(now())
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  resolution  String?
+
+  event       TechQuizEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
 }

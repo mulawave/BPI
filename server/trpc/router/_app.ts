@@ -51,6 +51,7 @@ import { storeRouter } from "./store";
 import { helpRouter } from "./help";
 import { adminCurrencyRouter } from "./admin-currency";
 import { revenueRouter } from "./revenue";
+import { techquizRouter } from "./techquiz";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -104,6 +105,7 @@ export const appRouter = createTRPCRouter({
   help: helpRouter,
   adminCurrency: adminCurrencyRouter,
   revenue: revenueRouter,
+  techquiz: techquizRouter,
 
   // Legacy router, to be deprecated
 });

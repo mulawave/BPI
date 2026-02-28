@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Wallet, Settings, Menu, LifeBuoy, Store, Grid3x3, Wrench, User, HelpCircle, LogOut, BookOpen, Loader2 } from "lucide-react";
+import { Home, Wallet, Settings, Menu, LifeBuoy, Store, Grid3x3, Wrench, User, HelpCircle, LogOut, BookOpen, Loader2, Trophy, GraduationCap, Crown } from "lucide-react";
 import { AiOutlineRobot } from "react-icons/ai";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -60,6 +60,9 @@ export default function MobileBottomNav({
     { icon: BookOpen, label: "Blog", href: "/blog" },
     { icon: LifeBuoy, label: "BPI CSP", href: "/csp" },
     { icon: Store, label: "Store", href: "/store" },
+    { icon: GraduationCap, label: "Empowerment", href: "/empowerment" },
+    { icon: Crown, label: "Elite Club", href: "/elite-club" },
+    { icon: Trophy, label: "TechQuiz", href: "/techquiz" },
     { icon: AiOutlineRobot, label: "Smart Help", href: "/help" },
     { icon: User, label: "Account", href: "/settings" },
     { icon: LogOut, label: "Logout", href: "/api/auth/signout" },

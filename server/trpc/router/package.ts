@@ -19,6 +19,11 @@ import {
   notifyEmpowermentApproval,
   notifyEmpowermentRelease,
   notifyAdminEmpowermentPending,
+  notifyEmpowermentOutcomeSet,
+  notifyEmpowermentTrancheReleased,
+  notifyEmpowermentSponsorReward,
+  notifyEmpowermentCspWaiverActivated,
+  notifyAdminOutcomeNotSet,
   notifyReferralReward,
 } from "@/server/services/notification.service";
 import { 
@@ -1935,6 +1940,514 @@ export const packageRouter = createTRPCRouter({
       };
     }),
 
+  // ─── Outcome & Tranche Release Engine (spec v2) ──────────────────────────────
+
+  /**
+   * Admin sets the empowerment outcome (Full Approval / Partial Decline / Full Decline).
+   * This replaces the old binary approveEmpowerment for new packages.
+   * - Full Decline: refund + configurable interest to sponsor Cash Wallet; CSP waiver activated
+   * - Partial Decline: credit portion to beneficiary education wallet; reduced sponsor reward; CSP waiver
+   * - Full Approval: outcome recorded; staged tranche releases follow via releaseEmpowermentTranche
+   */
+  setEmpowermentOutcome: protectedProcedure
+    .input(
+      z.object({
+        empowermentId: z.string(),
+        outcomeType: z.enum([
+          "FULL_APPROVAL",
+          "PARTIAL_DECLINE_50",
+          "PARTIAL_DECLINE_75",
+          "PARTIAL_DECLINE_OTHER",
+          "FULL_DECLINE",
+        ]),
+        customCreditPct: z.number().min(1).max(99).optional(), // only for PARTIAL_DECLINE_OTHER
+        notes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userRole = (ctx.session?.user as any)?.role;
+      if (!ctx.session?.user || (userRole !== "admin" && userRole !== "super_admin")) throw new Error("UNAUTHORIZED - Admin only");
+      const adminId = (ctx.session.user as any).id;
+      const { empowermentId, outcomeType, customCreditPct, notes } = input;
+
+      const pkg = await prisma.empowermentPackage.findUnique({ where: { id: empowermentId } });
+      if (!pkg) throw new Error("Empowerment package not found.");
+      if (pkg.outcomeType) throw new Error("Outcome has already been set for this package.");
+
+      // Validate PARTIAL_DECLINE_OTHER requires custom percent
+      if (outcomeType === "PARTIAL_DECLINE_OTHER" && !customCreditPct) {
+        throw new Error("customCreditPct is required for PARTIAL_DECLINE_OTHER.");
+      }
+
+      // ── Load configurable values from AdminSettings ──────────────────────────
+      const refundInterestRate = await getAdminSetting("empowerment:refund_interest_rate", 0.15);
+      const cspThreshold       = await getAdminSetting("empowerment:csp_min_threshold", 300000);
+      const sponsorPct50       = await getAdminSetting("empowerment:sponsor_reward_pct_50", 0.10);
+      const sponsorPct75       = await getAdminSetting("empowerment:sponsor_reward_pct_75", 0.05);
+      const sponsorPctOther    = await getAdminSetting("empowerment:sponsor_reward_pct_other", 0.05);
+      const TAX_RATE           = pkg.taxRate / 100;
+
+      const now = new Date();
+      let creditedPercent   = 0;
+      let creditedGross     = 0;
+      let creditedNet       = 0;
+      let sponsorReward     = 0;
+      let cspWaiverEnabled  = false;
+
+      // ── Compute credited amounts by outcome ──────────────────────────────────
+      if (outcomeType === "PARTIAL_DECLINE_50") {
+        creditedPercent = 50;
+        creditedGross   = pkg.grossEmpowermentValue * 0.5;
+        creditedNet     = creditedGross * (1 - TAX_RATE);
+        sponsorReward   = creditedNet * sponsorPct50;
+        cspWaiverEnabled = true;
+      } else if (outcomeType === "PARTIAL_DECLINE_75") {
+        creditedPercent = 25;
+        creditedGross   = pkg.grossEmpowermentValue * 0.25;
+        creditedNet     = creditedGross * (1 - TAX_RATE);
+        sponsorReward   = creditedNet * sponsorPct75;
+        cspWaiverEnabled = true;
+      } else if (outcomeType === "PARTIAL_DECLINE_OTHER") {
+        creditedPercent = customCreditPct!;
+        creditedGross   = pkg.grossEmpowermentValue * (creditedPercent / 100);
+        creditedNet     = creditedGross * (1 - TAX_RATE);
+        sponsorReward   = creditedNet * sponsorPctOther;
+        cspWaiverEnabled = true;
+      } else if (outcomeType === "FULL_DECLINE") {
+        // Refund subscription fee + interest to sponsor Cash Wallet
+        creditedPercent  = 0;
+        creditedGross    = 0;
+        creditedNet      = 0;
+        sponsorReward    = 0;
+        cspWaiverEnabled = true;
+      } else {
+        // FULL_APPROVAL — no immediate credit; tranches follow
+        creditedPercent  = 100;
+        creditedGross    = pkg.grossEmpowermentValue;
+        creditedNet      = pkg.netEmpowermentValue;
+        cspWaiverEnabled = false;
+      }
+
+      const taxAmount = creditedGross - creditedNet;
+
+      await prisma.$transaction(async (tx) => {
+        // ── Full Decline: refund + interest ────────────────────────────────────
+        if (outcomeType === "FULL_DECLINE") {
+          const refundBase     = pkg.packageFee;
+          const interest       = refundBase * refundInterestRate;
+          const totalRefund    = refundBase + interest;
+          await tx.user.update({
+            where: { id: pkg.sponsorId },
+            data: { wallet: { increment: totalRefund } },
+          });
+          await tx.empowermentTransaction.create({
+            data: {
+              id: randomUUID(), empowermentPackageId: empowermentId,
+              transactionType: "FULL_DECLINE_REFUND",
+              grossAmount: totalRefund, taxAmount: 0, netAmount: totalRefund,
+              description: `Full Decline — refund ₦${refundBase.toLocaleString()} + ${(refundInterestRate * 100).toFixed(0)}% interest = ₦${totalRefund.toLocaleString()} to sponsor Cash Wallet`,
+              performedBy: adminId,
+            },
+          });
+        }
+
+        // ── Partial Decline: credit education wallet + sponsor reward ──────────
+        if (["PARTIAL_DECLINE_50", "PARTIAL_DECLINE_75", "PARTIAL_DECLINE_OTHER"].includes(outcomeType)) {
+          await tx.user.update({
+            where: { id: pkg.beneficiaryId },
+            data: { education: { increment: creditedNet } },
+          });
+          if (sponsorReward > 0) {
+            await tx.user.update({
+              where: { id: pkg.sponsorId },
+              data: { wallet: { increment: sponsorReward } },
+            });
+          }
+          await tx.empowermentTransaction.create({
+            data: {
+              id: randomUUID(), empowermentPackageId: empowermentId,
+              transactionType: "PARTIAL_DECLINE_CREDIT",
+              grossAmount: creditedGross, taxAmount, netAmount: creditedNet,
+              description: `Partial Decline (${creditedPercent}%) — ₦${creditedNet.toLocaleString()} credited to beneficiary education wallet`,
+              performedBy: adminId,
+            },
+          });
+          if (sponsorReward > 0) {
+            await tx.empowermentTransaction.create({
+              data: {
+                id: randomUUID(), empowermentPackageId: empowermentId,
+                transactionType: "SPONSOR_REWARD",
+                grossAmount: sponsorReward, taxAmount: 0, netAmount: sponsorReward,
+                description: `Sponsor reward for ${outcomeType} — ₦${sponsorReward.toLocaleString()} to Cash Wallet`,
+                performedBy: adminId,
+              },
+            });
+          }
+        }
+
+        // ── Auto-upgrade beneficiary to Regular Plus (all outcomes except Full Approval first tranche) ──
+        const shouldUpgradeNow = outcomeType !== "FULL_APPROVAL";
+        if (shouldUpgradeNow) {
+          await tx.user.update({
+            where: { id: pkg.beneficiaryId },
+            data: { packageType: "Regular Plus" },
+          }).catch(() => { /* ignore if packageType field doesn't exist */ });
+        }
+
+        // ── Update package ────────────────────────────────────────────────────
+        await tx.empowermentPackage.update({
+          where: { id: empowermentId },
+          data: {
+            outcomeType,
+            creditedPercent,
+            cspWaiverEnabled,
+            refundInterestRate,
+            sponsorRewardPaid:   outcomeType !== "FULL_APPROVAL" && sponsorReward > 0,
+            sponsorRewardAmount: outcomeType !== "FULL_APPROVAL" ? sponsorReward : 0,
+            beneficiaryUpgraded: shouldUpgradeNow,
+            outcomeSetAt: now,
+            outcomeSetBy: adminId,
+            adminApproved: true,
+            approvedBy: adminId,
+            approvedAt: now,
+            walletCreditAmount: creditedNet,
+            rejectionReason: notes ?? null,
+            status:
+              outcomeType === "FULL_APPROVAL"         ? "Full Approval — Pending Tranche Release" :
+              outcomeType === "FULL_DECLINE"          ? "Full Decline — Refund Processed" :
+              `Partial Decline (${creditedPercent}%) — Funds Released`,
+          },
+        });
+      });
+
+      // ── Post-transaction notifications ────────────────────────────────────
+      await notifyEmpowermentOutcomeSet(pkg.sponsorId, pkg.beneficiaryId, outcomeType, creditedNet);
+      if (cspWaiverEnabled) {
+        await notifyEmpowermentCspWaiverActivated(pkg.beneficiaryId, cspThreshold);
+      }
+      if (sponsorReward > 0 && outcomeType !== "FULL_APPROVAL") {
+        await notifyEmpowermentSponsorReward(pkg.sponsorId, sponsorReward, outcomeType);
+      }
+
+      return {
+        success: true,
+        outcomeType,
+        creditedPercent,
+        creditedNet,
+        sponsorReward,
+        cspWaiverEnabled,
+      };
+    }),
+
+  /**
+   * Admin releases a percentage tranche for a Full Approval package.
+   * - Enforces minimum 20% on tranche #1.
+   * - Credits beneficiary education wallet.
+   * - Triggers sponsor reward exactly once (first tranche only).
+   * - Auto-upgrades beneficiary to Regular Plus on first tranche.
+   * - Creates EmpowermentTranche ledger entry.
+   * - Sets status to "Full Approval Completed" when 100% reached.
+   */
+  releaseEmpowermentTranche: protectedProcedure
+    .input(
+      z.object({
+        empowermentId: z.string(),
+        percent: z.number().min(1).max(100),
+        notes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userRole = (ctx.session?.user as any)?.role;
+      if (!ctx.session?.user || (userRole !== "admin" && userRole !== "super_admin")) throw new Error("UNAUTHORIZED - Admin only");
+      const adminId = (ctx.session.user as any).id;
+      const { empowermentId, percent, notes } = input;
+
+      const pkg = await prisma.empowermentPackage.findUnique({ where: { id: empowermentId } });
+      if (!pkg) throw new Error("Empowerment package not found.");
+      if (pkg.outcomeType !== "FULL_APPROVAL") throw new Error("Tranche release only applies to Full Approval packages.");
+      if (pkg.totalReleasedPercent >= 100) throw new Error("All funds have already been released.");
+
+      const remainingPercent = 100 - pkg.totalReleasedPercent;
+      if (percent > remainingPercent) throw new Error(`Cannot release ${percent}% — only ${remainingPercent}% remains.`);
+
+      // Load config before gate checks so configurable minimums are respected
+      const [fullApprovalRewardPct, minFirstTranchePct] = await Promise.all([
+        getAdminSetting("empowerment:sponsor_reward_pct_full_approval", 0.20),
+        getAdminSetting("empowerment:min_first_tranche_pct", 20),
+      ]);
+
+      // Enforce configurable minimum % for first tranche (default 20%)
+      const isFirstTranche = pkg.totalReleasedPercent === 0;
+      if (isFirstTranche && percent < minFirstTranchePct) {
+        throw new Error(`Minimum first release is ${minFirstTranchePct}%. Policy block — no state changes applied.`);
+      }
+
+      const TAX_RATE    = pkg.taxRate / 100;
+      const grossAmount = pkg.grossEmpowermentValue * (percent / 100);
+      const taxAmount   = grossAmount * TAX_RATE;
+      const netAmount   = grossAmount - taxAmount;
+      const sponsorRewardGross = isFirstTranche && !pkg.sponsorRewardPaid
+        ? pkg.grossEmpowermentValue * fullApprovalRewardPct
+        : 0;
+      const sponsorRewardNet = sponsorRewardGross * (1 - TAX_RATE);
+
+      const newReleasedPercent = pkg.totalReleasedPercent + percent;
+      const newReleasedAmount  = pkg.totalReleasedAmount  + netAmount;
+      const isComplete         = newReleasedPercent >= 100;
+
+      // Count existing tranches for trancheNumber
+      const trancheCount = await prisma.empowermentTranche.count({ where: { empowermentPackageId: empowermentId } });
+      const trancheNumber = trancheCount + 1;
+
+      await prisma.$transaction(async (tx) => {
+        // Credit beneficiary education wallet
+        await tx.user.update({
+          where: { id: pkg.beneficiaryId },
+          data: { education: { increment: netAmount } },
+        });
+
+        // Sponsor reward on first tranche only
+        if (isFirstTranche && sponsorRewardNet > 0) {
+          await tx.user.update({
+            where: { id: pkg.sponsorId },
+            data: { empowermentSponsorReward: { increment: sponsorRewardNet } },
+          });
+          await tx.empowermentTransaction.create({
+            data: {
+              id: randomUUID(), empowermentPackageId: empowermentId,
+              transactionType: "SPONSOR_REWARD",
+              grossAmount: sponsorRewardGross, taxAmount: sponsorRewardGross - sponsorRewardNet, netAmount: sponsorRewardNet,
+              description: `Full Approval sponsor reward (${(fullApprovalRewardPct * 100).toFixed(0)}% of total value) — triggered once at first tranche`,
+              performedBy: adminId,
+            },
+          });
+        }
+
+        // Auto-upgrade beneficiary on first tranche
+        if (isFirstTranche && !pkg.beneficiaryUpgraded) {
+          await tx.user.update({
+            where: { id: pkg.beneficiaryId },
+            data: { packageType: "Regular Plus" },
+          }).catch(() => {});
+        }
+
+        // Create tranche ledger entry
+        await tx.empowermentTranche.create({
+          data: {
+            id: randomUUID(),
+            empowermentPackageId: empowermentId,
+            trancheNumber,
+            percent,
+            grossAmount,
+            netAmount,
+            taxAmount,
+            performedBy: adminId,
+            notes: notes ?? null,
+          },
+        });
+
+        // Create release transaction
+        await tx.empowermentTransaction.create({
+          data: {
+            id: randomUUID(), empowermentPackageId: empowermentId,
+            transactionType: "TRANCHE_RELEASE",
+            grossAmount, taxAmount, netAmount,
+            description: `Tranche #${trancheNumber} released — ${percent}% (₦${netAmount.toLocaleString()} net to beneficiary education wallet)`,
+            performedBy: adminId,
+          },
+        });
+
+        // Update package rolling totals
+        await tx.empowermentPackage.update({
+          where: { id: empowermentId },
+          data: {
+            totalReleasedPercent: newReleasedPercent,
+            totalReleasedAmount:  newReleasedAmount,
+            sponsorRewardPaid:    isFirstTranche ? true : pkg.sponsorRewardPaid,
+            sponsorRewardAmount:  isFirstTranche ? sponsorRewardNet : pkg.sponsorRewardAmount,
+            beneficiaryUpgraded:  true,
+            releasedAt:           isFirstTranche ? new Date() : pkg.releasedAt,
+            status: isComplete ? "Full Approval Completed" : `Full Approval — ${newReleasedPercent}% Released`,
+          },
+        });
+      });
+
+      const remainingAfter = 100 - newReleasedPercent;
+      await notifyEmpowermentTrancheReleased(pkg.sponsorId, pkg.beneficiaryId, trancheNumber, netAmount, remainingAfter);
+      if (isFirstTranche && sponsorRewardNet > 0) {
+        await notifyEmpowermentSponsorReward(pkg.sponsorId, sponsorRewardNet, "FULL_APPROVAL");
+      }
+
+      return {
+        success: true,
+        trancheNumber,
+        percent,
+        netAmount,
+        totalReleasedPercent: newReleasedPercent,
+        remainingPercent: remainingAfter,
+        isComplete,
+        sponsorRewardTriggered: isFirstTranche && sponsorRewardNet > 0,
+      };
+    }),
+
+  /**
+   * Query all tranche release records for a package (release history timeline).
+   */
+  getEmpowermentTranches: protectedProcedure
+    .input(z.object({ empowermentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      if (!ctx.session?.user) throw new Error("UNAUTHORIZED");
+      return prisma.empowermentTranche.findMany({
+        where: { empowermentPackageId: input.empowermentId },
+        orderBy: { trancheNumber: "asc" },
+      });
+    }),
+
+  /**
+   * Admin-only: list all empowerment packages with filters.
+   */
+  getAdminEmpowermentPackages: protectedProcedure
+    .input(
+      z.object({
+        page:        z.number().min(1).default(1),
+        pageSize:    z.number().min(1).max(100).default(20),
+        status:      z.string().optional(),
+        outcomeType: z.string().optional(),
+        search:      z.string().optional(),
+        dateFrom:    z.string().optional(),
+        dateTo:      z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userRole = (ctx.session?.user as any)?.role;
+      if (!ctx.session?.user || (userRole !== "admin" && userRole !== "super_admin")) throw new Error("UNAUTHORIZED - Admin only");
+
+      const { page, pageSize, status, outcomeType, search, dateFrom, dateTo } = input;
+      const skip = (page - 1) * pageSize;
+
+      const where: any = {};
+      if (status)      where.status      = { contains: status, mode: "insensitive" };
+      if (outcomeType) where.outcomeType = outcomeType;
+      if (dateFrom || dateTo) {
+        where.createdAt = {};
+        if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+        if (dateTo)   where.createdAt.lte = new Date(dateTo);
+      }
+      if (search) {
+        where.OR = [
+          { User_EmpowermentPackage_sponsorIdToUser:     { name:  { contains: search, mode: "insensitive" } } },
+          { User_EmpowermentPackage_beneficiaryIdToUser: { name:  { contains: search, mode: "insensitive" } } },
+          { User_EmpowermentPackage_sponsorIdToUser:     { email: { contains: search, mode: "insensitive" } } },
+        ];
+      }
+
+      const [packages, total] = await Promise.all([
+        prisma.empowermentPackage.findMany({
+          where,
+          skip,
+          take: pageSize,
+          orderBy: { createdAt: "desc" },
+          include: {
+            User_EmpowermentPackage_sponsorIdToUser:     { select: { id: true, name: true, email: true } },
+            User_EmpowermentPackage_beneficiaryIdToUser: { select: { id: true, name: true, email: true } },
+            EmpowermentTransaction: { orderBy: { createdAt: "desc" }, take: 5 },
+            EmpowermentTranche:     { orderBy: { trancheNumber: "asc" } },
+          },
+        }),
+        prisma.empowermentPackage.count({ where }),
+      ]);
+
+      return { packages, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+    }),
+
+  /**
+   * Admin: read/write empowerment programme configuration via AdminSettings.
+   */
+  getEmpowermentConfig: protectedProcedure.query(async ({ ctx }) => {
+    const userRole = (ctx.session?.user as any)?.role;
+    if (!ctx.session?.user || (userRole !== "admin" && userRole !== "super_admin")) throw new Error("UNAUTHORIZED - Admin only");
+    const keys = [
+      "empowerment:countdown_months",
+      "empowerment:gross_value",
+      "empowerment:csp_min_threshold",
+      "empowerment:refund_interest_rate",
+      "empowerment:min_first_tranche_pct",
+      "empowerment:sponsor_reward_pct_full_approval",
+      "empowerment:sponsor_reward_pct_50",
+      "empowerment:sponsor_reward_pct_75",
+      "empowerment:sponsor_reward_pct_other",
+    ];
+    const rows = await prisma.adminSettings.findMany({ where: { settingKey: { in: keys } } });
+    const defaults: Record<string, string> = {
+      "empowerment:countdown_months":              "26",
+      "empowerment:gross_value":                   "7250000",
+      "empowerment:csp_min_threshold":             "300000",
+      "empowerment:refund_interest_rate":          "0.15",
+      "empowerment:min_first_tranche_pct":         "20",
+      "empowerment:sponsor_reward_pct_full_approval": "0.20",
+      "empowerment:sponsor_reward_pct_50":         "0.10",
+      "empowerment:sponsor_reward_pct_75":         "0.05",
+      "empowerment:sponsor_reward_pct_other":      "0.05",
+    };
+    const result: Record<string, string> = { ...defaults };
+    for (const row of rows) result[row.settingKey] = row.settingValue;
+    return result;
+  }),
+
+  updateEmpowermentConfig: protectedProcedure
+    .input(
+      z.object({
+        // Accepts a flat key-value map matching AdminSettings keys (matches UI config tab)
+        values: z.record(z.string()),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userRole = (ctx.session?.user as any)?.role;
+      if (!ctx.session?.user || (userRole !== "admin" && userRole !== "super_admin")) throw new Error("UNAUTHORIZED - Admin only");
+      const adminId = (ctx.session.user as any).id;
+
+      const allowedKeys = new Set([
+        "empowerment:countdown_months",
+        "empowerment:gross_value",
+        "empowerment:csp_min_threshold",
+        "empowerment:refund_interest_rate",
+        "empowerment:min_first_tranche_pct",
+        "empowerment:sponsor_reward_pct_full_approval",
+        "empowerment:sponsor_reward_pct_50",
+        "empowerment:sponsor_reward_pct_75",
+        "empowerment:sponsor_reward_pct_other",
+      ]);
+
+      const updates = Object.entries(input.values).filter(([key]) => allowedKeys.has(key));
+      if (updates.length === 0) return { success: true, updated: 0 };
+
+      await Promise.all(
+        updates.map(([key, value]) =>
+          prisma.adminSettings.upsert({
+            where:  { settingKey: key },
+            update: { settingValue: value, updatedAt: new Date() },
+            create: { id: randomUUID(), settingKey: key, settingValue: value, description: `Empowerment config: ${key}`, updatedAt: new Date() },
+          })
+        )
+      );
+
+      // TC-10: Audit log — written to general Transaction table to avoid EmpowermentPackage FK constraint
+      await prisma.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId,
+          transactionType: "EMPOWERMENT_CONFIG_CHANGE",
+          amount: 0,
+          description: `Admin config updated (${updates.length} key(s)): ${updates.map(([k, v]) => `${k}=${v}`).join(", ")}`,
+          status: "completed",
+          reference: `CFG-${Date.now()}`,
+          walletType: "main",
+        },
+      }).catch(() => {});
+
+      return { success: true, updated: updates.length };
+    }),
+
   convertToRegularPlus: protectedProcedure
     .input(z.object({ empowermentId: z.string() }))
     .mutation(async ({ ctx, input }) => {
@@ -2764,4 +3277,94 @@ export const packageRouter = createTRPCRouter({
       records: vatRecords,
     };
   }),
+
+  // ============================================================
+  // EMPOWERMENT REWARD LOG (queryable endpoint for sponsor audit)
+  // ============================================================
+  getEmpowermentRewardLog: protectedProcedure
+    .input(
+      z.object({
+        empowermentPackageId: z.string().optional(),
+        sponsorId: z.string().optional(),
+        page: z.number().int().min(1).default(1),
+        pageSize: z.number().int().min(1).max(100).default(20),
+      }).optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id as string;
+      const role = (ctx.session?.user as any)?.role as string;
+      const isAdmin = role === 'admin' || role === 'super_admin';
+
+      const page = input?.page ?? 1;
+      const pageSize = input?.pageSize ?? 20;
+      const skip = (page - 1) * pageSize;
+
+      const where: any = { transactionType: { in: ['SPONSOR_REWARD', 'SENIOR_SPONSOR_REWARD', 'CSP_WAIVER_TRANSFER', 'CSP_WAIVER_APPLIED'] } };
+
+      if (!isAdmin) {
+        // Non-admins can only view reward logs for packages where they are beneficiary or sponsor
+        const myPkgIds = await prisma.empowermentPackage.findMany({
+          where: { OR: [{ beneficiaryId: userId }, { sponsorId: userId }] },
+          select: { id: true },
+        });
+        where.empowermentPackageId = { in: myPkgIds.map((p: any) => p.id) };
+      } else {
+        if (input?.empowermentPackageId) where.empowermentPackageId = input.empowermentPackageId;
+        if (input?.sponsorId) {
+          const pkgIds = await prisma.empowermentPackage.findMany({
+            where: { sponsorId: input.sponsorId },
+            select: { id: true },
+          });
+          where.empowermentPackageId = { in: pkgIds.map((p: any) => p.id) };
+        }
+      }
+
+      const [total, logs] = await Promise.all([
+        prisma.empowermentTransaction.count({ where }),
+        prisma.empowermentTransaction.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: pageSize,
+          include: {
+            EmpowermentPackage: {
+              select: {
+                id: true,
+                netEmpowermentValue: true,
+                Beneficiary: { select: { name: true, email: true } },
+                Sponsor: { select: { name: true } },
+              },
+            },
+          },
+        }),
+      ]);
+
+      return { total, page, pageSize, logs };
+    }),
+
+  // ============================================================
+  // ADMIN MATURITY REMINDER — trigger reminder for overdue packages
+  // ============================================================
+  sendMaturityReminder: protectedProcedure
+    .input(z.object({ empowermentPackageId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const role = (ctx.session?.user as any)?.role as string;
+      if (role !== 'admin' && role !== 'super_admin') throw new Error('Admins only');
+
+      const pkg = await prisma.empowermentPackage.findUnique({
+        where: { id: input.empowermentPackageId },
+        include: { Beneficiary: { select: { name: true } } },
+      });
+      if (!pkg) throw new Error('Package not found');
+      if (pkg.outcomeType) return { sent: false, reason: 'Outcome already set' };
+      if (!pkg.maturityDate) return { sent: false, reason: 'No maturity date set' };
+
+      await notifyAdminOutcomeNotSet(
+        pkg.id,
+        (pkg as any).Beneficiary?.name ?? 'Unknown',
+        pkg.maturityDate
+      );
+
+      return { sent: true };
+    }),
 });

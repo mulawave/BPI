@@ -35,6 +35,8 @@ import {
   Mail,
   Gift,
   Crown,
+  Trophy,
+  School,
 } from "lucide-react";
 import { FiBookOpen } from "react-icons/fi";
 import { useEffect, useState } from "react";
@@ -124,6 +126,20 @@ const navigation = [
     href: "/admin/elite-club", 
     icon: Crown,
     description: "Elite Club management & CMS"
+  },
+  {
+    name: "TechQuiz",
+    href: "/admin/techquiz",
+    icon: Trophy,
+    description: "STEM competition platform",
+    submenu: [
+      { name: "Events", href: "/admin/techquiz" },
+      { name: "Schools", href: "/admin/techquiz/schools" },
+      { name: "Reports", href: "/admin/techquiz/reports" },
+      { name: "Sponsorship", href: "/admin/techquiz/sponsorship" },
+      { name: "Compliance", href: "/admin/techquiz/compliance" },
+      { name: "Settings", href: "/admin/techquiz/settings" },
+    ],
   },
   { 
     name: "Palliatives", 

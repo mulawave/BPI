@@ -178,7 +178,7 @@ export const leadershipRouter = createTRPCRouter({
 
     // Determine next milestone
     let nextMilestone = null;
-    let nextSteps = [];
+    const nextSteps = [];
 
     if (!isRegularPlus) {
       nextSteps.push({
@@ -567,7 +567,7 @@ export const leadershipRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       // TODO: Add admin role check
 
-      let where: any = {};
+      const where: any = {};
 
       if (input.filter === 'qualified') {
         where.isQualified = true;

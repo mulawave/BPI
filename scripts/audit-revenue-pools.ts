@@ -251,6 +251,7 @@ async function checkPoolPercentages(): Promise<boolean> {
 
 function checkFileExists(path: string): boolean {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require("fs");
     return fs.existsSync(path);
   } catch {
@@ -260,6 +261,7 @@ function checkFileExists(path: string): boolean {
 
 function checkEndpointExists(endpointName: string): boolean {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require("fs");
     const content = fs.readFileSync("server/trpc/router/revenue.ts", "utf-8");
     return content.includes(`${endpointName}:`);
