@@ -80,26 +80,35 @@ export const authConfig: NextAuthOptions = {
       }
 
       // Enrich token with membership flags (Edge-safe gating via middleware)
-      try {
-        if (token?.id) {
+      // Split into two queries: (1) base membership/role — must always succeed,
+      // (2) empowerment include — may fail if schema migration not yet applied on production.
+      if (token?.id) {
+        try {
           const dbUser = await prisma.user.findUnique({
             where: { id: token.id as string },
-            include: { EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser: true },
+            select: { activeMembershipPackageId: true, userType: true },
           });
-          const hasActiveStandardPackage = !!dbUser?.activeMembershipPackageId;
-          const hasActiveEmpowermentPackage = dbUser?.EmpowermentPackage_EmpowermentPackage_beneficiaryIdToUser?.some((p: any) =>
-            typeof p?.status === "string" && p.status.startsWith("Active")
-          ) ?? false;
-
-          (token as any).hasActiveMembership = hasActiveStandardPackage;
-          (token as any).hasActiveEmpowerment = hasActiveEmpowermentPackage;
-          // Update role from database userType to keep it fresh
+          (token as any).hasActiveMembership = !!dbUser?.activeMembershipPackageId;
           token.role = dbUser?.userType ?? "user";
+        } catch (e) {
+          // Preserve existing values rather than forcing false
+          if ((token as any).hasActiveMembership === undefined) {
+            (token as any).hasActiveMembership = false;
+          }
         }
-      } catch (e) {
-        // On error, default to no active packages to remain conservative
-        (token as any).hasActiveMembership = false;
-        (token as any).hasActiveEmpowerment = false;
+
+        // Empowerment check — isolated so a schema mismatch on prod won't break login
+        try {
+          const empPkgs = await prisma.empowermentPackage.findMany({
+            where: { beneficiaryId: token.id as string },
+            select: { status: true },
+          });
+          (token as any).hasActiveEmpowerment = empPkgs.some(
+            (p: any) => typeof p?.status === "string" && p.status.startsWith("Active")
+          );
+        } catch (e) {
+          (token as any).hasActiveEmpowerment = false;
+        }
       }
 
       return token;
