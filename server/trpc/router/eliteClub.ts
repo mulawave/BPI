@@ -310,13 +310,15 @@ export const eliteClubRouter = createTRPCRouter({
       const userId = ctx.session!.user.id;
       const thresholds = TIER_THRESHOLDS[input.tier];
 
-      // Read CMS controls for token / Gold Plus gate
+      // Read CMS controls for token gate and gold invite gate (independent)
       const tierLower = input.tier.toLowerCase();
-      const [tokenGateRaw, minInvites] = await Promise.all([
+      const [tokenGateRaw, goldInviteGateRaw, minInvites] = await Promise.all([
         loadStringSetting(`elite_token_gate_enabled_${tierLower}`, "true"),
+        loadStringSetting("elite_gold_invite_gate_enabled", "false"),
         loadNumericSetting("elite_min_gold_plus_invites", 2),
       ]);
       const gateEnabled = tokenGateRaw !== "false";
+      const goldInviteGateEnabled = goldInviteGateRaw === "true";
 
       // Gold Plus membership check
       const userRecord = await prisma.user.findUnique({
@@ -370,7 +372,7 @@ export const eliteClubRouter = createTRPCRouter({
       const hasPendingApp = !!pendingApp;
 
       const isActiveMember = !!userRecord?.activated;
-      const hasEnoughInvites = !gateEnabled || goldPlusInviteCount >= minInvites;
+      const hasEnoughInvites = !goldInviteGateEnabled || goldPlusInviteCount >= minInvites;
       const isGoldPlusOk = !gateEnabled || hasGoldPlus;
       const eligible = isActiveMember && isGoldPlusOk && hasEnoughInvites && hasBpt && hasPac && !alreadyMember && !hasPendingApp;
       return {
@@ -2204,6 +2206,7 @@ export const eliteClubRouter = createTRPCRouter({
       "elite_club_ops_fee_bpi_pct",
       "elite_club_ops_fee_elite_pct",
       // Gate controls
+      "elite_gold_invite_gate_enabled",
       "elite_min_gold_plus_invites",
       "elite_recommender_min_coop_size",
       "elite_token_gate_enabled_silver",
