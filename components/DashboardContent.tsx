@@ -187,27 +187,23 @@ function ProfileField({ label, value, fieldKey, isEditable, icon: Icon, onUpdate
   );
 }
 
-export default function DashboardContent({ session, customContent }: DashboardContentProps) {
+// Inner component — keeps ALL hooks unconditional (no early returns before hooks).
+// The outer DashboardContent wrapper handles the null-session guard so this
+// component can call every hook in a fixed, predictable order.
+function DashboardContentInner({ session, customContent }: DashboardContentProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [isBlogNavPending, startBlogNav] = useTransition();
   const [navLoadingHref, setNavLoadingHref] = useState<string | null>(null);
+  // Escape-hatch: if initial data has been loading for more than 10 s we stop
+  // blocking the dashboard so the user isn't trapped on a loading screen
+  // forever (e.g. slow DB / network timeout when returning from another page).
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const readOnlyProfile = !!customContent;
   const isStorePage = pathname?.startsWith("/store");
   const containerClass = `min-h-screen w-full ${isStorePage
     ? "bg-gradient-to-br from-amber-100 via-orange-200 to-amber-300 dark:from-amber-200 dark:via-orange-300 dark:to-amber-400"
     : "bg-bpi-gradient-light dark:bg-bpi-gradient-dark"}`;
-  
-  // Safety check for session
-  if (!session || !session.user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-muted-foreground">Loading session...</p>
-        </div>
-      </div>
-    );
-  }
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const { theme, toggleTheme } = useTheme();
@@ -781,6 +777,18 @@ export default function DashboardContent({ session, customContent }: DashboardCo
   // Combined loading state - wait for critical data before rendering dashboard
   const isInitialLoading = isLoadingProfile || isLoadingWallets || isLoadingDetails;
 
+  // If queries have been loading for more than 10 s (e.g. slow DB when
+  // navigating back from the CSP / other pages), stop blocking the dashboard
+  // and render with skeleton/empty state so the user isn't stuck forever.
+  useEffect(() => {
+    if (!isInitialLoading) {
+      setLoadingTimedOut(false);
+      return;
+    }
+    const t = setTimeout(() => setLoadingTimedOut(true), 10000);
+    return () => clearTimeout(t);
+  }, [isInitialLoading]);
+
   // Community Updates queries
   const [isUpdatesModalOpen, setIsUpdatesModalOpen] = useState(false);
   // const { data: unreadUpdatesCount } = api.communityUpdates.getUnreadCount.useQuery();
@@ -1170,8 +1178,12 @@ export default function DashboardContent({ session, customContent }: DashboardCo
     }
   };
 
-  // Show loading screen while initial data is fetching
-  if (isInitialLoading) {
+  // Show loading screen while initial data is fetching, but never longer
+  // than the loadingTimedOut window (10 s) to prevent an infinite loading state.
+  // When rendering as a shell for another page (customContent is provided), skip
+  // the loading gate entirely — the shell sidebar/profile card loads progressively
+  // while the page's own content queries fire immediately without being blocked.
+  if (!customContent && isInitialLoading && !loadingTimedOut) {
     return (
       <LoadingScreen 
         message="Loading Your Dashboard"
@@ -4986,4 +4998,23 @@ export default function DashboardContent({ session, customContent }: DashboardCo
     </div>
     </div>
   );
+}
+
+/**
+ * Public export — guards against a missing session (should never happen in
+ * practice since every page passes a server-verified session, but keeps React
+ * hooks ordering clean: the null-check lives here with NO hooks, so
+ * DashboardContentInner can call all its hooks unconditionally).
+ */
+export default function DashboardContent({ session, customContent }: DashboardContentProps) {
+  if (!session?.user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">Loading session...</p>
+        </div>
+      </div>
+    );
+  }
+  return <DashboardContentInner session={session} customContent={customContent} />;
 }
