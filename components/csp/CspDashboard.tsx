@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, startTransition } from "react";
+import { useEffect, useMemo, useState, startTransition, useRef } from "react";
 import { api } from "@/client/trpc";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -70,6 +70,24 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     global: { label: "Global", minDirects: 10, minThreshold: 20000, broadcastHours: 48, minCumulativeContrib: 20000, minDistinctRequests: 10 },
   };
 
+  const utils = api.useUtils();
+
+  // ── Cancel all in-flight CSP queries when navigating away ─────────────────
+  // React Query does NOT automatically abort batched fetch requests on unmount.
+  // Without this, a slow getEligibility response holds the HTTP connection open
+  // (up to the 20s timeout), blocking Next.js navigation fetches entirely.
+  const utilsRef = useRef(utils);
+  utilsRef.current = utils;
+  useEffect(() => {
+    return () => {
+      void utilsRef.current.csp.getEligibility.cancel();
+      void utilsRef.current.csp.getWaitStatus.cancel();
+      void utilsRef.current.csp.getLiveStatus.cancel();
+      void utilsRef.current.csp.listHistory.cancel();
+      void utilsRef.current.csp.listBroadcasts.cancel();
+    };
+  }, []);
+
   const eligibilityQuery = api.csp.getEligibility.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 2 * 60 * 1000 });
   // Consume the already-cached user.getDetails (loaded by DashboardContent — zero extra fetch)
   // used as reliable fallback when eligibility cache predates a membership activation
@@ -128,9 +146,11 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     cooldownEndsAt: eligibilityQuery.data?.cooldown?.cooldownEndsAt ?? null,
   };
 
+  // Use userDetails wallet as primary source — it's already cached by DashboardContent
+  // so balances appear instantly without waiting for the slow getEligibility response.
   const balances = {
-    cash: eligibilityQuery.data?.walletBalance ?? 0,
-    community: eligibilityQuery.data?.communityBalance ?? 0,
+    cash: (userDetails as any)?.wallet ?? eligibilityQuery.data?.walletBalance ?? 0,
+    community: (userDetails as any)?.community ?? eligibilityQuery.data?.communityBalance ?? 0,
   };
 
   const eligibility = useMemo(() => {
