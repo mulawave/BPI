@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, startTransition } from "react";
 import { api } from "@/client/trpc";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -189,11 +189,15 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   useEffect(() => {
     if (!broadcasts.length) return;
     const interval = setInterval(() => {
-      setShuffledBroadcasts((prev) => {
-        const source = prev && prev.length ? prev : broadcasts;
-        return shuffleArray(source);
+      // startTransition marks this as a non-urgent update so Next.js
+      // navigation clicks are never blocked by the cosmetic shuffle re-render.
+      startTransition(() => {
+        setShuffledBroadcasts((prev) => {
+          const source = prev && prev.length ? prev : broadcasts;
+          return shuffleArray(source);
+        });
       });
-    }, 10000);
+    }, 30000);
     return () => clearInterval(interval);
   }, [broadcasts]);
 
