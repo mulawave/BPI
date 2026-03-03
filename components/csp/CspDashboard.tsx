@@ -70,11 +70,14 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     global: { label: "Global", minDirects: 10, minThreshold: 20000, broadcastHours: 48, minCumulativeContrib: 20000, minDistinctRequests: 10 },
   };
 
-  const eligibilityQuery = api.csp.getEligibility.useQuery(undefined, { refetchOnWindowFocus: false });
-  const waitStatusQuery = api.csp.getWaitStatus.useQuery(undefined, { refetchOnWindowFocus: false });
-  const liveStatusQuery = api.csp.getLiveStatus.useQuery(undefined, { refetchOnWindowFocus: false });
-  const historyQuery = api.csp.listHistory.useQuery({ pageSize: 5 }, { refetchOnWindowFocus: false });
-  const broadcastsQuery = api.csp.listBroadcasts.useQuery(undefined, { refetchOnWindowFocus: false });
+  const eligibilityQuery = api.csp.getEligibility.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 2 * 60 * 1000 });
+  // Consume the already-cached user.getDetails (loaded by DashboardContent — zero extra fetch)
+  // used as reliable fallback when eligibility cache predates a membership activation
+  const { data: userDetails } = api.user.getDetails.useQuery(undefined, { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false });
+  const waitStatusQuery = api.csp.getWaitStatus.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 2 * 60 * 1000 });
+  const liveStatusQuery = api.csp.getLiveStatus.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 60 * 1000 });
+  const historyQuery = api.csp.listHistory.useQuery({ pageSize: 5 }, { refetchOnWindowFocus: false, retry: false, staleTime: 2 * 60 * 1000 });
+  const broadcastsQuery = api.csp.listBroadcasts.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 60 * 1000 });
 
   // Derive per-category config from backend when available, fall back to static defaults
   const categoryRules = {
@@ -110,9 +113,10 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   });
 
   const profile = {
-    membership: (eligibilityQuery.data?.membershipName?.toLowerCase() as Membership) ?? ("basic" as Membership),
-    membershipLabel: eligibilityQuery.data?.membershipName ?? "No active membership",
-    membershipActive: eligibilityQuery.data?.membershipActive ?? false,
+    membership: (eligibilityQuery.data?.membershipName?.toLowerCase() as Membership) ?? ((userDetails?.activeMembership as any)?.name?.toLowerCase() as Membership) ?? ("basic" as Membership),
+    // Prefer eligibility result; fall back to user.getDetails cache so stale eligibility never hides a valid membership
+    membershipLabel: eligibilityQuery.data?.membershipName ?? (userDetails?.activeMembership as any)?.name ?? "No active membership",
+    membershipActive: eligibilityQuery.data?.membershipActive ?? !!userDetails?.activeMembership,
     directReferrals: eligibilityQuery.data?.directReferrals ?? 0,
     qualifiedDirects: eligibilityQuery.data?.qualifiedDirects ?? 0,
     contributionsMade: eligibilityQuery.data?.cumulativeContributions ?? 0,

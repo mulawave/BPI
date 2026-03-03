@@ -135,7 +135,7 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
         <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-[#4a4a4a] text-[#4a4a4a] text-lg sm:text-xl pointer-events-none"><AiOutlineIdcard /></span>
         <Input
           name="screenname"
-          placeholder="Screen Name"
+            placeholder="Username"
           value={form.screenname}
           onChange={handleChange}
           required

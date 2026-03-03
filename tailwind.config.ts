@@ -72,7 +72,21 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["Inter", ...fontFamily.sans]
-      }
+      },
+      keyframes: {
+        shimmer: {
+          '0%': { backgroundPosition: '200% 0' },
+          '100%': { backgroundPosition: '-200% 0' },
+        },
+        'shimmer-slide': {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(100%)' },
+        },
+      },
+      animation: {
+        shimmer: 'shimmer 2.2s ease-in-out infinite',
+        'shimmer-once': 'shimmer 2.2s ease-in-out 1',
+      },
     }
   },
   // eslint-disable-next-line @typescript-eslint/no-require-imports

@@ -209,6 +209,7 @@ export const cspRouter = createTRPCRouter({
     const userId = (ctx.session?.user as any)?.id as string | undefined;
     if (!userId) throw new Error("UNAUTHORIZED");
 
+    // ── Phase 1: fetch config + user profile in parallel ─────────────────────
     const [config, user] = await Promise.all([
       loadEligibilityConfig(prisma),
       prisma.user.findUnique({
@@ -224,28 +225,77 @@ export const cspRouter = createTRPCRouter({
       }),
     ]);
 
-    const membershipName = user?.activeMembershipPackageId
-      ? (await prisma.membershipPackage.findUnique({
-          where: { id: user.activeMembershipPackageId },
-          select: { name: true },
-        }))?.name ?? null
-      : null;
+    const userCountryCode = (user as any)?.country ?? null;
 
-    const membership = normalizeMembership(membershipName);
-    const membershipActive = Boolean(user?.membershipActivatedAt && membershipName);
+    // ── Phase 2: fire all remaining independent queries in parallel ───────────
+    const [
+      membershipRow,
+      allReferrals,
+      contributionGroups,
+      regularPkgIds,
+      userCountryRecord,
+      anyActivatedCountry,
+      latestReleased,
+    ] = await Promise.all([
+      // Membership name lookup (null-safe)
+      user?.activeMembershipPackageId
+        ? prisma.membershipPackage.findUnique({
+            where: { id: user.activeMembershipPackageId },
+            select: { name: true },
+          })
+        : Promise.resolve(null),
 
-    // Count only qualified directs: referred users with at least a Regular membership
-    const allReferrals = await prisma.referral.findMany({
-      where: { referrerId: userId },
-      select: { referredId: true },
-    });
-    const referredIds = allReferrals.map((r: any) => r.referredId);
-    let qualifiedDirects = 0;
-    if (referredIds.length > 0) {
-      const regularPkgIds = await prisma.membershipPackage.findMany({
+      // Direct referrals
+      prisma.referral.findMany({
+        where: { referrerId: userId },
+        select: { referredId: true },
+      }),
+
+      // Contribution stats
+      prisma.cspContribution.groupBy({
+        by: ["requestId"],
+        where: { contributorId: userId },
+        _sum: { amount: true },
+      }),
+
+      // Qualified membership package IDs (used to count qualified directs)
+      prisma.membershipPackage.findMany({
         where: { name: { in: ["Regular", "Regular Plus", "Gold", "Gold Plus", "Platinum", "Platinum Plus"] } },
         select: { id: true },
-      });
+      }),
+
+      // User's country activation record
+      userCountryCode
+        ? prisma.cspCountry.findUnique({ where: { countryCode: userCountryCode } })
+        : Promise.resolve(null),
+
+      // Any globally-activated country
+      prisma.cspCountry.findFirst({ where: { isNationalActive: true } }),
+
+      // Cooldown — most recent released request
+      prisma.cspSupportRequest.findFirst({
+        where: { userId, status: "released", cooldownEndsAt: { not: null } },
+        orderBy: { releasedAt: "desc" },
+        select: { id: true, cooldownEndsAt: true, cooldownMonths: true, releasedAt: true },
+      }),
+    ]);
+
+    const membershipName = membershipRow?.name ?? null;
+    const membership = normalizeMembership(membershipName);
+    // Use activeMembershipPackageId as the source of truth (same as user.getDetails),
+    // NOT membershipActivatedAt which may be null for some activated members.
+    const membershipActive = Boolean(user?.activeMembershipPackageId && membershipName);
+
+    const referredIds = allReferrals.map((r: any) => r.referredId);
+    const cumulativeContributions = contributionGroups.reduce((sum: number, row: any) => sum + (row._sum.amount ?? 0), 0);
+    const requestsContributed = contributionGroups.length;
+
+    const userCountryIsActivated = userCountryRecord?.isNationalActive ?? false;
+    const hasAnyActivatedCountry = anyActivatedCountry !== null;
+
+    // ── Phase 3: qualified-directs count (depends on referredIds + pkg IDs) ───
+    let qualifiedDirects = 0;
+    if (referredIds.length > 0) {
       const regularPkgIdSet = new Set(regularPkgIds.map((p: any) => p.id));
       const qualifiedUsers = await prisma.user.findMany({
         where: {
@@ -258,36 +308,11 @@ export const cspRouter = createTRPCRouter({
       qualifiedDirects = qualifiedUsers.length;
     }
 
-    const contributionGroups = await prisma.cspContribution.groupBy({
-      by: ["requestId"],
-      where: { contributorId: userId },
-      _sum: { amount: true },
-    });
-    const cumulativeContributions = contributionGroups.reduce((sum: number, row: any) => sum + (row._sum.amount ?? 0), 0);
-    const requestsContributed = contributionGroups.length;
-
-    // Country activation check
-    const userCountryCode = (user as any)?.country ?? null;
-    const [userCountryRecord, anyActivatedCountry] = await Promise.all([
-      userCountryCode
-        ? prisma.cspCountry.findUnique({ where: { countryCode: userCountryCode } })
-        : Promise.resolve(null),
-      prisma.cspCountry.findFirst({ where: { isNationalActive: true } }),
-    ]);
-    const userCountryIsActivated = userCountryRecord?.isNationalActive ?? false;
-    const hasAnyActivatedCountry = anyActivatedCountry !== null;
-
     const categories = {
       national: computeEligibilityFlags({ category: "national", membership, membershipActive, qualifiedDirects, cumulativeContributions, requestsContributed, hasAnyActivatedCountry, userCountryIsActivated, config }),
       global: computeEligibilityFlags({ category: "global", membership, membershipActive, qualifiedDirects, cumulativeContributions, requestsContributed, hasAnyActivatedCountry, userCountryIsActivated, config }),
     } as const;
 
-    // Cooldown status from most recent released request
-    const latestReleased = await prisma.cspSupportRequest.findFirst({
-      where: { userId, status: "released", cooldownEndsAt: { not: null } },
-      orderBy: { releasedAt: "desc" },
-      select: { id: true, cooldownEndsAt: true, cooldownMonths: true, releasedAt: true },
-    });
     const cooldownActive = latestReleased?.cooldownEndsAt ? latestReleased.cooldownEndsAt > new Date() : false;
 
     return {

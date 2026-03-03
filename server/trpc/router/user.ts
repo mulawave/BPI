@@ -2,7 +2,10 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
-import { sendVerificationEmail } from "@/lib/email";
+import { randomUUID } from "crypto";
+import { hash } from "bcryptjs";
+import { sendVerificationEmail, sendWelcomeEmail } from "@/lib/email";
+import { TRPCError } from "@trpc/server";
 
 // Store verification codes temporarily (in production, use Redis or database)
 const verificationCodes = new Map<string, { code: string; expiresAt: Date }>();
@@ -294,5 +297,107 @@ export const userRouter = createTRPCRouter({
         screenName: user.username,
         image: user.image,
       }));
+    }),
+
+  /**
+   * Create a brand-new platform user anchored as both a direct referral AND
+   * a beneficiary candidate for the calling user.  The calling user's
+   * inviteCode is injected as ref_id so the sponsorship chain is established
+   * automatically on creation.
+   */
+  createBeneficiary: protectedProcedure
+    .input(
+      z.object({
+        firstname: z.string().min(2, "First name must be at least 2 characters"),
+        lastname: z.string().min(2, "Last name must be at least 2 characters"),
+        screenname: z.string().min(3, "Screen name must be at least 3 characters"),
+        gender: z.enum(["male", "female"]),
+        email: z.string().email("Please enter a valid email address"),
+        password: z.string().min(8, "Password must be at least 8 characters"),
+        confirmPassword: z.string(),
+      }).refine((d) => d.password === d.confirmPassword, {
+        message: "Passwords do not match",
+        path: ["confirmPassword"],
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const callerId = (ctx.session!.user as any).id as string;
+
+      // Fetch calling user to get their inviteCode (for referral anchoring)
+      const caller = await prisma.user.findUnique({
+        where: { id: callerId },
+        select: { id: true, inviteCode: true },
+      });
+      if (!caller) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "User session invalid" });
+      }
+
+      const { firstname, lastname, screenname, gender, email, password } = input;
+
+      // Check for duplicate email
+      const existingEmail = await prisma.user.findUnique({ where: { email } });
+      if (existingEmail) {
+        throw new TRPCError({ code: "CONFLICT", message: "A user with this email already exists" });
+      }
+
+      // Check for duplicate screen name
+      const existingScreen = await prisma.user.findFirst({ where: { name: screenname } });
+      if (existingScreen) {
+        throw new TRPCError({ code: "CONFLICT", message: "This screen name is already taken" });
+      }
+
+      const passwordHash = await hash(password, 12);
+
+      // Generate unique invite code
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let inviteCode = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+      for (let i = 0; i < 10; i++) {
+        const clash = await prisma.user.findUnique({ where: { inviteCode } });
+        if (!clash) break;
+        inviteCode = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+      }
+
+      const newUser = await prisma.user.create({
+        data: {
+          id: randomUUID(),
+          name: screenname,
+          firstname,
+          lastname,
+          gender,
+          email,
+          passwordHash,
+          role: "user",
+          inviteCode,
+          referralLink: `https://beepagro.com/register?ref=${inviteCode}`,
+          sponsorId: caller.id,
+          referredBy: caller.id,
+        },
+      });
+
+      // Record referral
+      try {
+        await prisma.$executeRaw`
+          INSERT INTO "Referral" (id, "referrerId", "referredId", status, "rewardPaid", "createdAt", "updatedAt")
+          VALUES (${randomUUID()}, ${caller.id}, ${newUser.id}, 'active', false, NOW(), NOW())
+        `;
+      } catch (err) {
+        // Non-fatal — don't block beneficiary creation
+        console.error("[user.createBeneficiary] Referral record failed:", err);
+      }
+
+      // Welcome email (non-fatal)
+      if (newUser.email) {
+        try {
+          await sendWelcomeEmail(newUser.email, newUser.firstname || newUser.name || "Member");
+        } catch (err) {
+          console.error("[user.createBeneficiary] Welcome email failed:", err);
+        }
+      }
+
+      return {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+      };
     }),
 });

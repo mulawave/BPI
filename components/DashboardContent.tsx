@@ -8,7 +8,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/client/trpc";
-import LoadingScreen from "@/components/LoadingScreen";
+import DashboardLoadingSkeleton from "@/components/layout/DashboardLoadingSkeleton";
 import { 
   User, Calendar, DollarSign, Users, TrendingUp, 
   Bell, Settings, LogOut, ChevronDown, Play,
@@ -263,9 +263,20 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
   const currentPath = pathname || "";
   const isActive = (href: string) => currentPath === href || currentPath.startsWith(`${href}/`);
+
+  // Clear spinner immediately when the path commits to the target route.
   useEffect(() => {
     setNavLoadingHref(null);
   }, [currentPath]);
+
+  // Safety-net: never let a nav spinner stay longer than 12 s (covers slow
+  // server renders, timed-out tRPC batches, etc. that would otherwise keep
+  // the sidebar frozen indefinitely when navigating to /csp or other pages).
+  useEffect(() => {
+    if (!navLoadingHref) return;
+    const t = setTimeout(() => setNavLoadingHref(null), 12000);
+    return () => clearTimeout(t);
+  }, [navLoadingHref]);
   const navItemClass = (active: boolean) =>
     active
       ? "flex items-center gap-2 px-2.5 py-2 rounded-lg bg-gradient-to-r from-bpi-primary to-bpi-secondary text-white shadow-sm"
@@ -538,11 +549,19 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
   // API data fetching
   const utils = api.useUtils();
-  const { data: userProfile, isLoading: isLoadingProfile } = api.user.getDetails.useQuery(undefined, {
+  // Single source of truth for user details — guards all user-dependent triggers
+  const {
+    data: userProfile,
+    isLoading: isLoadingProfile,
+    isError: isErrorDetails,
+  } = api.user.getDetails.useQuery(undefined, {
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
+  // Aliases used in activation gating below (same cache entry — no extra fetch)
+  const userDetails = userProfile;
+  const isLoadingDetails = isLoadingProfile;
   const { data: dashboardData, isLoading: isLoadingWallets } = api.dashboard.getOverview.useQuery(undefined, {
     staleTime: 2 * 60 * 1000, // 2 minutes
     gcTime: 5 * 60 * 1000,
@@ -599,12 +618,8 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   const activeShelters = undefined; // REMOVED - was mock data
   const leadershipPool = leadershipData;
   
-  // New membership package query for gating
-  const { data: userDetails, isLoading: isLoadingDetails } = api.user.getDetails.useQuery(undefined, {
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-  const needsActivation = !isLoadingDetails && !userDetails?.activeMembership;
+  // Only show activation modal when: query settled, no error, data received, and user truly has no active membership
+  const needsActivation = !isLoadingDetails && !isErrorDetails && !!userDetails && !userDetails?.activeMembership;
   
   // Training progress for current course tracker
   const { data: myTrainingProgress } = api.trainingCenter.getMyProgress.useQuery(undefined, {
@@ -705,7 +720,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   });
   
   // Get third-party platforms summary
-  const { data: summary } = api.thirdPartyPlatforms.getSummary.useQuery(undefined, {
+  const { data: summary, isLoading: isLoadingSummary } = api.thirdPartyPlatforms.getSummary.useQuery(undefined, {
     staleTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
@@ -775,7 +790,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   const backfillVatMutation = api.package.backfillMembershipVat.useMutation();
   
   // Combined loading state - wait for critical data before rendering dashboard
-  const isInitialLoading = isLoadingProfile || isLoadingWallets || isLoadingDetails;
+  const isInitialLoading = isLoadingProfile || isLoadingWallets || isLoadingDetails || isLoadingCommunityStats || isLoadingSummary;
 
   // If queries have been loading for more than 10 s (e.g. slow DB when
   // navigating back from the CSP / other pages), stop blocking the dashboard
@@ -918,8 +933,9 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   }, [showAnnouncement]);
 
   // Automated email verification reminder - Show modal every 30 seconds if email not verified
+  // Guard: only start the interval once user data has fully loaded (avoid false-positive on undefined)
   useEffect(() => {
-    if (!userProfile?.emailVerified && !showEmailVerificationDialog) {
+    if (!isLoadingProfile && !isErrorDetails && userProfile && !userProfile.emailVerified && !showEmailVerificationDialog) {
       const interval = setInterval(() => {
         // Only show reminder if it's been more than 30 seconds since last reminder
         const now = Date.now();
@@ -931,7 +947,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
       return () => clearInterval(interval);
     }
-  }, [userProfile?.emailVerified, showEmailVerificationDialog, lastEmailReminderTime]);
+  }, [isLoadingProfile, isErrorDetails, userProfile, userProfile?.emailVerified, showEmailVerificationDialog, lastEmailReminderTime]);
 
   // API queries - temporarily commented for demo
   // const { data: bpiMember } = api.bpi.getBpiMember.useQuery();
@@ -1184,12 +1200,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   // the loading gate entirely — the shell sidebar/profile card loads progressively
   // while the page's own content queries fire immediately without being blocked.
   if (!customContent && isInitialLoading && !loadingTimedOut) {
-    return (
-      <LoadingScreen 
-        message="Loading Your Dashboard"
-        subtitle="Fetching your personalized data..."
-      />
-    );
+    return <DashboardLoadingSkeleton label="Loading your dashboard…" />;
   }
 
   const blogPosts = latestBlogPosts?.posts || [];
@@ -1662,8 +1673,8 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
           </div>
         ) : (
           <>
-        {/* Profile Completion Banner - Only show if membership is active */}
-        {!needsActivation && !isProfileComplete && (
+        {/* Profile Completion Banner - Only show after user data fully loaded, membership confirmed active, profile incomplete */}
+        {!isLoadingProfile && !!userProfile && !needsActivation && !isProfileComplete && (
           <div className="mb-6 relative z-30">
             <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl p-6 shadow-2xl border-2 border-orange-300">
               <div className="flex items-start gap-4">
@@ -1703,8 +1714,8 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
         <div className="grid grid-cols-12 gap-3 lg:gap-4 relative items-start">
           
-          {/* Profile Incomplete Overlay - Only show if membership is active AND profile is incomplete */}
-          {!needsActivation && !isProfileComplete && (
+          {/* Profile Incomplete Overlay - Only show if user fully loaded, membership confirmed active, profile incomplete */}
+          {!isLoadingProfile && !!userProfile && !needsActivation && !isProfileComplete && (
             <>
               {/* Semi-transparent blocking overlay - covers header and all content */}
               <div 
@@ -4222,9 +4233,9 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                   </div>
                 </>
               ) : (
-                <div className="text-center py-4">
-                  <div className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                  <p className="text-xs text-muted-foreground">Loading platforms...</p>
+                <div className="text-center py-4 bg-gray-50 dark:bg-bpi-dark-accent/30 rounded-lg border border-gray-200 dark:border-bpi-dark-accent">
+                  <p className="text-sm text-muted-foreground mb-1">No platforms available</p>
+                  <p className="text-xs text-muted-foreground">Check back later for team growth opportunities</p>
                 </div>
               )}
             </Card>

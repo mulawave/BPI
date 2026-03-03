@@ -8354,17 +8354,22 @@ export const adminRouter = createTRPCRouter({
 
       const now = new Date();
       const currentActivatedAt = user.membershipActivatedAt || now;
-      
-      // Calculate new expiration: add extension months to the current expiration
-      // Current expiration is activatedAt + 1 year
-      const currentExpiresAt = new Date(currentActivatedAt);
-      currentExpiresAt.setFullYear(currentExpiresAt.getFullYear() + 1);
-      
+
+      // Use membershipExpiresAt as the authoritative base if it exists;
+      // otherwise fall back to activatedAt + 1 year (handles legacy records).
+      const currentExpiresAt = user.membershipExpiresAt
+        ? new Date(user.membershipExpiresAt)
+        : (() => {
+            const d = new Date(currentActivatedAt);
+            d.setFullYear(d.getFullYear() + 1);
+            return d;
+          })();
+
       // New expiration = current expiration + extension months
       const newExpiresAt = new Date(currentExpiresAt);
       newExpiresAt.setMonth(newExpiresAt.getMonth() + input.months);
-      
-      // Calculate new start date by subtracting 1 year from new expiration
+
+      // Keep activatedAt consistent: new expiration minus 1 year
       const newStartDate = new Date(newExpiresAt);
       newStartDate.setFullYear(newStartDate.getFullYear() - 1);
 
@@ -8372,6 +8377,7 @@ export const adminRouter = createTRPCRouter({
         where: { id: input.userId },
         data: {
           membershipActivatedAt: newStartDate,
+          membershipExpiresAt: newExpiresAt,   // ← the field the system actually reads
           updatedAt: now,
         },
       });
@@ -8388,6 +8394,7 @@ export const adminRouter = createTRPCRouter({
             userEmail: user.email,
             userName: user.name,
             extensionMonths: input.months,
+            previousExpiresAt: currentExpiresAt.toISOString(),
             previousActivatedAt: currentActivatedAt.toISOString(),
             newActivatedAt: newStartDate.toISOString(),
             newExpiresAt: newExpiresAt.toISOString(),

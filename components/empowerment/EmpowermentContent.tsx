@@ -30,14 +30,19 @@ import {
   FiDownload,
   FiSettings,
   FiEye,
+  FiEyeOff,
   FiGift,
   FiSliders,
   FiAlertTriangle,
   FiLayers,
+  FiUserPlus,
+  FiUser,
+  FiMail,
+  FiLock,
+  FiTag,
 } from 'react-icons/fi';
 import { api } from '@/client/trpc';
 import toast from 'react-hot-toast';
-import AdminActivityTracker from '@/components/admin/AdminActivityTracker';
 
 const PACKAGE_COST = 354750; // ₦330,000 + ₦24,750 VAT
 
@@ -124,6 +129,26 @@ export default function EmpowermentContent() {
   const [cspTransferAmount, setCspTransferAmount] = useState<string>('');
   const [cspTransferPin, setCspTransferPin] = useState<string>('');
   const [cspTransferTarget, setCspTransferTarget] = useState<'community' | 'wallet'>('community');
+
+  // Create-beneficiary form state
+  const [showCreateBeneficiary, setShowCreateBeneficiary] = useState(false);
+  const [benCreateForm, setBenCreateForm] = useState({
+    firstname: '',
+    lastname: '',
+    screenname: '',
+    gender: '' as 'male' | 'female' | '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    captcha: '',
+  });
+  const [benCreateErr, setBenCreateErr] = useState<string | null>(null);
+  const [benCaptchaNums, setBenCaptchaNums] = useState<[number, number]>([
+    Math.floor(Math.random() * 10) + 1,
+    Math.floor(Math.random() * 10) + 1,
+  ]);
+  const [benShowPass, setBenShowPass] = useState(false);
+  const [benShowConfPass, setBenShowConfPass] = useState(false);
 
   const formatAmount = (value: number) => `₦${value.toLocaleString()}`;
   const formatDate = (value?: Date | string | null) => {
@@ -278,6 +303,42 @@ export default function EmpowermentContent() {
     },
     onError: (e) => toast.error(e.message || 'Transfer failed'),
   });
+
+  const createBeneficiaryMut = api.user.createBeneficiary.useMutation({
+    onSuccess: (data) => {
+      setSelectedBeneficiary({ id: data.id, name: data.name ?? null, email: data.email ?? null });
+      setShowCreateBeneficiary(false);
+      setBenCreateForm({ firstname: '', lastname: '', screenname: '', gender: '', email: '', password: '', confirmPassword: '', captcha: '' });
+      setBenCreateErr(null);
+      toast.success('🎉 Beneficiary created and selected! Proceed to activate the package.');
+    },
+    onError: (e) => {
+      setBenCreateErr(e.message || 'Failed to create beneficiary');
+      // Refresh captcha on error
+      setBenCaptchaNums([Math.floor(Math.random() * 10) + 1, Math.floor(Math.random() * 10) + 1]);
+    },
+  });
+
+  const handleCreateBeneficiary = () => {
+    setBenCreateErr(null);
+    if (parseInt(benCreateForm.captcha, 10) !== benCaptchaNums[0] + benCaptchaNums[1]) {
+      setBenCreateErr('Incorrect captcha answer. Please try again.');
+      setBenCreateForm((p) => ({ ...p, captcha: '' }));
+      setBenCaptchaNums([Math.floor(Math.random() * 10) + 1, Math.floor(Math.random() * 10) + 1]);
+      return;
+    }
+    if (!benCreateForm.gender) { setBenCreateErr('Please select a gender.'); return; }
+    if (benCreateForm.password !== benCreateForm.confirmPassword) { setBenCreateErr('Passwords do not match.'); return; }
+    createBeneficiaryMut.mutate({
+      firstname: benCreateForm.firstname,
+      lastname: benCreateForm.lastname,
+      screenname: benCreateForm.screenname,
+      gender: benCreateForm.gender as 'male' | 'female',
+      email: benCreateForm.email,
+      password: benCreateForm.password,
+      confirmPassword: benCreateForm.confirmPassword,
+    });
+  };
 
   // Handle payment verification from redirect
   useEffect(() => {
@@ -787,6 +848,198 @@ export default function EmpowermentContent() {
                           <p className="text-gray-600 dark:text-gray-400">No members found</p>
                         </div>
                       )}
+
+                      {/* Divider */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                        <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">or add someone new</span>
+                        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                      </div>
+
+                      {/* Create-New-Beneficiary Toggle */}
+                      <motion.button
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        onClick={() => {
+                          setShowCreateBeneficiary(!showCreateBeneficiary);
+                          setBenCreateErr(null);
+                          if (!showCreateBeneficiary) {
+                            setBenCaptchaNums([Math.floor(Math.random() * 10) + 1, Math.floor(Math.random() * 10) + 1]);
+                          }
+                        }}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg border-2 border-dashed border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-sm font-medium"
+                      >
+                        <FiUserPlus className="w-4 h-4" />
+                        {showCreateBeneficiary ? 'Cancel — go back to search' : 'Create New Beneficiary'}
+                      </motion.button>
+
+                      {/* Inline Create-Beneficiary Form */}
+                      <AnimatePresence>
+                        {showCreateBeneficiary && (
+                          <motion.div
+                            key="create-beneficiary-form"
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.3, ease: 'easeInOut' }}
+                            className="overflow-hidden"
+                          >
+                            <div className="pt-2 space-y-3 border border-emerald-200 dark:border-emerald-800 rounded-xl p-5 bg-emerald-50/40 dark:bg-emerald-950/20">
+                              <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium leading-relaxed">
+                                Register a new member directly as your referral &amp; beneficiary. They will be anchored under your account.
+                              </p>
+
+                              {/* First + Last Name */}
+                              <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-full border border-gray-400 text-gray-500 pointer-events-none">
+                                    <FiUser className="w-3 h-3" />
+                                  </span>
+                                  <input
+                                    type="text"
+                                    placeholder="First Name"
+                                    value={benCreateForm.firstname}
+                                    onChange={(e) => setBenCreateForm((p) => ({ ...p, firstname: e.target.value }))}
+                                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                  />
+                                </div>
+                                <div className="relative flex-1">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-full border border-gray-400 text-gray-500 pointer-events-none">
+                                    <FiUser className="w-3 h-3" />
+                                  </span>
+                                  <input
+                                    type="text"
+                                    placeholder="Last Name"
+                                    value={benCreateForm.lastname}
+                                    onChange={(e) => setBenCreateForm((p) => ({ ...p, lastname: e.target.value }))}
+                                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Screen Name */}
+                              <div className="relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-full border border-gray-400 text-gray-500 pointer-events-none">
+                                  <FiTag className="w-3 h-3" />
+                                </span>
+                                <input
+                                  type="text"
+                                  placeholder="Username"
+                                  value={benCreateForm.screenname}
+                                  onChange={(e) => setBenCreateForm((p) => ({ ...p, screenname: e.target.value }))}
+                                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                />
+                              </div>
+
+                              {/* Gender */}
+                              <div className="relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-full border border-gray-400 text-gray-500 pointer-events-none">
+                                  <FiSliders className="w-3 h-3" />
+                                </span>
+                                <select
+                                  value={benCreateForm.gender}
+                                  onChange={(e) => setBenCreateForm((p) => ({ ...p, gender: e.target.value as 'male' | 'female' | '' }))}
+                                  className="block w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 appearance-none"
+                                >
+                                  <option value="" disabled>Select Gender</option>
+                                  <option value="male">Male</option>
+                                  <option value="female">Female</option>
+                                </select>
+                              </div>
+
+                              {/* Email */}
+                              <div className="relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-full border border-gray-400 text-gray-500 pointer-events-none">
+                                  <FiMail className="w-3 h-3" />
+                                </span>
+                                <input
+                                  type="email"
+                                  placeholder="Email Address"
+                                  value={benCreateForm.email}
+                                  onChange={(e) => setBenCreateForm((p) => ({ ...p, email: e.target.value }))}
+                                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                />
+                              </div>
+
+                              {/* Password */}
+                              <div className="relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-full border border-gray-400 text-gray-500 pointer-events-none">
+                                  <FiLock className="w-3 h-3" />
+                                </span>
+                                <input
+                                  type={benShowPass ? 'text' : 'password'}
+                                  placeholder="Password (min 8 chars)"
+                                  value={benCreateForm.password}
+                                  onChange={(e) => setBenCreateForm((p) => ({ ...p, password: e.target.value }))}
+                                  className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setBenShowPass(!benShowPass)}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-emerald-600 transition-colors"
+                                >
+                                  {benShowPass ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                                </button>
+                              </div>
+
+                              {/* Confirm Password */}
+                              <div className="relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-full border border-gray-400 text-gray-500 pointer-events-none">
+                                  <FiLock className="w-3 h-3" />
+                                </span>
+                                <input
+                                  type={benShowConfPass ? 'text' : 'password'}
+                                  placeholder="Confirm Password"
+                                  value={benCreateForm.confirmPassword}
+                                  onChange={(e) => setBenCreateForm((p) => ({ ...p, confirmPassword: e.target.value }))}
+                                  className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setBenShowConfPass(!benShowConfPass)}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-emerald-600 transition-colors"
+                                >
+                                  {benShowConfPass ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
+                                </button>
+                              </div>
+
+                              {/* Math Captcha */}
+                              <div className="relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-full border border-gray-400 text-gray-500 pointer-events-none">
+                                  <FiRefreshCcw className="w-3 h-3" />
+                                </span>
+                                <input
+                                  type="number"
+                                  placeholder={`What is ${benCaptchaNums[0]} + ${benCaptchaNums[1]}?`}
+                                  value={benCreateForm.captcha}
+                                  onChange={(e) => setBenCreateForm((p) => ({ ...p, captcha: e.target.value }))}
+                                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                                />
+                              </div>
+
+                              {/* Error */}
+                              {benCreateErr && (
+                                <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                                  <FiAlertCircle className="w-3 h-3 flex-shrink-0" />
+                                  {benCreateErr}
+                                </p>
+                              )}
+
+                              {/* Submit */}
+                              <motion.button
+                                whileHover={{ scale: 1.01 }}
+                                whileTap={{ scale: 0.99 }}
+                                onClick={handleCreateBeneficiary}
+                                disabled={createBeneficiaryMut.status === 'pending'}
+                                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors"
+                              >
+                                <FiUserPlus className="w-4 h-4" />
+                                {createBeneficiaryMut.status === 'pending' ? 'Creating account…' : 'Create & Select as Beneficiary'}
+                              </motion.button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   ) : (
                     <div className="flex items-center gap-4 p-4 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border border-emerald-200 dark:border-emerald-800">
@@ -1536,11 +1789,7 @@ export default function EmpowermentContent() {
                   </div>
                 )}
 
-                {me?.role && (me.role === 'admin' || me.role === 'super_admin') && (
-                  <div className="pt-6">
-                    <AdminActivityTracker />
-                  </div>
-                )}
+
               </motion.div>
             )}
 

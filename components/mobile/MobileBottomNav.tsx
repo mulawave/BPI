@@ -28,6 +28,13 @@ export default function MobileBottomNav({
     setNavLoadingHref(null);
   }, [pathname]);
 
+  // Safety-net: auto-clear stuck spinner after 12 s
+  useEffect(() => {
+    if (!navLoadingHref) return;
+    const t = setTimeout(() => setNavLoadingHref(null), 12000);
+    return () => clearTimeout(t);
+  }, [navLoadingHref]);
+
   const navItems = [
     {
       icon: Home,
