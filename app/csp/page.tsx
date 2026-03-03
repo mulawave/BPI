@@ -1,7 +1,7 @@
 import { auth } from "@/server/auth";
 import { redirect } from "next/navigation";
-import DashboardShell from "@/components/layout/DashboardShell";
 import CspDashboard from "@/components/csp/CspDashboard";
+import CspPageShell from "@/components/csp/CspPageShell";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +13,8 @@ export default async function CspPage() {
   }
 
   return (
-    <DashboardShell session={session}>
+    <CspPageShell>
       <CspDashboard userName={session?.user?.name ?? session?.user?.email} />
-    </DashboardShell>
+    </CspPageShell>
   );
 }
