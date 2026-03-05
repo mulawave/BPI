@@ -56,6 +56,9 @@ export default function AdminLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Only redirect once the session is confirmed as authenticated.
+  // This prevents a race condition where the admin layout renders with
+  // status === "unauthenticated" before the session cookie propagates.
   useEffect(() => {
     if (status === "authenticated") {
       router.push("/admin");
@@ -77,14 +80,15 @@ export default function AdminLoginPage() {
       if (result?.error) {
         setError("Invalid email or password");
         toast.error("Login failed");
+        setIsLoading(false);
       } else {
+        // Do NOT push immediately — wait for useEffect to confirm status === "authenticated"
         toast.success("Login successful");
-        router.push("/admin");
+        // isLoading stays true (shows spinner) until the session resolves and useEffect redirects
       }
     } catch (err) {
       setError("An error occurred during login");
       toast.error("Login failed");
-    } finally {
       setIsLoading(false);
     }
   };
