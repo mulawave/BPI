@@ -152,9 +152,7 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
     onClose();
   };
 
-  if (!isOpen) return null;
-
-  const walletOptions = [
+  const walletOptions = useMemo(() => [
     { value: 'wallet', label: 'Main Wallet', description: 'Primary cash wallet', balance: getWalletBalance('wallet') },
     { value: 'spendable', label: 'Spendable Wallet', description: 'Available for spending', balance: getWalletBalance('spendable') },
     { value: 'shareholder', label: 'Shareholder Wallet', description: 'Shareholder funds', balance: getWalletBalance('shareholder') },
@@ -163,7 +161,8 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
     { value: 'education', label: 'Education Wallet', description: 'Education fund', balance: getWalletBalance('education') },
     { value: 'car', label: 'Car Wallet', description: 'Car savings', balance: getWalletBalance('car') },
     { value: 'business', label: 'Business Wallet', description: 'Business capital', balance: getWalletBalance('business') }
-  ];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [userProfile]);
 
   const fromWalletOptions = useMemo(() => {
     // CTO policy: cashback cannot be transferred out to other internal wallets.
@@ -179,6 +178,8 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
       setFromWallet('wallet');
     }
   }, [transferType, fromWallet]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[9999] bg-white dark:bg-bpi-dark-card overflow-y-auto">
