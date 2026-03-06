@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
@@ -13,7 +13,22 @@ import { FiLogOut, FiArrowLeft, FiShield } from "react-icons/fi";
 export default function LogoutPage() {
   const router = useRouter();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const didSignOut = useRef(false);
   const baseUrl = useMemo(() => resolveClientBaseUrl().replace(/\/$/, ""), []);
+
+  // Auto-signs out when this page mounts. This handles every path to /logout:
+  // - Mobile nav button fallback href
+  // - NextAuth pages.signOut redirect
+  // - Direct navigation from any part of the app
+  // Using a ref guard so React StrictMode double-invoke doesn't call signOut twice.
+  useEffect(() => {
+    if (didSignOut.current) return;
+    didSignOut.current = true;
+    setIsSigningOut(true);
+    toast.loading("Signing you out...");
+    signOut({ callbackUrl: `${baseUrl}/login` });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSignOut = async () => {
     if (isSigningOut) return;

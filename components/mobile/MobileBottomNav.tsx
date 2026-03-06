@@ -72,7 +72,7 @@ export default function MobileBottomNav({
     { icon: Trophy, label: "TechQuiz", href: "/techquiz" },
     { icon: AiOutlineRobot, label: "Smart Help", href: "/help" },
     { icon: User, label: "Account", href: "/settings" },
-    { icon: LogOut, label: "Logout", href: "/api/auth/signout" },
+    { icon: LogOut, label: "Logout", href: "/logout" },
   ];
 
   return (
@@ -131,30 +131,44 @@ export default function MobileBottomNav({
               <h3 className="font-semibold text-lg text-gray-900 dark:text-white">Menu</h3>
             </div>
             <nav className="p-4 space-y-2">
-              {mainNavItems.map(({ icon: Icon, label, href }) => (
-                <Link
-                  key={label}
-                  href={href}
-                  className="flex items-center gap-3 py-2 px-4 rounded-lg hover:bg-gray-100 dark:hover:bg-green-800/50 text-sm text-gray-900 dark:text-white"
-                  onClick={(event) => {
-                    if (label === "Logout") {
-                      event.preventDefault();
-                      signOut({ callbackUrl: `${resolveClientBaseUrl()}/login` });
+              {mainNavItems.map(({ icon: Icon, label, href }) => {
+                const itemClass = "flex items-center gap-3 py-2 px-4 rounded-lg hover:bg-gray-100 dark:hover:bg-green-800/50 text-sm text-gray-900 dark:text-white w-full text-left";
+                // Render Logout as a button — no href ever navigates to the
+                // NextAuth raw CSRF endpoint accidentally.
+                if (label === "Logout") {
+                  return (
+                    <button
+                      key={label}
+                      className={itemClass}
+                      onClick={() => {
+                        setShowMenu(false);
+                        signOut({ callbackUrl: `${resolveClientBaseUrl()}/login` });
+                      }}
+                    >
+                      <Icon className="w-4 h-4 text-red-500" />
+                      <span className="text-red-500 font-medium">Logout</span>
+                    </button>
+                  );
+                }
+                return (
+                  <Link
+                    key={label}
+                    href={href}
+                    className={itemClass}
+                    onClick={() => {
+                      setNavLoadingHref(href);
                       setShowMenu(false);
-                      return;
-                    }
-                    setNavLoadingHref(href);
-                    setShowMenu(false);
-                  }}
-                >
-                  {navLoadingHref === href ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Icon className="w-4 h-4" />
-                  )}
-                  <span>{label}</span>
-                </Link>
-              ))}
+                    }}
+                  >
+                    {navLoadingHref === href ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Icon className="w-4 h-4" />
+                    )}
+                    <span>{label}</span>
+                  </Link>
+                );
+              })}
             </nav>
           </div>
         </div>

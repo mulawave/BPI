@@ -34,6 +34,7 @@ export async function middleware(req: NextRequest) {
   const publicRoutes = new Set([
     "/",
     "/login",
+    "/logout",
     "/register",
     "/forgot-password",
     "/set-new-password",

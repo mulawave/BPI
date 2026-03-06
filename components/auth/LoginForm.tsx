@@ -68,9 +68,13 @@ export default function LoginForm() {
 
     if (result.ok) {
       setAlert({ type: "success", message: "Login Successful, connecting to your Dashboard" });
-      // Immediate redirect for better UX
-      router.push("/dashboard");
-      router.refresh();
+      // Use a hard navigation so the App Router router.push/refresh race condition
+      // cannot leave the user stuck on the login page with "Logging in…" forever.
+      // window.location.href guarantees a full page load with the fresh session cookie.
+      window.location.href = "/dashboard";
+      // Safety net: if redirect somehow stalls (e.g. slow middleware), clear the spinner
+      // after 8 s so the user can try again.
+      setTimeout(() => setLoading(false), 8000);
     }
   }
 
