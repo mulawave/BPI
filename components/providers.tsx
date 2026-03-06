@@ -11,11 +11,12 @@ import { CurrencyProvider } from "@/contexts/CurrencyContext";
 import { Toaster } from "react-hot-toast";
 
 /**
- * Watches the signed-in user ID and purges the entire React Query / tRPC
- * cache the moment it changes (sign-out OR switching accounts). Without this,
- * the stale cache from a previous session is shown to the next user on the
- * same browser before background refetches complete — causing the
- * "seeing another user's data" issue.
+ * Watches the signed-in user ID and:
+ * 1. Purges the ENTIRE React Query cache the moment the user identity changes
+ *    (sign-out or account switch) — prevents cross-user data bleed.
+ * 2. Invalidates all queries the first time an authenticated session is
+ *    confirmed so fresh data is always fetched after login, even if something
+ *    survived in cache from a previous session.
  */
 function SessionCacheGuard() {
   const { data: session, status } = useSession();
@@ -25,12 +26,19 @@ function SessionCacheGuard() {
   useEffect(() => {
     if (status === "loading") return;
     const currentUserId = (session?.user as any)?.id ?? null;
-    // On first render, just record the current user without clearing.
+
+    // First resolution after mount
     if (lastUserIdRef.current === undefined) {
       lastUserIdRef.current = currentUserId;
+      // If we're already authenticated on mount, force-invalidate everything
+      // so any stale cache from a prior session is immediately replaced.
+      if (currentUserId) {
+        qc.invalidateQueries();
+      }
       return;
     }
-    // If the user changed (sign-out, or switched accounts) — purge everything.
+
+    // User identity changed (logout, or switched accounts) — nuke the cache.
     if (lastUserIdRef.current !== currentUserId) {
       qc.clear();
     }
@@ -44,10 +52,16 @@ export default function Providers({ children }: { children: ReactNode }) {
   const [qc] = useState(() => new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 5 * 60 * 1000, // 5 minutes default
-        gcTime: 10 * 60 * 1000, // 10 minutes cache
-        refetchOnWindowFocus: false, // Disable aggressive refetching
-        refetchOnReconnect: false,
+        // 30 s stale time — short enough that sensitive user data is never
+        // served stale for long, but avoids hammering the server on every
+        // render. Hard navigation always produces an empty cache anyway.
+        staleTime: 30 * 1000,
+        gcTime: 5 * 60 * 1000,
+        // Re-enable window-focus refetch so returning to a tab always shows
+        // current data (critical for financial balances).
+        refetchOnWindowFocus: true,
+        refetchOnReconnect: true,
+        refetchOnMount: true,
         retry: 1,
       },
     },

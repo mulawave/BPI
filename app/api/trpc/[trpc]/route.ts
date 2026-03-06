@@ -9,7 +9,19 @@ const handler = (req: Request) =>
     endpoint: "/api/trpc",
     req,
     router: appRouter,
-    createContext
+    createContext,
+    // CRITICAL: Prevent ANY reverse-proxy, CDN, or browser HTTP cache from
+    // caching user-specific tRPC responses. Without this a cached response
+    // for User A can be served verbatim to User B on the same server.
+    responseMeta() {
+      return {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, private",
+          "Pragma": "no-cache",
+          "Surrogate-Control": "no-store",
+        },
+      };
+    },
   });
 
 export { handler as GET, handler as POST };

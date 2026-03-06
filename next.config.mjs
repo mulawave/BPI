@@ -8,6 +8,27 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   staticPageGenerationTimeout: 120,
+  // Prevent any CDN / reverse-proxy from caching authenticated API responses.
+  // This is a defence-in-depth layer on top of the per-route Cache-Control
+  // headers set in the tRPC route handler.
+  async headers() {
+    return [
+      {
+        source: "/api/:path*",
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, must-revalidate, private" },
+          { key: "Pragma", value: "no-cache" },
+          { key: "Surrogate-Control", value: "no-store" },
+        ],
+      },
+      {
+        source: "/dashboard",
+        headers: [
+          { key: "Cache-Control", value: "no-store, private" },
+        ],
+      },
+    ];
+  },
   experimental: {
     instrumentationHook: true,
     serverActions: {
