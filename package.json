@@ -10,7 +10,7 @@
     "fix:prisma-dns": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fixPrismaDns.ps1",
     "dev": "next dev",
     "prebuild": "node -e \"const fs=require('fs'),pt=require('path');const d='.next';if(fs.existsSync(d)){for(const f of fs.readdirSync(d)){if(f!=='cache')fs.rmSync(pt.join(d,f),{recursive:true,force:true});}}\"",
-    "build": "prisma generate && prisma migrate deploy && node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build",
+    "build": "prisma generate && prisma db push --skip-generate && node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build",
     "type-check": "tsc --noEmit",
     "test": "npm run lint && npm run type-check && npm run build",
     "start": "next start -p 3000",
