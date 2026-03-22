@@ -23,7 +23,7 @@ import {
   Lock, Coins, BadgeDollarSign, EyeOff, RefreshCw,
   Clock, Package, CircleDollarSign, AlertTriangle,
   Megaphone, Sparkles, TrendingUpIcon, Leaf, Sun as SolarIcon,
-  GraduationCap, Download, ChevronRight, Code, Building2, ChevronLeft, Pause, Loader2, MessageCircle, Trophy
+  GraduationCap, Download, ChevronRight, Code, Building2, ChevronLeft, Pause, Loader2, MessageCircle, Trophy, CheckCircle2
 } from "lucide-react";
 import { AiOutlineRobot } from "react-icons/ai";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -2621,7 +2621,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                       <span>
                         (Main {formatAmount(dashboardData.wallets.primary.main.balance)} • 
                         Palliative {formatAmount((dashboardData.wallets as any).community?.[0]?.balance || 0)} • 
-                        BPT {dashboardData.wallets.primary.bpiToken.balance.toFixed(2)} ({formatAmount(dashboardData.wallets.primary.bpiToken.balanceInNaira)}))
+                        BPT {((dashboardData.wallets.primary.bpiToken as any).balanceInBpt ?? dashboardData.wallets.primary.bpiToken.balance).toFixed(2)} ({formatAmount(dashboardData.wallets.primary.bpiToken.balanceInNaira)}))
                       </span>
                     )}
                     {!showBalances && <span>(••••)</span>}
@@ -2659,7 +2659,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 py-4 border-t border-white/20">
                 <div className="text-center p-3 rounded-lg bg-white/10 hover:bg-white/15 transition-colors">
                   <p className="text-white/70 text-xs mb-1">BPI Token</p>
-                  <p className="font-semibold text-sm">{showBalances ? `${dashboardData?.wallets.primary.bpiToken.balance.toFixed(2) || '0'} BPT` : '••••'}</p>
+                  <p className="font-semibold text-sm">{showBalances ? `${((dashboardData?.wallets.primary.bpiToken as any)?.balanceInBpt ?? 0).toFixed(2)} BPT` : '••••'}</p>
                 </div>
                 <div className="text-center p-3 rounded-lg bg-white/10 hover:bg-white/15 transition-colors">
                   <p className="text-white/70 text-xs mb-1">Main</p>
@@ -2732,7 +2732,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                 </div>
                 <h3 className="font-semibold text-foreground mb-1">BPI Token</h3>
                 <p className="text-xl font-bold text-yellow-600 dark:text-yellow-500 mb-1">
-                  {showBalances ? `${dashboardData?.wallets.primary.bpiToken.balance.toFixed(2) || '0'} BPT` : '••••••'}
+                  {showBalances ? `${((dashboardData?.wallets.primary.bpiToken as any)?.balanceInBpt ?? 0).toFixed(2)} BPT` : '••••••'}
                 </p>
                 <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                   <Clock className="w-3 h-3" />
@@ -2942,15 +2942,35 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
             {/* Palliative System Section */}
             {userProfile && userDetails?.activeMembership ? (
-              userProfile.palliativeActivated ? (
-                <ActivatedPalliativeCard />
-              ) : (
-                <PalliativeJourneyCard 
-                  onActivateClick={() => setIsPalliativeActivationModalOpen(true)}
-                  membershipName={userDetails.activeMembership.name}
-                  membershipAmount={userDetails.activeMembership.price}
-                />
-              )
+              (() => {
+                // Shelter-active users don't need the palliative journey — payouts go directly to palliative wallet
+                const hasShelter = (userProfile as any).isShelter === 1 || (userProfile.shelter ?? 0) > 0
+                  || ['gold', 'platinum'].some(t => userDetails?.activeMembership?.name?.toLowerCase().includes(t));
+                
+                if (hasShelter) {
+                  return (
+                    <div className="flex items-center gap-3 p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 mb-4">
+                      <div className="p-2 rounded-full bg-green-100 dark:bg-green-900/30">
+                        <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-green-800 dark:text-green-200">Shelter Active</p>
+                        <p className="text-xs text-green-600 dark:text-green-400">Palliative payouts are deposited directly to your Palliative Wallet. Balance: {formatAmount(userProfile.palliative ?? 0)}</p>
+                      </div>
+                    </div>
+                  );
+                }
+                
+                return userProfile.palliativeActivated ? (
+                  <ActivatedPalliativeCard />
+                ) : (
+                  <PalliativeJourneyCard 
+                    onActivateClick={() => setIsPalliativeActivationModalOpen(true)}
+                    membershipName={userDetails.activeMembership.name}
+                    membershipAmount={userDetails.activeMembership.price}
+                  />
+                );
+              })()
             ) : null}
 
           {/* Membership Status & Upgrade Prompt */}

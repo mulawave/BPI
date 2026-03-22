@@ -161,11 +161,20 @@ export const dashboardRouter = createTRPCRouter({
       // Calculate total rewards (cashback + student cashback + education)
       const totalRewards = (user.cashback || 0) + (user.studentCashback || 0) + (user.education || 0);
 
+      // Fetch dynamic BPT price from admin-managed BPTokenPrice table
+      const activeBptPrice = await ctx.prisma.bPTokenPrice.findFirst({
+        where: { active: true },
+        orderBy: { updatedAt: 'desc' },
+      });
+      const bptPrice = activeBptPrice?.price ?? 0;
+
+      // bpiTokenWallet stores BPT UNITS; convert to naira for portfolio total
+      const bptNairaValue = (user.bpiTokenWallet || 0) * bptPrice;
+
       // Calculate total portfolio value (excluding membership package payments)
-      const BPI_TOKEN_RATE = 2.5; // 1 BPT = ₦2.5 (should be dynamic)
       const totalAssets = (user.wallet || 0) +
         (user.spendable || 0) +
-        (user.bpiTokenWallet || 0) * BPI_TOKEN_RATE +
+        bptNairaValue +
         totalRewards +
         // totalLocked + // Excluded: membership package payments not counted in portfolio
         (user.palliative || 0) +
@@ -190,8 +199,9 @@ export const dashboardRouter = createTRPCRouter({
         // Tier 1 - Primary (always visible)
         primary: {
           bpiToken: {
-            balance: user.bpiTokenWallet || 0,
-            balanceInNaira: (user.bpiTokenWallet || 0) * BPI_TOKEN_RATE,
+            balance: user.bpiTokenWallet || 0, // BPT units
+            balanceInNaira: bptNairaValue,
+            balanceInBpt: user.bpiTokenWallet || 0,
             name: "BPI Token",
             symbol: "BPT",
             category: "operational",
@@ -347,6 +357,7 @@ export const dashboardRouter = createTRPCRouter({
           distribution: portfolioDistribution,
         },
         wallets,
+        bptPrice,
         packages: {
           active: activePackage ? [activePackage] : [],
           stats: packageStats,
@@ -572,4 +583,21 @@ export const dashboardRouter = createTRPCRouter({
         currentBalance, // Current wallet balance (only on first page)
       };
     }),
+
+  /**
+   * Get current BPT price (user-facing)
+   */
+  getBptPrice: protectedProcedure.query(async ({ ctx }) => {
+    const activeBptPrice = await ctx.prisma.bPTokenPrice.findFirst({
+      where: { active: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!activeBptPrice || activeBptPrice.price <= 0) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "BPT price not configured. Contact admin.",
+      });
+    }
+    return { price: activeBptPrice.price };
+  }),
 });

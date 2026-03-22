@@ -20,3 +20,10 @@ export const initialBptConversionRateSeedData: Prisma.BptConversionRateCreateInp
   rateNgn: 5,
   isActive: true,
 };
+
+/** Initial BPTokenPrice — the ACTIVE model used by Currency Manager */
+export const initialBPTokenPriceSeedData: Prisma.BPTokenPriceCreateInput = {
+  id: randomUUID(),
+  price: 5,
+  active: true,
+};

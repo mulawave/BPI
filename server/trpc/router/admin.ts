@@ -6496,9 +6496,9 @@ export const adminRouter = createTRPCRouter({
         _sum: { amount: true },
       });
 
-      // BPT conversion rate (active)
-      const activeBptRate = await prisma.bptConversionRate.findFirst({ where: { isActive: true }, orderBy: { effectiveDate: "desc" } });
-      const bptRateNgn = activeBptRate?.rateNgn || 5;
+      // BPT conversion rate (from admin-managed BPTokenPrice table)
+      const activeBptPrice = await prisma.bPTokenPrice.findFirst({ where: { active: true }, orderBy: { updatedAt: 'desc' } });
+      const bptRateNgn = activeBptPrice?.price ?? 0;
 
       // BPT activities
       const convertToContactRaw = await prisma.transaction.aggregate({

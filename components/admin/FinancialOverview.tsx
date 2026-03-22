@@ -88,9 +88,9 @@ export default function FinancialOverview() {
       return date.toLocaleDateString();
     };
 
-    const formatBpt = (value?: number) => {
-      const amount = Math.abs(value || 0);
-      return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(amount)} BPT`;
+    const formatBpt = (bptUnitsValue?: number) => {
+      const units = Math.abs(bptUnitsValue || 0);
+      return `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(units)} BPT`;
     };
 
     const ngnWalletEntries = React.useMemo(() => summary ? Object.entries(summary.wallets.ngn) : [], [summary]);
@@ -98,8 +98,10 @@ export default function FinancialOverview() {
       () => ngnWalletEntries.reduce((acc, [, v]) => acc + (typeof v === "number" ? v : 0), 0),
       [ngnWalletEntries],
     );
-    const bptRateNgn = summary?.bptRateNgn ?? 5;
-    const bptNairaValue = React.useMemo(() => (summary ? (summary.wallets.bpt || 0) * bptRateNgn : 0), [summary, bptRateNgn]);
+    const bptRateNgn = summary?.bptRateNgn ?? 0;
+    // bpiTokenWallet stores BPT units — multiply by rate for naira value
+    const bptWalletUnits = React.useMemo(() => (summary ? (summary.wallets.bpt || 0) : 0), [summary]);
+    const bptNairaValue = React.useMemo(() => bptWalletUnits * bptRateNgn, [bptWalletUnits, bptRateNgn]);
     const grossHolisticTotal = React.useMemo(
       () => (summary ? grossNgnAssets + bptNairaValue + (summary.inflows.total || 0) + (summary.outflows.total || 0) : 0),
       [summary, grossNgnAssets, bptNairaValue],

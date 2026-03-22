@@ -34,6 +34,7 @@ import AssignMembershipModal from "./AssignMembershipModal";
 import ExtendMembershipModal from "./ExtendMembershipModal";
 import SwapSponsorModal from "./SwapSponsorModal";
 import toast from "react-hot-toast";
+import { useBptPrice } from "@/hooks/useBptPrice";
 
 const walletLabelMap: Record<string, string> = {
   wallet: "Main Wallet",
@@ -61,9 +62,9 @@ const walletLabelMap: Record<string, string> = {
   bpiTokenWallet: "BPI Token",
 };
 
-const formatWalletValue = (key: string, value: number) =>
+const formatWalletValue = (key: string, value: number, bptPrice?: number) =>
   key === "bpiTokenWallet"
-    ? `${value.toLocaleString()} BPT`
+    ? `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} BPT (₦${(bptPrice && bptPrice > 0 ? value * bptPrice : 0).toLocaleString()})`
     : `₦${value.toLocaleString()}`;
 
 interface UserDetailsModalProps {
@@ -80,6 +81,7 @@ export default function UserDetailsModal({
   onEdit,
 }: UserDetailsModalProps) {
   const [mounted, setMounted] = useState(false);
+  const bptPrice = useBptPrice();
   const [activeTab, setActiveTab] = useState<"overview" | "activity" | "network">(
     "overview"
   );
@@ -559,7 +561,7 @@ export default function UserDetailsModal({
                                           {wallet.label}
                                         </p>
                                         <p className="text-xl font-bold leading-tight">
-                                          {formatWalletValue(wallet.key, wallet.value)}
+                                          {formatWalletValue(wallet.key, wallet.value, bptPrice)}
                                         </p>
                                       </div>
                                       <span className="px-2 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] uppercase tracking-wide text-white/80">

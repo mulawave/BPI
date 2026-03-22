@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { membershipPackagesSeedData } from "@/prisma/seed-data/membershipPackages";
 import {
-  initialBptConversionRateSeedData,
+  initialBPTokenPriceSeedData,
   systemWalletSeedData,
 } from "@/prisma/seed-data/system";
 
@@ -51,11 +51,14 @@ async function seedPackages() {
     console.error("Failed to create system wallet:", error);
   }
   
-  // Create initial BPT conversion rate
+  // Create initial BPTokenPrice (Currency Manager source of truth)
   try {
-    await prisma.bptConversionRate.create({ data: initialBptConversionRateSeedData });
+    const existing = await prisma.bPTokenPrice.findFirst({ where: { active: true } });
+    if (!existing) {
+      await prisma.bPTokenPrice.create({ data: initialBPTokenPriceSeedData });
+    }
   } catch (error) {
-    console.error("Conversion rate may already exist:", error);
+    console.error("BPTokenPrice may already exist:", error);
   }
 
   return { created, updated, skipped };

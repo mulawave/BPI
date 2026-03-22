@@ -8,6 +8,7 @@ import { membershipPackagesSeedData } from "./seed-data/membershipPackages";
 import { adminSettingsSeedData } from "./seed-data/adminSettings";
 import {
   initialBptConversionRateSeedData,
+  initialBPTokenPriceSeedData,
   systemWalletSeedData,
 } from "./seed-data/system";
 import { youtubePlansSeedData } from "./seed-data/youtubePlans";
@@ -111,15 +112,26 @@ async function main() {
     console.log(`Seed: ensured system wallet: ${walletData.name}`);
   }
 
-  // Seed initial BPT conversion rate (only if none exists)
+  // Seed initial BPT conversion rate (legacy — kept for backwards compat)
   const existingActiveRate = await prisma.bptConversionRate.findFirst({
     where: { isActive: true },
   });
   if (!existingActiveRate) {
     await prisma.bptConversionRate.create({ data: initialBptConversionRateSeedData });
-    console.log("Seed: created initial active BPT conversion rate");
+    console.log("Seed: created initial legacy BPT conversion rate");
   } else {
-    console.log("Seed: active BPT conversion rate already exists");
+    console.log("Seed: legacy BPT conversion rate already exists");
+  }
+
+  // Seed initial BPTokenPrice (active model — used by Currency Manager)
+  const existingBPTokenPrice = await prisma.bPTokenPrice.findFirst({
+    where: { active: true },
+  });
+  if (!existingBPTokenPrice) {
+    await prisma.bPTokenPrice.create({ data: initialBPTokenPriceSeedData });
+    console.log("Seed: created initial BPTokenPrice (Currency Manager)");
+  } else {
+    console.log("Seed: active BPTokenPrice already exists");
   }
 
   // Seed YouTube plans
@@ -322,6 +334,7 @@ async function main() {
       "MembershipPackage",
       "SystemWallet",
       "BptConversionRate",
+      "BPTokenPrice",
       "YoutubePlan",
       "ThirdPartyPlatform",
       "PalliativeOption",

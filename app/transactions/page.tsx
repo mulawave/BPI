@@ -11,6 +11,7 @@ import { useCurrency } from "@/contexts/CurrencyContext";
 import LoadingScreen from "@/components/LoadingScreen";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import { useBptPrice } from "@/hooks/useBptPrice";
 
 export default function TransactionsPage() {
   const { data: transactions, isLoading } = api.dashboard.getAllTransactions.useQuery();
@@ -104,8 +105,8 @@ export default function TransactionsPage() {
            tx.transactionType.includes('REFERRAL_BPT_L');
   };
 
-  // BPT conversion rate (5 naira per BPT)
-  const BPT_CONVERSION_RATE = 5;
+  // BPT price from admin Currency Manager (dynamic)
+  const bptPrice = useBptPrice();
 
   // Calculate summary stats
   const totalPending = filteredTransactions?.filter((tx: any) => tx.status === "pending").length || 0;
@@ -127,7 +128,7 @@ export default function TransactionsPage() {
   const inflowCashTransactions = inflowTransactions.filter(tx => !isBptTransaction(tx));
   const totalInflowBpt = inflowBptTransactions.reduce((sum, tx: any) => sum + tx.amount, 0);
   const totalInflowCash = inflowCashTransactions.reduce((sum, tx: any) => sum + tx.amount, 0);
-  const totalInflow = totalInflowCash + (totalInflowBpt * BPT_CONVERSION_RATE);
+  const totalInflow = totalInflowCash + (totalInflowBpt * bptPrice);
   const totalInflowCount = inflowTransactions.length;
     
   // Outflow transactions: withdrawals, payments, transfers, purchases, membership costs, debits
@@ -152,7 +153,7 @@ export default function TransactionsPage() {
   const outflowCashTransactions = outflowTransactions.filter(tx => !isBptTransaction(tx));
   const totalOutflowBpt = Math.abs(outflowBptTransactions.reduce((sum, tx: any) => sum + tx.amount, 0));
   const totalOutflowCash = Math.abs(outflowCashTransactions.reduce((sum, tx: any) => sum + tx.amount, 0));
-  const totalOutflow = totalOutflowCash + (totalOutflowBpt * BPT_CONVERSION_RATE);
+  const totalOutflow = totalOutflowCash + (totalOutflowBpt * bptPrice);
   const totalOutflowCount = outflowTransactions.length;
 
   if (isLoading) {
@@ -224,7 +225,7 @@ export default function TransactionsPage() {
                 <p className="text-xs text-green-600 dark:text-green-500 mt-1">{totalInflowCount} completed</p>
                 {totalInflowBpt > 0 && (
                   <p className="text-xs text-green-500 dark:text-green-400 mt-2 text-right">
-                    {totalInflowBpt.toFixed(2)} BPT ({BPT_CONVERSION_RATE}/BPT)
+                    {totalInflowBpt.toFixed(2)} BPT (₦{bptPrice}/BPT)
                   </p>
                 )}
               </div>
@@ -243,7 +244,7 @@ export default function TransactionsPage() {
                 <p className="text-xs text-blue-600 dark:text-blue-500 mt-1">{totalOutflowCount} completed</p>
                 {totalOutflowBpt > 0 && (
                   <p className="text-xs text-blue-500 dark:text-blue-400 mt-2 text-right">
-                    {totalOutflowBpt.toFixed(2)} BPT ({BPT_CONVERSION_RATE}/BPT)
+                    {totalOutflowBpt.toFixed(2)} BPT (₦{bptPrice}/BPT)
                   </p>
                 )}
               </div>

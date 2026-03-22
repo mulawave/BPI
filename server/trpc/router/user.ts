@@ -58,6 +58,7 @@ export const userRouter = createTRPCRouter({
           community: true,
           shareholder: true,
           shelter: true,
+          isShelter: true,
           education: true,
           car: true,
           business: true,

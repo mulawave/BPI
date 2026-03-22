@@ -43,6 +43,11 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
     };
   }, [footerPages]);
 
+  // Sync refId prop to form state — critical for useSearchParams() hydration timing
+  useEffect(() => {
+    setForm((prev) => (prev.ref_id !== refId ? { ...prev, ref_id: refId } : prev));
+  }, [refId]);
+
   useEffect(() => {
     // Generate two random numbers for the captcha
     setCaptchaNums([
@@ -91,6 +96,7 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
 
       const result = await registerMutation.mutateAsync({
         ...form,
+        ref_id: refId,  // Always use fresh prop — form state may be stale after hydration
         gender: form.gender as "male" | "female"
       });
       

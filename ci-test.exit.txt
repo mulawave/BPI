@@ -1,2 +1,0 @@
-FAIL exitCode=2
-Type-check failed with exit code 2

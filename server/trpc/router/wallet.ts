@@ -433,9 +433,20 @@ export const walletRouter = createTRPCRouter({
       
       console.log("✅ [WITHDRAWAL] PIN verified for user:", user.name || user.email);
 
-      if (user.withdrawBan === 1) {
-        console.error("❌ [WITHDRAWAL] User is banned from withdrawals:", userId);
-        throw new Error("Your account is banned from withdrawals. Contact support.");
+      // RATE LIMIT: Max withdrawals per day (admin-configurable, default 10)
+      const maxWithdrawalsPerDay = await getAdminSetting('MAX_WITHDRAWALS_PER_DAY', 10);
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const withdrawalsToday = await prisma.transaction.count({
+        where: {
+          userId,
+          transactionType: { in: ["WITHDRAWAL_CASH", "WITHDRAWAL_BPT"] },
+          createdAt: { gte: todayStart },
+        },
+      });
+      if (withdrawalsToday >= maxWithdrawalsPerDay) {
+        console.error("❌ [WITHDRAWAL] Rate limit exceeded for user:", userId, "Count:", withdrawalsToday);
+        throw new Error(`You have reached the maximum of ${maxWithdrawalsPerDay} withdrawal requests per day. Please try again tomorrow.`);
       }
       
       // Fetch full user data for balance checks

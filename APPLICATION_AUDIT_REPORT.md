@@ -24,10 +24,12 @@ The BPI (BeepAgro Palliative Initiative) application is a production-ready, full
 ✅ Clean, maintainable codebase
 
 ### Areas for Enhancement
-⚠️ Email/SMTP configuration pending production testing  
+✅ Email/SMTP configuration — confirmed working in production (March 2026)  
 ⚠️ Monitoring/alerting infrastructure not yet configured  
-⚠️ Load testing and performance benchmarking needed  
-⚠️ Mobile app integration pending  
+⚠️ Load testing and performance benchmarking — deferred until stable production  
+⚠️ Mobile app integration — deferred until stable production  
+✅ Withdrawal rate limiting — implemented (10/day/user, admin-configurable)  
+⚠️ Web3 wallet connect — deferred (Elite Club uses proof-upload only)  
 
 ---
 

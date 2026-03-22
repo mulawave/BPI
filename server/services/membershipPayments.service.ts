@@ -86,14 +86,23 @@ export async function activateMembershipAfterExternalPayment(params: {
         palliativeActivated: true,
         selectedPalliative: true,
         palliativeTier: true,
+        isShelter: true,
+        shelter: true,
       },
     });
 
     const updateData: any = {};
     if (cashReward > 0) updateData.wallet = { increment: cashReward };
 
+    // Shelter-active users: palliative rewards go directly to palliative wallet
+    // (no journey needed when shelter is already activated via Gold/Platinum)
+    const hasShelter = (referrerData?.isShelter === 1) || ((referrerData?.shelter ?? 0) > 0);
+
     if (palliativeReward > 0) {
-      if (referrerData?.palliativeActivated && referrerData.selectedPalliative) {
+      if (hasShelter) {
+        // Shelter active — deposit directly to palliative wallet, bypass journey
+        updateData.palliative = { increment: palliativeReward };
+      } else if (referrerData?.palliativeActivated && referrerData.selectedPalliative) {
         const walletField = getWalletFieldName(referrerData.selectedPalliative as any);
         updateData[walletField] = { increment: palliativeReward };
       } else if (referrerData?.palliativeTier === "lower") {
@@ -109,16 +118,16 @@ export async function activateMembershipAfterExternalPayment(params: {
       await prisma.user.update({ where: { id: referrer.id }, data: updateData });
     }
 
+    let userBptShare = 0;
     if (bptReward > 0) {
-      await distributeBptReward(
+      const bptResult = await distributeBptReward(
         referrer.id,
         bptReward,
         `REFERRAL_L${level}`,
         `Referral reward L${level} from ${membershipPackage.name} activation`,
       );
+      userBptShare = bptResult.userBptUnits;
     }
-
-    const userBptShare = bptReward / 2;
 
     if (cashReward > 0) {
       await prisma.transaction.create({

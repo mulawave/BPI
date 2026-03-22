@@ -349,6 +349,25 @@ export const packageRouter = createTRPCRouter({
         throw new Error(verification.error || verification.message || "Payment verification failed");
       }
 
+      // Check if already processed (webhook may have auto-approved already)
+      const alreadyProcessed = await prisma.pendingPayment.findFirst({
+        where: {
+          userId,
+          gatewayReference: input.reference,
+          transactionType: "MEMBERSHIP",
+          status: { in: ["approved", "completed"] },
+        },
+      });
+
+      if (alreadyProcessed) {
+        console.log("[MEMBERSHIP] Payment already auto-approved by webhook, skipping duplicate activation:", input.reference);
+        return {
+          success: true,
+          message: "Membership already activated",
+          reference: input.reference,
+        };
+      }
+
       const pending = await prisma.pendingPayment.findFirst({
         where: {
           userId,
@@ -607,6 +626,8 @@ export const packageRouter = createTRPCRouter({
             palliativeActivated: true, 
             selectedPalliative: true,
             palliativeTier: true,
+            isShelter: true,
+            shelter: true,
           },
         });
 
@@ -614,9 +635,15 @@ export const packageRouter = createTRPCRouter({
         const updateData: any = {};
         if (cashReward > 0) updateData.wallet = { increment: cashReward };
         
-        // Route palliative rewards based on referrer's activation status
+        // Shelter-active users: palliative rewards go directly to palliative wallet
+        const hasShelter = (referrerData?.isShelter === 1) || ((referrerData?.shelter ?? 0) > 0);
+        
+        // Route palliative rewards based on referrer's shelter/activation status
         if (palliativeReward > 0) {
-          if (referrerData?.palliativeActivated && referrerData.selectedPalliative) {
+          if (hasShelter) {
+            // Shelter active — deposit directly to palliative wallet, bypass journey
+            updateData.palliative = { increment: palliativeReward };
+          } else if (referrerData?.palliativeActivated && referrerData.selectedPalliative) {
             // Activated: Route to specific palliative wallet
             const walletField = getWalletFieldName(referrerData.selectedPalliative as any);
             updateData[walletField] = { increment: palliativeReward };
@@ -640,17 +667,18 @@ export const packageRouter = createTRPCRouter({
         }
 
         // Distribute BPT rewards using the 50/50 split service
+        let userBptShare = 0;
         if (bptReward > 0) {
-          await distributeBptReward(
+          const bptResult = await distributeBptReward(
             referrer.id, 
             bptReward, 
             `REFERRAL_L${level}`,
             `Referral reward L${level} from ${membershipPackage.name} activation`
           );
+          userBptShare = bptResult.userBptUnits;
         }
 
         // Create separate transaction records for each wallet type
-        const userBptShare = bptReward / 2; // Only user's 50%, buyback tracked separately
         const timestamp = Date.now();
         const activatorName = ctx.session.user.name || 'New Member';
 
@@ -2087,12 +2115,6 @@ export const packageRouter = createTRPCRouter({
 
         // ── Auto-upgrade beneficiary to Regular Plus (all outcomes except Full Approval first tranche) ──
         const shouldUpgradeNow = outcomeType !== "FULL_APPROVAL";
-        if (shouldUpgradeNow) {
-          await tx.user.update({
-            where: { id: pkg.beneficiaryId },
-            data: { packageType: "Regular Plus" },
-          }).catch(() => { /* ignore if packageType field doesn't exist */ });
-        }
 
         // ── Update package ────────────────────────────────────────────────────
         await tx.empowermentPackage.update({
@@ -2223,13 +2245,7 @@ export const packageRouter = createTRPCRouter({
           });
         }
 
-        // Auto-upgrade beneficiary on first tranche
-        if (isFirstTranche && !pkg.beneficiaryUpgraded) {
-          await tx.user.update({
-            where: { id: pkg.beneficiaryId },
-            data: { packageType: "Regular Plus" },
-          }).catch(() => {});
-        }
+        // Auto-upgrade beneficiary on first tranche (tracked via beneficiaryUpgraded flag on package)
 
         // Create tranche ledger entry
         await tx.empowermentTranche.create({
@@ -3331,8 +3347,8 @@ export const packageRouter = createTRPCRouter({
               select: {
                 id: true,
                 netEmpowermentValue: true,
-                Beneficiary: { select: { name: true, email: true } },
-                Sponsor: { select: { name: true } },
+                User_EmpowermentPackage_beneficiaryIdToUser: { select: { name: true, email: true } },
+                User_EmpowermentPackage_sponsorIdToUser: { select: { name: true } },
               },
             },
           },
@@ -3353,7 +3369,7 @@ export const packageRouter = createTRPCRouter({
 
       const pkg = await prisma.empowermentPackage.findUnique({
         where: { id: input.empowermentPackageId },
-        include: { Beneficiary: { select: { name: true } } },
+        include: { User_EmpowermentPackage_beneficiaryIdToUser: { select: { name: true } } },
       });
       if (!pkg) throw new Error('Package not found');
       if (pkg.outcomeType) return { sent: false, reason: 'Outcome already set' };
@@ -3361,7 +3377,7 @@ export const packageRouter = createTRPCRouter({
 
       await notifyAdminOutcomeNotSet(
         pkg.id,
-        (pkg as any).Beneficiary?.name ?? 'Unknown',
+        (pkg as any).User_EmpowermentPackage_beneficiaryIdToUser?.name ?? 'Unknown',
         pkg.maturityDate
       );
 

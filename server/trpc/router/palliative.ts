@@ -78,11 +78,22 @@ export const palliativeRouter = createTRPCRouter({
           palliativeTier: true,
           selectedPalliative: true,
           activeMembershipPackageId: true,
+          isShelter: true,
+          shelter: true,
         }
       });
 
       if (!user) {
         throw new Error("User not found");
+      }
+
+      // Shelter-active users don't need the palliative journey
+      const hasShelter = user.isShelter === 1 || (user.shelter ?? 0) > 0;
+      if (hasShelter) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Palliative journey is not needed when shelter is active. Palliative payouts go directly to your palliative wallet.",
+        });
       }
 
       // Validation checks
@@ -180,6 +191,7 @@ export const palliativeRouter = createTRPCRouter({
         selectedPalliative: true,
         palliativeTier: true,
         shelter: true,
+        isShelter: true,
         car: true,
         land: true,
         business: true,
@@ -192,6 +204,9 @@ export const palliativeRouter = createTRPCRouter({
     if (!user) {
       throw new Error("User not found");
     }
+
+    // If shelter is active, journey is disabled — payouts go directly to palliative wallet
+    const shelterActive = user.isShelter === 1 || (user.shelter ?? 0) > 0;
 
     // Get ALL recent earnings that contributed to palliative wallet (not just specific transaction types)
     const recentEarnings = await ctx.prisma.transaction.findMany({
@@ -265,6 +280,7 @@ export const palliativeRouter = createTRPCRouter({
       isActivated: user.palliativeActivated,
       selectedPalliative: user.selectedPalliative,
       tier: user.palliativeTier,
+      shelterActive,
       recentEarnings,
       networkStats: {
         directReferrals: level1Referrals.length,

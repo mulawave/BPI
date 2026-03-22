@@ -99,7 +99,12 @@ export const authRouter = createTRPCRouter({
             resolvedReferrerId = referrerById.id;
           }
         }
+        if (!resolvedReferrerId) {
+          console.warn(`[auth.register] Could not resolve referrer for ref_id="${ref_id}" — registering without sponsor`);
+        }
       }
+
+      console.log(`[auth.register] Creating user email=${email}, ref_id="${ref_id}", resolvedReferrerId=${resolvedReferrerId ?? "NONE"}`);
 
       // Create user with invite code, and set sponsor/referredBy if a valid referrer was found
       const user = await ctx.prisma.user.create({

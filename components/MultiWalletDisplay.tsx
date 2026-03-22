@@ -3,6 +3,7 @@
 import { Wallet, Gift, DollarSign, Coins, Heart, Home, BookOpen, Utensils, Shield, Users } from "lucide-react";
 import { Card } from "./ui/card";
 import { useCurrency } from "@/contexts/CurrencyContext";
+import { useBptPrice } from "@/hooks/useBptPrice";
 
 interface WalletData {
   // Main wallets
@@ -30,6 +31,10 @@ interface MultiWalletDisplayProps {
 
 export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWalletDisplayProps) {
   const { formatAmount } = useCurrency();
+  const bptPrice = useBptPrice();
+  // bpiTokenWallet now stores BPT UNITS directly
+  const bptUnits = wallets.bpiTokenWallet;
+  const bptNairaValue = bptUnits * bptPrice;
   
   const mainWallets = [
     {
@@ -43,12 +48,12 @@ export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWa
     },
     {
       name: "BPI Token (BPT)",
-      balance: wallets.bpiTokenWallet,
+      balance: bptNairaValue,
       icon: Coins,
       color: "text-yellow-600",
       bgColor: "bg-yellow-50 dark:bg-yellow-900/20",
-      description: "50% of BPT rewards (5 per BPT value)",
-      displayValue: `${wallets.bpiTokenWallet.toFixed(2)} BPT (${formatAmount(wallets.bpiTokenWallet * 5)})`,
+      description: `50% of BPT rewards (₦${bptPrice} per BPT)`,
+      displayValue: `${bptUnits.toFixed(2)} BPT (${formatAmount(bptNairaValue)})`,
     },
     {
       name: "Palliative Wallet",
@@ -186,7 +191,7 @@ export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWa
           <h4 className="font-semibold text-emerald-900 dark:text-emerald-100 mb-2">💡 Wallet Information</h4>
           <ul className="text-sm text-emerald-800 dark:text-emerald-200 space-y-1">
             <li><strong>Main Wallet:</strong> Fully withdrawable cash balance</li>
-            <li><strong>BPI Token (BPT):</strong> 50% of your token rewards (5 per BPT value). Other 50% goes to buy-back wallet</li>
+            <li><strong>BPI Token (BPT):</strong> 50% of your token rewards (₦{bptPrice} per BPT). Other 50% goes to buy-back wallet</li>
             <li><strong>Palliative:</strong> Welfare support from referral activations</li>
             <li><strong>Cashback:</strong> Available for Gold Plus, Platinum Plus, and Travel packages</li>
             <li><strong>Shelter:</strong> Housing support for Gold/Platinum packages (10 referral levels)</li>
