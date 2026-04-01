@@ -55,6 +55,15 @@ const config: Config = {
         'bpi-dark-text': '#e8f2ed',   // Light green-tinted text
         'bpi-dark-muted': '#6b8471',  // Muted green for secondary text
         'bpi-dark-border': '#3d6b4a', // Dark green border
+        // Official Homepage Palette (bpi_official_homepage)
+        bpi: {
+          green: '#7D9E49',
+          gold: '#937030',
+          forest: '#4E6630',
+          cream: '#F7F3EA',
+          charcoal: '#1F1F1F',
+          sand: '#D8CBB7',
+        },
       },
       backgroundImage: {
         // BPI gradients with lighter, more balanced green dominance
@@ -86,6 +95,10 @@ const config: Config = {
       animation: {
         shimmer: 'shimmer 2.2s ease-in-out infinite',
         'shimmer-once': 'shimmer 2.2s ease-in-out 1',
+      },
+      boxShadow: {
+        'premium': '0 10px 40px -10px rgba(31, 31, 31, 0.08)',
+        'premium-hover': '0 20px 40px -10px rgba(31, 31, 31, 0.12)',
       },
     }
   },
