@@ -51,7 +51,6 @@ import { Share2 } from "lucide-react";
 import { PalliativeJourneyCard } from "./palliative/PalliativeJourneyCard";
 import { ActivatedPalliativeCard } from "./palliative/ActivatedPalliativeCard";
 import { PalliativeActivationModal } from "./palliative/PalliativeActivationModal";
-import { PALLIATIVE_THRESHOLD } from "@/lib/palliative";
 import DepositModal from "./wallet/DepositModal";
 import NotificationsModal from "./notifications/NotificationsModal";
 import CommunityStatsModal from "./community/CommunityStatsModal";
@@ -2221,11 +2220,11 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                   </span>
                 </div>
 
-                {/* Shelter Activation - Active when: Gold/Platinum member, OR palliative already activated, OR palliative balance >= ₦200k threshold */}
+                {/* Shelter Activation - Active when: Gold/Platinum member, OR palliative already activated, OR isShelter flag set */}
                 {(() => {
                   const isShelterActive =
+                    userProfile?.isShelter === 1 ||
                     userProfile?.palliativeActivated ||
-                    (userProfile?.palliative || 0) >= PALLIATIVE_THRESHOLD ||
                     ['gold', 'platinum'].some(t => userDetails?.activeMembership?.name?.toLowerCase().includes(t));
                   return (
                     <div className={`flex items-center justify-between p-3 rounded-lg border ${
@@ -2944,7 +2943,8 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
             {userProfile && userDetails?.activeMembership ? (
               (() => {
                 // Shelter-active users don't need the palliative journey — payouts go directly to palliative wallet
-                const hasShelter = (userProfile as any).isShelter === 1 || (userProfile.shelter ?? 0) > 0
+                const hasShelter = userProfile.isShelter === 1
+                  || userProfile.palliativeActivated
                   || ['gold', 'platinum'].some(t => userDetails?.activeMembership?.name?.toLowerCase().includes(t));
                 
                 if (hasShelter) {
