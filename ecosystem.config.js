@@ -1,12 +1,12 @@
 module.exports = {
   apps: [
     {
-      name: 'bpi-production',
+      name: 'beepagro-v3',
       script: 'npm',
       args: 'start',
-      cwd: '/var/www/bpi',
-      instances: 'max',
-      exec_mode: 'cluster',
+      cwd: '/var/www/apps/bpi_main',
+      instances: 1,
+      exec_mode: 'fork',
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
@@ -22,7 +22,7 @@ module.exports = {
       name: 'bpi-cron',
       script: 'npx',
       args: 'tsx server/cron-server.ts',
-      cwd: '/var/www/bpi',
+      cwd: '/var/www/apps/bpi_main',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
