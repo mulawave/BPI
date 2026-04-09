@@ -25,7 +25,29 @@ export default function SolarAssessmentModal({ isOpen, onClose }: SolarAssessmen
     budgetRange: "",
   });
 
+  const formatCurrency = (value?: number | null) => {
+    if (typeof value !== "number" || Number.isNaN(value)) {
+      return "Pending quote";
+    }
+
+    return `₦${value.toLocaleString()}`;
+  };
+
+  const getStatusTone = (status?: string | null) => {
+    const normalizedStatus = (status ?? "pending").toLowerCase();
+
+    if (normalizedStatus.includes("completed")) {
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300";
+    }
+
+    if (normalizedStatus.includes("consult") || normalizedStatus.includes("review")) {
+      return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+    }
+
+    return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300";
+  };
   const { data: assessments } = api.solarAssessment.getMyAssessments.useQuery();
+  const recentAssessments = (assessments ?? []).slice(0, 3);
   const { data: estimate } = api.solarAssessment.calculateEstimate.useQuery(
     { roofArea: parseFloat(formData.roofArea) || 0, monthlyBill: parseFloat(formData.currentEnergyBill) || 0 },
     { enabled: !!formData.roofArea && !!formData.currentEnergyBill }
@@ -135,6 +157,86 @@ export default function SolarAssessmentModal({ isOpen, onClose }: SolarAssessmen
               </div>
             </div>
           )}
+
+          <div className="mt-8 max-w-3xl mx-auto space-y-4 animate-fadeIn">
+            {estimate && currentStep < 4 && (
+              <div className="rounded-2xl border border-orange-200/70 bg-gradient-to-r from-orange-50 via-amber-50 to-white p-5 shadow-sm dark:border-orange-900/40 dark:bg-gradient-to-r dark:from-orange-950/40 dark:via-amber-950/30 dark:to-bpi-dark-card">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-300">Live Estimate</p>
+                    <h4 className="mt-1 text-lg font-semibold text-foreground">Your current inputs already support a rough solar sizing</h4>
+                  </div>
+                  <div className="rounded-full bg-orange-500/10 p-3 text-orange-600 dark:text-orange-300">
+                    <Sun className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl bg-white/80 p-4 dark:bg-white/5">
+                    <p className="text-xs text-muted-foreground">System size</p>
+                    <p className="mt-1 text-lg font-semibold text-foreground">{estimate.estimatedPanels} panels</p>
+                  </div>
+                  <div className="rounded-xl bg-white/80 p-4 dark:bg-white/5">
+                    <p className="text-xs text-muted-foreground">Projected savings</p>
+                    <p className="mt-1 text-lg font-semibold text-foreground">₦{estimate.monthlySavings.toLocaleString()}/mo</p>
+                  </div>
+                  <div className="rounded-xl bg-white/80 p-4 dark:bg-white/5">
+                    <p className="text-xs text-muted-foreground">Indicative quote</p>
+                    <p className="mt-1 text-lg font-semibold text-foreground">₦{estimate.estimatedCost.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-2xl border border-bpi-border bg-white/95 p-5 shadow-sm dark:border-bpi-dark-accent dark:bg-bpi-dark-card/90">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-bpi-primary dark:text-bpi-gold">Recent Requests</p>
+                  <h4 className="mt-1 text-lg font-semibold text-foreground">Your solar assessment history</h4>
+                </div>
+                <div className="rounded-full border border-bpi-border p-3 text-bpi-primary dark:border-bpi-dark-accent dark:text-bpi-gold">
+                  <FiSun className="h-5 w-5" />
+                </div>
+              </div>
+
+              {recentAssessments.length === 0 ? (
+                <div className="mt-4 rounded-xl border border-dashed border-bpi-border px-4 py-6 text-sm text-muted-foreground dark:border-bpi-dark-accent">
+                  Your submitted solar requests will appear here once you complete an assessment.
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {recentAssessments.map((assessment) => (
+                    <div key={assessment.id} className="rounded-xl border border-bpi-border/80 bg-bpi-light/40 p-4 dark:border-bpi-dark-accent dark:bg-white/5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-foreground">{assessment.location ?? "Assessment request"}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Submitted {new Date(assessment.createdAt).toLocaleDateString()} • {assessment.propertyType ?? "Property type pending"}
+                          </p>
+                        </div>
+                        <span className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${getStatusTone(assessment.assessmentStatus)}`}>
+                          {(assessment.assessmentStatus ?? "pending").replace(/_/g, " ")}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
+                        <div>
+                          <span className="block text-xs uppercase tracking-wide">Quote</span>
+                          <span className="font-medium text-foreground">{formatCurrency(assessment.quotedAmount)}</span>
+                        </div>
+                        <div>
+                          <span className="block text-xs uppercase tracking-wide">Savings</span>
+                          <span className="font-medium text-foreground">{formatCurrency(assessment.estimatedSavings)}</span>
+                        </div>
+                        <div>
+                          <span className="block text-xs uppercase tracking-wide">System</span>
+                          <span className="font-medium text-foreground">{assessment.recommendedSystem ?? "Sizing in review"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         <div className="sticky bottom-0 z-20 bg-white dark:bg-bpi-dark-card border-t border-bpi-border dark:border-bpi-dark-accent p-6">
           <div className="flex justify-between gap-4">

@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 import LoadingScreen from "@/components/LoadingScreen";
+import KycWarningBanner from "@/components/kyc/KycWarningBanner";
 
 export default function MembershipPage() {
   const { data: packages, isLoading } = api.package.getPackages.useQuery();
@@ -90,7 +91,7 @@ export default function MembershipPage() {
     const isBundle = isAddonPackage(pkg.name);
     
     if (context === 'bundle') {
-      const regularPlusPackage = packages?.find(p => p.name === "Regular Plus");
+      const regularPlusPackage = packages?.find((p: { name: string }) => p.name === "Regular Plus");
       const regularPlusTotal = regularPlusPackage ? regularPlusPackage.price + regularPlusPackage.vat : 0;
       const currentTotal = activeMembership?.package
         ? activeMembership.package.price + activeMembership.package.vat
@@ -383,6 +384,11 @@ export default function MembershipPage() {
           </div>
         </div>
       </header>
+
+      {/* KYC Warning Banner */}
+      <div className="max-w-7xl mx-auto px-4 pt-4">
+        <KycWarningBanner />
+      </div>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-12">

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { hash, compare } from "bcryptjs";
-import { createTRPCRouter, publicProcedure, protectedProcedure } from "../trpc";
+import { createTRPCRouter, publicProcedure, protectedProcedure, rateLimitedProcedure, passwordResetProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { randomUUID } from "crypto";
 import { sendPasswordResetEmail, sendWelcomeEmail } from "@/lib/email";
@@ -22,7 +22,7 @@ const registerSchema = z.object({
 });
 
 export const authRouter = createTRPCRouter({
-  register: publicProcedure
+  register: rateLimitedProcedure
     .input(registerSchema)
     .mutation(async ({ ctx, input }) => {
       const { firstname, lastname, screenname, gender, email, password, ref_id } = input;
@@ -138,9 +138,7 @@ export const authRouter = createTRPCRouter({
           // Don't fail registration if referral record creation fails
         }
       }
-      // TODO: Send welcome email
-      // TODO: Create initial member profile
-
+      // Send welcome email (non-blocking — registration succeeds even if email fails)
       if (user.email) {
         try {
           await sendWelcomeEmail(user.email, user.firstname || user.name || "Member");
@@ -174,7 +172,7 @@ export const authRouter = createTRPCRouter({
       return { exists: !!user };
     }),
 
-  forgotPassword: publicProcedure
+  forgotPassword: passwordResetProcedure
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ ctx, input }) => {
       const user = await ctx.prisma.user.findUnique({
@@ -210,7 +208,7 @@ export const authRouter = createTRPCRouter({
       return { success: true, message: "If an account exists, a reset link has been sent." };
     }),
 
-  resetPassword: publicProcedure
+  resetPassword: passwordResetProcedure
     .input(z.object({
       token: z.string(),
       password: z.string().min(8, "Password must be at least 8 characters"),

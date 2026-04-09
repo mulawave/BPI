@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authConfig } from "@/server/auth";
 import { SignJWT } from "jose";
 import { cookies } from "next/headers";
+import { requireAuthSecret } from "@/lib/authSecret";
 
 export async function GET(req: NextRequest) {
   try {
@@ -67,6 +68,17 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const session = await getServerSession(authConfig);
+    if (!session?.user || (session.user as any).id !== impToken.adminId) {
+      return new NextResponse(
+        `<html><body><script>
+          alert("Unauthorized impersonation request");
+          window.close();
+        </script></body></html>`,
+        { headers: { "Content-Type": "text/html" } }
+      );
+    }
+
     // Mark token as used
     await prisma.impersonationToken.update({
       where: { id: impToken.id },
@@ -74,7 +86,7 @@ export async function GET(req: NextRequest) {
     });
 
     // Create JWT token for the target user with impersonation flag
-    const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET!);
+    const secret = new TextEncoder().encode(requireAuthSecret());
     const jwtToken = await new SignJWT({
       id: impToken.TargetUser.id,
       email: impToken.TargetUser.email,
@@ -258,7 +270,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Create JWT token for the target user with impersonation flag
-    const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET!);
+    const secret = new TextEncoder().encode(requireAuthSecret());
     const impersonationToken = await new SignJWT({
       id: impToken.TargetUser.id,
       email: impToken.TargetUser.email,

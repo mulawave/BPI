@@ -10,11 +10,9 @@ import { MockDevGateway } from "./MockDevGateway";
 import { WalletGateway } from "./WalletGateway";
 import { FlutterwaveGateway } from "./FlutterwaveGateway";
 import { PaystackGateway } from "./PaystackGateway";
-// Future imports:
-// import { PaystackGateway } from "./PaystackGateway";
-// import { BankTransferGateway } from "./BankTransferGateway";
-// import { CryptoGateway } from "./CryptoGateway";
-// import { UtilityTokenGateway } from "./UtilityTokenGateway";
+import { BankTransferGateway } from "./BankTransferGateway";
+import { CryptoGateway } from "./CryptoGateway";
+import { UtilityTokenGateway } from "./UtilityTokenGateway";
 
 export class PaymentGatewayFactory {
   private static instances: Map<PaymentGateway, IPaymentGateway> = new Map();
@@ -42,6 +40,9 @@ export class PaymentGatewayFactory {
 
     switch (gatewayType) {
       case PaymentGateway.MOCK_DEV:
+        if (process.env.NODE_ENV === "production") {
+          throw new Error("Mock payment gateway is not available in production");
+        }
         gateway = new MockDevGateway();
         break;
 
@@ -57,19 +58,17 @@ export class PaymentGatewayFactory {
         gateway = new PaystackGateway();
         break;
 
-      // TODO: Implement these gateways
+      case PaymentGateway.BANK_TRANSFER:
+        gateway = new BankTransferGateway();
+        break;
 
-      // case PaymentGateway.BANK_TRANSFER:
-      //   gateway = new BankTransferGateway();
-      //   break;
+      case PaymentGateway.CRYPTO:
+        gateway = new CryptoGateway();
+        break;
 
-      // case PaymentGateway.CRYPTO:
-      //   gateway = new CryptoGateway();
-      //   break;
-
-      // case PaymentGateway.UTILITY_TOKEN:
-      //   gateway = new UtilityTokenGateway();
-      //   break;
+      case PaymentGateway.UTILITY_TOKEN:
+        gateway = new UtilityTokenGateway();
+        break;
 
       default:
         throw new Error(`Payment gateway ${gatewayType} is not yet implemented`);

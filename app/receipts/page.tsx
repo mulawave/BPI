@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { Download, FileText, Calendar, Filter, Search, ChevronDown, Loader2 } from 'lucide-react';
 import { FiCheckCircle, FiClock, FiXCircle } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import KycWarningBanner from '@/components/kyc/KycWarningBanner';
 
 type FilterType = 'all' | 'deposits' | 'withdrawals';
 
@@ -92,6 +93,9 @@ export default function ReceiptsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-6">
       <div className="max-w-7xl mx-auto">
+        {/* KYC Warning Banner */}
+        <KycWarningBanner />
+
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">

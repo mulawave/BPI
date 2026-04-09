@@ -4,8 +4,13 @@ import { authConfig } from "@/server/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { randomBytes } from "crypto";
+import { authLimiter, applyRateLimit } from "@/lib/rateLimit";
 
 export async function POST(request: NextRequest) {
+  // Rate limit: 10 uploads per minute per IP
+  const blocked = applyRateLimit(request, authLimiter);
+  if (blocked) return blocked;
+
   try {
     const session = await getServerSession(authConfig);
 

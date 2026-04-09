@@ -1,10 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
   staticPageGenerationTimeout: 120,
   // Prevent any CDN / reverse-proxy from caching authenticated API responses.
@@ -12,6 +12,15 @@ const nextConfig = {
   // headers set in the tRPC route handler.
   async headers() {
     return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-DNS-Prefetch-Control", value: "on" },
+        ],
+      },
       {
         source: "/api/:path*",
         headers: [
@@ -31,7 +40,11 @@ const nextConfig = {
   experimental: {
     instrumentationHook: true,
     serverActions: {
-      allowedOrigins: ["*"]
+      allowedOrigins: [
+        "localhost:3000",
+        "beepagro.com",
+        "www.beepagro.com",
+      ]
     },
     optimizePackageImports: ['@trpc/react-query', '@trpc/client', 'react-icons', 'framer-motion'],
   },

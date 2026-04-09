@@ -53,24 +53,68 @@ export const promotionalMaterialsRouter = createTRPCRouter({
         },
       });
 
+      // Resolve user's active package price for access control
+      let userPackagePrice = 0;
+      if (user?.activeMembershipPackageId) {
+        const userPkg = await ctx.prisma.membershipPackage.findUnique({
+          where: { id: user.activeMembershipPackageId },
+          select: { price: true },
+        });
+        userPackagePrice = userPkg?.price ?? 0;
+      }
+
+      const userRank = (user as any)?.rank ?? "Newbie";
+
+      // Known rank hierarchy (lowest to highest)
+      const RANK_ORDER = ["Newbie", "Bronze", "Silver", "Gold", "Platinum", "Diamond", "Ambassador"];
+
       // Filter by access control
       const accessibleMaterials = materials.filter((material) => {
-        // Check package level
+        // Check package level — compare by price of the minimum required package
         if (material.minPackageLevel) {
-          // TODO: Add package level comparison logic
-          // For now, assume all packages have access
+          // minPackageLevel stores a package name; we resolve its price lazily below
+          (material as any)._needsPkgCheck = true;
         }
 
         // Check rank
         if (material.minRank) {
-          // TODO: Add rank comparison logic
+          const userIdx = RANK_ORDER.indexOf(userRank);
+          const minIdx = RANK_ORDER.indexOf(material.minRank);
+          if (minIdx >= 0 && (userIdx < 0 || userIdx < minIdx)) {
+            return false;
+          }
         }
 
         return true;
       });
 
+      // Batch-resolve minPackageLevel prices for materials that need it
+      const pkgNames = [
+        ...new Set(
+          accessibleMaterials
+            .filter((m) => m.minPackageLevel)
+            .map((m) => m.minPackageLevel as string)
+        ),
+      ];
+      const pkgPrices: Record<string, number> = {};
+      if (pkgNames.length > 0) {
+        const pkgs = await ctx.prisma.membershipPackage.findMany({
+          where: { name: { in: pkgNames } },
+          select: { name: true, price: true },
+        });
+        for (const p of pkgs) pkgPrices[p.name] = p.price;
+      }
+
+      const finalMaterials = accessibleMaterials.filter((material) => {
+        if (material.minPackageLevel) {
+          const requiredPrice = pkgPrices[material.minPackageLevel] ?? 0;
+          if (userPackagePrice < requiredPrice) return false;
+        }
+        return true;
+      });
+
       return {
-        materials: accessibleMaterials.map(m => ({
+        materials: finalMaterials.map(m => ({
           ...m,
           // UI expects these names
           downloads: m.downloadCount,
@@ -79,7 +123,7 @@ export const promotionalMaterialsRouter = createTRPCRouter({
           hasDownloaded: m.MaterialDownload.length > 0,
           lastDownloadedAt: m.MaterialDownload[0]?.downloadedAt,
         })),
-        totalCount: accessibleMaterials.length,
+        totalCount: finalMaterials.length,
       };
     }),
 

@@ -5,11 +5,17 @@ export interface PaymentRequest {
   email: string;
   name: string;
   phone?: string;
-  paymentMethod: "flutterwave" | "paystack" | "wallet" | "mock";
+  paymentMethod: "flutterwave" | "paystack" | "wallet" | "mock" | "bank_transfer" | "crypto" | "utility_token";
   currency?: string;
   purpose?: string;
   metadata?: Record<string, any>;
   gateway?: PaymentGateway;
+  /** Crypto-specific: provider to use (e.g. "coinbase_commerce", "nowpayments", "binance_pay") */
+  cryptoProvider?: string;
+  /** Crypto-specific: cryptocurrency symbol (e.g. "USDT", "BTC") */
+  cryptoCurrency?: string;
+  /** Crypto-specific: blockchain network (e.g. "TRC20", "ERC20", "BSC") */
+  cryptoNetwork?: string;
 }
 
 export interface PaymentResponse {
@@ -54,6 +60,9 @@ export enum PaymentGateway {
   WALLET = "wallet",
   PAYSTACK = "paystack",
   FLUTTERWAVE = "flutterwave",
+  BANK_TRANSFER = "bank_transfer",
+  CRYPTO = "crypto",
+  UTILITY_TOKEN = "utility_token",
 }
 
 export enum PaymentPurpose {
@@ -62,6 +71,7 @@ export enum PaymentPurpose {
   RENEWAL = "RENEWAL",
   TOPUP = "TOPUP",
   EMPOWERMENT = "EMPOWERMENT",
+  DEPOSIT = "DEPOSIT",
 }
 
 export interface GatewayConfig {
@@ -96,6 +106,7 @@ export interface WebhookValidationResult {
 export interface IPaymentGateway {
   initializePayment(request: PaymentRequest): Promise<PaymentResponse>;
   verifyPayment(reference: string): Promise<PaymentVerification>;
+  refundPayment?(transactionId: string, amount?: number): Promise<PaymentResponse>;
   validateWebhook?(payload: WebhookPayload): Promise<WebhookValidationResult>;
   processWebhook?(payload: any): Promise<void>;
 }

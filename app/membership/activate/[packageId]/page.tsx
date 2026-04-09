@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Bitcoin,
   LogOut,
+  FlaskConical,
 } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -33,7 +34,8 @@ type PaymentGateway =
   | "paystack"
   | "flutterwave"
   | "utility-token"
-  | "crypto";
+  | "crypto"
+  | "mock";
 
 type PalliativeSlug = "car" | "house" | "land" | "business" | "solar" | "education";
 const ALLOWED_PALLIATIVES: PalliativeSlug[] = ["car", "house", "land", "business", "solar", "education"];
@@ -143,8 +145,12 @@ export default function ActivateMembershipPage() {
   const initiateMembershipPayment = api.package.initiateMembershipPayment.useMutation({
     onSuccess: (data) => {
       if (data.paymentUrl) {
-        window.open(data.paymentUrl, "_blank");
+        // Redirect to payment gateway in same tab — user will be redirected back
+        // to /payment/verify after completing payment via the callback handler
+        window.location.href = data.paymentUrl;
+        return;
       }
+      // Wallet payment: activation completed server-side
       setSuccess(true);
       setProcessing(false);
       setTimeout(() => {
@@ -161,11 +167,14 @@ export default function ActivateMembershipPage() {
   const processUpgradeMutation = api.package.processUpgradePayment.useMutation({
     onSuccess: (data) => {
       if (data.paymentUrl) {
-        window.open(data.paymentUrl, "_blank");
+        // Redirect to payment gateway in same tab — user will be redirected back
+        // to /payment/verify after completing payment via the callback handler
+        window.location.href = data.paymentUrl;
+        return;
       }
+      // Wallet payment: upgrade completed server-side
       setSuccess(true);
       setProcessing(false);
-      // Redirect to dashboard after 2 seconds
       setTimeout(() => {
         router.push('/dashboard');
       }, 2000);
@@ -235,6 +244,14 @@ export default function ActivateMembershipPage() {
       icon: Bitcoin,
       available: isEnabled('crypto', false),
       comingSoon: comingSoonFromDb('crypto', true)
+    },
+    {
+      id: 'mock',
+      name: 'Mock Payment',
+      description: 'Testing only — instant activation',
+      icon: FlaskConical,
+      available: isEnabled('mock', false),
+      comingSoon: comingSoonFromDb('mock', true)
     },
   ];
 
@@ -310,6 +327,22 @@ export default function ActivateMembershipPage() {
           await initiateMembershipPayment.mutateAsync({
             packageId: selectedPackage.id,
             gateway: 'paystack',
+            selectedPalliative: selectedPalliative || undefined,
+          });
+        }
+      } else if (selectedGateway === 'mock') {
+        if (isUpgrade && fromPackageId) {
+          await processUpgradeMutation.mutateAsync({
+            packageId: selectedPackage.id,
+            currentPackageId: fromPackageId,
+            paymentMethod: 'mock',
+            frontendCalculatedCost: totalCost,
+            selectedPalliative: selectedPalliative || undefined,
+          });
+        } else {
+          await initiateMembershipPayment.mutateAsync({
+            packageId: selectedPackage.id,
+            gateway: 'mock',
             selectedPalliative: selectedPalliative || undefined,
           });
         }

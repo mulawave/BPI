@@ -30,7 +30,8 @@ export default function AdminLayout({
     undefined,
     {
       enabled: status === "authenticated" && !isAdminAuthRoute,
-      retry: 1,
+      retry: 5,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 15000),
     }
   );
 

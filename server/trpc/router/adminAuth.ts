@@ -150,17 +150,14 @@ export const adminAuthRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       requireAdmin(ctx);
 
-      // Return empty array until migration completes
-      // TODO: Uncomment after migration
-      // const recentLogs = await ctx.prisma.auditLog.findMany({
-      //   take: input.limit,
-      //   orderBy: { createdAt: 'desc' },
-      //   include: {
-      //     admin: { select: { name: true, email: true } },
-      //     targetUser: { select: { name: true, email: true } },
-      //   },
-      // });
+      const recentLogs = await ctx.prisma.auditLog.findMany({
+        take: input.limit,
+        orderBy: { createdAt: "desc" },
+        include: {
+          User: { select: { name: true, email: true } },
+        },
+      });
 
-      return [];
+      return recentLogs;
     }),
 });

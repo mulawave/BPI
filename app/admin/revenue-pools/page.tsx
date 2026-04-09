@@ -70,6 +70,21 @@ export default function RevenuePoolsPage() {
   const [showTechProjectForm, setShowTechProjectForm] = useState(false);
   const [spendForm, setSpendForm] = useState<{ projectId: string; amount: string; description: string; receipt: string } | null>(null);
   const [editingTechProject, setEditingTechProject] = useState<{ id: string; roiNotes: string; milestones: string } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    tone: "danger" | "warning" | "success";
+    onConfirm: (() => void) | null;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    confirmLabel: "Confirm",
+    tone: "warning",
+    onConfirm: null,
+  });
 
   const [analyticsFilters, setAnalyticsFilters] = useState({
     programType: "",
@@ -223,6 +238,33 @@ export default function RevenuePoolsPage() {
     },
     onError: (error: any) => toast.error(error.message),
   });
+
+  const requestConfirmation = (config: {
+    title: string;
+    message: string;
+    confirmLabel: string;
+    tone: "danger" | "warning" | "success";
+    onConfirm: () => void;
+  }) => {
+    setConfirmDialog({
+      open: true,
+      title: config.title,
+      message: config.message,
+      confirmLabel: config.confirmLabel,
+      tone: config.tone,
+      onConfirm: config.onConfirm,
+    });
+  };
+
+  const closeConfirmation = () => {
+    setConfirmDialog((prev) => ({ ...prev, open: false, onConfirm: null }));
+  };
+
+  const runConfirmedAction = () => {
+    if (!confirmDialog.onConfirm) return;
+    confirmDialog.onConfirm();
+    closeConfirmation();
+  };
 
   const createTechProject = api.revenue.createTechProject.useMutation({
     onSuccess: () => {
@@ -889,9 +931,13 @@ export default function RevenuePoolsPage() {
                         </button>
                         <button
                           onClick={() => {
-                            if (confirm(`Delete "${shareholder.role.replace(/_/g, " ")}" position? This cannot be undone.`)) {
-                              deleteExecutivePosition.mutate({ shareholderId: shareholder.id });
-                            }
+                            requestConfirmation({
+                              title: "Delete Executive Position",
+                              message: `Delete "${shareholder.role.replace(/_/g, " ")}" position? This action cannot be undone.`,
+                              confirmLabel: "Delete Position",
+                              tone: "danger",
+                              onConfirm: () => deleteExecutivePosition.mutate({ shareholderId: shareholder.id }),
+                            });
                           }}
                           disabled={deleteExecutivePosition.isPending}
                           className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 text-sm transition-colors disabled:opacity-50"
@@ -1015,9 +1061,13 @@ export default function RevenuePoolsPage() {
                     {pool.type === "LEADERSHIP" && (
                       <button
                         onClick={() => {
-                          if (window.confirm("Sync LEADERSHIP pool members with their LeadershipPoolQualification records? Members who no longer qualify will be deactivated.")) {
-                            syncLeadershipQualifications.mutate();
-                          }
+                          requestConfirmation({
+                            title: "Sync Leadership Qualifications",
+                            message: "Sync LEADERSHIP pool members with LeadershipPoolQualification records? Members who no longer qualify will be deactivated.",
+                            confirmLabel: "Sync Members",
+                            tone: "warning",
+                            onConfirm: () => syncLeadershipQualifications.mutate(),
+                          });
                         }}
                         disabled={syncLeadershipQualifications.isPending}
                         className="px-3 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 text-sm transition-colors disabled:opacity-50"
@@ -1029,9 +1079,13 @@ export default function RevenuePoolsPage() {
                     {pool.balance > 0 && (pool.Members?.length || 0) > 0 && (
                       <button
                         onClick={() => {
-                          if (window.confirm(`Are you sure you want to distribute the ${pool.type} pool? This will distribute ₦${Number(pool.balance).toLocaleString()} to ${pool.Members?.length || 0} members.`)) {
-                            distributePool.mutate({ poolType: pool.type as any });
-                          }
+                          requestConfirmation({
+                            title: `Distribute ${pool.type} Pool`,
+                            message: `Distribute ₦${Number(pool.balance).toLocaleString()} to ${pool.Members?.length || 0} members now?`,
+                            confirmLabel: "Distribute Now",
+                            tone: "success",
+                            onConfirm: () => distributePool.mutate({ poolType: pool.type as any }),
+                          });
                         }}
                         disabled={distributePool.isPending}
                         className="px-4 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-sm transition-colors disabled:opacity-50"
@@ -1127,9 +1181,13 @@ export default function RevenuePoolsPage() {
                           </div>
                           <button
                             onClick={() => {
-                              if (window.confirm(`Remove ${member.User?.name || "this member"} from ${pool.type} pool?`)) {
-                                removePoolMember.mutate({ memberId: member.id });
-                              }
+                              requestConfirmation({
+                                title: "Remove Pool Member",
+                                message: `Remove ${member.User?.name || "this member"} from ${pool.type} pool?`,
+                                confirmLabel: "Remove Member",
+                                tone: "danger",
+                                onConfirm: () => removePoolMember.mutate({ memberId: member.id }),
+                              });
                             }}
                             className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                           >
@@ -1169,6 +1227,68 @@ export default function RevenuePoolsPage() {
               <div className="w-10 h-10 rounded-full border-2 border-blue-200 dark:border-blue-700 flex items-center justify-center">
                 <Cpu className="w-5 h-5 text-blue-600" />
               </div>
+
+              <AnimatePresence>
+                {confirmDialog.open && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-[12000] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+                    onClick={closeConfirmation}
+                  >
+                    <motion.div
+                      initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ duration: 0.2 }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full max-w-lg rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl"
+                    >
+                      <div className="p-6 space-y-4">
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`mt-0.5 h-10 w-10 rounded-full border flex items-center justify-center ${
+                              confirmDialog.tone === "danger"
+                                ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700 text-red-600 dark:text-red-400"
+                                : confirmDialog.tone === "success"
+                                ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400"
+                                : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700 text-amber-600 dark:text-amber-400"
+                            }`}
+                          >
+                            <AlertTriangle className="h-5 w-5" />
+                          </div>
+                          <div className="space-y-1">
+                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{confirmDialog.title}</h3>
+                            <p className="text-sm text-slate-600 dark:text-slate-300">{confirmDialog.message}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-2">
+                          <button
+                            onClick={closeConfirmation}
+                            className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={runConfirmedAction}
+                            className={`px-4 py-2 rounded-lg text-sm font-semibold text-white ${
+                              confirmDialog.tone === "danger"
+                                ? "bg-red-600 hover:bg-red-700"
+                                : confirmDialog.tone === "success"
+                                ? "bg-emerald-600 hover:bg-emerald-700"
+                                : "bg-amber-600 hover:bg-amber-700"
+                            }`}
+                          >
+                            {confirmDialog.confirmLabel}
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               <div>
                 <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Technology Pool Projects</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">Budget allocation, spend tracking and ROI reporting</p>

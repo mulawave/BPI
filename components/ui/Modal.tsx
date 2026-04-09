@@ -1,6 +1,7 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from './card';
 import { X } from 'lucide-react';
 
@@ -13,9 +14,12 @@ interface ModalProps {
 }
 
 export function Modal({ isOpen, title, children, onClose, maxWidth = 'md' }: ModalProps) {
-  if (!isOpen) {
-    return null;
-  }
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [isOpen]);
 
   const widthClasses = {
     'sm': 'sm:max-w-sm',
@@ -33,26 +37,45 @@ export function Modal({ isOpen, title, children, onClose, maxWidth = 'md' }: Mod
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-3 sm:p-4 overflow-y-auto">
-      <Card className={`w-full max-w-md sm:max-w-lg md:max-w-xl ${widthClasses[maxWidth]} relative my-8`}>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors z-10"
-            aria-label="Close modal"
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4 overflow-y-auto"
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-        {title && (
-          <CardHeader>
-            <CardTitle className="text-center text-2xl pr-8">{title}</CardTitle>
-          </CardHeader>
-        )}
-        <CardContent className={title ? "" : "pt-6"}>
-          {children}
-        </CardContent>
-      </Card>
-    </div>
+            <Card className={`w-full max-w-md sm:max-w-lg md:max-w-xl ${widthClasses[maxWidth]} relative my-8 shadow-2xl dark:bg-bpi-dark-card dark:border-bpi-dark-accent/30`}>
+              {onClose && (
+                <button
+                  onClick={onClose}
+                  className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-bpi-dark-accent/50 rounded-lg transition-colors z-10"
+                  aria-label="Close modal"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+              {title && (
+                <CardHeader>
+                  <CardTitle className="text-center text-2xl pr-8">{title}</CardTitle>
+                </CardHeader>
+              )}
+              <CardContent className={title ? "" : "pt-6"}>
+                {children}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

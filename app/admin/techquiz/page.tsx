@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
   Trophy,
   Plus,
@@ -379,6 +380,7 @@ function EventDetailPanel({ event, onClose, onRefresh }: { event: any; onClose: 
   const [appsPage, setAppsPage] = useState(1);
   const [appsStatusFilter, setAppsStatusFilter] = useState("");
   const [leaderboardSchoolFilter, setLeaderboardSchoolFilter] = useState("");
+  const [confirmAction, setConfirmAction] = useState<{ title: string; description?: string; onConfirm: () => void } | null>(null);
 
   // Round1 schedule form
   const [r1, setR1] = useState({ venueDescription: "", cbtWindowStart: "", cbtWindowEnd: "", notes: "" });
@@ -875,7 +877,7 @@ function EventDetailPanel({ event, onClose, onRefresh }: { event: any; onClose: 
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{op.description}</p>
                     </div>
                     <button
-                      onClick={() => { if (confirm(`Proceed: ${op.label}?`)) op.action(); }}
+                      onClick={() => setConfirmAction({ title: `Proceed: ${op.label}?`, onConfirm: () => op.action() })}
                       disabled={op.mut.isPending}
                       className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50 transition ${op.color}`}
                     >
@@ -896,7 +898,7 @@ function EventDetailPanel({ event, onClose, onRefresh }: { event: any; onClose: 
                   <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-1">Round 1 Results</p>
                   <p className="text-[11px] text-blue-600 dark:text-blue-400 mb-3">Publish Round 1 scores to parent & school dashboards.</p>
                   <button
-                    onClick={() => { if (confirm("Publish Round 1 results to all participants?")) publishR1Mut.mutate({ eventId: event.id }); }}
+                    onClick={() => setConfirmAction({ title: "Publish Round 1 Results", description: "Publish Round 1 scores to all participant dashboards?", onConfirm: () => publishR1Mut.mutate({ eventId: event.id }) })}
                     disabled={publishR1Mut.isPending}
                     className="w-full py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold disabled:opacity-50 transition"
                   >
@@ -907,7 +909,7 @@ function EventDetailPanel({ event, onClose, onRefresh }: { event: any; onClose: 
                   <p className="text-xs font-semibold text-violet-800 dark:text-violet-300 mb-1">Final Results</p>
                   <p className="text-[11px] text-violet-600 dark:text-violet-400 mb-3">Publish final rankings. Event will auto-complete.</p>
                   <button
-                    onClick={() => { if (confirm("Publish FINAL results and complete event?")) publishFinalMut.mutate({ eventId: event.id }); }}
+                    onClick={() => setConfirmAction({ title: "Publish Final Results", description: "Publish final rankings and auto-complete this event?", onConfirm: () => publishFinalMut.mutate({ eventId: event.id }) })}
                     disabled={publishFinalMut.isPending}
                     className="w-full py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold disabled:opacity-50 transition"
                   >
@@ -922,7 +924,7 @@ function EventDetailPanel({ event, onClose, onRefresh }: { event: any; onClose: 
                   <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 mb-1">Round 1 Blog Post</p>
                   <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mb-3">Auto-generate a qualifier summary post on the public blog.</p>
                   <button
-                    onClick={() => { if (confirm("Publish Round 1 qualifier summary to the blog?")) r1BlogMut.mutate({ eventId: event.id }); }}
+                    onClick={() => setConfirmAction({ title: "Post to Blog", description: "Publish Round 1 qualifier summary to the public blog?", onConfirm: () => r1BlogMut.mutate({ eventId: event.id }) })}
                     disabled={r1BlogMut.isPending}
                     className="w-full py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold disabled:opacity-50 transition"
                   >
@@ -933,7 +935,7 @@ function EventDetailPanel({ event, onClose, onRefresh }: { event: any; onClose: 
                   <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1">Winners Blog Post</p>
                   <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-3">Auto-generate a Top-20 winners announcement post.</p>
                   <button
-                    onClick={() => { if (confirm("Publish Top-20 winners announcement to the blog?")) finalBlogMut.mutate({ eventId: event.id }); }}
+                    onClick={() => setConfirmAction({ title: "Post Winners", description: "Publish Top-20 winners announcement to the public blog?", onConfirm: () => finalBlogMut.mutate({ eventId: event.id }) })}
                     disabled={finalBlogMut.isPending}
                     className="w-full py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-50 transition"
                   >
@@ -986,6 +988,15 @@ function EventDetailPanel({ event, onClose, onRefresh }: { event: any; onClose: 
           )}
         </div>
       </motion.div>
+      <ConfirmDialog
+        isOpen={!!confirmAction}
+        title={confirmAction?.title ?? ""}
+        description={confirmAction?.description}
+        confirmText="Proceed"
+        variant="danger"
+        onConfirm={() => { confirmAction?.onConfirm(); setConfirmAction(null); }}
+        onClose={() => setConfirmAction(null)}
+      />
     </motion.div>
   );
 }

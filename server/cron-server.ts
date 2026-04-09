@@ -10,41 +10,59 @@
 
 import cron from "node-cron";
 import { prisma } from "@/lib/prisma";
+import fs from "fs";
+import path from "path";
 
 // Set timezone to Nigeria (WAT = UTC+1)
 process.env.TZ = 'Africa/Lagos';
 
+const CRON_ERROR_LOG = path.join(process.cwd(), "logs", "cron-errors.log");
+
 /**
- * Send error notification to admin
+ * Append an error entry to the filesystem log as a last-resort fallback.
+ */
+function logToFile(entry: string) {
+  try {
+    const dir = path.dirname(CRON_ERROR_LOG);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(CRON_ERROR_LOG, entry + "\n");
+  } catch {
+    // Absolute last resort — stderr is the only option left
+    process.stderr.write(`[CRON] Cannot write to ${CRON_ERROR_LOG}: ${entry}\n`);
+  }
+}
+
+/**
+ * Send error notification to admin (fail-safe: always falls back to filesystem)
  */
 async function notifyAdminOfError(error: any, context: string) {
+  const timestamp = new Date().toISOString();
+  const message = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : undefined;
+
+  // Always log to console
+  console.error(`\n🚨 [ADMIN ALERT] ${context}:`, error);
+
+  // Always write to filesystem (guaranteed to not throw)
+  logToFile(`[${timestamp}] ${context}: ${message}${stack ? `\n${stack}` : ""}`);
+
+  // Best-effort: log to database for admin dashboard
   try {
-    console.error(`\n🚨 [ADMIN ALERT] ${context}:`, error);
-    
-    // Log to database for admin dashboard
     await prisma.revenueAdminAction.create({
       data: {
         adminId: "system",
         actionType: "DISTRIBUTION_ERROR",
-        description: `Error in ${context}: ${error.message}`,
+        description: `Error in ${context}: ${message}`,
         metadata: {
-          error: error.message,
-          stack: error.stack,
-          timestamp: new Date().toISOString(),
+          error: message,
+          stack,
+          timestamp,
         },
       },
-    }).catch((err: any) => {
-      console.error("Failed to log error to database:", err);
     });
-    
-    // TODO: Add email/SMS notification here
-    // await sendEmail({
-    //   to: process.env.ADMIN_EMAIL,
-    //   subject: `Revenue Distribution Error: ${context}`,
-    //   body: error.message,
-    // });
-  } catch (notifyError) {
-    console.error("Failed to send error notification:", notifyError);
+  } catch (dbError) {
+    const dbMsg = dbError instanceof Error ? dbError.message : String(dbError);
+    logToFile(`[${timestamp}] LOGGING_FAILURE: Could not write to database: ${dbMsg}`);
   }
 }
 
@@ -240,22 +258,8 @@ async function distributeExecutivePool() {
   } catch (error) {
     console.error("\n❌ [EXECUTIVE DISTRIBUTION] Error:", error);
     
-    // Log error for admin review
-    try {
-      await prisma.revenueAdminAction.create({
-        data: {
-          adminId: "system", // System user
-          actionType: "DISTRIBUTION_ERROR",
-          description: `Executive distribution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          metadata: {
-            error: error instanceof Error ? error.stack : String(error),
-            timestamp: new Date().toISOString(),
-          },
-        },
-      });
-    } catch (logError) {
-      console.error("Failed to log error:", logError);
-    }
+    // Log error for admin review (fail-safe)
+    await notifyAdminOfError(error, "Executive Pool Distribution");
 
     throw error;
   }

@@ -36,7 +36,7 @@ function RatingStars({ rating }: { rating: number }) {
           key={i}
           className={cn(
             "h-3.5 w-3.5",
-            i < Math.floor(rating) ? "fill-amber-400 text-amber-400" : "text-gray-300 dark:text-gray-600"
+            i < Math.floor(rating) ? "fill-amber-400 text-amber-400" : "text-gray-300 dark:text-white/40"
           )}
         />
       ))}
@@ -70,7 +70,7 @@ function FeaturedCarouselCard({ product, detailLoading, onViewDetails }: { produ
               {product.hero_badge}
             </span>
           )}
-          <Badge variant="outline" className="bg-white/90 dark:bg-black/80 text-gray-700 dark:text-white/90 backdrop-blur-sm text-[10px] uppercase">
+          <Badge variant="outline" className="bg-white/90 dark:bg-bpi-dark-card/80 text-gray-700 dark:text-white/90 backdrop-blur-sm text-[10px] uppercase">
             {productTypeLabel}
           </Badge>
         </div>
@@ -189,7 +189,7 @@ function ProductCard({ product, quickBuyLoading, detailLoading, onQuickBuy, onVi
           {product.hero_badge && (
             <Badge variant="secondary" className="bg-emerald-600 text-white shadow-md">{product.hero_badge}</Badge>
           )}
-          <Badge variant="outline" className="bg-white/90 dark:bg-black/80 text-gray-700 dark:text-white/90 backdrop-blur-sm uppercase text-[10px] tracking-[0.08em]">{product.product_type}</Badge>
+          <Badge variant="outline" className="bg-white/90 dark:bg-bpi-dark-card/80 text-gray-700 dark:text-white/90 backdrop-blur-sm uppercase text-[10px] tracking-[0.08em]">{product.product_type}</Badge>
         </div>
 
         {/* Inventory Badge */}
@@ -202,7 +202,7 @@ function ProductCard({ product, quickBuyLoading, detailLoading, onQuickBuy, onVi
         {/* Rating */}
         {product.rating && (
           <div className="absolute bottom-3 right-3">
-            <div className="inline-flex items-center gap-1 bg-white/90 dark:bg-black/80 backdrop-blur-sm rounded-full px-2 py-1">
+            <div className="inline-flex items-center gap-1 bg-white/90 dark:bg-bpi-dark-card/80 backdrop-blur-sm rounded-full px-2 py-1">
               <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
               <span className="text-xs font-semibold text-foreground">{product.rating.toFixed(1)}</span>
             </div>
@@ -291,14 +291,14 @@ function MobileProductCard({ product, quickBuyLoading, detailLoading, onQuickBuy
         
         {/* Badges */}
         <div className="absolute top-2 left-2 right-2 flex items-center gap-2 flex-wrap">
-          <Badge variant="outline" className="bg-white/90 dark:bg-black/80 backdrop-blur-sm text-[10px] uppercase">{product.product_type}</Badge>
+          <Badge variant="outline" className="bg-white/90 dark:bg-bpi-dark-card/80 backdrop-blur-sm text-[10px] uppercase">{product.product_type}</Badge>
           {product.hero_badge && <Badge variant="secondary" className="bg-emerald-600 text-white text-[10px]">{product.hero_badge}</Badge>}
         </div>
 
         {/* Rating */}
         {product.rating && (
           <div className="absolute bottom-2 right-2">
-            <div className="inline-flex items-center gap-1 bg-white/90 dark:bg-black/80 backdrop-blur-sm rounded-full px-2 py-1">
+            <div className="inline-flex items-center gap-1 bg-white/90 dark:bg-bpi-dark-card/80 backdrop-blur-sm rounded-full px-2 py-1">
               <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
               <span className="text-xs font-semibold text-foreground">{product.rating.toFixed(1)}</span>
             </div>

@@ -87,7 +87,7 @@ export class FlutterwaveGateway implements IPaymentGateway {
     this.publicKey = config.publicKey || process.env.FLUTTERWAVE_PUBLIC_KEY || "";
     this.secretKey = config.secretKey || process.env.FLUTTERWAVE_SECRET_KEY || "";
     this.encryptionKey = config.features?.encryptionKey || process.env.FLUTTERWAVE_ENCRYPTION_KEY || "";
-    this.webhookSecret = config.webhookSecret || process.env.FLUTTERWAVE_WEBHOOK_SECRET || "myngul.com22";
+    this.webhookSecret = config.webhookSecret || process.env.FLUTTERWAVE_WEBHOOK_SECRET || "";
 
     if (!this.publicKey || !this.secretKey) {
       throw new Error("Flutterwave API keys are required");
@@ -284,6 +284,14 @@ export class FlutterwaveGateway implements IPaymentGateway {
         return {
           isValid: false,
           error: "Missing webhook signature",
+        };
+      }
+
+      if (!this.webhookSecret) {
+        console.error("❌ Flutterwave: Webhook secret is not configured");
+        return {
+          isValid: false,
+          error: "Webhook secret is not configured",
         };
       }
 

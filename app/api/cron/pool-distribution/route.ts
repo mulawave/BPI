@@ -26,11 +26,13 @@ export async function GET(req: NextRequest) {
 
 async function handleCron(req: NextRequest) {
   // --- Auth ---
-  if (CRON_SECRET) {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader || authHeader !== `Bearer ${CRON_SECRET}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!CRON_SECRET) {
+    return NextResponse.json({ error: "CRON_SECRET is not configured" }, { status: 503 });
+  }
+
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader || authHeader !== `Bearer ${CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const now = new Date();

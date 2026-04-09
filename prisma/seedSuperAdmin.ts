@@ -2,6 +2,11 @@ import { PrismaClient } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import * as crypto from "crypto";
 
+if (process.env.NODE_ENV === "production") {
+  console.error("❌ FATAL: seedSuperAdmin must not run in production. Aborting.");
+  process.exit(1);
+}
+
 const prisma = new PrismaClient();
 
 async function seedSuperAdmin() {

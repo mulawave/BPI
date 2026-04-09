@@ -1,5 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 
+if (process.env.NODE_ENV === "production") {
+  console.error("❌ FATAL: makeUserAdmin must not run in production. Aborting.");
+  process.exit(1);
+}
+
 const prisma = new PrismaClient();
 
 async function makeUserAdmin() {

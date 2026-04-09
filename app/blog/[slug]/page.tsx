@@ -44,12 +44,30 @@ export default function BlogDetailPage() {
   }, [postId]);
 
   if (postQuery.isLoading) {
-    return <div className="p-6">Loading post...</div>;
+    return (
+      <div className="flex items-center justify-center py-24">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600 dark:border-emerald-800 dark:border-t-emerald-400" />
+          <p className="text-sm font-medium text-muted-foreground">Loading post…</p>
+        </div>
+      </div>
+    );
   }
 
   const post = postQuery.data;
   if (!post) {
-    return <div className="p-6 text-muted-foreground">Post not found.</div>;
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted dark:bg-bpi-dark-surface">
+          <BookOpen className="h-7 w-7 text-muted-foreground" />
+        </div>
+        <p className="text-lg font-semibold text-foreground">Post not found</p>
+        <p className="text-sm text-muted-foreground">This blog post may have been removed or the link is incorrect.</p>
+        <Link href="/blog" className="inline-flex items-center gap-1 rounded-full border border-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
+          <ChevronLeft className="h-3.5 w-3.5" /> Back to blog
+        </Link>
+      </div>
+    );
   }
 
   const comments = (commentsQuery.data?.comments ?? []) as CommentItem[];

@@ -145,23 +145,23 @@ export default function BestDealModal({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white dark:bg-bpi-dark-card rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
       >
         {/* Header */}
-        <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-6 flex items-center justify-between z-10">
+        <div className="sticky top-0 bg-white dark:bg-bpi-dark-card border-b border-gray-200 dark:border-bpi-dark-accent/30 p-6 flex items-center justify-between z-10">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
               {deal ? "Edit Best Deal" : "Create Best Deal"}
             </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            <p className="text-sm text-gray-500 dark:text-bpi-dark-muted mt-1">
               Create attractive deals and discounts for your community
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-bpi-dark-accent/50 rounded-lg transition-colors"
           >
-            <HiX className="w-6 h-6 text-gray-500 dark:text-gray-400" />
+            <HiX className="w-6 h-6 text-gray-500 dark:text-bpi-dark-muted" />
           </button>
         </div>
 
@@ -169,7 +169,7 @@ export default function BestDealModal({
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
               Title *
             </label>
             <input
@@ -177,14 +177,14 @@ export default function BestDealModal({
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               placeholder="Enter deal title..."
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white placeholder-gray-400"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white placeholder-gray-400"
               required
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
               Description *
             </label>
             <textarea
@@ -192,7 +192,7 @@ export default function BestDealModal({
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="Enter deal description..."
               rows={4}
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white placeholder-gray-400 resize-none"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white placeholder-gray-400 resize-none"
               required
             />
           </div>
@@ -200,13 +200,13 @@ export default function BestDealModal({
           {/* Deal Type and Discount Type */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                 Deal Type
               </label>
               <select
                 value={formData.dealType}
                 onChange={(e) => setFormData({ ...formData, dealType: e.target.value })}
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white"
               >
                 <option value="product">Product</option>
                 <option value="service">Service</option>
@@ -215,13 +215,13 @@ export default function BestDealModal({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                 Discount Type
               </label>
               <select
                 value={formData.discountType}
                 onChange={(e) => setFormData({ ...formData, discountType: e.target.value })}
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white"
               >
                 <option value="PERCENTAGE">Percentage</option>
                 <option value="FIXED">Fixed Amount</option>
@@ -232,7 +232,7 @@ export default function BestDealModal({
           {/* Pricing */}
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                 Discount Value *
               </label>
               <input
@@ -242,12 +242,12 @@ export default function BestDealModal({
                 placeholder="20"
                 min="0"
                 step="0.01"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white placeholder-gray-400"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white placeholder-gray-400"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                 Original Price
               </label>
               <input
@@ -257,11 +257,11 @@ export default function BestDealModal({
                 placeholder="100.00"
                 min="0"
                 step="0.01"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white placeholder-gray-400"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white placeholder-gray-400"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                 Discounted Price
               </label>
               <input
@@ -271,7 +271,7 @@ export default function BestDealModal({
                 placeholder="80.00"
                 min="0"
                 step="0.01"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white placeholder-gray-400"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white placeholder-gray-400"
               />
             </div>
           </div>
@@ -279,7 +279,7 @@ export default function BestDealModal({
           {/* Date Range */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                 Start Date *
               </label>
               <div className="relative">
@@ -288,13 +288,13 @@ export default function BestDealModal({
                   type="datetime-local"
                   value={formData.startDate}
                   onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                  className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white"
+                  className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white"
                   required
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                 End Date *
               </label>
               <div className="relative">
@@ -303,7 +303,7 @@ export default function BestDealModal({
                   type="datetime-local"
                   value={formData.endDate}
                   onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                  className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white"
+                  className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white"
                   required
                 />
               </div>
@@ -313,7 +313,7 @@ export default function BestDealModal({
           {/* Usage Limits */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                 Total Usage Limit
               </label>
               <input
@@ -322,11 +322,11 @@ export default function BestDealModal({
                 onChange={(e) => setFormData({ ...formData, usageLimit: parseInt(e.target.value) })}
                 placeholder="100"
                 min="0"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white placeholder-gray-400"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white placeholder-gray-400"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                 Usage Per User
               </label>
               <input
@@ -335,7 +335,7 @@ export default function BestDealModal({
                 onChange={(e) => setFormData({ ...formData, usagePerUser: parseInt(e.target.value) })}
                 placeholder="1"
                 min="1"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white placeholder-gray-400"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white placeholder-gray-400"
               />
             </div>
           </div>
@@ -343,7 +343,7 @@ export default function BestDealModal({
           {/* Image and CTA */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                 Image URL
               </label>
               <input
@@ -351,11 +351,11 @@ export default function BestDealModal({
                 value={formData.imageUrl}
                 onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
                 placeholder="https://example.com/image.jpg"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white placeholder-gray-400"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white placeholder-gray-400"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                 CTA Text
               </label>
               <input
@@ -363,7 +363,7 @@ export default function BestDealModal({
                 value={formData.ctaText}
                 onChange={(e) => setFormData({ ...formData, ctaText: e.target.value })}
                 placeholder="Claim Deal"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white placeholder-gray-400"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white placeholder-gray-400"
               />
             </div>
           </div>
@@ -375,24 +375,24 @@ export default function BestDealModal({
               id="isFeatured"
               checked={formData.isFeatured}
               onChange={(e) => setFormData({ ...formData, isFeatured: e.target.checked })}
-              className="w-5 h-5 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
+              className="w-5 h-5 text-yellow-600 border-gray-300 rounded focus:ring-emerald-500"
             />
             <label htmlFor="isFeatured" className="flex items-center gap-2 cursor-pointer">
               <HiTag className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <span className="text-sm font-medium text-gray-700 dark:text-white/90">
                 Feature this deal (appears prominently)
               </span>
             </label>
           </div>
 
           {/* Eligibility Options */}
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+          <div className="border-t border-gray-200 dark:border-bpi-dark-accent/30 pt-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
               Eligibility (optional)
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                   Eligible Packages (comma-separated IDs)
                 </label>
                 <input
@@ -400,11 +400,11 @@ export default function BestDealModal({
                   value={formData.eligiblePackages}
                   onChange={(e) => setFormData({ ...formData, eligiblePackages: e.target.value })}
                   placeholder="e.g., pkg_001, pkg_002"
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white placeholder-gray-400"
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white placeholder-gray-400"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                   Eligible Ranks (comma-separated)
                 </label>
                 <input
@@ -412,11 +412,11 @@ export default function BestDealModal({
                   value={formData.eligibleRanks}
                   onChange={(e) => setFormData({ ...formData, eligibleRanks: e.target.value })}
                   placeholder="e.g., Diamond, Platinum"
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white placeholder-gray-400"
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white placeholder-gray-400"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-white/90 mb-2">
                   Minimum Purchase Amount
                 </label>
                 <input
@@ -426,25 +426,25 @@ export default function BestDealModal({
                   placeholder="50.00"
                   min="0"
                   step="0.01"
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:border-purple-500 dark:focus:border-purple-400 text-gray-900 dark:text-white placeholder-gray-400"
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-bpi-dark-card/80 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl focus:outline-none focus:border-[#0d3b29] dark:focus:border-emerald-500 text-gray-900 dark:text-white placeholder-gray-400"
                 />
               </div>
             </div>
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-200 dark:border-bpi-dark-accent/30">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors font-medium"
+              className="px-6 py-3 bg-gray-100 dark:bg-bpi-dark-surface text-gray-700 dark:text-white/90 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors font-medium"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={createMutation.isPending || updateMutation.isPending}
-              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-500 text-white rounded-xl hover:from-purple-700 hover:to-purple-600 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-xl hover:from-emerald-700 hover:to-emerald-600 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
               <HiSave className="w-5 h-5" />
               {createMutation.isPending || updateMutation.isPending

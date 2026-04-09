@@ -6,6 +6,17 @@ import { verifyChannelCode } from "@/lib/youtubeApi";
 import { notifyYoutubeReferralEarning } from "@/server/services/notification.service";
 import { randomUUID } from "crypto";
 import { recordRevenue } from "@/server/services/revenue.service";
+import { google } from "googleapis";
+
+const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const role = (ctx.session?.user as { role?: string | null } | undefined)?.role;
+
+  if (role !== "admin" && role !== "super_admin") {
+    throw new Error("Admin access required");
+  }
+
+  return next();
+});
 
 export const youtubeRouter = createTRPCRouter({
   // Get available YouTube subscription plans from database
@@ -321,12 +332,34 @@ export const youtubeRouter = createTRPCRouter({
   // Get YouTube channel videos
   getChannelVideos: publicProcedure
     .input(z.object({
-      limit: z.number().optional().default(10)
+      channelId: z.string(),
+      limit: z.number().min(1).max(50).optional().default(10),
     }))
-    .query(async ({ ctx, input }) => {
-      // TODO: Implement actual YouTube API integration
-      // For now, return empty array
-      return [];
+    .query(async ({ input }) => {
+      const apiKey = process.env.YOUTUBE_API_KEY;
+      if (!apiKey) return [];
+
+      try {
+        const yt = google.youtube({ version: "v3", auth: apiKey });
+        const response = await yt.search.list({
+          part: ["snippet"],
+          channelId: input.channelId,
+          order: "date",
+          maxResults: input.limit,
+          type: ["video"],
+        });
+
+        return (response.data.items ?? []).map((item) => ({
+          videoId: item.id?.videoId ?? "",
+          title: item.snippet?.title ?? "",
+          description: item.snippet?.description ?? "",
+          thumbnailUrl: item.snippet?.thumbnails?.medium?.url ?? "",
+          publishedAt: item.snippet?.publishedAt ?? "",
+        }));
+      } catch (error) {
+        console.error("YouTube getChannelVideos error:", error);
+        return [];
+      }
     }),
 
   // Get specific video details
@@ -334,18 +367,78 @@ export const youtubeRouter = createTRPCRouter({
     .input(z.object({
       videoId: z.string(),
     }))
-    .query(async ({ ctx, input }) => {
-      // TODO: Implement actual YouTube API integration
-      // For now, return null
-      return null;
+    .query(async ({ input }) => {
+      const apiKey = process.env.YOUTUBE_API_KEY;
+      if (!apiKey) return null;
+
+      try {
+        const yt = google.youtube({ version: "v3", auth: apiKey });
+        const response = await yt.videos.list({
+          part: ["snippet", "statistics"],
+          id: [input.videoId],
+        });
+
+        const video = response.data.items?.[0];
+        if (!video) return null;
+
+        return {
+          videoId: video.id ?? "",
+          title: video.snippet?.title ?? "",
+          description: video.snippet?.description ?? "",
+          thumbnailUrl: video.snippet?.thumbnails?.high?.url ?? "",
+          publishedAt: video.snippet?.publishedAt ?? "",
+          viewCount: parseInt(video.statistics?.viewCount || "0", 10),
+          likeCount: parseInt(video.statistics?.likeCount || "0", 10),
+        };
+      } catch (error) {
+        console.error("YouTube getVideoDetails error:", error);
+        return null;
+      }
     }),
 
-  // Get featured videos
+  // Get featured videos from verified channels
   getFeaturedVideos: publicProcedure
-    .query(async ({ ctx }) => {
-      // TODO: Implement actual YouTube API integration
-      // For now, return empty array
-      return [];
+    .input(z.object({
+      limit: z.number().min(1).max(20).optional().default(6),
+    }).optional())
+    .query(async ({ input }) => {
+      const apiKey = process.env.YOUTUBE_API_KEY;
+      if (!apiKey) return [];
+
+      // Get up to 5 verified channels to pull recent videos from
+      const channels = await prisma.youtubeChannel.findMany({
+        where: { isVerified: true, status: "VERIFIED" },
+        take: 5,
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, channelName: true, channelLogo: true },
+      });
+
+      if (channels.length === 0) return [];
+
+      const channelIds = channels.map((c) => c.id);
+
+      try {
+        const yt = google.youtube({ version: "v3", auth: apiKey });
+        const response = await yt.search.list({
+          part: ["snippet"],
+          channelId: channelIds.join(","),
+          order: "date",
+          maxResults: input?.limit ?? 6,
+          type: ["video"],
+        });
+
+        return (response.data.items ?? []).map((item) => ({
+          videoId: item.id?.videoId ?? "",
+          title: item.snippet?.title ?? "",
+          description: item.snippet?.description ?? "",
+          thumbnailUrl: item.snippet?.thumbnails?.medium?.url ?? "",
+          publishedAt: item.snippet?.publishedAt ?? "",
+          channelTitle: item.snippet?.channelTitle ?? "",
+        }));
+      } catch (error) {
+        console.error("YouTube getFeaturedVideos error:", error);
+        return [];
+      }
     }),
 
   // Get verified channels for browsing/subscription
@@ -510,7 +603,7 @@ export const youtubeRouter = createTRPCRouter({
   }),
 
   // Manual claim earnings (admin or automated system calls this)
-  processSubscriptionPayment: protectedProcedure
+  processSubscriptionPayment: adminProcedure
     .input(z.object({ subscriptionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { subscriptionId } = input;
@@ -656,19 +749,10 @@ export const youtubeRouter = createTRPCRouter({
             channelId,
           },
         },
-        include: {
-          YoutubeChannel: {
-            select: { userId: true },
-          },
-        },
       });
 
       if (!subscription) {
         throw new Error("Subscription not found");
-      }
-
-      if (subscription.status === "paid") {
-        return { success: true, message: "Earnings already claimed", amount: 0 };
       }
 
       const existingPaidEarning = await prisma.userEarning.findFirst({
@@ -681,135 +765,26 @@ export const youtubeRouter = createTRPCRouter({
         select: { id: true },
       });
 
+      if (subscription.status === "pending") {
+        return {
+          success: false,
+          message: "Awaiting admin verification before payout",
+          amount: 0,
+        };
+      }
+
+      if (subscription.status === "paid") {
+        return { success: true, message: "Earnings already claimed", amount: 0 };
+      }
+
       if (existingPaidEarning) {
         return { success: true, message: "Earnings already claimed", amount: 0 };
       }
 
-      const provider = await prisma.youtubeProvider.findUnique({
-        where: { userId: subscription.YoutubeChannel.userId },
-        select: { id: true, balance: true },
-      });
-
-      if (!provider) {
-        throw new Error("Channel provider not found");
-      }
-
-      if (provider.balance <= 0) {
-        throw new Error("Channel has no remaining subscription balance");
-      }
-
-      const referral = await prisma.referral.findFirst({
-        where: { referredId: subscription.subscriberId },
-        select: { referrerId: true },
-      });
-
-      const subscriberEarning = 40;
-      const referrerEarning = 10;
-
-      await prisma.$transaction(async (tx) => {
-        const sub = await tx.channelSubscription.findUnique({
-          where: { id: subscription.id },
-          select: { status: true },
-        });
-
-        if (!sub || sub.status === "paid") {
-          throw new Error("Earnings already claimed");
-        }
-
-        const providerCurrent = await tx.youtubeProvider.findUnique({
-          where: { userId: subscription.YoutubeChannel.userId },
-          select: { balance: true },
-        });
-
-        if (!providerCurrent || providerCurrent.balance <= 0) {
-          throw new Error("Channel has no remaining subscription balance");
-        }
-
-        // Credit subscriber
-        await tx.user.update({
-          where: { id: subscription.subscriberId },
-          data: {
-            wallet: { increment: subscriberEarning },
-          },
-        });
-
-        await tx.transaction.create({
-          data: {
-            id: randomUUID(),
-            userId: subscription.subscriberId,
-            transactionType: "credit",
-            amount: subscriberEarning,
-            description: "BPI Youtube Subscription Earnings",
-            status: "completed",
-          },
-        });
-
-        await tx.userEarning.create({
-          data: {
-            id: randomUUID(),
-            userId: subscription.subscriberId,
-            channelId: subscription.channelId,
-            amount: subscriberEarning,
-            type: "subscription",
-            isPaid: true,
-          },
-        });
-
-        // Credit referrer (if any)
-        if (referral) {
-          await tx.user.update({
-            where: { id: referral.referrerId },
-            data: {
-              wallet: { increment: referrerEarning },
-            },
-          });
-
-          await tx.transaction.create({
-            data: {
-              id: randomUUID(),
-              userId: referral.referrerId,
-              transactionType: "credit",
-              amount: referrerEarning,
-              description: "BPI Youtube Subscription Referral Earnings",
-              status: "completed",
-            },
-          });
-
-          await tx.userEarning.create({
-            data: {
-              id: randomUUID(),
-              userId: referral.referrerId,
-              channelId: subscription.channelId,
-              amount: referrerEarning,
-              type: "referral",
-              isPaid: true,
-            },
-          });
-        }
-
-        // Decrement provider balance
-        await tx.youtubeProvider.update({
-          where: { userId: subscription.YoutubeChannel.userId },
-          data: {
-            balance: { decrement: 1 },
-          },
-        });
-
-        // Mark subscription paid
-        await tx.channelSubscription.update({
-          where: { id: subscription.id },
-          data: {
-            status: "paid",
-            verifiedAt: new Date(),
-            paidAt: new Date(),
-          },
-        });
-      });
-
       return {
-        success: true,
-        message: "Earnings claimed successfully",
-        amount: subscriberEarning,
+        success: false,
+        message: "Subscription payout is managed by admin verification",
+        amount: 0,
       };
     }),
 
@@ -818,14 +793,8 @@ export const youtubeRouter = createTRPCRouter({
   // ============================================
 
   // Get all pending channels for manual approval
-  adminGetPendingChannels: protectedProcedure
+  adminGetPendingChannels: adminProcedure
     .query(async ({ ctx }) => {
-      if (!ctx.session?.user?.id) throw new Error("Unauthorized");
-      
-      // TODO: Add admin check here
-      // const user = await prisma.user.findUnique({ where: { id: ctx.session.user.id } });
-      // if (!user?.isAdmin) throw new Error("Admin access required");
-      
       const pendingChannels = await prisma.youtubeChannel.findMany({
         where: {
           status: 'SUBMITTED',
@@ -850,15 +819,11 @@ export const youtubeRouter = createTRPCRouter({
     }),
 
   // Manually approve a channel
-  adminApproveChannel: protectedProcedure
+  adminApproveChannel: adminProcedure
     .input(z.object({
       channelId: z.string()
     }))
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.session?.user?.id) throw new Error("Unauthorized");
-      
-      // TODO: Add admin check
-      
       const channel = await prisma.youtubeChannel.findUnique({
         where: { id: input.channelId }
       });
@@ -882,16 +847,12 @@ export const youtubeRouter = createTRPCRouter({
     }),
 
   // Reject a channel
-  adminRejectChannel: protectedProcedure
+  adminRejectChannel: adminProcedure
     .input(z.object({
       channelId: z.string(),
       reason: z.string().optional()
     }))
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.session?.user?.id) throw new Error("Unauthorized");
-      
-      // TODO: Add admin check
-      
       await prisma.youtubeChannel.delete({
         where: { id: input.channelId }
       });
@@ -905,12 +866,8 @@ export const youtubeRouter = createTRPCRouter({
     }),
 
   // Get all pending subscriptions
-  adminGetPendingSubscriptions: protectedProcedure
+  adminGetPendingSubscriptions: adminProcedure
     .query(async ({ ctx }) => {
-      if (!ctx.session?.user?.id) throw new Error("Unauthorized");
-      
-      // TODO: Add admin check
-      
       const pendingSubscriptions = await prisma.channelSubscription.findMany({
         where: {
           status: 'pending'
@@ -947,15 +904,11 @@ export const youtubeRouter = createTRPCRouter({
     }),
 
   // Manually process a subscription payment
-  adminProcessSubscription: protectedProcedure
+  adminProcessSubscription: adminProcedure
     .input(z.object({
       subscriptionId: z.string()
     }))
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.session?.user?.id) throw new Error("Unauthorized");
-      
-      // TODO: Add admin check
-      
       // Reuse the same logic from processSubscriptionPayment
       const subscription = await prisma.channelSubscription.findUnique({
         where: { id: input.subscriptionId },
@@ -1076,16 +1029,12 @@ export const youtubeRouter = createTRPCRouter({
     }),
 
   // Ban user from YouTube program
-  adminBanUser: protectedProcedure
+  adminBanUser: adminProcedure
     .input(z.object({
       userId: z.string(),
       reason: z.string().optional()
     }))
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.session?.user?.id) throw new Error("Unauthorized");
-      
-      // TODO: Add admin check
-      
       // TODO: Add youtube_banned field to User model if needed
       // await prisma.user.update({
       //   where: { id: input.userId },
@@ -1116,12 +1065,8 @@ export const youtubeRouter = createTRPCRouter({
     }),
 
   // Get YouTube program stats (for admin dashboard)
-  adminGetStats: protectedProcedure
+  adminGetStats: adminProcedure
     .query(async ({ ctx }) => {
-      if (!ctx.session?.user?.id) throw new Error("Unauthorized");
-      
-      // TODO: Add admin check
-      
       const [
         totalChannels,
         verifiedChannels,

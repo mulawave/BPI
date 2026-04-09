@@ -3,6 +3,11 @@
  * Run: npx ts-node scripts/seedRevenuePools.ts
  */
 
+if (process.env.NODE_ENV === "production") {
+  console.error("❌ FATAL: seedRevenuePools must not run in production. Aborting.");
+  process.exit(1);
+}
+
 import { prisma } from "../lib/prisma";
 
 async function seedRevenuePools() {

@@ -1,5 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authConfig } from "@/server/auth";
+import { adminSeedLimiter, applyRateLimit } from "@/lib/rateLimit";
 import { membershipPackagesSeedData } from "@/prisma/seed-data/membershipPackages";
 import {
   initialBPTokenPriceSeedData,
@@ -64,7 +67,31 @@ async function seedPackages() {
   return { created, updated, skipped };
 }
 
-export async function GET() {
+async function requireAdmin() {
+  const session = await getServerSession(authConfig);
+  const role = (session?.user as any)?.role;
+
+  if (!session?.user) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (role !== "admin" && role !== "super_admin") {
+    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  }
+
+  return null;
+}
+
+export async function POST(req: NextRequest) {
+  // Rate limit: 3 requests per minute per IP
+  const blocked = applyRateLimit(req, adminSeedLimiter);
+  if (blocked) return blocked;
+
+  const authError = await requireAdmin();
+  if (authError) {
+    return authError;
+  }
+
   try {
     const result = await seedPackages();
     return NextResponse.json({
@@ -84,22 +111,12 @@ export async function GET() {
   }
 }
 
-export async function POST() {
-  try {
-    const result = await seedPackages();
-    return NextResponse.json({
-      success: true,
-      message: "Complete package system seeded successfully",
-      ...result,
-    });
-  } catch (error: any) {
-    console.error("Error seeding packages:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error.message || "Failed to seed packages",
-      },
-      { status: 500 }
-    );
-  }
+export async function GET() {
+  return NextResponse.json(
+    {
+      success: false,
+      error: "Method not allowed. Use authenticated POST.",
+    },
+    { status: 405 }
+  );
 }

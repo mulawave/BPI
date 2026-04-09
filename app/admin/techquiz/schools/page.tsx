@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
   School,
   Plus,
@@ -203,6 +204,7 @@ function SchoolDetailPanel({ school, onClose, onRefresh }: DetailPanelProps) {
   const [adminSearchQ, setAdminSearchQ] = useState("");
   const [selectedUser, setSelectedUser] = useState<{ id: string; name: string | null; email: string; role: string } | null>(null);
   const adminSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showSuspendConfirm, setShowSuspendConfirm] = useState(false);
 
   const approveMut = api.techquiz.approveSchool.useMutation({
     onSuccess: () => { toast.success("School approved"); onRefresh(); },
@@ -294,7 +296,7 @@ function SchoolDetailPanel({ school, onClose, onRefresh }: DetailPanelProps) {
           )}
           {school.status === "APPROVED" && (
             <button
-              onClick={() => { if (confirm("Suspend this school?")) suspendMut.mutate({ schoolId: school.id }); }}
+              onClick={() => setShowSuspendConfirm(true)}
               disabled={suspendMut.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition"
             >
@@ -420,7 +422,7 @@ function SchoolDetailPanel({ school, onClose, onRefresh }: DetailPanelProps) {
                     ) : userSearchQuery.data?.length === 0 ? (
                       <p className="text-xs text-slate-400 px-4 py-3">No users found for &ldquo;{adminSearchQ}&rdquo;</p>
                     ) : (
-                      userSearchQuery.data?.map((u) => (
+                      userSearchQuery.data?.map((u: any) => (
                         <button
                           key={u.id}
                           onClick={() => { setSelectedUser({ ...u, email: u.email ?? "" }); setAdminEmailQuery(u.email ?? ""); }}
@@ -468,6 +470,15 @@ function SchoolDetailPanel({ school, onClose, onRefresh }: DetailPanelProps) {
           )}
         </div>
       </motion.div>
+      <ConfirmDialog
+        isOpen={showSuspendConfirm}
+        title="Suspend School"
+        description={`Are you sure you want to suspend ${school.name}? This will remove their active status.`}
+        confirmText="Suspend"
+        variant="danger"
+        onConfirm={() => suspendMut.mutate({ schoolId: school.id })}
+        onClose={() => setShowSuspendConfirm(false)}
+      />
     </motion.div>
   );
 }
@@ -486,6 +497,7 @@ function InfoRow({ icon, label, value }: { icon?: React.ReactNode; label: string
 // ─── SchoolRow ────────────────────────────────────────────────────────────────
 interface SchoolRowProps { school: any; onDetail: (s: any) => void; onRefresh: () => void; }
 function SchoolRow({ school, onDetail, onRefresh }: SchoolRowProps) {
+  const [showSuspendConfirm, setShowSuspendConfirm] = useState(false);
   const approveMut = api.techquiz.approveSchool.useMutation({
     onSuccess: () => { toast.success("School approved"); onRefresh(); },
     onError: (e) => toast.error(e.message),
@@ -552,7 +564,7 @@ function SchoolRow({ school, onDetail, onRefresh }: SchoolRowProps) {
         )}
         {school.status === "APPROVED" && (
           <button
-            onClick={() => { if (confirm(`Suspend "${school.name}"?`)) suspendMut.mutate({ schoolId: school.id }); }}
+            onClick={() => setShowSuspendConfirm(true)}
             disabled={suspendMut.isPending}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-700 dark:text-slate-300 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 disabled:opacity-50 transition"
           >
@@ -577,6 +589,15 @@ function SchoolRow({ school, onDetail, onRefresh }: SchoolRowProps) {
           <Eye size={11} /> Details
         </button>
       </div>
+      <ConfirmDialog
+        isOpen={showSuspendConfirm}
+        title="Suspend School"
+        description={`Are you sure you want to suspend "${school.name}"?`}
+        confirmText="Suspend"
+        variant="danger"
+        onConfirm={() => suspendMut.mutate({ schoolId: school.id })}
+        onClose={() => setShowSuspendConfirm(false)}
+      />
     </motion.div>
   );
 }

@@ -2,6 +2,11 @@ import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
 import { randomUUID } from "crypto";
 
+if (process.env.NODE_ENV === "production") {
+  console.error("❌ FATAL: createAdminUser must not run in production. Aborting.");
+  process.exit(1);
+}
+
 const prisma = new PrismaClient();
 
 async function createAdminUser() {

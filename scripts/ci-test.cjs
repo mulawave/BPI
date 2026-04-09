@@ -35,9 +35,11 @@ function main() {
 
   const nextBin = path.join(repoRoot, "node_modules", "next", "dist", "bin", "next");
   const tscBin = path.join(repoRoot, "node_modules", "typescript", "bin", "tsc");
+  const prismaBin = path.join(repoRoot, "node_modules", "prisma", "build", "index.js");
 
   fs.rmSync(path.join(repoRoot, ".next"), { recursive: true, force: true });
 
+  runStep("Prisma Generate", process.execPath, [prismaBin, "generate"]);
   runStep("Lint", process.execPath, [nextBin, "lint"]);
   runStep("Type-check", process.execPath, [tscBin, "--noEmit"]);
   runStep("Build", process.execPath, ["--max-old-space-size=6144", nextBin, "build"]);

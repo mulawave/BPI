@@ -16,7 +16,6 @@ import {
   ExternalLink,
   Youtube,
   Sparkles,
-  Award,
   Clock,
 } from "lucide-react";
 
@@ -49,23 +48,11 @@ export default function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsM
     },
   });
 
-  const claimEarnings = api.youtube.claimEarnings.useMutation({
-    onSuccess: () => {
-      utils.youtube.getMyEarnings.invalidate();
-      utils.youtube.getMySubscription.invalidate();
-      utils.user.getDetails.invalidate();
-    },
-  });
-
   const handleSubscribe = (channelId: string) => {
     subscribeToChannel.mutate({ channelId });
   };
 
-  const handleClaim = (channelId: string) => {
-    claimEarnings.mutate({ channelId });
-  };
-
-  const filteredChannels = channels?.filter((channel) => {
+  const filteredChannels = channels?.filter((channel: any) => {
     const channelName = (channel.channelName ?? "").toLowerCase();
     const ownerName = `${channel.User.firstname ?? ""} ${channel.User.lastname ?? ""}`
       .trim()
@@ -78,7 +65,7 @@ export default function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsM
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
-      <Card className="bg-white dark:bg-gray-800 w-full max-w-6xl max-h-[90vh] shadow-2xl border-0 overflow-hidden flex flex-col">
+      <Card className="bg-white dark:bg-bpi-dark-surface w-full max-w-6xl max-h-[90vh] shadow-2xl border-0 overflow-hidden flex flex-col">
         {/* Header */}
         <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-6 flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
@@ -144,14 +131,14 @@ export default function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsM
         </div>
 
         {/* Search Bar */}
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+        <div className="p-6 border-b border-gray-200 dark:border-bpi-dark-accent/30 flex-shrink-0">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <Input
               placeholder="Search channels..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 h-12 bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-700 focus:border-emerald-500"
+              className="pl-10 h-12 bg-white dark:bg-bpi-dark-card border-2 border-gray-200 dark:border-bpi-dark-accent/30 focus:border-emerald-500"
             />
           </div>
         </div>
@@ -172,15 +159,14 @@ export default function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsM
                   (sub: any) => sub.channelId === channel.id
                 );
                 const isPending = mySubscriptionToThisChannel?.status === "pending";
-                const canClaim = mySubscriptionToThisChannel?.status === "pending";
 
                 return (
                   <Card
                     key={channel.id}
-                    className="overflow-hidden border-2 border-gray-200 dark:border-gray-700 hover:border-emerald-400 dark:hover:border-emerald-600 transition-all hover:shadow-xl"
+                    className="overflow-hidden border-2 border-gray-200 dark:border-bpi-dark-accent/30 hover:border-emerald-400 dark:hover:border-emerald-600 transition-all hover:shadow-xl"
                   >
                     {/* Channel Header */}
-                    <div className="bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900 p-6 border-b-2 border-gray-200 dark:border-gray-700">
+                    <div className="bg-gradient-to-br from-gray-100 to-gray-200 dark:from-bpi-dark-surface dark:to-bpi-dark-card p-6 border-b-2 border-gray-200 dark:border-bpi-dark-accent/30">
                       <div className="flex items-start gap-3 mb-3">
                         <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
                           <Youtube className="w-6 h-6 text-white" />
@@ -207,7 +193,7 @@ export default function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsM
                     </div>
 
                     {/* Channel Stats */}
-                    <div className="p-6 bg-white dark:bg-gray-800">
+                    <div className="p-6 bg-white dark:bg-bpi-dark-surface">
                       <div className="grid grid-cols-2 gap-4 mb-4">
                         <div className="text-center p-3 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 rounded-xl border border-green-200 dark:border-green-800">
                           <div className="flex items-center justify-center gap-1 mb-1">
@@ -239,20 +225,9 @@ export default function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsM
                                   Subscription Pending
                                 </span>
                               </div>
-                              <Button
-                                onClick={() => handleClaim(channel.id)}
-                                disabled={claimEarnings.isPending}
-                                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white h-11 font-semibold"
-                              >
-                                {claimEarnings.isPending ? (
-                                  "Processing..."
-                                ) : (
-                                  <>
-                                    <Award className="w-5 h-5 mr-2" />
-                                    Claim ₦40
-                                  </>
-                                )}
-                              </Button>
+                              <p className="text-xs text-center text-muted-foreground">
+                                Awaiting admin verification before payout is credited.
+                              </p>
                             </>
                           ) : (
                             <div className="flex items-center justify-center gap-2 p-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 rounded-xl border-2 border-green-200 dark:border-green-800">
@@ -289,7 +264,7 @@ export default function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsM
           ) : (
             <div className="flex items-center justify-center py-20">
               <div className="text-center max-w-md">
-                <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-bpi-dark-surface dark:to-bpi-dark-card rounded-full flex items-center justify-center mx-auto mb-4">
                   <Users className="w-10 h-10 text-muted-foreground" />
                 </div>
                 <h3 className="text-xl font-bold text-foreground mb-2">No Channels Available</h3>
@@ -304,7 +279,7 @@ export default function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsM
         </div>
 
         {/* Footer - How It Works */}
-        <div className="border-t-2 border-gray-200 dark:border-gray-700 p-6 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 flex-shrink-0">
+        <div className="border-t-2 border-gray-200 dark:border-bpi-dark-accent/30 p-6 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 flex-shrink-0">
           <div className="flex items-start gap-3">
             <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
@@ -320,7 +295,7 @@ export default function BrowseChannelsModal({ isOpen, onClose }: BrowseChannelsM
                 </div>
                 <div className="flex items-start gap-2">
                   <span className="w-5 h-5 bg-emerald-600 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
-                  <span>Return here and click "Claim ₦40" to get paid</span>
+                  <span>Wait for admin verification and automatic payout credit</span>
                 </div>
               </div>
             </div>

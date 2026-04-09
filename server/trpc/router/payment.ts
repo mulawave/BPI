@@ -72,6 +72,7 @@ export const paymentRouter = createTRPCRouter({
     });
 
     const gateways = await ctx.prisma.paymentGatewayConfig.findMany({
+      where: { gatewayName: { in: ["paystack", "flutterwave", "mock"] } },
       orderBy: { displayOrder: "asc" },
       select: {
         id: true,
@@ -309,9 +310,94 @@ export const paymentRouter = createTRPCRouter({
         throw new Error("Transaction not found");
       }
 
-      // TODO: Extract payment details from transaction and retry
-      // For now, return error
-      throw new Error("Payment retry not yet implemented");
+      if (transaction.status === "completed") {
+        throw new Error("This transaction is already completed and cannot be retried");
+      }
+
+      if (transaction.status !== "failed" && transaction.status !== "pending") {
+        throw new Error(`Transaction in '${transaction.status}' status cannot be retried`);
+      }
+
+      // Find the associated PendingPayment to determine gateway and metadata
+      const pendingPayment = await ctx.prisma.pendingPayment.findFirst({
+        where: {
+          userId,
+          gatewayReference: transaction.reference,
+        },
+      });
+
+      if (!pendingPayment) {
+        throw new Error("No pending payment record found for this transaction. Please initiate a new payment instead.");
+      }
+
+      if (pendingPayment.status === "approved" || pendingPayment.status === "completed") {
+        throw new Error("This payment has already been approved");
+      }
+
+      const meta = (pendingPayment.metadata as any) || {};
+      const gateway = pendingPayment.paymentMethod;
+
+      // Only external gateways (paystack/flutterwave) can be retried
+      if (gateway !== "paystack" && gateway !== "flutterwave") {
+        throw new Error(`Payments via '${gateway}' cannot be retried. Please initiate a new payment.`);
+      }
+
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, name: true },
+      });
+
+      if (!user) throw new Error("User not found");
+
+      const gatewayEnum = gateway === "paystack" ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE;
+
+      // Re-initiate payment through the same gateway
+      const result = await PaymentProcessor.processPayment({
+        userId,
+        email: user.email || "",
+        name: user.name || "",
+        paymentMethod: gateway,
+        amount: pendingPayment.amount,
+        currency: pendingPayment.currency,
+        gateway: gatewayEnum,
+        purpose: pendingPayment.transactionType,
+        packageId: meta.packageId || "unknown",
+        metadata: meta,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || result.message || "Payment retry failed");
+      }
+
+      const newReference = result.transactionId || result.reference || result.gatewayReference || `RETRY-${gateway}-${Date.now()}`;
+
+      // Update existing records with new reference
+      await ctx.prisma.$transaction([
+        ctx.prisma.transaction.update({
+          where: { id: transaction.id },
+          data: {
+            status: "pending",
+            reference: newReference,
+            description: `${transaction.description} (retry)`,
+          },
+        }),
+        ctx.prisma.pendingPayment.update({
+          where: { id: pendingPayment.id },
+          data: {
+            status: "pending",
+            gatewayReference: newReference,
+            reviewNotes: `Retried at ${new Date().toISOString()} — original ref: ${transaction.reference}`,
+            updatedAt: new Date(),
+          },
+        }),
+      ]);
+
+      return {
+        success: true,
+        paymentUrl: result.paymentUrl,
+        reference: newReference,
+        message: "Payment re-initiated. Please complete the payment.",
+      };
     }),
 
   /**

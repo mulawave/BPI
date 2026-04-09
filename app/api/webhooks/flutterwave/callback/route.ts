@@ -52,10 +52,10 @@ export async function GET(req: NextRequest) {
         );
       }
 
-      // Redirect to success page
+      // Redirect to payment verification page which calls verifyExternalPayment tRPC
       return NextResponse.redirect(
         new URL(
-          `/dashboard?payment=success&amount=${verification.amount}&ref=${txRef}`,
+          `/payment/verify?gateway=flutterwave&ref=${encodeURIComponent(txRef)}`,
           req.url
         )
       );
@@ -63,14 +63,14 @@ export async function GET(req: NextRequest) {
       console.log("⚠️ Payment cancelled by user");
 
       return NextResponse.redirect(
-        new URL("/membership?payment=cancelled", req.url)
+        new URL("/payment/verify?message=Payment%20cancelled%20by%20user", req.url)
       );
     } else {
       console.log("❌ Payment failed or pending");
 
       return NextResponse.redirect(
         new URL(
-          `/membership?payment=failed&message=${encodeURIComponent(verification.message || "Payment failed")}`,
+          `/payment/verify?gateway=flutterwave&ref=${encodeURIComponent(txRef)}&message=${encodeURIComponent(verification.message || "Payment failed")}`,
           req.url
         )
       );
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.redirect(
       new URL(
-        `/membership?payment=error&message=${encodeURIComponent(error instanceof Error ? error.message : "Unknown error")}`,
+        `/payment/verify?message=${encodeURIComponent(error instanceof Error ? error.message : "Unknown error")}`,
         req.url
       )
     );

@@ -6,9 +6,10 @@ import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import { compare } from "bcryptjs";
 import { resolveAppBaseUrl } from "@/lib/appUrl";
+import { resolveAuthSecret } from "@/lib/authSecret";
 
 export const authConfig: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: resolveAuthSecret() ?? undefined,
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" }, // Changed from "database" to "jwt" for better compatibility
   providers: [
@@ -77,12 +78,20 @@ export const authConfig: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = (user as any).role ?? "user";
+        // Force DB fetch on first login
+        (token as any)._dbFetchedAt = 0;
       }
 
       // Enrich token with membership flags (Edge-safe gating via middleware)
-      // Split into two queries: (1) base membership/role — must always succeed,
-      // (2) empowerment include — may fail if schema migration not yet applied on production.
-      if (token?.id) {
+      // Use a 5-minute TTL to avoid DB queries on every single request.
+      const DB_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+      const now = Date.now();
+      const lastFetch = (token as any)._dbFetchedAt ?? 0;
+      const needsRefresh = now - lastFetch > DB_CACHE_TTL_MS;
+
+      if (token?.id && needsRefresh) {
+        // Split into two queries: (1) base membership/role — must always succeed,
+        // (2) empowerment include — may fail if schema migration not yet applied on production.
         try {
           const dbUser = await prisma.user.findUnique({
             where: { id: token.id as string },
@@ -109,6 +118,8 @@ export const authConfig: NextAuthOptions = {
         } catch (e) {
           (token as any).hasActiveEmpowerment = false;
         }
+
+        (token as any)._dbFetchedAt = now;
       }
 
       return token;

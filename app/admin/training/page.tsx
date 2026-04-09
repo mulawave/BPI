@@ -57,6 +57,8 @@ export default function TrainingAdminPage() {
   const [selectedCourseForLesson, setSelectedCourseForLesson] = useState<string | null>(null);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set());
+  const [confirmDeleteCourseId, setConfirmDeleteCourseId] = useState<string | null>(null);
+  const [confirmDeleteLessonId, setConfirmDeleteLessonId] = useState<string | null>(null);
 
   const { data: courses, isLoading, refetch } = api.admin.getAllCourses.useQuery();
 
@@ -126,6 +128,18 @@ export default function TrainingAdminPage() {
       newExpanded.add(courseId);
     }
     setExpandedCourses(newExpanded);
+  };
+
+  const handleConfirmDeleteCourse = () => {
+    if (!confirmDeleteCourseId) return;
+    deleteCourseMutation.mutate({ courseId: confirmDeleteCourseId });
+    setConfirmDeleteCourseId(null);
+  };
+
+  const handleConfirmDeleteLesson = () => {
+    if (!confirmDeleteLessonId) return;
+    deleteLessonMutation.mutate({ lessonId: confirmDeleteLessonId });
+    setConfirmDeleteLessonId(null);
   };
 
   if (isLoading) {
@@ -343,11 +357,7 @@ export default function TrainingAdminPage() {
                     Add Lesson
                   </button>
                   <button
-                    onClick={() => {
-                      if (confirm("Delete this course and all its lessons?")) {
-                        deleteCourseMutation.mutate({ courseId: course.id });
-                      }
-                    }}
+                    onClick={() => setConfirmDeleteCourseId(course.id)}
                     className="rounded p-2 hover:bg-muted"
                     title="Delete Course"
                   >
@@ -397,11 +407,7 @@ export default function TrainingAdminPage() {
                               <MdEdit size={18} className="text-blue-500" />
                             </button>
                             <button
-                              onClick={() => {
-                                if (confirm("Delete this lesson?")) {
-                                  deleteLessonMutation.mutate({ lessonId: lesson.id });
-                                }
-                              }}
+                              onClick={() => setConfirmDeleteLessonId(lesson.id)}
                               className="rounded p-1 hover:bg-muted"
                               title="Delete Lesson"
                             >
@@ -456,6 +462,53 @@ export default function TrainingAdminPage() {
           }}
         />
       )}
+
+      <AnimatePresence>
+        {(confirmDeleteCourseId || confirmDeleteLessonId) && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-full">
+                  <MdDelete className="text-2xl text-red-600 dark:text-red-400" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Confirm Deletion
+                </h3>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                {confirmDeleteCourseId
+                  ? "Delete this course and all its lessons? This action cannot be undone."
+                  : "Delete this lesson? This action cannot be undone."}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setConfirmDeleteCourseId(null);
+                    setConfirmDeleteLessonId(null);
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                    hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteCourseId ? handleConfirmDeleteCourse : handleConfirmDeleteLesson}
+                  disabled={deleteCourseMutation.isPending || deleteLessonMutation.isPending}
+                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg 
+                    disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deleteCourseMutation.isPending || deleteLessonMutation.isPending ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

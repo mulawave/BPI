@@ -19,6 +19,18 @@ const MYNGUL_PACKAGES = [
 
 type TxClient = PrismaClient | Prisma.TransactionClient;
 
+/** Run a callback inside an interactive transaction if the client supports it, otherwise run directly. */
+async function runAtomically<T>(
+  client: TxClient,
+  fn: (tx: TxClient) => Promise<T>,
+  options?: { timeout: number },
+): Promise<T> {
+  if ('$transaction' in client && typeof (client as any).$transaction === 'function') {
+    return (client as PrismaClient).$transaction(fn, options);
+  }
+  return fn(client);
+}
+
 export async function activateMembershipAfterExternalPayment(params: {
   prisma: TxClient;
   userId: string;
@@ -37,6 +49,33 @@ export async function activateMembershipAfterExternalPayment(params: {
     paymentMethodLabel,
     activatorName,
   } = params;
+
+  const existingActivation = await prisma.transaction.findFirst({
+    where: {
+      userId,
+      reference: paymentReference,
+      transactionType: "MEMBERSHIP_ACTIVATION",
+    },
+  });
+
+  if (existingActivation) {
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        membershipExpiresAt: true,
+        myngulActivationPin: true,
+      },
+    });
+
+    return {
+      success: true,
+      expiresAt: existingUser?.membershipExpiresAt ?? existingActivation.createdAt,
+      distributions: [],
+      myngulActivated: false,
+      myngulPin: existingUser?.myngulActivationPin ?? null,
+      alreadyProcessed: true,
+    };
+  }
 
   const membershipPackage = await prisma.membershipPackage.findUnique({
     where: { id: packageId },
@@ -59,28 +98,21 @@ export async function activateMembershipAfterExternalPayment(params: {
 
   const referralChain = await getReferralChain(userId, 4);
 
-  const distributions: Array<{
-    referrerId: string;
-    level: number;
-    cash: number;
-    palliative: number;
-    bpt: number;
-    cashback: number;
-  }> = [];
-
   const safeActivatorName = activatorName || "New Member";
   const timestamp = Date.now();
+  const includesMyngul = MYNGUL_PACKAGES.includes(membershipPackage.name as any);
+  const MYNGUL_CREDIT = 11000;
 
-  for (let i = 0; i < referralChain.length; i++) {
-    const referrer = referralChain[i];
-    const level = (i + 1) as 1 | 2 | 3 | 4;
-
-    const cashReward = (membershipPackage as any)[`cash_l${level}`] || 0;
-    const palliativeReward = (membershipPackage as any)[`palliative_l${level}`] || 0;
-    const bptReward = (membershipPackage as any)[`bpt_l${level}`] || 0;
-    const cashbackReward = (membershipPackage as any)[`cashback_l${level}`] || 0;
-
-    const referrerData = await prisma.user.findUnique({
+  // ── Pre-fetch referrer data (read-only, outside transaction) ──
+  const referrerDataMap = new Map<string, {
+    palliativeActivated: boolean | null;
+    selectedPalliative: string | null;
+    palliativeTier: string | null;
+    isShelter: number | null;
+    shelter: number | null;
+  }>();
+  for (const referrer of referralChain) {
+    const data = await prisma.user.findUnique({
       where: { id: referrer.id },
       select: {
         palliativeActivated: true,
@@ -90,214 +122,265 @@ export async function activateMembershipAfterExternalPayment(params: {
         shelter: true,
       },
     });
-
-    const updateData: any = {};
-    if (cashReward > 0) updateData.wallet = { increment: cashReward };
-
-    // Shelter-active users: palliative rewards go directly to palliative wallet
-    // (no journey needed when shelter is already activated via Gold/Platinum)
-    const hasShelter = (referrerData?.isShelter === 1) || ((referrerData?.shelter ?? 0) > 0);
-
-    if (palliativeReward > 0) {
-      if (hasShelter) {
-        // Shelter active — deposit directly to palliative wallet, bypass journey
-        updateData.palliative = { increment: palliativeReward };
-      } else if (referrerData?.palliativeActivated && referrerData.selectedPalliative) {
-        const walletField = getWalletFieldName(referrerData.selectedPalliative as any);
-        updateData[walletField] = { increment: palliativeReward };
-      } else if (referrerData?.palliativeTier === "lower") {
-        updateData.palliative = { increment: palliativeReward };
-      } else {
-        updateData.palliative = { increment: palliativeReward };
-      }
-    }
-
-    if (cashbackReward > 0) updateData.cashback = { increment: cashbackReward };
-
-    if (Object.keys(updateData).length > 0) {
-      await prisma.user.update({ where: { id: referrer.id }, data: updateData });
-    }
-
-    let userBptShare = 0;
-    if (bptReward > 0) {
-      const bptResult = await distributeBptReward(
-        referrer.id,
-        bptReward,
-        `REFERRAL_L${level}`,
-        `Referral reward L${level} from ${membershipPackage.name} activation`,
-      );
-      userBptShare = bptResult.userBptUnits;
-    }
-
-    if (cashReward > 0) {
-      await prisma.transaction.create({
-        data: {
-          id: randomUUID(),
-          userId: referrer.id,
-          transactionType: `REFERRAL_CASH_L${level}`,
-          amount: cashReward,
-          description: `L${level} Cash Wallet referral reward from ${membershipPackage.name} activation by ${safeActivatorName} (Referral ID: ${userId})`,
-          status: "completed",
-          reference: `REF-CASH-${packageId}-L${level}-${timestamp}`,
-        },
-      });
-    }
-
-    if (palliativeReward > 0) {
-      await prisma.transaction.create({
-        data: {
-          id: randomUUID(),
-          userId: referrer.id,
-          transactionType: `REFERRAL_PALLIATIVE_L${level}`,
-          amount: palliativeReward,
-          description: `L${level} Palliative Wallet referral reward from ${membershipPackage.name} activation by ${safeActivatorName} (Referral ID: ${userId})`,
-          status: "completed",
-          reference: `REF-PAL-${packageId}-L${level}-${timestamp}`,
-        },
-      });
-    }
-
-    if (cashbackReward > 0) {
-      await prisma.transaction.create({
-        data: {
-          id: randomUUID(),
-          userId: referrer.id,
-          transactionType: `REFERRAL_CASHBACK_L${level}`,
-          amount: cashbackReward,
-          description: `L${level} Cashback Wallet referral reward from ${membershipPackage.name} activation by ${safeActivatorName} (Referral ID: ${userId})`,
-          status: "completed",
-          reference: `REF-CB-${packageId}-L${level}-${timestamp}`,
-        },
-      });
-    }
-
-    if (userBptShare > 0) {
-      await prisma.transaction.create({
-        data: {
-          id: randomUUID(),
-          userId: referrer.id,
-          transactionType: `REFERRAL_BPT_L${level}`,
-          amount: userBptShare,
-          description: `L${level} BPT referral reward (50% user share) from ${membershipPackage.name} activation by ${safeActivatorName} (Referral ID: ${userId})`,
-          status: "completed",
-          reference: `REF-BPT-${packageId}-L${level}-${timestamp}`,
-          walletType: "bpiToken",
-        },
-      });
-    }
-
-    distributions.push({
-      referrerId: referrer.id,
-      level,
-      cash: cashReward,
-      palliative: palliativeReward,
-      bpt: bptReward,
-      cashback: cashbackReward,
-    });
-
-    await notifyReferralReward(
-      referrer.id,
-      safeActivatorName,
-      `${membershipPackage.name} (L${level}) referral reward`,
-      cashReward + palliativeReward + bptReward + cashbackReward,
-    );
+    if (data) referrerDataMap.set(referrer.id, data as any);
   }
 
-  const includesMyngul = MYNGUL_PACKAGES.includes(membershipPackage.name as any);
-  const MYNGUL_CREDIT = 11000;
-  let activationPin: string | null = null;
+  // ── Atomic transaction: all financial writes ──
+  const txResult = await runAtomically(prisma, async (tx) => {
+    const distributions: Array<{
+      referrerId: string;
+      level: number;
+      cash: number;
+      palliative: number;
+      bpt: number;
+      cashback: number;
+    }> = [];
 
-  if (includesMyngul) {
-    activationPin = `BPI-${Date.now().toString().slice(-8)}`;
+    // ── Referral chain wallet credits ──
+    for (let i = 0; i < referralChain.length; i++) {
+      const referrer = referralChain[i];
+      const level = (i + 1) as 1 | 2 | 3 | 4;
 
-    await prisma.user.update({
+      const cashReward = (membershipPackage as any)[`cash_l${level}`] || 0;
+      const palliativeReward = (membershipPackage as any)[`palliative_l${level}`] || 0;
+      const bptReward = (membershipPackage as any)[`bpt_l${level}`] || 0;
+      const cashbackReward = (membershipPackage as any)[`cashback_l${level}`] || 0;
+
+      const referrerData = referrerDataMap.get(referrer.id);
+
+      const updateData: any = {};
+      if (cashReward > 0) updateData.wallet = { increment: cashReward };
+
+      const hasShelter = (referrerData?.isShelter === 1) || ((referrerData?.shelter ?? 0) > 0);
+
+      if (palliativeReward > 0) {
+        if (hasShelter) {
+          updateData.palliative = { increment: palliativeReward };
+        } else if (referrerData?.palliativeActivated && referrerData.selectedPalliative) {
+          const walletField = getWalletFieldName(referrerData.selectedPalliative as any);
+          updateData[walletField] = { increment: palliativeReward };
+        } else if (referrerData?.palliativeTier === "lower") {
+          updateData.palliative = { increment: palliativeReward };
+        } else {
+          updateData.palliative = { increment: palliativeReward };
+        }
+      }
+
+      if (cashbackReward > 0) updateData.cashback = { increment: cashbackReward };
+
+      if (Object.keys(updateData).length > 0) {
+        await tx.user.update({ where: { id: referrer.id }, data: updateData });
+      }
+
+      if (cashReward > 0) {
+        await tx.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId: referrer.id,
+            transactionType: `REFERRAL_CASH_L${level}`,
+            amount: cashReward,
+            description: `L${level} Cash Wallet referral reward from ${membershipPackage.name} activation by ${safeActivatorName} (Referral ID: ${userId})`,
+            status: "completed",
+            reference: `REF-CASH-${packageId}-L${level}-${timestamp}`,
+          },
+        });
+      }
+
+      if (palliativeReward > 0) {
+        await tx.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId: referrer.id,
+            transactionType: `REFERRAL_PALLIATIVE_L${level}`,
+            amount: palliativeReward,
+            description: `L${level} Palliative Wallet referral reward from ${membershipPackage.name} activation by ${safeActivatorName} (Referral ID: ${userId})`,
+            status: "completed",
+            reference: `REF-PAL-${packageId}-L${level}-${timestamp}`,
+          },
+        });
+      }
+
+      if (cashbackReward > 0) {
+        await tx.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId: referrer.id,
+            transactionType: `REFERRAL_CASHBACK_L${level}`,
+            amount: cashbackReward,
+            description: `L${level} Cashback Wallet referral reward from ${membershipPackage.name} activation by ${safeActivatorName} (Referral ID: ${userId})`,
+            status: "completed",
+            reference: `REF-CB-${packageId}-L${level}-${timestamp}`,
+          },
+        });
+      }
+
+      distributions.push({
+        referrerId: referrer.id,
+        level,
+        cash: cashReward,
+        palliative: palliativeReward,
+        bpt: bptReward,
+        cashback: cashbackReward,
+      });
+    }
+
+    // ── Myngul credit ──
+    let activationPin: string | null = null;
+    if (includesMyngul) {
+      activationPin = `BPI-${Date.now().toString().slice(-8)}`;
+
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          socialMedia: { increment: MYNGUL_CREDIT },
+          myngulActivationPin: activationPin,
+        },
+      });
+
+      await tx.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          transactionType: "MYNGUL_ACTIVATION",
+          amount: MYNGUL_CREDIT,
+          description: `MYNGUL Social Media Wallet Credit - ${membershipPackage.name} Activation`,
+          status: "completed",
+          reference: `MYNGUL-ACT-${packageId}-${Date.now()}`,
+        },
+      });
+    }
+
+    // ── Palliative activation ──
+    const palliativeData: any = { palliativeTier };
+
+    if (isHighTier && selectedPalliative) {
+      palliativeData.palliativeActivated = true;
+      palliativeData.selectedPalliative = selectedPalliative;
+      palliativeData.palliativeActivatedAt = activatedAt;
+
+      await tx.palliativeWalletActivation.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          palliativeType: selectedPalliative,
+          membershipTier: membershipPackage.name,
+          activationType: "instant",
+        },
+      });
+    } else if (palliativeTier === "lower") {
+      palliativeData.palliativeActivated = false;
+      palliativeData.palliative = 0;
+    }
+
+    // ── User activation ──
+    await tx.user.update({
       where: { id: userId },
       data: {
-        socialMedia: { increment: MYNGUL_CREDIT },
-        myngulActivationPin: activationPin,
+        activeMembershipPackageId: packageId,
+        membershipActivatedAt: activatedAt,
+        membershipExpiresAt: expiresAt,
+        activated: true,
+        ...palliativeData,
       },
     });
 
-    await prisma.transaction.create({
+    // ── Activation transaction record ──
+    await tx.transaction.create({
       data: {
         id: randomUUID(),
         userId,
-        transactionType: "MYNGUL_ACTIVATION",
-        amount: MYNGUL_CREDIT,
-        description: `MYNGUL Social Media Wallet Credit - ${membershipPackage.name} Activation`,
+        transactionType: "MEMBERSHIP_ACTIVATION",
+        amount: -(membershipPackage.price + membershipPackage.vat),
+        description: `${membershipPackage.name} membership activation (${paymentMethodLabel})`,
         status: "completed",
-        reference: `MYNGUL-ACT-${packageId}-${Date.now()}`,
+        reference: paymentReference,
       },
     });
+
+    // ── VAT transaction ──
+    if (membershipPackage.vat > 0) {
+      await tx.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          transactionType: "VAT",
+          amount: membershipPackage.vat,
+          description: `VAT on ${membershipPackage.name} membership activation`,
+          status: "completed",
+          reference: `VAT-${paymentReference}`,
+        },
+      });
+    }
+
+    return { distributions, activationPin };
+  }, { timeout: 30000 });
+
+  // ── Post-commit: BPT distribution (best-effort, uses its own transaction) ──
+  for (let i = 0; i < referralChain.length; i++) {
+    const referrer = referralChain[i];
+    const level = (i + 1) as 1 | 2 | 3 | 4;
+    const bptReward = (membershipPackage as any)[`bpt_l${level}`] || 0;
+
+    if (bptReward > 0) {
+      try {
+        const bptResult = await distributeBptReward(
+          referrer.id,
+          bptReward,
+          `REFERRAL_L${level}`,
+          `Referral reward L${level} from ${membershipPackage.name} activation`,
+        );
+        if (bptResult.userBptUnits > 0) {
+          await prisma.transaction.create({
+            data: {
+              id: randomUUID(),
+              userId: referrer.id,
+              transactionType: `REFERRAL_BPT_L${level}`,
+              amount: bptResult.userBptUnits,
+              description: `L${level} BPT referral reward (50% user share) from ${membershipPackage.name} activation by ${safeActivatorName} (Referral ID: ${userId})`,
+              status: "completed",
+              reference: `REF-BPT-${packageId}-L${level}-${timestamp}`,
+              walletType: "bpiToken",
+            },
+          });
+        }
+      } catch (err) {
+        console.error(`[MEMBERSHIP] BPT distribution failed for referrer ${referrer.id} L${level} (core activation succeeded):`, err);
+      }
+    }
   }
 
-  const palliativeData: any = { palliativeTier };
-
-  if (isHighTier && selectedPalliative) {
-    const palliativeActivatedAt = activatedAt;
-    palliativeData.palliativeActivated = true;
-    palliativeData.selectedPalliative = selectedPalliative;
-    palliativeData.palliativeActivatedAt = palliativeActivatedAt;
-
-    await prisma.palliativeWalletActivation.create({
-      data: {
-        id: randomUUID(),
-        userId,
-        palliativeType: selectedPalliative,
-        membershipTier: membershipPackage.name,
-        activationType: "instant",
-      },
-    });
-  } else if (palliativeTier === "lower") {
-    palliativeData.palliativeActivated = false;
-    palliativeData.palliative = 0;
+  // ── Post-commit: Notifications (best-effort) ──
+  for (let i = 0; i < referralChain.length; i++) {
+    const referrer = referralChain[i];
+    const level = (i + 1) as 1 | 2 | 3 | 4;
+    const cashReward = (membershipPackage as any)[`cash_l${level}`] || 0;
+    const palliativeReward = (membershipPackage as any)[`palliative_l${level}`] || 0;
+    const bptReward = (membershipPackage as any)[`bpt_l${level}`] || 0;
+    const cashbackReward = (membershipPackage as any)[`cashback_l${level}`] || 0;
+    try {
+      await notifyReferralReward(
+        referrer.id,
+        safeActivatorName,
+        `${membershipPackage.name} (L${level}) referral reward`,
+        cashReward + palliativeReward + bptReward + cashbackReward,
+      );
+    } catch {
+      // Notification failure is non-critical
+    }
   }
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      activeMembershipPackageId: packageId,
-      membershipActivatedAt: activatedAt,
-      membershipExpiresAt: expiresAt,
-      activated: true,
-      ...palliativeData,
-    },
-  });
-
-  await prisma.transaction.create({
-    data: {
-      id: randomUUID(),
-      userId,
-      transactionType: "MEMBERSHIP_ACTIVATION",
-      amount: -(membershipPackage.price + membershipPackage.vat),
-      description: `${membershipPackage.name} membership activation (${paymentMethodLabel})`,
-      status: "completed",
-      reference: paymentReference,
-    },
-  });
-
-  if (membershipPackage.vat > 0) {
-    await prisma.transaction.create({
-      data: {
-        id: randomUUID(),
-        userId,
-        transactionType: "VAT",
-        amount: membershipPackage.vat,
-        description: `VAT on ${membershipPackage.name} membership activation`,
-        status: "completed",
-        reference: `VAT-${paymentReference}`,
-      },
-    });
+  try {
+    await notifyMembershipActivation(userId, membershipPackage.name, expiresAt);
+  } catch {
+    // Notification failure is non-critical
   }
-
-  await notifyMembershipActivation(userId, membershipPackage.name, expiresAt);
 
   return {
     success: true,
     expiresAt,
-    distributions,
+    distributions: txResult.distributions,
     myngulActivated: includesMyngul,
-    myngulPin: activationPin,
+    myngulPin: txResult.activationPin,
   };
 }
 
@@ -332,6 +415,31 @@ export async function upgradeMembershipAfterExternalPayment(params: {
   const currentTotal = currentPackage.price + currentPackage.vat;
   const newTotal = newPackage.price + newPackage.vat;
   const upgradeCost = newTotal - currentTotal;
+
+  const existingUpgrade = await prisma.transaction.findFirst({
+    where: {
+      userId,
+      reference: paymentReference,
+      transactionType: "membership_upgrade",
+    },
+  });
+
+  if (existingUpgrade) {
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { membershipExpiresAt: true },
+    });
+
+    return {
+      success: true,
+      upgradeCost,
+      newExpiry: existingUser?.membershipExpiresAt ?? existingUpgrade.createdAt,
+      packageName: newPackage.name,
+      myngulActivated: false,
+      myngulPin: null,
+      alreadyProcessed: true,
+    };
+  }
 
   const newPalliativeTier = getPalliativeTier(newPackage.price);
   const isNewHighTier = isHighTierPackage(newPackage.name);
@@ -382,182 +490,231 @@ export async function upgradeMembershipAfterExternalPayment(params: {
     },
   };
 
+  // ── Pre-fetch referrer data (read-only, outside transaction) ──
+  const referrerDataMap = new Map<string, {
+    palliativeActivated: boolean | null;
+    selectedPalliative: string | null;
+    palliativeTier: string | null;
+  }>();
   for (let level = 1; level <= 4; level++) {
     const referrer = referralChain[level - 1];
     if (!referrer) continue;
-
     const referrerId = (referrer as any).id ?? referrer;
-    const levelKey = `l${level}` as "l1" | "l2" | "l3" | "l4";
-    const bonuses = (bonusDifferences as any)[levelKey];
-
-    if (
-      bonuses.cash > 0 ||
-      bonuses.palliative > 0 ||
-      bonuses.bpt > 0 ||
-      bonuses.cashback > 0
-    ) {
-      const referrerData = await prisma.user.findUnique({
-        where: { id: referrerId },
-        select: {
-          palliativeActivated: true,
-          selectedPalliative: true,
-          palliativeTier: true,
-        },
-      });
-
-      const updateData: any = {};
-      if (bonuses.cash > 0) updateData.wallet = { increment: bonuses.cash };
-
-      if (bonuses.palliative > 0) {
-        if (referrerData?.palliativeActivated && referrerData.selectedPalliative) {
-          const walletField = getWalletFieldName(referrerData.selectedPalliative as any);
-          updateData[walletField] = { increment: bonuses.palliative };
-        } else if (referrerData?.palliativeTier === "lower") {
-          updateData.palliative = { increment: bonuses.palliative };
-        } else {
-          updateData.palliative = { increment: bonuses.palliative };
-        }
-      }
-
-      if (bonuses.cashback > 0) updateData.cashback = { increment: bonuses.cashback };
-
-      await prisma.user.update({ where: { id: referrerId }, data: updateData });
-
-      if (bonuses.bpt > 0) {
-        await distributeBptReward(referrerId, bonuses.bpt);
-      }
-
-      await prisma.transaction.create({
-        data: {
-          id: randomUUID(),
-          userId: referrerId,
-          transactionType: `membership_upgrade_bonus_l${level}`,
-          amount: bonuses.cash + bonuses.palliative + bonuses.cashback + bonuses.bpt,
-          description: `Referral bonus (differential) for ${newPackage.name} upgrade - Level ${level}`,
-          status: "completed",
-          reference: `UPGRADE-${Date.now()}-L${level}`,
-        },
-      });
-
-      await notifyReferralReward(
-        referrerId,
-        userId,
-        `Membership Upgrade Bonus (${newPackage.name}) - L${level}`,
-        bonuses.cash + bonuses.palliative + bonuses.cashback + bonuses.bpt,
-      );
-    }
+    const data = await prisma.user.findUnique({
+      where: { id: referrerId },
+      select: { palliativeActivated: true, selectedPalliative: true, palliativeTier: true },
+    });
+    if (data) referrerDataMap.set(referrerId, data);
   }
 
   const newPackageIncludesMyngul = MYNGUL_PACKAGES.includes(newPackage.name as any);
   const currentPackageIncludesMyngul = MYNGUL_PACKAGES.includes(currentPackage.name as any);
   const MYNGUL_CREDIT = 11000;
-  let upgradePin: string | null = null;
 
-  if (newPackageIncludesMyngul && !currentPackageIncludesMyngul) {
-    upgradePin = `BPI-UPG-${Date.now().toString().slice(-8)}`;
+  // ── Deferred side-effects collectors ──
+  const deferredBpt: Array<{ referrerId: string; amount: number }> = [];
+  const deferredNotifications: Array<{ referrerId: string; total: number; level: number }> = [];
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        socialMedia: { increment: MYNGUL_CREDIT },
-        myngulActivationPin: upgradePin,
-      },
-    });
+  // ── Atomic transaction: all financial writes ──
+  const txResult = await runAtomically(prisma, async (tx) => {
+    // ── Referral chain differential bonuses ──
+    for (let level = 1; level <= 4; level++) {
+      const referrer = referralChain[level - 1];
+      if (!referrer) continue;
 
-    await prisma.transaction.create({
-      data: {
-        id: randomUUID(),
-        userId,
-        transactionType: "MYNGUL_UPGRADE",
-        amount: MYNGUL_CREDIT,
-        description: `MYNGUL Social Media Wallet Credit - Upgrade to ${newPackage.name}`,
-        status: "completed",
-        reference: `MYNGUL-UPG-${packageId}-${Date.now()}`,
-      },
-    });
-  }
+      const referrerId = (referrer as any).id ?? referrer;
+      const levelKey = `l${level}` as "l1" | "l2" | "l3" | "l4";
+      const bonuses = (bonusDifferences as any)[levelKey];
 
-  const palliativeUpdateData: any = {};
-  palliativeUpdateData.palliativeTier = newPalliativeTier;
+      if (
+        bonuses.cash > 0 ||
+        bonuses.palliative > 0 ||
+        bonuses.bpt > 0 ||
+        bonuses.cashback > 0
+      ) {
+        const referrerData = referrerDataMap.get(referrerId);
 
-  if (isNewHighTier && !currentUser?.palliativeActivated && selectedPalliative) {
-    const palliativeActivatedAt = new Date();
-    palliativeUpdateData.palliativeActivated = true;
-    palliativeUpdateData.selectedPalliative = selectedPalliative;
-    palliativeUpdateData.palliativeActivatedAt = palliativeActivatedAt;
+        const updateData: any = {};
+        if (bonuses.cash > 0) updateData.wallet = { increment: bonuses.cash };
 
-    await prisma.palliativeWalletActivation.create({
-      data: {
-        id: randomUUID(),
-        userId,
-        palliativeType: selectedPalliative,
-        membershipTier: newPackage.name,
-        activationType: "instant",
-      },
-    });
+        if (bonuses.palliative > 0) {
+          if (referrerData?.palliativeActivated && referrerData.selectedPalliative) {
+            const walletField = getWalletFieldName(referrerData.selectedPalliative as any);
+            updateData[walletField] = { increment: bonuses.palliative };
+          } else if (referrerData?.palliativeTier === "lower") {
+            updateData.palliative = { increment: bonuses.palliative };
+          } else {
+            updateData.palliative = { increment: bonuses.palliative };
+          }
+        }
 
-    const userWithPooled = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { palliative: true },
-    });
+        if (bonuses.cashback > 0) updateData.cashback = { increment: bonuses.cashback };
 
-    if (userWithPooled && userWithPooled.palliative > 0) {
-      const walletField = getWalletFieldName(selectedPalliative);
-      palliativeUpdateData[walletField] = { increment: userWithPooled.palliative };
-      palliativeUpdateData.palliative = 0;
+        await tx.user.update({ where: { id: referrerId }, data: updateData });
 
-      await prisma.transaction.create({
+        await tx.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId: referrerId,
+            transactionType: `membership_upgrade_bonus_l${level}`,
+            amount: bonuses.cash + bonuses.palliative + bonuses.cashback + bonuses.bpt,
+            description: `Referral bonus (differential) for ${newPackage.name} upgrade - Level ${level}`,
+            status: "completed",
+            reference: `UPGRADE-${Date.now()}-L${level}`,
+          },
+        });
+
+        if (bonuses.bpt > 0) {
+          deferredBpt.push({ referrerId, amount: bonuses.bpt });
+        }
+        deferredNotifications.push({
+          referrerId,
+          total: bonuses.cash + bonuses.palliative + bonuses.cashback + bonuses.bpt,
+          level,
+        });
+      }
+    }
+
+    // ── Myngul credit ──
+    let upgradePin: string | null = null;
+    if (newPackageIncludesMyngul && !currentPackageIncludesMyngul) {
+      upgradePin = `BPI-UPG-${Date.now().toString().slice(-8)}`;
+
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          socialMedia: { increment: MYNGUL_CREDIT },
+          myngulActivationPin: upgradePin,
+        },
+      });
+
+      await tx.transaction.create({
         data: {
           id: randomUUID(),
           userId,
-          transactionType: "PALLIATIVE_TRANSFER",
-          amount: userWithPooled.palliative,
-          description: `Transferred pooled palliative balance to ${selectedPalliative} wallet on upgrade to ${newPackage.name}`,
+          transactionType: "MYNGUL_UPGRADE",
+          amount: MYNGUL_CREDIT,
+          description: `MYNGUL Social Media Wallet Credit - Upgrade to ${newPackage.name}`,
           status: "completed",
-          reference: `PAL-TRANSFER-${Date.now()}`,
+          reference: `MYNGUL-UPG-${packageId}-${Date.now()}`,
         },
       });
     }
-  }
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      activeMembershipPackageId: packageId,
-      membershipActivatedAt: activatedAt,
-      membershipExpiresAt: expiresAt,
-      ...palliativeUpdateData,
-    },
-  });
+    // ── Palliative handling ──
+    const palliativeUpdateData: any = {};
+    palliativeUpdateData.palliativeTier = newPalliativeTier;
 
-  await prisma.transaction.create({
-    data: {
-      id: randomUUID(),
-      userId,
-      transactionType: "membership_upgrade",
-      amount: -upgradeCost,
-      description: `Upgraded from ${currentPackage.name} to ${newPackage.name} (${paymentMethodLabel})`,
-      status: "completed",
-      reference: paymentReference,
-    },
-  });
+    if (isNewHighTier && !currentUser?.palliativeActivated && selectedPalliative) {
+      palliativeUpdateData.palliativeActivated = true;
+      palliativeUpdateData.selectedPalliative = selectedPalliative;
+      palliativeUpdateData.palliativeActivatedAt = new Date();
 
-  const vatDifferential = newPackage.vat - currentPackage.vat;
-  if (vatDifferential > 0) {
-    await prisma.transaction.create({
+      await tx.palliativeWalletActivation.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          palliativeType: selectedPalliative,
+          membershipTier: newPackage.name,
+          activationType: "instant",
+        },
+      });
+
+      const userWithPooled = await tx.user.findUnique({
+        where: { id: userId },
+        select: { palliative: true },
+      });
+
+      if (userWithPooled && userWithPooled.palliative > 0) {
+        const walletField = getWalletFieldName(selectedPalliative);
+        palliativeUpdateData[walletField] = { increment: userWithPooled.palliative };
+        palliativeUpdateData.palliative = 0;
+
+        await tx.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "PALLIATIVE_TRANSFER",
+            amount: userWithPooled.palliative,
+            description: `Transferred pooled palliative balance to ${selectedPalliative} wallet on upgrade to ${newPackage.name}`,
+            status: "completed",
+            reference: `PAL-TRANSFER-${Date.now()}`,
+          },
+        });
+      }
+    }
+
+    // ── User activation update ──
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        activeMembershipPackageId: packageId,
+        membershipActivatedAt: activatedAt,
+        membershipExpiresAt: expiresAt,
+        ...palliativeUpdateData,
+      },
+    });
+
+    // ── Upgrade transaction record ──
+    await tx.transaction.create({
       data: {
         id: randomUUID(),
         userId,
-        transactionType: "VAT",
-        amount: vatDifferential,
-        description: `VAT on ${currentPackage.name} to ${newPackage.name} upgrade`,
+        transactionType: "membership_upgrade",
+        amount: -upgradeCost,
+        description: `Upgraded from ${currentPackage.name} to ${newPackage.name} (${paymentMethodLabel})`,
         status: "completed",
-        reference: `VAT-${paymentReference}`,
+        reference: paymentReference,
       },
     });
+
+    // ── VAT differential ──
+    const vatDifferential = newPackage.vat - currentPackage.vat;
+    if (vatDifferential > 0) {
+      await tx.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          transactionType: "VAT",
+          amount: vatDifferential,
+          description: `VAT on ${currentPackage.name} to ${newPackage.name} upgrade`,
+          status: "completed",
+          reference: `VAT-${paymentReference}`,
+        },
+      });
+    }
+
+    return { upgradePin };
+  }, { timeout: 30000 });
+
+  // ── Post-commit: BPT distribution (best-effort) ──
+  for (const item of deferredBpt) {
+    try {
+      await distributeBptReward(item.referrerId, item.amount);
+    } catch (err) {
+      console.error(`[UPGRADE] BPT distribution failed for referrer ${item.referrerId} (core upgrade succeeded):`, err);
+    }
   }
 
-  await notifyMembershipActivation(userId, newPackage.name, expiresAt);
+  // ── Post-commit: Notifications (best-effort) ──
+  for (const item of deferredNotifications) {
+    try {
+      await notifyReferralReward(
+        item.referrerId,
+        userId,
+        `Membership Upgrade Bonus (${newPackage.name}) - L${item.level}`,
+        item.total,
+      );
+    } catch {
+      // Notification failure is non-critical
+    }
+  }
+
+  try {
+    await notifyMembershipActivation(userId, newPackage.name, expiresAt);
+  } catch {
+    // Notification failure is non-critical
+  }
 
   return {
     success: true,
@@ -565,6 +722,6 @@ export async function upgradeMembershipAfterExternalPayment(params: {
     newExpiry: expiresAt,
     packageName: newPackage.name,
     myngulActivated: newPackageIncludesMyngul && !currentPackageIncludesMyngul,
-    myngulPin: upgradePin,
+    myngulPin: txResult.upgradePin,
   };
 }

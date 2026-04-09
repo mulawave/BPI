@@ -78,13 +78,13 @@ function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; l
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 flex gap-4 items-center shadow-sm"
+      className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-5 flex gap-4 items-center shadow-sm"
     >
       <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>{icon}</div>
       <div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">{label}</p>
+        <p className="text-xs text-gray-500 dark:text-white/60 font-medium uppercase tracking-wide">{label}</p>
         <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-        {sub && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{sub}</p>}
+        {sub && <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">{sub}</p>}
       </div>
     </motion.div>
   );
@@ -120,7 +120,7 @@ function OverviewTab() {
     onError: (e) => toast.error(e.message),
   });
 
-  if (isLoading) return <div className="flex items-center gap-2 text-gray-400 py-12 justify-center"><RefreshCw size={20} className="animate-spin" /> Loading...</div>;
+  if (isLoading) return <div className="flex flex-col items-center justify-center gap-3 py-12"><div className="h-8 w-8 animate-spin rounded-full border-3 border-emerald-200 border-t-emerald-600 dark:border-emerald-800 dark:border-t-emerald-400" /><span className="text-sm text-muted-foreground">Loading…</span></div>;
 
   const stats = data!;
   return (
@@ -136,29 +136,29 @@ function OverviewTab() {
       </div>
 
       {/* Formation status card — per-tier controls */}
-      <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-6 shadow-sm">
+      <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-6 shadow-sm">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
             <Activity size={20} className="text-amber-600" />
           </div>
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-white">Club Formation Status</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Controls whether new applications can be submitted per tier</p>
+            <p className="text-xs text-gray-500 dark:text-white/60">Controls whether new applications can be submitted per tier</p>
           </div>
         </div>
 
         {/* Global row */}
-        <div className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
+        <div className="mb-4 pb-4 border-b border-gray-100 dark:border-bpi-dark-accent/30">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Global (all tiers)</span>
+              <span className="text-xs font-semibold text-gray-500 dark:text-white/60 uppercase tracking-wide">Global (all tiers)</span>
               <StatusBadge status={formationQuery.data?.formationStatus ?? "—"} />
             </div>
             <div className="flex gap-2">
               {(["OPEN", "PAUSED", "CLOSED"] as const).map((s) => (
                 <button key={s} onClick={() => setStatus.mutate({ status: s })}
                   disabled={setStatus.isPending || formationQuery.data?.formationStatus === s}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${formationQuery.data?.formationStatus === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#0d3b29] hover:text-[#0d3b29]"}`}>
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${formationQuery.data?.formationStatus === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-bpi-dark-surface text-gray-700 dark:text-emerald-200/80 border-gray-200 dark:border-bpi-dark-accent/30 hover:border-[#0d3b29] hover:text-[#0d3b29]"}`}>
                   {s}
                 </button>
               ))}
@@ -180,7 +180,7 @@ function OverviewTab() {
                   {(["OPEN", "PAUSED", "CLOSED"] as const).map((s) => (
                     <button key={s} onClick={() => setStatus.mutate({ status: s, tier })}
                       disabled={setStatus.isPending || tierStatus === s}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${tierStatus === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#0d3b29] hover:text-[#0d3b29]"}`}>
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${tierStatus === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-bpi-dark-surface text-gray-700 dark:text-emerald-200/80 border-gray-200 dark:border-bpi-dark-accent/30 hover:border-[#0d3b29] hover:text-[#0d3b29]"}`}>
                       {s}
                     </button>
                   ))}
@@ -226,7 +226,7 @@ function ClubsTab() {
         <div className="flex gap-2 flex-wrap">
           {([undefined, "SILVER", "GOLD", "PLATINUM", "DIAMOND"] as const).map((t) => (
             <button key={t ?? "all"} onClick={() => setTier(t)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${tier === t ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#0d3b29]"}`}>
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${tier === t ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-bpi-dark-surface text-gray-600 dark:text-emerald-200/80 border-gray-200 dark:border-bpi-dark-accent/30 hover:border-[#0d3b29]"}`}>
               {t ?? "All Tiers"}
             </button>
           ))}
@@ -243,20 +243,20 @@ function ClubsTab() {
       <AnimatePresence>
         {showCreate && (
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-6 shadow-lg">
+            className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-6 shadow-lg">
             <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Create New Club</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Tier</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-white/60 mb-1.5">Tier</label>
                 <select value={newTier} onChange={(e) => setNewTier(e.target.value as Tier)}
-                  className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-900 dark:text-white">
+                  className="w-full px-3 py-2 bg-white dark:bg-bpi-dark-surface border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm text-gray-900 dark:text-white">
                   {(["SILVER", "GOLD", "PLATINUM", "DIAMOND"] as Tier[]).map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Club Name</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-white/60 mb-1.5">Club Name</label>
                 <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Diamond Club Alpha"
-                  className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
+                  className="w-full px-3 py-2 bg-white dark:bg-bpi-dark-surface border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
               </div>
             </div>
             <div className="flex gap-3">
@@ -264,7 +264,7 @@ function ClubsTab() {
                 className="px-5 py-2 bg-[#0d3b29] text-white rounded-xl text-sm font-semibold disabled:opacity-50">
                 {createClub.isPending ? "Creating..." : "Create"}
               </button>
-              <button onClick={() => setShowCreate(false)} className="px-5 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-300">Cancel</button>
+              <button onClick={() => setShowCreate(false)} className="px-5 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm text-gray-600 dark:text-emerald-200/80">Cancel</button>
             </div>
           </motion.div>
         )}
@@ -272,12 +272,12 @@ function ClubsTab() {
 
       {/* Clubs list */}
       {isLoading ? (
-        <div className="flex items-center gap-2 text-gray-400 py-10 justify-center"><RefreshCw size={18} className="animate-spin" /> Loading clubs...</div>
+        <div className="flex flex-col items-center justify-center gap-3 py-12"><div className="h-8 w-8 animate-spin rounded-full border-3 border-emerald-200 border-t-emerald-600 dark:border-emerald-800 dark:border-t-emerald-400" /><span className="text-sm text-muted-foreground">Loading clubs…</span></div>
       ) : (
         <div className="space-y-3">
-          {(data?.clubs ?? []).map((club) => (
+          {(data?.clubs ?? []).map((club: any) => (
             <motion.div key={club.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4 shadow-sm">
+              className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4 shadow-sm">
               <div className="flex items-center gap-3 flex-1">
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${TIER_COLORS[club.tier as Tier]?.bg}`}>
                   <Crown size={18} className={TIER_COLORS[club.tier as Tier]?.text} />
@@ -287,7 +287,7 @@ function ClubsTab() {
                   <div className="flex items-center gap-2 mt-0.5">
                     <TierBadge tier={club.tier as Tier} />
                     <StatusBadge status={club.status} />
-                    <span className="text-xs text-gray-400 dark:text-gray-500">{club._count.members}/11 members</span>
+                    <span className="text-xs text-gray-400 dark:text-white/40">{club._count.members}/11 members</span>
                   </div>
                 </div>
               </div>
@@ -314,15 +314,15 @@ function ClubsTab() {
             </motion.div>
           ))}
           {(data?.clubs ?? []).length === 0 && (
-            <div className="text-center py-10 text-gray-400 dark:text-gray-500">No clubs found.</div>
+            <div className="text-center py-10 text-sm text-muted-foreground">No clubs found.</div>
           )}
         </div>
       )}
       {(data?.total ?? 0) > 20 && (
         <div className="flex items-center justify-between pt-2">
-          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm disabled:opacity-40">Previous</button>
-          <span className="text-sm text-gray-500 dark:text-gray-400">Page {page} · {data?.total} total</span>
-          <button disabled={page * 20 >= (data?.total ?? 0)} onClick={() => setPage((p) => p + 1)} className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm disabled:opacity-40">Next</button>
+          <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="px-4 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm disabled:opacity-40">Previous</button>
+          <span className="text-sm text-gray-500 dark:text-white/60">Page {page} · {data?.total} total</span>
+          <button disabled={page * 20 >= (data?.total ?? 0)} onClick={() => setPage((p) => p + 1)} className="px-4 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm disabled:opacity-40">Next</button>
         </div>
       )}
     </div>
@@ -350,7 +350,7 @@ function ApplicationsTab() {
   });
 
   const apps = data?.applications ?? [];
-  const selectedApp = apps.find((a) => a.id === selected);
+  const selectedApp = apps.find((a: any) => a.id === selected);
 
   return (
     <div className="space-y-5">
@@ -358,19 +358,19 @@ function ApplicationsTab() {
       <div className="flex gap-2 flex-wrap">
         {([undefined, "PENDING", "APPROVED", "REJECTED"] as const).map((s) => (
           <button key={s ?? "all"} onClick={() => { setStatusFilter(s); setPage(1); }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${statusFilter === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-[#0d3b29]"}`}>
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${statusFilter === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-bpi-dark-surface text-gray-600 dark:text-emerald-200/80 border-gray-200 dark:border-bpi-dark-accent/30 hover:border-[#0d3b29]"}`}>
             {s ?? "All"}
           </button>
         ))}
       </div>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-gray-400 py-10 justify-center"><RefreshCw size={18} className="animate-spin" /> Loading...</div>
+        <div className="flex flex-col items-center justify-center gap-3 py-12"><div className="h-8 w-8 animate-spin rounded-full border-3 border-emerald-200 border-t-emerald-600 dark:border-emerald-800 dark:border-t-emerald-400" /><span className="text-sm text-muted-foreground">Loading…</span></div>
       ) : (
         <div className="space-y-3">
-          {apps.map((app) => (
+          {apps.map((app: any) => (
             <motion.div key={app.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+              className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-5 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
@@ -379,7 +379,7 @@ function ApplicationsTab() {
                     <span className="text-xs text-gray-400">{format(new Date(app.submittedAt), "MMM d, yyyy")}</span>
                   </div>
                   <p className="font-semibold text-gray-900 dark:text-white text-sm">{app.user?.name ?? "—"}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{app.user?.email}</p>
+                  <p className="text-xs text-gray-500 dark:text-white/60">{app.user?.email}</p>
                   <div className="flex gap-3 mt-2">
                     <span className={`text-xs px-2 py-0.5 rounded-lg ${app.bptVerified ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
                       BPT {app.bptVerified ? "✓" : "—"}
@@ -404,17 +404,17 @@ function ApplicationsTab() {
               <AnimatePresence>
                 {selected === app.id && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                    className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 space-y-4">
+                    className="mt-4 pt-4 border-t border-gray-100 dark:border-bpi-dark-accent/30 space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Assign to Club ID</label>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-white/60 mb-1.5">Assign to Club ID</label>
                         <input value={clubId} onChange={(e) => setClubId(e.target.value)} placeholder="cuid..."
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm bg-white dark:bg-bpi-dark-surface text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Rotation Number (1–11)</label>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-white/60 mb-1.5">Rotation Number (1–11)</label>
                         <input type="number" min="1" max="11" value={rotation} onChange={(e) => setRotation(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm bg-white dark:bg-bpi-dark-surface text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
                       </div>
                     </div>
                     <button onClick={() => approve.mutate({ applicationId: app.id, clubId, rotationNumber: parseInt(rotation) })}
@@ -424,9 +424,9 @@ function ApplicationsTab() {
                     </button>
 
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Rejection Reason</label>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-white/60 mb-1.5">Rejection Reason</label>
                       <input value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason..."
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm bg-white dark:bg-bpi-dark-surface text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
                     </div>
                     <div className="flex gap-3">
                       <button onClick={() => reject.mutate({ applicationId: app.id, reason: rejectReason })}
@@ -434,14 +434,14 @@ function ApplicationsTab() {
                         className="px-5 py-2 bg-rose-600 text-white rounded-xl text-sm font-semibold hover:bg-rose-700 transition-all disabled:opacity-50">
                         {reject.isPending ? "Rejecting..." : "✗ Reject"}
                       </button>
-                      <button onClick={() => setSelected(null)} className="px-5 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-300">Cancel</button>
+                      <button onClick={() => setSelected(null)} className="px-5 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm text-gray-600 dark:text-emerald-200/80">Cancel</button>
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </motion.div>
           ))}
-          {apps.length === 0 && <div className="text-center py-10 text-gray-400">No applications found.</div>}
+          {apps.length === 0 && <div className="text-center py-10 text-sm text-muted-foreground">No applications found.</div>}
         </div>
       )}
     </div>
@@ -466,18 +466,18 @@ function PayoutsTab() {
     <div className="space-y-5">
       <div className="flex gap-3">
         <input value={clubId} onChange={(e) => setClubId(e.target.value)} placeholder="Enter Club ID..."
-          className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none max-w-xs" />
+          className="flex-1 px-3 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm bg-white dark:bg-bpi-dark-surface text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none max-w-xs" />
         <button onClick={() => setPayoutClubId(clubId)} disabled={!clubId}
           className="px-4 py-2 bg-[#0d3b29] text-white rounded-xl text-sm font-semibold disabled:opacity-50">
           Load
         </button>
       </div>
 
-      {isLoading && <div className="flex items-center gap-2 text-gray-400 py-8 justify-center"><RefreshCw size={18} className="animate-spin" />Loading...</div>}
+      {isLoading && <div className="flex flex-col items-center justify-center gap-3 py-12"><div className="h-8 w-8 animate-spin rounded-full border-3 border-emerald-200 border-t-emerald-600 dark:border-emerald-800 dark:border-t-emerald-400" /><span className="text-sm text-muted-foreground">Loading…</span></div>}
       {data && (
         <div className="space-y-3">
-          {data.payouts.map((payout) => (
-            <div key={payout.id} className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4 shadow-sm">
+          {data.payouts.map((payout: any) => (
+            <div key={payout.id} className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4 shadow-sm">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <StatusBadge status={payout.status} />
@@ -485,7 +485,7 @@ function PayoutsTab() {
                   <span className="text-xs text-gray-400">{payout.scheduledMonth}/{payout.scheduledYear}</span>
                 </div>
                 <p className="font-semibold text-gray-900 dark:text-white">₦{Number(payout.amount).toLocaleString()}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{payout.member?.user?.name} · {payout.member?.user?.email}</p>
+                <p className="text-xs text-gray-500 dark:text-white/60">{payout.member?.user?.name} · {payout.member?.user?.email}</p>
                 {payout.blockedReason && <p className="text-xs text-rose-500 mt-1">{payout.blockedReason}</p>}
               </div>
               {payout.status === "PENDING" && (
@@ -496,7 +496,7 @@ function PayoutsTab() {
               )}
             </div>
           ))}
-          {data.payouts.length === 0 && <div className="text-center py-8 text-gray-400">No payouts for this club.</div>}
+          {data.payouts.length === 0 && <div className="text-center py-8 text-sm text-muted-foreground">No payouts for this club.</div>}
         </div>
       )}
     </div>
@@ -539,14 +539,14 @@ function InvestmentsTab() {
   const pools = poolHistoryData?.pools ?? [];
   const latestPool = pools[0] ?? null;
   const opsBalances = opsData?.balances ?? [];
-  const totalEliteOps = opsBalances.reduce((sum, b) => sum + Number(b._sum.eliteShare ?? 0), 0);
+  const totalEliteOps = opsBalances.reduce((sum: number, b: any) => sum + Number(b._sum.eliteShare ?? 0), 0);
 
   return (
     <div className="space-y-6">
       {/* Club selector for pool data */}
       <div className="flex gap-3 flex-wrap">
         <input value={clubId} onChange={(e) => setClubId(e.target.value)} placeholder="Enter Club ID..."
-          className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none max-w-xs" />
+          className="px-3 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm bg-white dark:bg-bpi-dark-surface text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none max-w-xs" />
         <button onClick={() => { setSearchClubId(clubId); setPoolClubId(clubId); }} disabled={!clubId}
           className="px-4 py-2 bg-[#0d3b29] text-white rounded-xl text-sm font-semibold disabled:opacity-50">Load</button>
       </div>
@@ -555,21 +555,21 @@ function InvestmentsTab() {
       {poolClubId !== "__placeholder__" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Current pool balance */}
-          <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+          <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-5 shadow-sm">
             <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
               <BarChart3 size={15} className="text-indigo-600" /> Current Month Pool
             </h3>
             {poolHistoryLoading ? (
-              <div className="flex items-center gap-2 text-gray-400 text-sm"><RefreshCw size={14} className="animate-spin" />Loading...</div>
+              <div className="flex items-center justify-center gap-2"><div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600 dark:border-emerald-800 dark:border-t-emerald-400" /><span className="text-sm text-muted-foreground">Loading…</span></div>
             ) : latestPool ? (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3">
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Gross Contributed</p>
+                    <p className="text-xs text-gray-500 dark:text-white/60 mb-1">Gross Contributed</p>
                     <p className="font-bold text-gray-900 dark:text-white text-sm">₦{Number(latestPool.grossAmount).toLocaleString()}</p>
                   </div>
                   <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3">
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Net Available</p>
+                    <p className="text-xs text-gray-500 dark:text-white/60 mb-1">Net Available</p>
                     <p className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">₦{Number(latestPool.netAmount).toLocaleString()}</p>
                   </div>
                   <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl p-3">
@@ -585,15 +585,15 @@ function InvestmentsTab() {
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-1">Total Available (unallocated)</p>
                   <p className="font-bold text-emerald-700 dark:text-emerald-300">₦{Number(latestPool.available).toLocaleString()}</p>
                 </div>
-                <p className="text-xs text-gray-400 dark:text-gray-500">Period: {latestPool.month}/{latestPool.year}</p>
+                <p className="text-xs text-gray-400 dark:text-white/40">Period: {latestPool.month}/{latestPool.year}</p>
               </div>
             ) : (
-              <p className="text-sm text-gray-400 py-4 text-center">No pool data for this club.</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">No pool data for this club.</p>
             )}
           </div>
 
           {/* Elite Ops Wallet */}
-          <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+          <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-5 shadow-sm">
             <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
               <Wallet size={15} className="text-rose-600" /> Elite Ops Wallet
             </h3>
@@ -601,12 +601,12 @@ function InvestmentsTab() {
               <div className="bg-rose-50 dark:bg-rose-900/20 rounded-xl p-4">
                 <p className="text-xs text-rose-600 dark:text-rose-400 mb-1">Accumulated Elite Ops Fee</p>
                 <p className="text-2xl font-bold text-rose-700 dark:text-rose-300">₦{totalEliteOps.toLocaleString()}</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">5% ops share from all contributions</p>
+                <p className="text-xs text-gray-400 dark:text-white/40 mt-1">5% ops share from all contributions</p>
               </div>
               {opsBalances.length > 1 && (
                 <div className="space-y-2">
-                  {opsBalances.map((b) => (
-                    <div key={b.clubId} className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2">
+                  {opsBalances.map((b: any) => (
+                    <div key={b.clubId} className="flex items-center justify-between text-xs text-gray-600 dark:text-white/60 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2">
                       <span className="font-mono text-gray-400 truncate max-w-[120px]">{b.clubId}</span>
                       <span className="font-semibold text-gray-900 dark:text-white">₦{Number(b._sum.eliteShare ?? 0).toLocaleString()}</span>
                     </div>
@@ -626,14 +626,14 @@ function InvestmentsTab() {
 
       {/* Monthly Inflow History */}
       {pools.length > 0 && (
-        <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+        <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-5 shadow-sm">
           <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
             <TrendingUp size={15} className="text-[#0d3b29]" /> Monthly Inflow History
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700">
+                <tr className="text-xs text-gray-500 dark:text-white/60 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-bpi-dark-accent/30">
                   <th className="text-left px-3 py-2 font-medium">Period</th>
                   <th className="text-right px-3 py-2 font-medium">Gross</th>
                   <th className="text-right px-3 py-2 font-medium">Net</th>
@@ -643,10 +643,10 @@ function InvestmentsTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-gray-700/40">
-                {pools.map((p) => (
+                {pools.map((p: any) => (
                   <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                     <td className="px-3 py-2.5 font-medium text-gray-900 dark:text-white">{p.month}/{p.year}</td>
-                    <td className="px-3 py-2.5 text-right text-gray-700 dark:text-gray-300">₦{Number(p.grossAmount).toLocaleString()}</td>
+                    <td className="px-3 py-2.5 text-right text-gray-700 dark:text-emerald-200/80">₦{Number(p.grossAmount).toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-right text-emerald-700 dark:text-emerald-400">₦{Number(p.netAmount).toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-right text-indigo-700 dark:text-indigo-400">₦{Number(p.digitalBalance).toLocaleString()}</td>
                     <td className="px-3 py-2.5 text-right text-amber-700 dark:text-amber-400">₦{Number(p.offlineBalance).toLocaleString()}</td>
@@ -663,17 +663,17 @@ function InvestmentsTab() {
       <div className="flex gap-3 flex-wrap">
         {(["DRAFT","UNDER_REVIEW","APPROVED","FUNDED","COMPLETED","REJECTED"] as const).map((s) => (
           <button key={s} onClick={() => setStatusFilter(statusFilter === s ? undefined : s)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${statusFilter === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"}`}>
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${statusFilter === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-bpi-dark-surface text-gray-600 dark:text-emerald-200/80 border-gray-200 dark:border-bpi-dark-accent/30"}`}>
             {s}
           </button>
         ))}
       </div>
 
-      {isLoading && <div className="flex items-center gap-2 text-gray-400 py-8 justify-center"><RefreshCw size={18} className="animate-spin" />Loading...</div>}
+      {isLoading && <div className="flex flex-col items-center justify-center gap-3 py-12"><div className="h-8 w-8 animate-spin rounded-full border-3 border-emerald-200 border-t-emerald-600 dark:border-emerald-800 dark:border-t-emerald-400" /><span className="text-sm text-muted-foreground">Loading…</span></div>}
       {data && (
         <div className="space-y-4">
-          {data.investments.map((inv) => (
-            <div key={inv.id} className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+          {data.investments.map((inv: any) => (
+            <div key={inv.id} className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-5 shadow-sm">
               <div className="flex items-start gap-3 mb-3">
                 <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center flex-shrink-0">
                   <TrendingUp size={18} className="text-indigo-600" />
@@ -681,21 +681,21 @@ function InvestmentsTab() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <StatusBadge status={inv.status} />
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{inv.category}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-emerald-200/80">{inv.category}</span>
                     <span className="text-xs text-gray-400">{inv._count.votes} votes</span>
                   </div>
                   <p className="font-semibold text-gray-900 dark:text-white">{inv.title}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{inv.description}</p>
+                  <p className="text-sm text-gray-500 dark:text-white/60 line-clamp-2">{inv.description}</p>
                   <p className="text-sm font-semibold text-[#0d3b29] dark:text-emerald-400 mt-1">₦{Number(inv.amountRequested).toLocaleString()} requested</p>
                 </div>
               </div>
 
               {/* Legal review input for DRAFT */}
               {inv.status === "DRAFT" && (
-                <div className="flex gap-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+                <div className="flex gap-3 pt-3 border-t border-gray-100 dark:border-bpi-dark-accent/30">
                   <input value={legalUrl[inv.id] ?? ""} onChange={(e) => setLegalUrl((p) => ({ ...p, [inv.id]: e.target.value }))}
                     placeholder="Legal review document URL..."
-                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
+                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm bg-white dark:bg-bpi-dark-surface text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
                   <button onClick={() => submitLegal.mutate({ investmentId: inv.id, legalReviewUrl: legalUrl[inv.id] ?? "" })}
                     disabled={submitLegal.isPending || !legalUrl[inv.id]}
                     className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold disabled:opacity-50">
@@ -706,7 +706,7 @@ function InvestmentsTab() {
 
               {/* Approve/Reject for UNDER_REVIEW */}
               {inv.status === "UNDER_REVIEW" && (
-                <div className="flex gap-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+                <div className="flex gap-3 pt-3 border-t border-gray-100 dark:border-bpi-dark-accent/30">
                   <button onClick={() => approveInv.mutate({ investmentId: inv.id })} disabled={approveInv.isPending}
                     className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">
                     Approve Investment
@@ -719,7 +719,7 @@ function InvestmentsTab() {
               )}
             </div>
           ))}
-          {data.investments.length === 0 && <div className="text-center py-8 text-gray-400">No investments found.</div>}
+          {data.investments.length === 0 && <div className="text-center py-8 text-sm text-muted-foreground">No investments found.</div>}
         </div>
       )}
     </div>
@@ -754,7 +754,7 @@ function ContributionsTab() {
 
   function handleExport() {
     const headers = ["ID", "Member", "Email", "Club", "Month", "Year", "Total", "Empowerment", "Investment", "Status", "Paid At"];
-    const csvRows = rows.map((c) => [
+    const csvRows = rows.map((c: any) => [
       c.id, c.member?.user?.name ?? "", c.member?.user?.email ?? "", c.clubId,
       String(c.month), String(c.year), String(Number(c.totalAmount)),
       String(Number(c.empowermentShare)), String(Number(c.investmentShare)),
@@ -768,14 +768,14 @@ function ContributionsTab() {
       {/* Filters */}
       <div className="flex gap-3 flex-wrap items-end">
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Club ID</label>
+          <label className="block text-xs font-medium text-gray-600 dark:text-white/60 mb-1.5">Club ID</label>
           <input value={clubId} onChange={(e) => setClubId(e.target.value)} placeholder="Leave blank for all..."
-            className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none w-48" />
+            className="px-3 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm bg-white dark:bg-bpi-dark-surface text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none w-48" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Month</label>
+          <label className="block text-xs font-medium text-gray-600 dark:text-white/60 mb-1.5">Month</label>
           <select value={monthFilter ?? ""} onChange={(e) => setMonthFilter(e.target.value ? Number(e.target.value) : undefined)}
-            className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white focus:border-[#0d3b29] outline-none">
+            className="px-3 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm bg-white dark:bg-bpi-dark-surface text-[#232323] dark:text-white focus:border-[#0d3b29] outline-none">
             <option value="">All</option>
             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
               <option key={m} value={m}>{m}</option>
@@ -783,15 +783,15 @@ function ContributionsTab() {
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Year</label>
+          <label className="block text-xs font-medium text-gray-600 dark:text-white/60 mb-1.5">Year</label>
           <input type="number" value={yearFilter} onChange={(e) => setYearFilter(Number(e.target.value))}
-            className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white focus:border-[#0d3b29] outline-none w-24" />
+            className="px-3 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm bg-white dark:bg-bpi-dark-surface text-[#232323] dark:text-white focus:border-[#0d3b29] outline-none w-24" />
         </div>
         <div className="flex gap-1">
           {(["PAID", "PENDING", "MISSED", "PARTIAL"] as const).map((s) => (
             <button key={s} onClick={() => setStatusFilter(statusFilter === s ? undefined : s)}
               className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
-                statusFilter === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700"
+                statusFilter === s ? "bg-[#0d3b29] text-white border-[#0d3b29]" : "bg-white dark:bg-bpi-dark-surface text-gray-600 dark:text-emerald-200/80 border-gray-200 dark:border-bpi-dark-accent/30"
               }`}>
               {s}
             </button>
@@ -805,14 +805,14 @@ function ContributionsTab() {
         )}
       </div>
 
-      {isLoading && <div className="flex items-center gap-2 text-gray-400 py-8 justify-center"><RefreshCw size={18} className="animate-spin" />Loading contributions...</div>}
+      {isLoading && <div className="flex flex-col items-center justify-center gap-3 py-12"><div className="h-8 w-8 animate-spin rounded-full border-3 border-emerald-200 border-t-emerald-600 dark:border-emerald-800 dark:border-t-emerald-400" /><span className="text-sm text-muted-foreground">Loading contributions…</span></div>}
 
       {!isLoading && (
-        <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl overflow-hidden shadow-sm">
+        <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700">
+                <tr className="text-xs text-gray-500 dark:text-white/60 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-bpi-dark-accent/30">
                   <th className="text-left px-4 py-3 font-medium">Member</th>
                   <th className="text-left px-4 py-3 font-medium">Period</th>
                   <th className="text-right px-4 py-3 font-medium">Total</th>
@@ -823,30 +823,30 @@ function ContributionsTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-gray-700/40">
-                {rows.map((c) => (
+                {rows.map((c: any) => (
                   <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-900 dark:text-white">{c.member?.user?.name ?? "—"}</div>
                       <div className="text-xs text-gray-400">{c.member?.user?.email}</div>
                     </td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{c.month}/{c.year}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-emerald-200/80">{c.month}/{c.year}</td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">₦{Number(c.totalAmount).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right text-emerald-700 dark:text-emerald-400">₦{Number(c.empowermentShare).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right text-indigo-700 dark:text-indigo-400">₦{Number(c.investmentShare).toLocaleString()}</td>
                     <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
-                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-white/60">
                       {c.paidAt ? format(new Date(c.paidAt), "MMM d, yyyy") : "—"}
                     </td>
                   </tr>
                 ))}
                 {rows.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">No contributions found.</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">No contributions found.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
           {data && data.total > rows.length && (
-            <div className="px-4 py-3 text-xs text-gray-400 border-t border-gray-100 dark:border-gray-700 text-right">
+            <div className="px-4 py-3 text-xs text-gray-400 border-t border-gray-100 dark:border-bpi-dark-accent/30 text-right">
               Showing {rows.length} of {data.total} records
             </div>
           )}
@@ -889,10 +889,10 @@ function LegalTab() {
     <div className="space-y-5">
       <div className="flex gap-3 items-end flex-wrap">
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Filter by Club ID</label>
+          <label className="block text-xs font-medium text-gray-600 dark:text-white/60 mb-1.5">Filter by Club ID</label>
           <input value={clubIdFilter} onChange={(e) => { setClubIdFilter(e.target.value); setPage(1); }}
             placeholder="Leave blank for all..."
-            className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none w-56" />
+            className="px-3 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm bg-white dark:bg-bpi-dark-surface text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none w-56" />
         </div>
         {events.length > 0 && (
           <button onClick={handleExport}
@@ -902,16 +902,16 @@ function LegalTab() {
         )}
       </div>
 
-      {isLoading && <div className="flex items-center gap-2 text-gray-400 py-8 justify-center"><RefreshCw size={18} className="animate-spin" />Loading legal events...</div>}
+      {isLoading && <div className="flex flex-col items-center justify-center gap-3 py-12"><div className="h-8 w-8 animate-spin rounded-full border-3 border-emerald-200 border-t-emerald-600 dark:border-emerald-800 dark:border-t-emerald-400" /><span className="text-sm text-muted-foreground">Loading legal events…</span></div>}
 
       {!isLoading && (
         <div className="space-y-3">
           {events.map((e) => (
-            <div key={e.id} className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-5 shadow-sm">
+            <div key={e.id} className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-5 shadow-sm">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE[e.eventType as string] ?? "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE[e.eventType as string] ?? "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-emerald-200/80"}`}>
                       {e.eventType}
                     </span>
                     {e.resolvedAt ? (
@@ -922,11 +922,11 @@ function LegalTab() {
                     <span className="text-xs text-gray-400">{format(new Date(e.createdAt), "MMM d, yyyy")}</span>
                   </div>
                   <p className="font-medium text-gray-900 dark:text-white">{e.member?.user?.name ?? "Unknown"}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{e.member?.user?.email}</p>
+                  <p className="text-xs text-gray-500 dark:text-white/60">{e.member?.user?.email}</p>
                   {e.defaultCount > 0 && (
                     <p className="text-xs text-rose-600 mt-1">{e.defaultCount} default(s) · ₦{Number(e.defaultedAmount ?? 0).toLocaleString()}</p>
                   )}
-                  {e.notes && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">{e.notes}</p>}
+                  {e.notes && <p className="text-xs text-gray-500 dark:text-white/60 mt-1 italic">{e.notes}</p>}
                   {e.resolvedAt && (
                     <p className="text-xs text-emerald-600 mt-1">Resolved {format(new Date(e.resolvedAt), "MMM d, yyyy")}</p>
                   )}
@@ -935,7 +935,7 @@ function LegalTab() {
                   <div className="flex gap-2 items-end">
                     <input value={resolveNotes[e.id] ?? ""} onChange={(ev) => setResolveNotes((p) => ({ ...p, [e.id]: ev.target.value }))}
                       placeholder="Resolution notes..."
-                      className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-xl text-xs bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none w-48" />
+                      className="px-3 py-1.5 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-xs bg-white dark:bg-bpi-dark-surface text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none w-48" />
                     <button onClick={() => resolve.mutate({ legalEventId: e.id, notes: resolveNotes[e.id] })}
                       disabled={resolve.isPending}
                       className="px-4 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50 whitespace-nowrap">
@@ -947,7 +947,7 @@ function LegalTab() {
             </div>
           ))}
           {events.length === 0 && (
-            <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-10 text-center text-gray-400 shadow-sm">
+            <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-10 text-center text-muted-foreground shadow-sm">
               <Gavel size={28} className="mx-auto mb-3 opacity-40" />
               <p className="text-sm">No legal events found.</p>
             </div>
@@ -955,10 +955,10 @@ function LegalTab() {
           {data && data.total > events.length && (
             <div className="flex justify-center gap-3 pt-2">
               <button disabled={page === 1} onClick={() => setPage((p) => p - 1)}
-                className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm disabled:opacity-50">Prev</button>
-              <span className="flex items-center text-sm text-gray-500 dark:text-gray-400">Page {page}</span>
+                className="px-4 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm disabled:opacity-50">Prev</button>
+              <span className="flex items-center text-sm text-gray-500 dark:text-white/60">Page {page}</span>
               <button onClick={() => setPage((p) => p + 1)} disabled={events.length < 30}
-                className="px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm disabled:opacity-50">Next</button>
+                className="px-4 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm disabled:opacity-50">Next</button>
             </div>
           )}
         </div>
@@ -977,7 +977,7 @@ function SettingsTab() {
   });
   const [edits, setEdits] = useState<Record<string, string>>({});
 
-  if (isLoading) return <div className="flex items-center gap-2 text-gray-400 py-10 justify-center"><RefreshCw size={18} className="animate-spin" />Loading settings...</div>;
+  if (isLoading) return <div className="flex flex-col items-center justify-center gap-3 py-12"><div className="h-8 w-8 animate-spin rounded-full border-3 border-emerald-200 border-t-emerald-600 dark:border-emerald-800 dark:border-t-emerald-400" /><span className="text-sm text-muted-foreground">Loading settings…</span></div>;
 
   const settings = data?.settings ?? {};
   const keys = data?.keys ?? [];
@@ -1046,15 +1046,15 @@ function SettingsTab() {
         {keys.map((key) => {
           const current = edits[key] ?? settings[key] ?? "";
           return (
-            <div key={key} className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-4 shadow-sm">
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+            <div key={key} className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-4 shadow-sm">
+              <label className="block text-xs font-medium text-gray-600 dark:text-white/60 mb-2">
                 {SETTING_LABELS[key] ?? key}
               </label>
               <div className="flex gap-2">
                 <input
                   value={current}
                   onChange={(e) => setEdits((p) => ({ ...p, [key]: e.target.value }))}
-                  className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none"
+                  className="flex-1 px-3 py-2 border border-gray-200 dark:border-bpi-dark-accent/30 rounded-xl text-sm bg-white dark:bg-bpi-dark-surface text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none"
                 />
                 <button
                   onClick={() => updateSetting.mutate({ key, value: edits[key] ?? settings[key] ?? "" })}
@@ -1088,19 +1088,19 @@ export default function AdminEliteClubPage() {
             </div>
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Elite Club CMS</h1>
-              <p className="text-gray-500 dark:text-gray-400 text-sm">Manage tiers, clubs, members, payouts and investments</p>
+              <p className="text-gray-500 dark:text-white/60 text-sm">Manage tiers, clubs, members, payouts and investments</p>
             </div>
           </div>
         </motion.div>
 
         {/* Tab navigation */}
-        <div className="flex gap-1 flex-wrap mb-6 bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-1.5 shadow-sm">
+        <div className="flex gap-1 flex-wrap mb-6 bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-bpi-dark-accent/30 rounded-2xl p-1.5 shadow-sm">
           {TABS.map((tab) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
                 activeTab === tab.id
                   ? "bg-[#0d3b29] text-white shadow-sm"
-                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700/50"
+                  : "text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700/50"
               }`}>
               {tab.icon}
               <span className="hidden sm:inline">{tab.label}</span>

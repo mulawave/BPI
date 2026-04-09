@@ -49,8 +49,10 @@ export default function UpgradePage() {
       });
 
       if ("paymentUrl" in result && result.paymentUrl) {
-        toast.success(result.message || "Upgrade payment initialized. Complete payment to finish the upgrade.");
-        window.open(result.paymentUrl, "_blank");
+        toast.success(result.message || "Upgrade payment initialized. Redirecting to payment gateway...");
+        // Redirect to payment gateway in same tab — user will be redirected back
+        // to /payment/verify after completing payment via the callback handler
+        window.location.href = result.paymentUrl;
         return;
       }
 

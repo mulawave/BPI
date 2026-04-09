@@ -1949,6 +1949,10 @@ model User {
   TechQuizConsentLogsAsParent                                          TechQuizConsentLog[]         @relation("TechQuizConsentParent")
   TechQuizSponsors                                                     TechQuizSponsor[]            @relation("TechQuizSponsorUser")
 
+  // KYC Relations
+  KycSubmissions                                                       KycSubmission[]              @relation("KycSubmissions")
+  KycReviewed                                                          KycSubmission[]              @relation("KycReviewer")
+
   @@index([cityId])
   @@index([stateId])
   @@index([countryId])
@@ -3817,4 +3821,75 @@ model TechQuizLegalEvent {
   event       TechQuizEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId])
+}
+
+// ─── KYC (Know Your Customer) ────────────────────────────────
+
+model KycSubmission {
+  id                  String    @id @default(cuid())
+  userId              String
+  status              String    @default("pending") // pending, under_review, approved, rejected, expired
+  // Personal details
+  legalFirstName      String
+  legalLastName       String
+  dateOfBirth         DateTime
+  nationality         String
+  gender              String?
+  // Address
+  residentialAddress  String
+  residentialCity     String
+  residentialState    String
+  residentialCountry  String
+  residentialZip      String?
+  // Identity document
+  documentType        String    // national_id, passport, drivers_license, voters_card
+  documentNumber      String
+  documentFrontUrl    String
+  documentBackUrl     String?
+  documentExpiryDate  DateTime?
+  // Proof of address
+  proofOfAddressUrl   String?
+  proofOfAddressType  String?   // utility_bill, bank_statement, tax_document
+  // Selfie / biometric
+  selfieUrl           String?
+  livenessCheckPassed Boolean   @default(false)
+  // BVN / NIN (Nigerian identity numbers)
+  bvn                 String?
+  nin                 String?
+  // Admin review
+  reviewedBy          String?
+  reviewedAt          DateTime?
+  rejectionReason     String?
+  adminNotes          String?
+  // Expiry tracking
+  expiresAt           DateTime?
+  expiryNotifiedAt    DateTime?
+  // Timestamps
+  submittedAt         DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user                User      @relation("KycSubmissions", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer            User?     @relation("KycReviewer", fields: [reviewedBy], references: [id])
+  auditLogs           KycAuditLog[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([submittedAt])
+}
+
+model KycAuditLog {
+  id              String        @id @default(cuid())
+  submissionId    String
+  action          String        // submitted, under_review, approved, rejected, expired, resubmitted
+  performedBy     String?
+  performedByRole String?
+  details         String?
+  metadata        Json?
+  createdAt       DateTime      @default(now())
+
+  submission      KycSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([action])
 }

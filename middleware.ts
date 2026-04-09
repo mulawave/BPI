@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { resolveAuthSecret } from "@/lib/authSecret";
 
 export async function middleware(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.AUTH_SECRET });
+  const token = await getToken({ req, secret: resolveAuthSecret() ?? undefined });
   const { pathname } = req.nextUrl;
 
   // Admin routes protection
@@ -83,12 +84,18 @@ export async function middleware(req: NextRequest) {
   }
 
   // Enforce membership gating for authenticated users (no DB calls in middleware)
+  // Admins and super admins do not require membership plans
   if (token) {
-    const hasActiveMembership = (token as any)?.hasActiveMembership === true;
-    const isMembershipRoute = pathname === "/membership" || pathname.startsWith("/membership/");
+    const role = (token as any)?.role;
+    const isAdmin = role === "admin" || role === "super_admin";
 
-    if (!hasActiveMembership && !isMembershipRoute) {
-      return NextResponse.redirect(new URL("/membership", req.url));
+    if (!isAdmin) {
+      const hasActiveMembership = (token as any)?.hasActiveMembership === true;
+      const isMembershipRoute = pathname === "/membership" || pathname.startsWith("/membership/");
+
+      if (!hasActiveMembership && !isMembershipRoute) {
+        return NextResponse.redirect(new URL("/membership", req.url));
+      }
     }
   }
 

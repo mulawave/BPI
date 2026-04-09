@@ -401,8 +401,18 @@ export default function BankAccountsPage() {
               ))}
               {!records.data?.records?.length && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    {records.isLoading ? "Loading..." : "No records found"}
+                  <td colSpan={7} className="px-3 py-8 text-center">
+                    {records.isLoading ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600 dark:border-emerald-800 dark:border-t-emerald-400" />
+                        <span className="text-sm text-muted-foreground">Loading records…</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="text-sm font-medium text-muted-foreground">No records found</span>
+                        <span className="text-xs text-muted-foreground/60">Try adjusting your search or filters</span>
+                      </div>
+                    )}
                   </td>
                 </tr>
               )}
@@ -480,8 +490,15 @@ export default function BankAccountsPage() {
               ))}
               {!missingUsers.data?.users?.length && (
                 <tr>
-                  <td colSpan={4} className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    {missingUsers.isLoading ? "Loading..." : "All users have bank records"}
+                  <td colSpan={4} className="px-3 py-8 text-center">
+                    {missingUsers.isLoading ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600 dark:border-emerald-800 dark:border-t-emerald-400" />
+                        <span className="text-sm text-muted-foreground">Loading…</span>
+                      </div>
+                    ) : (
+                      <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">All users have bank records ✓</span>
+                    )}
                   </td>
                 </tr>
               )}

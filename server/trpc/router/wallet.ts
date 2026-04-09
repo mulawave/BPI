@@ -217,26 +217,92 @@ export const walletRouter = createTRPCRouter({
       }
 
       // Handle Bank Transfer deposits
+      // Two modes: automated (Paystack bank_transfer channel) and manual (proof upload)
       if (paymentGateway === 'bank-transfer') {
-        if (!proofOfPayment) {
-          throw new Error("Proof of payment is required for bank transfers");
+        // --- MANUAL MODE: proof of payment provided → admin approval ---
+        if (proofOfPayment) {
+          await prisma.transaction.create({
+            data: {
+              id: randomUUID(),
+              userId,
+              transactionType: "DEPOSIT",
+              amount: amount,
+              description: `Bank transfer deposit - Pending admin approval`,
+              status: "pending",
+              reference: txReference,
+              walletType: 'main',
+            },
+          });
+
+          await prisma.pendingPayment.create({
+            data: {
+              id: randomUUID(),
+              userId,
+              transactionType: "DEPOSIT",
+              amount: totalAmount,
+              currency: "NGN",
+              paymentMethod: "bank-transfer",
+              gatewayReference: txReference,
+              status: "pending",
+              proofOfPayment,
+              metadata: {
+                depositAmount: amount,
+                vatAmount,
+                purpose: 'wallet_deposit'
+              },
+              updatedAt: new Date(),
+            },
+          });
+
+          await notifyDepositStatus(userId, "pending", amount, txReference);
+
+          return {
+            success: true,
+            reference: txReference,
+            message: "Bank transfer submitted for admin approval. You will be notified once approved.",
+            depositedAmount: amount,
+            vatAmount,
+            totalPaid: totalAmount,
+          };
         }
 
-        // Create pending transaction (awaiting admin approval)
+        // --- AUTOMATED MODE: Paystack bank transfer channel ---
+        const paystackGw = await prisma.paymentGatewayConfig.findFirst({
+          where: { gatewayName: 'paystack', isActive: true },
+        });
+
+        if (!paystackGw?.secretKey) {
+          throw new Error("Automated bank transfer is not configured. Please use manual transfer with proof upload.");
+        }
+
+        const bankPayment = await initializePaystackPayment(paystackGw.secretKey, {
+          email: user.email,
+          amount: Math.round(totalAmount * 100),
+          reference: txReference,
+          callbackUrl,
+          channels: ["bank_transfer"],
+          metadata: {
+            userId,
+            depositAmount: amount,
+            vatAmount,
+            purpose: 'wallet_deposit',
+            gateway: 'bank_transfer',
+          },
+        });
+
         await prisma.transaction.create({
           data: {
             id: randomUUID(),
             userId,
             transactionType: "DEPOSIT",
             amount: amount,
-            description: `Bank transfer deposit - Pending admin approval`,
+            description: `Wallet deposit via automated bank transfer`,
             status: "pending",
             reference: txReference,
             walletType: 'main',
           },
         });
 
-        // Create pending payment record with proof for admin review
         await prisma.pendingPayment.create({
           data: {
             id: randomUUID(),
@@ -247,11 +313,11 @@ export const walletRouter = createTRPCRouter({
             paymentMethod: "bank-transfer",
             gatewayReference: txReference,
             status: "pending",
-            proofOfPayment,
             metadata: {
               depositAmount: amount,
               vatAmount,
-              purpose: 'wallet_deposit'
+              purpose: 'wallet_deposit',
+              automated: true,
             },
             updatedAt: new Date(),
           },
@@ -261,11 +327,150 @@ export const walletRouter = createTRPCRouter({
 
         return {
           success: true,
+          paymentUrl: bankPayment.data.authorization_url,
           reference: txReference,
-          message: "Bank transfer submitted for admin approval. You will be notified once approved.",
+          message: "Bank transfer initiated. Complete the transfer on the Paystack page.",
           depositedAmount: amount,
           vatAmount,
           totalPaid: totalAmount,
+        };
+      }
+
+      // Handle Crypto deposits
+      if (paymentGateway === 'crypto') {
+        const cryptoGw = await prisma.paymentGatewayConfig.findFirst({
+          where: { gatewayName: 'crypto', isActive: true },
+        });
+
+        if (!cryptoGw) {
+          throw new Error("Cryptocurrency payments are not configured. Please contact admin.");
+        }
+
+        const apiKey = cryptoGw.cryptoPublicKey || cryptoGw.publicKey;
+        if (!apiKey) {
+          throw new Error("Crypto provider API key not configured. Please contact admin.");
+        }
+
+        // Import and use the CryptoGateway via the service layer
+        const { CryptoGateway } = await import("@/server/services/payment/CryptoGateway");
+        const gateway = new CryptoGateway();
+        await gateway.initialize({
+          enabled: true,
+          publicKey: apiKey,
+          secretKey: cryptoGw.cryptoSecretKey || cryptoGw.secretKey || undefined,
+        });
+
+        const result = await gateway.initializePayment({
+          amount: totalAmount,
+          userId,
+          packageId: "",
+          email: user.email,
+          name: userName,
+          paymentMethod: "crypto",
+          currency: "NGN",
+          purpose: "wallet_deposit",
+          metadata: { callbackUrl, depositAmount: amount, vatAmount },
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || "Crypto payment initialization failed");
+        }
+
+        await prisma.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "DEPOSIT",
+            amount: amount,
+            description: `Wallet deposit via cryptocurrency`,
+            status: "pending",
+            reference: result.reference || txReference,
+            walletType: 'main',
+          },
+        });
+
+        await prisma.pendingPayment.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "DEPOSIT",
+            amount: totalAmount,
+            currency: "NGN",
+            paymentMethod: "crypto",
+            gatewayReference: result.reference || txReference,
+            status: "pending",
+            metadata: {
+              depositAmount: amount,
+              vatAmount,
+              purpose: 'wallet_deposit',
+              provider: result.metadata?.provider,
+              cryptoCurrency: result.metadata?.cryptoCurrency,
+              amountCrypto: result.metadata?.amountCrypto,
+              exchangeRate: result.metadata?.exchangeRate,
+            },
+            updatedAt: new Date(),
+          },
+        });
+
+        await notifyDepositStatus(userId, "pending", amount, result.reference || txReference);
+
+        return {
+          success: true,
+          paymentUrl: result.paymentUrl,
+          reference: result.reference || txReference,
+          message: result.message || "Crypto payment created. Complete the payment.",
+          depositedAmount: amount,
+          vatAmount,
+          totalPaid: totalAmount,
+          cryptoDetails: result.metadata,
+        };
+      }
+
+      // Handle Utility Token (PACT) deposits
+      if (paymentGateway === 'utility-token') {
+        const { UtilityTokenGateway } = await import("@/server/services/payment/UtilityTokenGateway");
+        const gateway = new UtilityTokenGateway();
+        await gateway.initialize({ enabled: true });
+
+        const result = await gateway.initializePayment({
+          amount,
+          userId,
+          packageId: "",
+          email: user.email,
+          name: userName,
+          paymentMethod: "utility_token",
+          currency: "NGN",
+          purpose: "wallet_deposit",
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || "Token payment failed");
+        }
+
+        // VAT transaction for token payments
+        await prisma.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "VAT",
+            amount: vatAmount,
+            description: `VAT on token deposit (7.5%)`,
+            status: "completed",
+            reference: `VAT-${result.reference || txReference}`,
+            walletType: 'main',
+          },
+        });
+
+        await notifyDepositStatus(userId, "completed", amount, result.reference || txReference);
+
+        return {
+          success: true,
+          message: result.message,
+          depositedAmount: amount,
+          vatAmount,
+          totalPaid: totalAmount,
+          tokenDetails: result.metadata,
+          transactionId: result.transactionId,
         };
       }
 

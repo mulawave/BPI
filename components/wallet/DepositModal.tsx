@@ -47,14 +47,14 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
 
   const depositMutation = api.wallet.deposit.useMutation({
     onSuccess: (data) => {
-      // If payment URL is returned, redirect user to payment page
+      setSuccessData(data);
+      // If payment URL is returned, redirect user to payment gateway
       if (data.paymentUrl) {
-        window.open(data.paymentUrl, '_blank');
-        setSuccessData(data);
-        setCurrentStep('processing');
+        // Redirect in same tab — user returns via callback → /payment/verify
+        window.location.href = data.paymentUrl;
+        return;
       } else {
-        // Mock payment - immediate success
-        setSuccessData(data);
+        // Instant success (mock, utility-token, manual bank transfer)
         setCurrentStep('success');
       }
     },
@@ -84,15 +84,15 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
     {
       id: 'bank-transfer' as PaymentGateway,
       name: 'Bank Transfer',
-      description: 'Direct bank transfer with verification',
+      description: 'Automated or manual bank transfer',
       icon: Building2,
-      available: isEnabled('bank-transfer', false),
-      badge: isEnabled('bank-transfer', false) ? 'Active' : 'Coming Soon'
+      available: isEnabled('bank-transfer', false) || isEnabled('paystack', false),
+      badge: (isEnabled('bank-transfer', false) || isEnabled('paystack', false)) ? 'Active' : 'Coming Soon'
     },
     {
       id: 'utility-token' as PaymentGateway,
-      name: 'Utility Tokens',
-      description: 'Approved utility token payment',
+      name: 'PACT Token',
+      description: 'Pay with PACT utility tokens',
       icon: Coins,
       available: isEnabled('utility-token', false),
       badge: isEnabled('utility-token', false) ? 'Active' : 'Coming Soon'
@@ -100,7 +100,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
     {
       id: 'crypto' as PaymentGateway,
       name: 'Cryptocurrency',
-      description: 'BTC, USDT, and supported crypto',
+      description: 'USDT, BTC and more',
       icon: Bitcoin,
       available: isEnabled('crypto', false),
       badge: isEnabled('crypto', false) ? 'Active' : 'Coming Soon'
@@ -140,17 +140,31 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const handleConfirm = () => {
     if (!selectedGateway) return;
     
-    // Bank transfer requires proof of payment
+    // Bank transfer: offer manual proof upload step OR automated Paystack flow
     if (selectedGateway === 'bank-transfer') {
+      // If Paystack is enabled, the backend supports automated bank transfer.
+      // Show bank-details step which now has both options.
       setCurrentStep('bank-details');
       return;
     }
     
+    // Utility-token and crypto go directly to processing
     setCurrentStep('processing');
     depositMutation.mutate({
       amount: numAmount,
       paymentGateway: selectedGateway,
       reference: `DEP-${Date.now()}`
+    });
+  };
+
+  // Automated bank transfer: skip proof, use Paystack bank_transfer channel
+  const handleAutomatedBankTransfer = () => {
+    setCurrentStep('processing');
+    depositMutation.mutate({
+      amount: numAmount,
+      paymentGateway: 'bank-transfer',
+      reference: `DEP-BANK-${Date.now()}`,
+      // No proofOfPayment → triggers automated Paystack flow in backend
     });
   };
 
@@ -436,8 +450,8 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
               <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Building2 className="w-10 h-10 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-foreground mb-2">Bank Transfer Instructions</h2>
-              <p className="text-muted-foreground">Transfer to the account below and upload proof</p>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Bank Transfer</h2>
+              <p className="text-muted-foreground">Choose automated or manual transfer</p>
             </div>
 
             <div className="max-w-md mx-auto space-y-6">
@@ -452,11 +466,40 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                 </div>
               </div>
 
+              {/* Option 1: Automated via Paystack */}
+              {isEnabled('paystack', false) && (
+                <div className="p-6 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl border-2 border-emerald-300 dark:border-emerald-700">
+                  <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                    Automated Bank Transfer
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Transfer via Paystack — a temporary account is generated and your deposit is confirmed automatically once received.
+                  </p>
+                  <Button
+                    onClick={handleAutomatedBankTransfer}
+                    className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
+                  >
+                    Pay via Automated Transfer
+                  </Button>
+                </div>
+              )}
+
+              {/* Divider */}
+              {isEnabled('paystack', false) && (
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                  <span className="text-sm text-muted-foreground">or</span>
+                  <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                </div>
+              )}
+
+              {/* Option 2: Manual bank transfer with proof upload */}
               {/* Bank Account Details */}
               <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl border-2 border-blue-300 dark:border-blue-700">
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                   <Building2 className="w-5 h-5 text-blue-600" />
-                  Company Bank Account
+                  {isEnabled('paystack', false) ? 'Manual Transfer' : 'Company Bank Account'}
                 </h3>
                 <BankTransferDetails bankDetails={bankDetails} showCopy className="space-y-3" />
               </div>

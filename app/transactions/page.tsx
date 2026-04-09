@@ -12,6 +12,7 @@ import LoadingScreen from "@/components/LoadingScreen";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { useBptPrice } from "@/hooks/useBptPrice";
+import KycWarningBanner from "@/components/kyc/KycWarningBanner";
 
 export default function TransactionsPage() {
   const { data: transactions, isLoading } = api.dashboard.getAllTransactions.useQuery();
@@ -210,6 +211,10 @@ export default function TransactionsPage() {
           </div>
         </div>
       </header>
+      {/* KYC Warning Banner */}
+      <div className="max-w-7xl mx-auto px-4 pt-4">
+        <KycWarningBanner />
+      </div>
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Summary Cards */}

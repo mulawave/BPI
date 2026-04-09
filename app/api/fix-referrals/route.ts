@@ -1,22 +1,38 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/server/auth';
 import { prisma } from '@/lib/prisma';
 import { randomUUID } from 'crypto';
 
-export async function GET(req: Request) {
+type AdminSessionUser = {
+  id?: string;
+  role?: string | null;
+};
+
+async function requireAdminUser() {
+  const session = await auth();
+  const user = session?.user as AdminSessionUser | undefined;
+
+  if (!user?.id) {
+    return {
+      error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    };
+  }
+
+  if (user.role !== 'admin' && user.role !== 'super_admin') {
+    return {
+      error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+    };
+  }
+
+  return { user };
+}
+
+async function rebuildReferralTransactions(targetUserId: string) {
   try {
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const userId = session.user.id;
-
     // Step 0: Fix membership_upgrade transaction amount to be negative
     await prisma.transaction.updateMany({
       where: {
-        userId,
+        userId: targetUserId,
         transactionType: 'membership_upgrade',
         amount: { gt: 0 }, // Only update positive amounts
       },
@@ -29,7 +45,7 @@ export async function GET(req: Request) {
     // Step 1: Delete ALL referral transactions (to clean up duplicates and wrong status)
     const deletedTransactions = await prisma.transaction.deleteMany({
       where: {
-        userId,
+        userId: targetUserId,
         OR: [
           { transactionType: 'REFERRAL_CASH_L1' },
           { transactionType: 'REFERRAL_PALLIATIVE_L1' },
@@ -43,7 +59,7 @@ export async function GET(req: Request) {
 
     // Step 2: Find the user's actual package activation to recreate correct transactions
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: targetUserId },
       select: {
         id: true,
         activeMembershipPackageId: true,
@@ -100,12 +116,12 @@ export async function GET(req: Request) {
       const cashTx = await prisma.transaction.create({
         data: {
           id: randomUUID(),
-          userId,
+          userId: targetUserId,
           transactionType: `REFERRAL_CASH_L${level}`,
           amount: cashReward,
           status: 'completed',
           description: `L${level} Cash Wallet referral reward from ${membershipPackage.name} activation by ${activatorName} (Referral ID: ${adeBlack.id})`,
-          reference: `REF-CASH-FIX-${timestamp}`,
+          reference: `REF-CASH-FIX-${targetUserId}-${timestamp}`,
           createdAt: user.membershipActivatedAt || new Date(),
         },
       });
@@ -118,12 +134,12 @@ export async function GET(req: Request) {
       await prisma.transaction.create({
         data: {
           id: randomUUID(),
-          userId,
+          userId: targetUserId,
           transactionType: `REFERRAL_PALLIATIVE_L${level}`,
           amount: palliativeReward,
           status: 'completed',
           description: `L${level} Palliative Wallet referral reward from ${membershipPackage.name} activation by ${activatorName} (Referral ID: ${adeBlack.id})`,
-          reference: `REF-PAL-FIX-${timestamp}`,
+          reference: `REF-PAL-FIX-${targetUserId}-${timestamp}`,
           createdAt: user.membershipActivatedAt || new Date(),
         },
       });
@@ -136,12 +152,12 @@ export async function GET(req: Request) {
       await prisma.transaction.create({
         data: {
           id: randomUUID(),
-          userId,
+          userId: targetUserId,
           transactionType: `REFERRAL_CASHBACK_L${level}`,
           amount: cashbackReward,
           status: 'completed',
           description: `L${level} Cashback Wallet referral reward from ${membershipPackage.name} activation by ${activatorName} (Referral ID: ${adeBlack.id})`,
-          reference: `REF-CB-FIX-${timestamp}`,
+          reference: `REF-CB-FIX-${targetUserId}-${timestamp}`,
           createdAt: user.membershipActivatedAt || new Date(),
         },
       });
@@ -155,12 +171,12 @@ export async function GET(req: Request) {
       await prisma.transaction.create({
         data: {
           id: randomUUID(),
-          userId,
+          userId: targetUserId,
           transactionType: `REFERRAL_BPT_L${level}`,
           amount: userBptShare,
           status: 'completed',
           description: `L${level} BPT Wallet referral reward (50% user share) from ${membershipPackage.name} activation by ${activatorName} (Referral ID: ${adeBlack.id})`,
-          reference: `REF-BPT-FIX-${timestamp}`,
+          reference: `REF-BPT-FIX-${targetUserId}-${timestamp}`,
           createdAt: user.membershipActivatedAt || new Date(),
         },
       });
@@ -194,20 +210,12 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+async function repairUnknownReferralDescriptions(targetUserId: string) {
   try {
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const userId = session.user.id;
-
     // Find transactions with "unknown" referral ID for this user
     const unknownTransactions = await prisma.transaction.findMany({
       where: {
-        userId,
+        userId: targetUserId,
         description: { contains: 'Referral ID: unknown' },
       },
     });
@@ -222,7 +230,7 @@ export async function POST(req: Request) {
 
     // Find the user's referrals (who they referred)
     const referrals = await prisma.user.findMany({
-      where: { referredBy: userId },
+      where: { referredBy: targetUserId },
       select: { id: true, firstname: true, lastname: true, email: true },
       orderBy: { createdAt: 'asc' },
     });
@@ -266,4 +274,30 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
+}
+
+export async function GET() {
+  return NextResponse.json(
+    { error: 'Method not allowed. Use POST with an admin session.' },
+    { status: 405 }
+  );
+}
+
+export async function POST(req: NextRequest) {
+  const authResult = await requireAdminUser();
+  if ('error' in authResult) {
+    return authResult.error;
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const action = body?.action === 'rebuild_referrals' ? 'rebuild_referrals' : 'repair_unknown_descriptions';
+  const targetUserId = typeof body?.userId === 'string' && body.userId.trim().length > 0
+    ? body.userId.trim()
+    : authResult.user.id!;
+
+  if (action === 'rebuild_referrals') {
+    return rebuildReferralTransactions(targetUserId);
+  }
+
+  return repairUnknownReferralDescriptions(targetUserId);
 }

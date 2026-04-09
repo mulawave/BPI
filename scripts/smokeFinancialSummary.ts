@@ -6,6 +6,11 @@
     npm run smoke:financial-summary
 */
 
+if (process.env.NODE_ENV === "production") {
+  console.error("❌ FATAL: smokeFinancialSummary must not run in production. Aborting.");
+  process.exit(1);
+}
+
 import { prisma } from "@/lib/prisma";
 import { adminRouter } from "@/server/trpc/router/admin";
 import { randomUUID } from "crypto";

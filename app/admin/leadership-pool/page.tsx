@@ -22,7 +22,9 @@ export default function AdminLeadershipPoolPage() {
   const [selectedTab, setSelectedTab] = useState<"settings" | "participants">("settings");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDisqualifyModal, setShowDisqualifyModal] = useState(false);
+  const [showRemoveSponsorshipModal, setShowRemoveSponsorshipModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [removeSponsorshipUserId, setRemoveSponsorshipUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<"all" | "earned" | "sponsored">("all");
   const [currentPage, setCurrentPage] = useState(1);
@@ -122,9 +124,15 @@ export default function AdminLeadershipPoolPage() {
   };
 
   const handleRemoveSponsorshipClass = (userId: string) => {
-    if (confirm("Remove this user from sponsorship class? They may still remain qualified if they meet normal criteria.")) {
-      removeSponsorshipClass.mutate({ userId });
-    }
+    setRemoveSponsorshipUserId(userId);
+    setShowRemoveSponsorshipModal(true);
+  };
+
+  const confirmRemoveSponsorshipClass = () => {
+    if (!removeSponsorshipUserId) return;
+    removeSponsorshipClass.mutate({ userId: removeSponsorshipUserId });
+    setShowRemoveSponsorshipModal(false);
+    setRemoveSponsorshipUserId(null);
   };
 
   const handleDisqualify = () => {
@@ -709,6 +717,49 @@ export default function AdminLeadershipPoolPage() {
                   disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {disqualifyParticipant.isPending ? "Removing..." : "Disqualify"}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Remove Sponsorship Class Modal */}
+      {showRemoveSponsorshipModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-full">
+                <FiAlertCircle className="text-2xl text-orange-600 dark:text-orange-400" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                Remove Sponsorship Class
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Remove this user from sponsorship class? They may still remain qualified if they meet normal criteria.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowRemoveSponsorshipModal(false);
+                  setRemoveSponsorshipUserId(null);
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                  hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRemoveSponsorshipClass}
+                disabled={removeSponsorshipClass.isPending}
+                className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg 
+                  disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {removeSponsorshipClass.isPending ? "Removing..." : "Remove"}
               </button>
             </div>
           </motion.div>

@@ -48,14 +48,15 @@ export async function GET(req: NextRequest) {
         );
       }
 
+      // Redirect to payment verification page which calls verifyExternalPayment tRPC
       return NextResponse.redirect(
-        new URL(`/dashboard?payment=success&amount=${verification.amount}&ref=${reference}`, req.url)
+        new URL(`/payment/verify?gateway=paystack&ref=${encodeURIComponent(reference)}`, req.url)
       );
     }
 
     return NextResponse.redirect(
       new URL(
-        `/membership?payment=failed&message=${encodeURIComponent(verification.message || "Payment failed")}`,
+        `/payment/verify?gateway=paystack&ref=${encodeURIComponent(reference)}&message=${encodeURIComponent(verification.message || "Payment failed")}`,
         req.url
       )
     );
@@ -64,7 +65,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.redirect(
       new URL(
-        `/membership?payment=error&message=${encodeURIComponent(
+        `/payment/verify?message=${encodeURIComponent(
           error instanceof Error ? error.message : "Unknown error"
         )}`,
         req.url

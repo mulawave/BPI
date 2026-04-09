@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
   MdEdit,
   MdDelete,
@@ -30,6 +31,7 @@ interface CurrencyFormData {
 export default function CurrencyManagementPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCurrency, setEditingCurrency] = useState<any>(null);
+  const [deletingCurrency, setDeletingCurrency] = useState<any>(null);
   const [showPriceHistory, setShowPriceHistory] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
   const [bpTokenPrice, setBpTokenPrice] = useState("");
@@ -604,15 +606,7 @@ export default function CurrencyManagementPage() {
                         </button>
                         {currency.default !== 1 && (
                           <button
-                            onClick={() => {
-                              if (
-                                confirm(
-                                  `Are you sure you want to delete ${currency.name}?`
-                                )
-                              ) {
-                                deleteCurrency.mutate({ currencyId: currency.id });
-                              }
-                            }}
+                            onClick={() => setDeletingCurrency(currency)}
                             disabled={deleteCurrency.isPending}
                             className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50"
                             title="Delete Currency"
@@ -752,6 +746,19 @@ export default function CurrencyManagementPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        isOpen={!!deletingCurrency}
+        title="Delete Currency"
+        description={`Are you sure you want to delete ${deletingCurrency?.name ?? "this currency"}? This action cannot be undone.`}
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={() => {
+          if (deletingCurrency) deleteCurrency.mutate({ currencyId: deletingCurrency.id });
+          setDeletingCurrency(null);
+        }}
+        onClose={() => setDeletingCurrency(null)}
+      />
     </div>
   );
 }

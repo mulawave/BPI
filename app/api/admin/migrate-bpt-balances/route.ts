@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authConfig } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
+import { adminSeedLimiter, applyRateLimit } from "@/lib/rateLimit";
 
 /**
  * POST /api/admin/migrate-bpt-balances
@@ -14,7 +15,11 @@ import { prisma } from "@/lib/prisma";
  * Requires super_admin role. Idempotent safe — records a migration flag
  * in AdminSettings to prevent double-execution.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
+  // Rate limit: 3 requests per minute per IP
+  const blocked = applyRateLimit(req, adminSeedLimiter);
+  if (blocked) return blocked;
+
   // Auth check — super_admin only
   const session = await getServerSession(authConfig);
   const user = session?.user as any;

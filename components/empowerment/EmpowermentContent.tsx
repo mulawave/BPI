@@ -50,6 +50,12 @@ type TabView = 'activate' | 'history' | 'analytics' | 'config';
 type StatusFilter = 'all' | 'active' | 'pending' | 'mature' | 'approved' | 'released' | 'fallback' | 'converted';
 type EmpowermentType = 'CHILD_EDUCATION' | 'VOCATIONAL_SKILL';
 type Gateway = 'wallet' | 'paystack' | 'flutterwave' | 'bank-transfer';
+type OutcomeType =
+  | 'FULL_APPROVAL'
+  | 'PARTIAL_DECLINE_50'
+  | 'PARTIAL_DECLINE_75'
+  | 'PARTIAL_DECLINE_OTHER'
+  | 'FULL_DECLINE';
 
 interface SelectedBeneficiary {
   id: string;
@@ -119,7 +125,7 @@ export default function EmpowermentContent() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // Sprint 3 — outcome management & config
   const [selectedPkg, setSelectedPkg] = useState<any | null>(null);
-  const [outcomeType, setOutcomeType] = useState<string>('');
+  const [outcomeType, setOutcomeType] = useState<OutcomeType | ''>('');
   const [customCreditPct, setCustomCreditPct] = useState<number>(50);
   const [tranchePct, setTranchePct] = useState<number>(20);
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
@@ -2175,7 +2181,7 @@ export default function EmpowermentContent() {
                             name="outcomeType"
                             value={opt.value}
                             checked={outcomeType === opt.value}
-                            onChange={() => setOutcomeType(opt.value)}
+                            onChange={() => setOutcomeType(opt.value as OutcomeType)}
                             className="mt-0.5 accent-emerald-600"
                           />
                           <div>

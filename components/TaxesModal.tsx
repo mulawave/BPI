@@ -165,7 +165,7 @@ export default function TaxesModal({ isOpen, onClose }: TaxesModalProps) {
                         {taxData.taxes.map((tax: any, index: number) => (
                           <tr
                             key={tax.id}
-                            className={`border-b border-gray-100 dark:border-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors ${
+                            className={`border-b border-gray-100 dark:border-bpi-dark-accent/30 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors ${
                               index % 2 === 0 ? 'bg-white dark:bg-green-950/30' : 'bg-gray-50/50 dark:bg-green-900/30'
                             }`}
                           >
@@ -212,7 +212,7 @@ export default function TaxesModal({ isOpen, onClose }: TaxesModalProps) {
                         <button
                           onClick={handlePrevPage}
                           disabled={currentPage === 1}
-                          className="flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-bpi-dark-accent/30 hover:bg-gray-50 dark:hover:bg-bpi-dark-accent/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           <ChevronLeft className="w-4 h-4" />
                           Previous
@@ -248,7 +248,7 @@ export default function TaxesModal({ isOpen, onClose }: TaxesModalProps) {
                         <button
                           onClick={handleNextPage}
                           disabled={currentPage === totalPages}
-                          className="flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-bpi-dark-accent/30 hover:bg-gray-50 dark:hover:bg-bpi-dark-accent/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           Next
                           <ChevronRight className="w-4 h-4" />

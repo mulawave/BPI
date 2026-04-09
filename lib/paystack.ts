@@ -40,6 +40,7 @@ export async function initializePaystackPayment(
     reference: string;
     callbackUrl?: string;
     metadata?: Record<string, any>;
+    channels?: string[]; // e.g. ["bank_transfer"], ["card"], ["ussd"]
   }
 ): Promise<PaystackInitializeResponse> {
   console.log("🔷 [PAYSTACK-API] Initializing payment...");
@@ -47,22 +48,28 @@ export async function initializePaystackPayment(
     email: params.email,
     amount: params.amount / 100, // Show in naira
     reference: params.reference,
+    channels: params.channels,
   });
 
   try {
+    const body: Record<string, unknown> = {
+      email: params.email,
+      amount: params.amount,
+      reference: params.reference,
+      callback_url: params.callbackUrl,
+      metadata: params.metadata,
+    };
+    if (params.channels?.length) {
+      body.channels = params.channels;
+    }
+
     const response = await fetch('https://api.paystack.co/transaction/initialize', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${secretKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        email: params.email,
-        amount: params.amount,
-        reference: params.reference,
-        callback_url: params.callbackUrl,
-        metadata: params.metadata,
-      }),
+      body: JSON.stringify(body),
     });
 
     console.log("📥 [PAYSTACK-API] Response received. Status:", response.status);
@@ -117,4 +124,60 @@ export async function verifyPaystackPayment(
     console.error('❌ [PAYSTACK-API] Error verifying payment:', error);
     throw error;
   }
+}
+
+// ─── DVA (Dedicated Virtual Account) helpers ─────────────────────────
+
+export interface PaystackDVAResponse {
+  status: boolean;
+  message: string;
+  data: {
+    bank: { name: string; id: number; slug: string };
+    account_name: string;
+    account_number: string;
+    assigned: boolean;
+    currency: string;
+    active: boolean;
+    id: number;
+    customer: { customer_code: string; email: string };
+  };
+}
+
+/**
+ * Create a Paystack customer (required before creating a DVA)
+ */
+export async function createPaystackCustomer(
+  secretKey: string,
+  params: { email: string; first_name?: string; last_name?: string; phone?: string }
+): Promise<{ customer_code: string }> {
+  const response = await fetch("https://api.paystack.co/customer", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Paystack create customer failed: ${err}`);
+  }
+  const result = await response.json();
+  return { customer_code: result.data.customer_code };
+}
+
+/**
+ * Create a Dedicated Virtual Account for a customer
+ */
+export async function createPaystackDVA(
+  secretKey: string,
+  params: { customer: string; preferred_bank?: string }
+): Promise<PaystackDVAResponse> {
+  const response = await fetch("https://api.paystack.co/dedicated_account", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Paystack DVA creation failed: ${err}`);
+  }
+  return response.json();
 }

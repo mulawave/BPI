@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import { randomUUID } from "crypto";
+import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { hash } from "bcryptjs";
@@ -2358,6 +2359,91 @@ export const adminRouter = createTRPCRouter({
       };
     }),
 
+  // Admin-initiated refund for completed payments
+  initiateRefund: adminProcedure
+    .input(
+      z.object({
+        transactionId: z.string(),
+        reason: z.string().min(5, "Refund reason required"),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { transactionId, reason } = input;
+      const adminId = (ctx.session?.user as any)?.id;
+
+      const transaction = await prisma.transaction.findUnique({
+        where: { id: transactionId },
+        include: { User: true },
+      });
+
+      if (!transaction) throw new Error("Transaction not found");
+      if ((transaction.status || "").toLowerCase() !== "completed") {
+        throw new Error("Only completed transactions can be refunded");
+      }
+      if (transaction.transactionType === "REFUND") {
+        throw new Error("Cannot refund a refund transaction");
+      }
+
+      // Check for existing refund to prevent duplicates
+      const existingRefund = await prisma.transaction.findFirst({
+        where: {
+          reference: `REFUND-${transaction.reference || transactionId}`,
+          status: "completed",
+        },
+      });
+      if (existingRefund) {
+        throw new Error("A refund has already been issued for this transaction");
+      }
+
+      const refundAmount = Math.abs(transaction.amount);
+      const walletType = transaction.walletType || "wallet";
+
+      // Credit wallet
+      await prisma.user.update({
+        where: { id: transaction.userId },
+        data: { [walletType]: { increment: refundAmount } },
+      });
+
+      // Create refund transaction
+      const refundTx = await prisma.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId: transaction.userId,
+          transactionType: "REFUND",
+          amount: refundAmount,
+          description: `Admin refund: ${reason}`,
+          status: "completed",
+          reference: `REFUND-${transaction.reference || transactionId}`,
+          walletType,
+        },
+      });
+
+      // Audit log
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId || "system",
+          action: "ADMIN_REFUND",
+          entity: "Transaction",
+          entityId: transactionId,
+          changes: JSON.stringify({
+            originalTransaction: transaction.reference,
+            refundAmount,
+            reason,
+            userId: transaction.userId,
+          }),
+          status: "success",
+          createdAt: new Date(),
+        },
+      });
+
+      return {
+        success: true,
+        refundTransaction: refundTx,
+        message: `Refunded ₦${refundAmount.toLocaleString()} to ${walletType} wallet.`,
+      };
+    }),
+
   bulkExportPayments: adminProcedure
     .input(
       z.object({
@@ -3772,6 +3858,18 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
 
+      // Guard: prevent activating gateways that have no backend implementation
+      if (data.isActive === true) {
+        const existing = await prisma.paymentGatewayConfig.findUnique({ where: { id } });
+        const IMPLEMENTED_GATEWAYS = new Set(["paystack", "flutterwave", "mock"]);
+        if (existing && !IMPLEMENTED_GATEWAYS.has(existing.gatewayName)) {
+          throw new Error(
+            `Cannot activate '${existing.displayName}' — this payment gateway does not have a backend implementation yet. ` +
+            `Only Paystack and Flutterwave are currently supported.`
+          );
+        }
+      }
+
       const gateway = await prisma.paymentGatewayConfig.update({
         where: { id },
         data: {
@@ -3899,62 +3997,29 @@ export const adminRouter = createTRPCRouter({
     .mutation(async () => {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const backupDir = path.join(process.cwd(), "public", "uploads", "backups");
-      const filename = `backup-${timestamp}.json`;
+      const filename = `backup-${timestamp}.sql`;
       const filePath = path.join(backupDir, filename);
 
       // Ensure directory exists
       await fs.promises.mkdir(backupDir, { recursive: true });
 
-      // Collect critical tables
-      const [
-        users,
-        pendingPayments,
-        transactions,
-        adminSettings,
-        gateways,
-        notifications,
-        packages,
-        communityUpdates,
-        bestDeals,
-        auditLogs,
-        referrals,
-        referralTrees,
-      ] = await Promise.all([
-        prisma.user.findMany(),
-        prisma.pendingPayment.findMany(),
-        prisma.transaction.findMany(),
-        prisma.adminSettings.findMany(),
-        prisma.paymentGatewayConfig.findMany(),
-        prisma.adminNotificationSettings.findMany(),
-        prisma.membershipPackage.findMany(),
-        prisma.communityUpdate.findMany(),
-        prisma.bestDeal.findMany(),
-        prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 5000 }),
-        prisma.referral.findMany(),
-        prisma.referralTree.findMany(),
-      ]);
+      // Use pg_dump for a complete database backup (all tables, FK ordering, data integrity)
+      const dbUrl = process.env.DATABASE_URL;
+      if (!dbUrl) {
+        throw new Error("DATABASE_URL is not configured");
+      }
 
-      const backupPayload = {
-        meta: {
-          createdAt: new Date().toISOString(),
-          version: 1,
-          note: "Admin backup of critical tables",
-        },
-        users,
-        pendingPayments,
-        transactions,
-        adminSettings,
-        gateways,
-        notifications,
-        packages,
-        communityUpdates,
-        bestDeals,
-        auditLogs,
-        referrals,
-        referralTrees,
-      };
+      try {
+        execSync(
+          `pg_dump --no-owner --no-privileges --clean --if-exists "${dbUrl}" -f "${filePath}"`,
+          { timeout: 120_000, stdio: "pipe" }
+        );
+      } catch (err: any) {
+        const stderr = err?.stderr?.toString() || "";
+        throw new Error(`pg_dump failed: ${stderr || err.message}`);
+      }
 
-      await fs.promises.writeFile(filePath, JSON.stringify(backupPayload, null, 2), "utf-8");
+      const stats = await fs.promises.stat(filePath);
 
       // Enforce retention policy (keep last N backups)
       try {
@@ -3964,14 +4029,13 @@ export const adminRouter = createTRPCRouter({
         const retentionCount = retentionSetting ? parseInt(retentionSetting.settingValue, 10) : NaN;
         if (!Number.isNaN(retentionCount) && retentionCount > 0) {
           const files = await fs.promises.readdir(backupDir);
-          const jsonFiles = files.filter((f) => f.endsWith(".json"));
+          const backupFiles = files.filter((f) => f.endsWith(".sql") || f.endsWith(".json"));
           const withTimes = await Promise.all(
-            jsonFiles.map(async (f) => {
-              const stats = await fs.promises.stat(path.join(backupDir, f));
-              return { f, t: stats.birthtime.getTime() };
+            backupFiles.map(async (f) => {
+              const s = await fs.promises.stat(path.join(backupDir, f));
+              return { f, t: s.birthtime.getTime() };
             }),
           );
-          // Newest first
           withTimes.sort((a, b) => b.t - a.t);
           const toDelete = withTimes.slice(retentionCount);
           for (const d of toDelete) {
@@ -3985,20 +4049,10 @@ export const adminRouter = createTRPCRouter({
       return {
         filename,
         url: `/uploads/backups/${filename}`,
-        createdAt: backupPayload.meta.createdAt,
+        createdAt: new Date().toISOString(),
+        size: stats.size,
         counts: {
-          users: users.length,
-          pendingPayments: pendingPayments.length,
-          transactions: transactions.length,
-          settings: adminSettings.length,
-          gateways: gateways.length,
-          notifications: notifications.length,
-          packages: packages.length,
-          communityUpdates: communityUpdates.length,
-          bestDeals: bestDeals.length,
-          auditLogs: auditLogs.length,
-          referrals: referrals.length,
-          referralTrees: referralTrees.length,
+          note: "Full PostgreSQL dump — all tables included",
         },
       };
     }),
@@ -4006,60 +4060,104 @@ export const adminRouter = createTRPCRouter({
   restoreDatabase: adminProcedure
     .input(
       z.object({
-        // Client uploads JSON; we restore via upserts
+        // Client uploads file content as string (SQL or JSON)
         data: z.any(),
+        format: z.enum(["sql", "json"]).default("sql"),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const payload = input.data || {};
-
-      // Basic validations
-      if (!payload || typeof payload !== "object") {
-        throw new Error("Invalid backup payload");
+      const dbUrl = process.env.DATABASE_URL;
+      if (!dbUrl) {
+        throw new Error("DATABASE_URL is not configured");
       }
 
-      // Restore order: settings/gateways/packages/users/referrals/transactions/pendingPayments/community/bestDeals/notifications/auditLogs
-      // Use upserts where possible to avoid duplicates; fallback to create for logs
-      const upsertArray = async (model: any, items: any[], idKey: string = "id") => {
-        for (const item of items || []) {
-          try {
-            const id = item[idKey];
-            if (!id) continue;
-            await model.upsert({
-              where: { [idKey]: id },
-              create: item,
-              update: item,
-            });
-          } catch (err) {
-            // If upsert not supported (e.g., lacks unique), fallback to create
+      if (input.format === "sql" || (typeof input.data === "string" && input.data.trimStart().startsWith("--"))) {
+        // SQL dump restore via psql
+        const sqlContent = typeof input.data === "string" ? input.data : JSON.stringify(input.data);
+        const tmpFile = path.join(process.cwd(), `tmp-restore-${Date.now()}.sql`);
+        try {
+          await fs.promises.writeFile(tmpFile, sqlContent, "utf-8");
+          execSync(
+            `psql "${dbUrl}" -f "${tmpFile}"`,
+            { timeout: 300_000, stdio: "pipe" }
+          );
+        } catch (err: any) {
+          const stderr = err?.stderr?.toString() || "";
+          // psql may emit NOTICEs for "table does not exist" on --clean; that's OK
+          // Only throw if there's a real fatal error
+          if (stderr.includes("FATAL") || stderr.includes("could not connect")) {
+            throw new Error(`Restore failed: ${stderr}`);
+          }
+        } finally {
+          try { await fs.promises.unlink(tmpFile); } catch (_) {}
+        }
+      } else {
+        // Legacy JSON restore (backward-compatible with old backup files)
+        const payload = typeof input.data === "string" ? JSON.parse(input.data) : input.data;
+        if (!payload || typeof payload !== "object") {
+          throw new Error("Invalid backup payload");
+        }
+
+        // Use a transaction with deferred FK checks for JSON restores
+        await prisma.$executeRawUnsafe("SET CONSTRAINTS ALL DEFERRED");
+
+        const upsertArray = async (model: any, items: any[], idKey: string = "id") => {
+          for (const item of items || []) {
             try {
-              await model.create({ data: item });
-            } catch (_) {
-              // ignore problematic row to ensure progress
+              const id = item[idKey];
+              if (!id) continue;
+              await model.upsert({
+                where: { [idKey]: id },
+                create: item,
+                update: item,
+              });
+            } catch (err) {
+              try {
+                await model.create({ data: item });
+              } catch (_) {
+                // skip rows that violate constraints
+              }
             }
           }
-        }
-      };
+        };
 
-      await upsertArray(prisma.adminSettings, payload.adminSettings || []);
-      await upsertArray(prisma.paymentGatewayConfig, payload.gateways || []);
-      await upsertArray(prisma.membershipPackage, payload.packages || []);
-      await upsertArray(prisma.user, payload.users || []);
-      await upsertArray(prisma.referral, payload.referrals || []);
-      await upsertArray(prisma.referralTree, payload.referralTrees || []);
-      await upsertArray(prisma.transaction, payload.transactions || []);
-      await upsertArray(prisma.pendingPayment, payload.pendingPayments || []);
-      await upsertArray(prisma.communityUpdate, payload.communityUpdates || []);
-      await upsertArray(prisma.bestDeal, payload.bestDeals || []);
-      await upsertArray(prisma.adminNotificationSettings, payload.notifications || []);
+        // Restore reference/lookup tables first, then dependents
+        await upsertArray(prisma.adminSettings, payload.adminSettings || []);
+        await upsertArray(prisma.paymentGatewayConfig, payload.gateways || []);
+        await upsertArray(prisma.membershipPackage, payload.packages || []);
 
-      // Audit logs: append only to preserve history
-      for (const log of payload.auditLogs || []) {
-        try {
-          await prisma.auditLog.create({ data: log });
-        } catch (_) {
-          // ignore duplicates
+        // Users: null out self-referential sponsorId first, insert, then patch sponsors
+        const users = payload.users || [];
+        const sponsorMap = new Map<string, string>();
+        for (const u of users) {
+          if (u.sponsorId) {
+            sponsorMap.set(u.id, u.sponsorId);
+            u.sponsorId = null;
+          }
         }
+        await upsertArray(prisma.user, users);
+        // Re-link sponsors now that all users exist
+        for (const [userId, sponsorId] of sponsorMap) {
+          try {
+            await prisma.user.update({ where: { id: userId }, data: { sponsorId } });
+          } catch (_) {}
+        }
+
+        await upsertArray(prisma.referral, payload.referrals || []);
+        await upsertArray(prisma.referralTree, payload.referralTrees || []);
+        await upsertArray(prisma.transaction, payload.transactions || []);
+        await upsertArray(prisma.pendingPayment, payload.pendingPayments || []);
+        await upsertArray(prisma.communityUpdate, payload.communityUpdates || []);
+        await upsertArray(prisma.bestDeal, payload.bestDeals || []);
+        await upsertArray(prisma.adminNotificationSettings, payload.notifications || []);
+
+        for (const log of payload.auditLogs || []) {
+          try {
+            await prisma.auditLog.create({ data: log });
+          } catch (_) {}
+        }
+
+        try { await prisma.$executeRawUnsafe("SET CONSTRAINTS ALL IMMEDIATE"); } catch (_) {}
       }
 
       await prisma.auditLog.create({
@@ -4068,12 +4166,8 @@ export const adminRouter = createTRPCRouter({
           userId: (ctx.session?.user as any)?.id || "system",
           action: "RESTORE_DATABASE",
           entity: "Backup",
-          entityId: payload?.meta?.createdAt || "backup",
-          changes: JSON.stringify({ counts: {
-            users: (payload.users || []).length,
-            pendingPayments: (payload.pendingPayments || []).length,
-            transactions: (payload.transactions || []).length,
-          }}),
+          entityId: new Date().toISOString(),
+          changes: JSON.stringify({ format: input.format }),
           status: "success",
           createdAt: new Date(),
         },
@@ -4089,7 +4183,7 @@ export const adminRouter = createTRPCRouter({
       const files = await fs.promises.readdir(backupDir);
       const items = await Promise.all(
         files
-          .filter((f) => f.endsWith(".json"))
+          .filter((f) => f.endsWith(".json") || f.endsWith(".sql"))
           .map(async (filename) => {
             const full = path.join(backupDir, filename);
             const stats = await fs.promises.stat(full);
@@ -4098,6 +4192,7 @@ export const adminRouter = createTRPCRouter({
               url: `/uploads/backups/${filename}`,
               size: stats.size,
               createdAt: stats.birthtime.toISOString(),
+              format: filename.endsWith(".sql") ? "sql" as const : "json" as const,
             };
           })
       );
@@ -4113,9 +4208,12 @@ export const adminRouter = createTRPCRouter({
     .input(z.object({ filename: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const backupDir = path.join(process.cwd(), "public", "uploads", "backups");
-      const target = path.join(backupDir, input.filename);
-      // Basic safety: only delete .json files inside backups dir
-      if (!input.filename.endsWith(".json")) {
+      const target = path.resolve(backupDir, input.filename);
+      // Safety: prevent path traversal and restrict to backup extensions
+      if (!target.startsWith(backupDir) || input.filename.includes("..")) {
+        throw new Error("Invalid backup file path");
+      }
+      if (!input.filename.endsWith(".json") && !input.filename.endsWith(".sql")) {
         throw new Error("Invalid backup file");
       }
       try {
@@ -4265,7 +4363,7 @@ export const adminRouter = createTRPCRouter({
       };
     }),
 
-  listDatabaseTables: superAdminProcedure.query(async () => {
+  listDatabaseTables: adminProcedure.query(async () => {
     const tables = await prisma.$queryRaw<
       Array<{
         schemaname: string;
@@ -4297,7 +4395,7 @@ export const adminRouter = createTRPCRouter({
     }));
   }),
 
-  truncateTable: superAdminProcedure
+  truncateTable: adminProcedure
     .input(z.object({ tableName: z.string().min(1, "Table name is required") }))
     .mutation(async ({ input, ctx }) => {
       const now = new Date();
@@ -4338,7 +4436,7 @@ export const adminRouter = createTRPCRouter({
       return { truncated: target.tablename };
     }),
 
-  previewTable: superAdminProcedure
+  previewTable: adminProcedure
     .input(
       z.object({
         tableName: z.string().min(1, "Table name is required"),
@@ -4383,7 +4481,7 @@ export const adminRouter = createTRPCRouter({
       };
     }),
 
-  getWipeEligibility: superAdminProcedure.query(async () => {
+  getWipeEligibility: adminProcedure.query(async () => {
     const tables = await prisma.$queryRaw<
       Array<{ schemaname: string; tablename: string; quoted_name: string }>
     >`
@@ -4412,7 +4510,7 @@ export const adminRouter = createTRPCRouter({
     return withCounts;
   }),
 
-  getWipeProfile: superAdminProcedure.query(async () => {
+  getWipeProfile: adminProcedure.query(async () => {
     const setting = await prisma.adminSettings.findUnique({
       where: { settingKey: "db_wipe_profile" },
     });
@@ -4445,7 +4543,7 @@ export const adminRouter = createTRPCRouter({
     }
   }),
 
-  captureWipeProfile: superAdminProcedure.mutation(async ({ ctx }) => {
+  captureWipeProfile: adminProcedure.mutation(async ({ ctx }) => {
     const tables = await prisma.$queryRaw<
       Array<{ schemaname: string; tablename: string; quoted_name: string }>
     >`
@@ -4504,7 +4602,7 @@ export const adminRouter = createTRPCRouter({
     return { wipeableTables, protectedTables, capturedAt };
   }),
 
-  wipeStoredTables: superAdminProcedure.mutation(async ({ ctx }) => {
+  wipeStoredTables: adminProcedure.mutation(async ({ ctx }) => {
     const now = new Date();
     const setting = await prisma.adminSettings.findUnique({
       where: { settingKey: "db_wipe_profile" },
@@ -4570,7 +4668,7 @@ export const adminRouter = createTRPCRouter({
     };
   }),
 
-  exportTableData: superAdminProcedure
+  exportTableData: adminProcedure
     .input(z.object({ tableName: z.string().min(1, "Table name is required") }))
     .query(async ({ input }) => {
       const exists = await prisma.$queryRaw<
@@ -4598,7 +4696,7 @@ export const adminRouter = createTRPCRouter({
       };
     }),
 
-  importTableData: superAdminProcedure
+  importTableData: adminProcedure
     .input(
       z.object({
         tableName: z.string().min(1, "Table name is required"),

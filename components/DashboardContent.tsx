@@ -64,6 +64,7 @@ import { LocationCascadeField } from "./profile/LocationCascadeField";
 import { BankDetailsField } from "./profile/BankDetailsFieldEnhanced";
 import { MobileBottomNav } from "./mobile/MobileBottomNav";
 import { CollapsibleSection } from "./mobile/CollapsibleSection";
+import KycWarningBanner from "./kyc/KycWarningBanner";
 
 interface DashboardContentProps {
   session: Session;
@@ -1146,7 +1147,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   };
 
   // Badge counts for mobile collapsibles
-  const unreadNotificationsCount = notifications?.filter((n) => !n.isRead).length || 0;
+  const unreadNotificationsCount = notifications?.filter((n: any) => !n.isRead).length || 0;
   const walletWarningCount = walletHealth?.warnings?.length || 0;
   const pendingMaturitiesCount = dashboardData?.packages?.stats?.upcomingMaturities || 0;
   const missingProfileFieldsCount = profileCompletionStatus?.missingFields?.length || 0;
@@ -1553,6 +1554,8 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
         {/* Main Dashboard */}
         <main className="w-full py-6 sm:py-8 px-3 sm:px-4 lg:px-6 relative">
+        {/* KYC Warning Banner */}
+        <KycWarningBanner />
         {customContent ? (
           <div className="grid grid-cols-12 gap-2 lg:gap-3 relative items-start">
             <div className="hidden lg:block lg:col-span-1">{sidebarNav()}</div>
@@ -3391,7 +3394,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
                 {!isLoadingNotifications && !notificationsError && notifications && notifications.length > 0 && (
                   <div className="max-h-80 overflow-y-auto space-y-3">
-                    {notifications.slice(0, 10).map((n) => (
+                    {notifications.slice(0, 10).map((n: any) => (
                       <button
                         key={n.id}
                         type="button"
@@ -4347,10 +4350,10 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                           
                           {/* Stats Overlay on Image */}
                           <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wide">
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/90 dark:bg-black/80 text-gray-700 dark:text-white/90 backdrop-blur-sm shadow-sm">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/90 dark:bg-bpi-dark-card/80 text-gray-700 dark:text-white/90 backdrop-blur-sm shadow-sm">
                               <Eye className="w-3 h-3" /> {post.viewCount ?? 0}
                             </span>
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/90 dark:bg-black/80 text-gray-700 dark:text-white/90 backdrop-blur-sm shadow-sm">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/90 dark:bg-bpi-dark-card/80 text-gray-700 dark:text-white/90 backdrop-blur-sm shadow-sm">
                               <MessageCircle className="w-3 h-3" /> {(post as any)._count?.comments || 0}
                             </span>
                           </div>
@@ -5017,7 +5020,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
       {/* Mobile Bottom Navigation */}
       <MobileBottomNav 
-        unreadNotifications={notifications?.filter(n => !n.isRead).length || 0}
+        unreadNotifications={notifications?.filter((n: any) => !n.isRead).length || 0}
         onWalletClick={() => {
           // Scroll to wallets section
           const walletsSection = document.getElementById('wallets-section');

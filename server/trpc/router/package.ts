@@ -10,7 +10,8 @@ import { randomUUID } from "crypto";
 import { getPalliativeTier, isHighTierPackage, getWalletFieldName } from "@/lib/palliative";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { getNigerianRegion } from "@/lib/nigeria-regions";
-import { activateMembershipAfterExternalPayment } from "@/server/services/membershipPayments.service";
+import { activateMembershipAfterExternalPayment, upgradeMembershipAfterExternalPayment } from "@/server/services/membershipPayments.service";
+import { resolveAppBaseUrl } from "@/lib/appUrl";
 import {
   notifyMembershipActivation,
   notifyMembershipRenewal,
@@ -30,6 +31,7 @@ import {
   isCompositePackage, 
   processCompositePackagePurchase 
 } from "@/server/services/compositePackages.service";
+import { finalizeEmpowermentPackage } from "@/server/services/empowermentPayments.service";
 
 // Helper to fetch numeric admin settings with a fallback
 async function getAdminSetting(key: string, defaultValue: number): Promise<number> {
@@ -87,89 +89,7 @@ function computeProfitFiat(params: {
   return clampNumber(profitFiat, 0, baseFiat);
 }
 
-async function finalizeEmpowermentPackage(params: {
-  sponsorId: string;
-  beneficiary: { id: string; name: string | null; email: string | null };
-  empowermentType: "CHILD_EDUCATION" | "VOCATIONAL_SKILL";
-  packageFee: number;
-  vat: number;
-  totalCost: number;
-}) {
-  const { sponsorId, beneficiary, empowermentType, packageFee, vat, totalCost } = params;
-
-  const GROSS_EMPOWERMENT_VALUE = 7250000;
-  const GROSS_SPONSOR_REWARD = 1000000;
-  const TAX_RATE = 0.075;
-
-  const netEmpowermentValue = GROSS_EMPOWERMENT_VALUE * (1 - TAX_RATE);
-  const netSponsorReward = GROSS_SPONSOR_REWARD * (1 - TAX_RATE);
-
-  const activatedAt = new Date();
-  const maturityDate = new Date(activatedAt);
-  maturityDate.setMonth(maturityDate.getMonth() + 24);
-
-  const empowermentPackage = await prisma.empowermentPackage.create({
-    data: {
-      id: randomUUID(),
-      updatedAt: new Date(),
-      sponsorId,
-      beneficiaryId: beneficiary.id,
-      packageFee,
-      vat,
-      empowermentType,
-      status: "Active - Countdown Running",
-      activatedAt,
-      maturityDate,
-      grossEmpowermentValue: GROSS_EMPOWERMENT_VALUE,
-      netEmpowermentValue,
-      grossSponsorReward: GROSS_SPONSOR_REWARD,
-      netSponsorReward,
-      beneficiaryCanView: true,
-      beneficiaryCanWithdraw: false,
-    },
-  });
-
-  await recordRevenue(prisma, {
-    source: "OTHER",
-    sourceKey: "EMPOWERMENT_PACKAGE_FEE",
-    amount: totalCost,
-    currency: "NGN",
-    sourceId: empowermentPackage.id,
-    description: `Empowerment package fee paid by ${sponsorId} for ${beneficiary.name || beneficiary.email || "beneficiary"}`,
-    userId: sponsorId,
-    programType: "EMPOWERMENT",
-    metadata: {
-      sponsorId,
-      beneficiaryId: beneficiary.id,
-      empowermentType,
-      packageFee,
-      vat,
-      totalCost,
-    },
-  });
-
-  await prisma.user.update({
-    where: { id: beneficiary.id },
-    data: { sponsorId },
-  });
-
-  await prisma.empowermentTransaction.create({
-    data: {
-      id: randomUUID(),
-      empowermentPackageId: empowermentPackage.id,
-      transactionType: "ACTIVATION",
-      grossAmount: totalCost,
-      taxAmount: 0,
-      netAmount: totalCost,
-      description: `Empowerment package activated by sponsor ${sponsorId} for beneficiary ${beneficiary.name || beneficiary.email || beneficiary.id}`,
-      performedBy: sponsorId,
-    },
-  });
-
-  await notifyEmpowermentActivation(sponsorId, beneficiary.id, maturityDate);
-
-  return { maturityDate, empowermentPackage };
-}
+// finalizeEmpowermentPackage is now imported from @/server/services/empowermentPayments.service
 
 export const packageRouter = createTRPCRouter({
   getPackages: publicProcedure.query(async () => {
@@ -181,7 +101,7 @@ export const packageRouter = createTRPCRouter({
     .input(z.object({
       packageId: z.string(),
       selectedPalliative: z.enum(["car", "house", "land", "business", "solar", "education"]).optional(),
-      gateway: z.enum(["wallet", "flutterwave", "paystack"]).default("wallet"),
+      gateway: z.enum(["wallet", "flutterwave", "paystack", "mock"]).default("wallet"),
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = (ctx.session?.user as any)?.id;
@@ -262,8 +182,45 @@ export const packageRouter = createTRPCRouter({
         return { success: true, gateway: "wallet", paymentUrl: null, reference: walletReference };
       }
 
+      // Mock gateway (testing only)
+      if (input.gateway === "mock") {
+        if (process.env.NODE_ENV === "production") {
+          throw new Error("Mock payments are disabled in production.");
+        }
+
+        const mockReference = `MEM-MOCK-${Date.now()}`;
+
+        await prisma.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "MEMBERSHIP_PAYMENT",
+            amount: -totalCost,
+            description: `${membershipPackage.name} membership via mock payment`,
+            status: "completed",
+            reference: mockReference,
+            walletType: "main",
+          },
+        });
+
+        await activateMembershipAfterExternalPayment({
+          prisma,
+          userId,
+          packageId: input.packageId,
+          selectedPalliative: input.selectedPalliative,
+          paymentReference: mockReference,
+          paymentMethodLabel: "Mock",
+          activatorName: ctx.session?.user?.name || ctx.session?.user?.email || "Member",
+        });
+
+        return { success: true, gateway: "mock", paymentUrl: null, reference: mockReference };
+      }
+
       // External gateway flow (Paystack or Flutterwave)
       const gatewayEnum = input.gateway === "paystack" ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE;
+
+      const baseUrl = (await resolveAppBaseUrl()).replace(/\/$/, "");
+      const callbackUrl = `${baseUrl}/api/webhooks/${input.gateway}/callback`;
 
       const payment = await PaymentProcessor.processPayment({
         amount: totalCost,
@@ -280,6 +237,7 @@ export const packageRouter = createTRPCRouter({
           purpose: PaymentPurpose.MEMBERSHIP,
           selectedPalliative: input.selectedPalliative,
           userId,
+          callbackUrl,
         },
       });
 
@@ -1004,12 +962,34 @@ export const packageRouter = createTRPCRouter({
         }
       }
 
-      // TODO: Implement actual payment processing logic here
-      const paymentSuccessful = true;
-
-      if (!paymentSuccessful) {
-        throw new Error("Payment failed.");
+      // Deduct from wallet (this path is wallet-only; for external gateways use initiateMembershipPayment)
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { wallet: true },
+      });
+      if (!user) throw new Error("User not found");
+      if ((user.wallet ?? 0) < backendCalculatedCost) {
+        throw new Error(
+          `Insufficient wallet balance. You have NGN ${(user.wallet ?? 0).toLocaleString()} but need NGN ${backendCalculatedCost.toLocaleString()}.`
+        );
       }
+
+      const walletReference = `MEM-STD-${Date.now()}`;
+      await prisma.$transaction(async (tx: any) => {
+        await tx.user.update({ where: { id: userId }, data: { wallet: { decrement: backendCalculatedCost } } });
+        await tx.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "MEMBERSHIP_PAYMENT",
+            amount: -backendCalculatedCost,
+            description: `${membershipPackage.name} membership via wallet (activateStandard)`,
+            status: "completed",
+            reference: walletReference,
+            walletType: "main",
+          },
+        });
+      });
 
       // Set membership activation and expiry dates
       const activatedAt = new Date();
@@ -2058,7 +2038,7 @@ export const packageRouter = createTRPCRouter({
 
       const taxAmount = creditedGross - creditedNet;
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // ── Full Decline: refund + interest ────────────────────────────────────
         if (outcomeType === "FULL_DECLINE") {
           const refundBase     = pkg.packageFee;
@@ -2221,7 +2201,7 @@ export const packageRouter = createTRPCRouter({
       const trancheCount = await prisma.empowermentTranche.count({ where: { empowermentPackageId: empowermentId } });
       const trancheNumber = trancheCount + 1;
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // Credit beneficiary education wallet
         await tx.user.update({
           where: { id: pkg.beneficiaryId },
@@ -2625,7 +2605,7 @@ export const packageRouter = createTRPCRouter({
       packageId: z.string(),
       currentPackageId: z.string(),
       selectedPalliative: z.enum(["car", "house", "land", "business", "solar", "education"]).optional(),
-      paymentMethod: z.enum(['wallet', 'paystack', 'flutterwave']).default('wallet'),
+      paymentMethod: z.enum(['wallet', 'paystack', 'flutterwave', 'mock']).default('wallet'),
       frontendCalculatedCost: z.number().optional() // Frontend cost for validation
     }))
     .mutation(async ({ ctx, input }) => {
@@ -2782,6 +2762,26 @@ export const packageRouter = createTRPCRouter({
         });
       }
 
+      // Mock gateway (testing only) — no wallet deduction, instant upgrade
+      if (paymentMethod === 'mock') {
+        if (process.env.NODE_ENV === 'production') {
+          throw new Error("Mock payments are disabled in production.");
+        }
+
+        await prisma.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "MEMBERSHIP_UPGRADE",
+            amount: -upgradeCost,
+            description: `Upgraded from ${currentPackage.name} to ${newPackage.name} via mock payment${shouldDistribute ? ' (with referral distribution)' : ' (no distribution)'}`,
+            status: "completed",
+            reference: `UPG-MOCK-${Date.now()}`,
+            walletType: 'main',
+          }
+        });
+      }
+
       // Determine palliative tier for new package
       const newPalliativeTier = getPalliativeTier(newPackage.price);
       const isNewHighTier = isHighTierPackage(newPackage.name);
@@ -2839,6 +2839,9 @@ export const packageRouter = createTRPCRouter({
       if (paymentMethod === 'paystack' || paymentMethod === 'flutterwave') {
         const gatewayEnum = paymentMethod === 'paystack' ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE;
 
+        const baseUrl = (await resolveAppBaseUrl()).replace(/\/$/, "");
+        const callbackUrl = `${baseUrl}/api/webhooks/${paymentMethod}/callback`;
+
         const payment = await PaymentProcessor.processPayment({
           amount: upgradeCost,
           currency: "NGN",
@@ -2857,6 +2860,7 @@ export const packageRouter = createTRPCRouter({
             selectedPalliative,
             upgradeCost,
             shouldDistribute,
+            callbackUrl,
           },
         });
 
@@ -3212,10 +3216,14 @@ export const packageRouter = createTRPCRouter({
       };
     }),
 
-  // Backfill VAT transactions - CORRECTED VERSION
+  // Backfill VAT transactions - CORRECTED VERSION (admin-only)
   backfillMembershipVat: protectedProcedure.mutation(async ({ ctx }) => {
     if (!ctx.session?.user) {
       throw new Error("UNAUTHORIZED");
+    }
+    const userRole = (ctx.session.user as any).role;
+    if (userRole !== "admin" && userRole !== "super_admin") {
+      throw new Error("UNAUTHORIZED: Admin only. This endpoint modifies financial records.");
     }
     const userId = (ctx.session.user as any).id;
 
@@ -3382,5 +3390,290 @@ export const packageRouter = createTRPCRouter({
       );
 
       return { sent: true };
+    }),
+
+  // Verify and activate any external payment (MEMBERSHIP, UPGRADE, EMPOWERMENT)
+  // Called by the payment verification page after user returns from gateway
+  verifyExternalPayment: protectedProcedure
+    .input(z.object({
+      gateway: z.nativeEnum(PaymentGateway),
+      reference: z.string().min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id;
+      if (!userId) throw new Error("UNAUTHORIZED");
+
+      // Look up the PendingPayment by reference (scoped to this user)
+      const pending = await prisma.pendingPayment.findFirst({
+        where: {
+          gatewayReference: input.reference,
+          userId,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!pending) {
+        throw new Error("No payment record found for this reference.");
+      }
+
+      // Already processed — return success without re-processing
+      if (pending.status === "approved" || pending.status === "completed") {
+        return {
+          success: true,
+          message: "Payment already processed and activated.",
+          transactionType: pending.transactionType,
+          reference: input.reference,
+          alreadyProcessed: true,
+        };
+      }
+
+      // Verify payment with the gateway
+      const verification = await PaymentProcessor.verifyPayment(input.gateway, input.reference);
+      const successStates = [PaymentStatus.SUCCESS, PaymentStatus.SUCCESSFUL];
+
+      if (!verification.success || (verification.status && !successStates.includes(verification.status))) {
+        throw new Error(verification.error || verification.message || "Payment verification failed. Please contact support.");
+      }
+
+      const pendingMetadata = (pending.metadata as Record<string, any> | undefined) || {};
+      const transactionType = pending.transactionType;
+
+      // ── MEMBERSHIP ──────────────────────────────────────────────
+      if (transactionType === "MEMBERSHIP") {
+        const packageId = pendingMetadata.packageId;
+        const selectedPalliative = pendingMetadata.selectedPalliative;
+
+        if (!packageId) {
+          throw new Error("Package ID missing from payment record. Please contact support.");
+        }
+
+        const membershipPackage = await prisma.membershipPackage.findUnique({ where: { id: packageId } });
+        if (!membershipPackage) {
+          throw new Error("Membership package not found.");
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { country: true, state: true, name: true, email: true },
+        });
+
+        await activateMembershipAfterExternalPayment({
+          prisma,
+          userId,
+          packageId,
+          selectedPalliative,
+          paymentReference: input.reference,
+          paymentMethodLabel: input.gateway,
+          activatorName: user?.name || user?.email || ctx.session?.user?.name || "Member",
+        });
+
+        await prisma.pendingPayment.update({
+          where: { id: pending.id },
+          data: {
+            status: "completed",
+            reviewedAt: new Date(),
+            reviewNotes: `Auto-completed via payment verification page (${input.gateway})`,
+            updatedAt: new Date(),
+          },
+        });
+
+        await prisma.transaction.updateMany({
+          where: { userId, reference: input.reference, transactionType: "MEMBERSHIP_PAYMENT" },
+          data: { status: "completed" },
+        });
+
+        try {
+          await recordRevenue(prisma, {
+            source: "MEMBERSHIP_REGISTRATION",
+            amount: computeProfitFiat({
+              profitMode: ((membershipPackage.profitMode ?? "PERCENT") as any) as "PERCENT" | "FIXED" | "HYBRID",
+              profitPercent: Number(membershipPackage.profitPercent ?? 1),
+              profitFixedAmountFiat: Number(membershipPackage.profitFixedAmountFiat ?? 0),
+              baseFiat: Number(membershipPackage.price ?? 0),
+            }),
+            currency: "NGN",
+            sourceId: `MEMBERSHIP_REGISTRATION:${input.reference}`,
+            description: `Membership: ${membershipPackage.name} (verified via callback)`,
+            userId,
+            packageId,
+            programType: "MEMBERSHIP",
+            country: user?.country ?? undefined,
+            state: user?.state ?? undefined,
+            region: getNigerianRegion(user?.state),
+            metadata: {
+              totalPaid: membershipPackage.price + membershipPackage.vat,
+              basePrice: membershipPackage.price,
+              vat: membershipPackage.vat,
+              paymentMethod: input.gateway,
+              selectedPalliative: selectedPalliative ?? null,
+              verifiedViaCallback: true,
+            },
+          });
+        } catch (err: any) {
+          if (err?.code !== "P2002") throw err;
+        }
+
+        return {
+          success: true,
+          message: `${membershipPackage.name} membership activated successfully!`,
+          transactionType,
+          reference: input.reference,
+          alreadyProcessed: false,
+        };
+      }
+
+      // ── MEMBERSHIP_UPGRADE ──────────────────────────────────────
+      if (transactionType === "MEMBERSHIP_UPGRADE") {
+        const packageId = pendingMetadata.packageId;
+        const currentPackageId = pendingMetadata.currentPackageId;
+        const selectedPalliative = pendingMetadata.selectedPalliative;
+
+        if (!packageId || !currentPackageId) {
+          throw new Error("Package information missing from payment record. Please contact support.");
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { country: true, state: true, name: true, email: true },
+        });
+
+        await upgradeMembershipAfterExternalPayment({
+          prisma,
+          userId,
+          packageId,
+          currentPackageId,
+          selectedPalliative,
+          paymentReference: input.reference,
+          paymentMethodLabel: input.gateway,
+        });
+
+        await prisma.pendingPayment.update({
+          where: { id: pending.id },
+          data: {
+            status: "completed",
+            reviewedAt: new Date(),
+            reviewNotes: `Auto-completed via payment verification page (${input.gateway} upgrade)`,
+            updatedAt: new Date(),
+          },
+        });
+
+        await prisma.transaction.updateMany({
+          where: { userId, reference: input.reference, transactionType: "MEMBERSHIP_UPGRADE" },
+          data: { status: "completed" },
+        });
+
+        try {
+          await recordRevenue(prisma, {
+            source: "MEMBERSHIP_REGISTRATION",
+            amount: pending.amount,
+            currency: "NGN",
+            sourceId: `MEMBERSHIP_UPGRADE:${input.reference}`,
+            description: `Membership upgrade (verified via callback)`,
+            userId,
+            packageId,
+            programType: "MEMBERSHIP_UPGRADE",
+            country: user?.country ?? undefined,
+            state: user?.state ?? undefined,
+            region: getNigerianRegion(user?.state),
+            metadata: {
+              paymentMethod: input.gateway,
+              fromPackageId: currentPackageId,
+              toPackageId: packageId,
+              verifiedViaCallback: true,
+            },
+          });
+        } catch (err: any) {
+          if (err?.code !== "P2002") throw err;
+        }
+
+        return {
+          success: true,
+          message: "Membership upgraded successfully!",
+          transactionType,
+          reference: input.reference,
+          alreadyProcessed: false,
+        };
+      }
+
+      // ── EMPOWERMENT ─────────────────────────────────────────────
+      if (transactionType === "EMPOWERMENT") {
+        await prisma.pendingPayment.update({
+          where: { id: pending.id },
+          data: {
+            status: "approved",
+            reviewedAt: new Date(),
+            reviewNotes: `Auto-approved via payment verification page (${input.gateway})`,
+          },
+        });
+
+        await prisma.transaction.updateMany({
+          where: { reference: input.reference, userId, status: "pending" },
+          data: { status: "completed" },
+        });
+
+        if (pendingMetadata.beneficiaryId && pendingMetadata.empowermentType) {
+          const beneficiary = await prisma.user.findUnique({
+            where: { id: pendingMetadata.beneficiaryId },
+            select: { id: true, name: true, email: true },
+          });
+          if (beneficiary) {
+            await finalizeEmpowermentPackage({
+              sponsorId: userId,
+              beneficiary,
+              empowermentType: pendingMetadata.empowermentType,
+              packageFee: pendingMetadata.packageFee ?? 330000,
+              vat: pendingMetadata.vat ?? 24750,
+              totalCost: pendingMetadata.totalCost ?? (pendingMetadata.packageFee ?? 330000) + (pendingMetadata.vat ?? 24750),
+            });
+          }
+        }
+
+        return {
+          success: true,
+          message: "Empowerment payment processed successfully!",
+          transactionType,
+          reference: input.reference,
+          alreadyProcessed: false,
+        };
+      }
+
+      // ── DEPOSIT / TOPUP ─────────────────────────────────────────
+      if (transactionType === "DEPOSIT" || transactionType === "TOPUP") {
+        const transaction = await prisma.transaction.findFirst({
+          where: { reference: input.reference, userId, status: "pending", transactionType: "DEPOSIT" },
+        });
+
+        if (transaction) {
+          await prisma.$transaction([
+            prisma.user.update({
+              where: { id: userId },
+              data: { wallet: { increment: transaction.amount } },
+            }),
+            prisma.transaction.update({
+              where: { id: transaction.id },
+              data: { status: "completed" },
+            }),
+            prisma.pendingPayment.update({
+              where: { id: pending.id },
+              data: {
+                status: "approved",
+                reviewedAt: new Date(),
+                reviewNotes: `Auto-approved via payment verification page (${input.gateway})`,
+              },
+            }),
+          ]);
+        }
+
+        return {
+          success: true,
+          message: "Wallet deposit processed successfully!",
+          transactionType,
+          reference: input.reference,
+          alreadyProcessed: false,
+        };
+      }
+
+      // Unknown type — mark as reviewed but return a warning
+      throw new Error(`Unknown payment type: ${transactionType}. Please contact support.`);
     }),
 });

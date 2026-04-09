@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import UserSecuritySettingsPanel from '@/components/user/SecuritySettingsPanel';
 import Footer from '@/components/Footer';
+import KycWarningBanner from '@/components/kyc/KycWarningBanner';
 
 interface SettingsLayoutProps {
   session: Session;
@@ -165,6 +166,11 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
           </div>
         </div>
       </header>
+
+      {/* KYC Warning Banner */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+        <KycWarningBanner />
+      </div>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

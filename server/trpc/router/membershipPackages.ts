@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 
@@ -11,29 +12,41 @@ export const membershipPackagesRouter = createTRPCRouter({
   }),
 
   getPackageById: publicProcedure
-    .input(z.object({ packageId: z.number() }))
+    .input(z.object({ packageId: z.string() }))
     .query(async ({ input }) => {
-      // Placeholder: Return null
-      return null;
+      return prisma.membershipPackage.findUnique({
+        where: { id: input.packageId },
+      });
     }),
 
   purchasePackage: protectedProcedure
     .input(
       z.object({
-        packageId: z.number(),
+        packageId: z.string(),
         paymentMethod: z.enum(["WALLET", "CARD", "BANK_TRANSFER"]),
       })
     )
-    .mutation(async ({ ctx, input }) => {
-      // Placeholder: Return error
-      throw new Error("Package purchase feature is under development");
+    .mutation(async () => {
+      throw new TRPCError({
+        code: "METHOD_NOT_SUPPORTED",
+        message:
+          "Use package.initiateMembershipPayment instead. This endpoint is deprecated.",
+      });
     }),
 
   getMyPackage: protectedProcedure.query(async ({ ctx }) => {
-    // Placeholder: Return null
-    return null;
-  }),
+    const userId = (ctx.session?.user as any)?.id;
+    if (!userId) return null;
 
-  // NOTE: For package upgrades, use package.processUpgradePayment instead
-  // This stub is kept for backward compatibility but should not be used
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { activeMembershipPackageId: true },
+    });
+
+    if (!user?.activeMembershipPackageId) return null;
+
+    return prisma.membershipPackage.findUnique({
+      where: { id: user.activeMembershipPackageId },
+    });
+  }),
 });

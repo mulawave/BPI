@@ -4,6 +4,7 @@ import { useState, useRef, DragEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
   MdAdd,
   MdEdit,
@@ -39,6 +40,7 @@ type Material = {
 export default function PromotionalMaterialsAdminPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
+  const [deletingMaterialId, setDeletingMaterialId] = useState<string | null>(null);
 
   const { data: materials, isLoading, refetch } = api.admin.getAllPromotionalMaterials.useQuery();
 
@@ -207,19 +209,19 @@ export default function PromotionalMaterialsAdminPage() {
           <div className="rounded-lg border border-border bg-card p-4">
             <div className="text-sm text-muted-foreground">Active</div>
             <div className="text-2xl font-bold text-green-600">
-              {materials?.filter((m) => m.isActive).length || 0}
+              {materials?.filter((m: Material) => m.isActive).length || 0}
             </div>
           </div>
           <div className="rounded-lg border border-border bg-card p-4">
             <div className="text-sm text-muted-foreground">Total Downloads</div>
             <div className="text-2xl font-bold">
-              {materials?.reduce((sum, m) => sum + m.downloadCount, 0) || 0}
+              {materials?.reduce((sum: number, m: Material) => sum + m.downloadCount, 0) || 0}
             </div>
           </div>
           <div className="rounded-lg border border-border bg-card p-4">
             <div className="text-sm text-muted-foreground">Total Shares</div>
             <div className="text-2xl font-bold">
-              {materials?.reduce((sum, m) => sum + m.shareCount, 0) || 0}
+              {materials?.reduce((sum: number, m: Material) => sum + m.shareCount, 0) || 0}
             </div>
           </div>
         </div>
@@ -240,7 +242,7 @@ export default function PromotionalMaterialsAdminPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {materials?.map((material) => (
+                {materials?.map((material: Material) => (
                   <tr key={material.id} className="hover:bg-muted/50">
                     <td className="px-4 py-3">{getTypeIcon(material.type)}</td>
                     <td className="px-4 py-3">
@@ -292,11 +294,7 @@ export default function PromotionalMaterialsAdminPage() {
                           <MdEdit size={18} className="text-blue-500" />
                         </button>
                         <button
-                          onClick={() => {
-                            if (confirm("Are you sure you want to delete this material?")) {
-                              deleteMutation.mutate({ id: material.id });
-                            }
-                          }}
+                          onClick={() => setDeletingMaterialId(material.id)}
                           className="rounded p-1 hover:bg-muted"
                           title="Delete"
                         >
@@ -329,6 +327,19 @@ export default function PromotionalMaterialsAdminPage() {
           }}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={!!deletingMaterialId}
+        title="Delete Material"
+        description="Are you sure you want to delete this promotional material? This action cannot be undone."
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={() => {
+          if (deletingMaterialId) deleteMutation.mutate({ id: deletingMaterialId });
+          setDeletingMaterialId(null);
+        }}
+        onClose={() => setDeletingMaterialId(null)}
+      />
     </div>
   );
 }

@@ -92,6 +92,13 @@ const navigation = [
     description: "Approve withdrawal requests"
   },
   { 
+    name: "KYC", 
+    href: "/admin/kyc", 
+    icon: ShieldCheck,
+    description: "Identity verification",
+    badge: "pending"
+  },
+  { 
     name: "Store", 
     href: "/admin/store", 
     icon: Store,

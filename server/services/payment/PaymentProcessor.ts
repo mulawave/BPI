@@ -2,6 +2,7 @@
 // Orchestrates payment processing across different gateways
 
 import { prisma } from "@/lib/prisma";
+import crypto from "crypto";
 import {
   PaymentRequest,
   PaymentResponse,
@@ -16,17 +17,20 @@ export class PaymentProcessor {
    * Get available payment gateways for a user
    */
   static async getAvailableGateways(userId: string): Promise<PaymentGateway[]> {
-    // TODO: Implement user location detection (Nigerian vs International)
+    // Gateway selection is UI-driven; this returns all enabled gateways.
 
     const configs = await prisma.paymentGatewayConfig.findMany({
-      where: { gatewayName: { in: ["paystack", "flutterwave"] } },
-      select: { gatewayName: true, isActive: true, publicKey: true, secretKey: true },
+      where: { gatewayName: { in: ["paystack", "flutterwave", "bank-transfer", "crypto", "utility-token"] } },
+      select: { gatewayName: true, isActive: true, publicKey: true, secretKey: true, cryptoPublicKey: true, currentPriceNgn: true },
     });
 
     const configByName = Object.fromEntries(configs.map((c) => [c.gatewayName, c]));
 
     const paystackConfig = configByName.paystack;
     const flutterwaveConfig = configByName.flutterwave;
+    const bankTransferConfig = configByName["bank-transfer"];
+    const cryptoConfig = configByName.crypto;
+    const utilityTokenConfig = configByName["utility-token"];
 
     const paystackEnabled =
       (paystackConfig?.isActive && !!paystackConfig?.secretKey) ||
@@ -36,10 +40,28 @@ export class PaymentProcessor {
       (flutterwaveConfig?.isActive && !!flutterwaveConfig?.secretKey && !!flutterwaveConfig?.publicKey) ||
       (!!process.env.FLUTTERWAVE_SECRET_KEY && !!process.env.FLUTTERWAVE_PUBLIC_KEY && process.env.NODE_ENV !== "production");
 
+    // Bank transfer uses Paystack under the hood — requires Paystack secret key
+    const bankTransferEnabled =
+      bankTransferConfig?.isActive !== false && paystackEnabled;
+
+    // Crypto requires provider API key
+    const cryptoEnabled =
+      cryptoConfig?.isActive === true &&
+      !!(cryptoConfig?.publicKey || cryptoConfig?.cryptoPublicKey);
+
+    // Utility token requires admin-set pricing
+    const utilityTokenEnabled =
+      utilityTokenConfig?.isActive === true &&
+      !!utilityTokenConfig?.currentPriceNgn &&
+      utilityTokenConfig.currentPriceNgn > 0;
+
     const gateways: Array<{ id: PaymentGateway; enabled: boolean }> = [
       { id: PaymentGateway.WALLET, enabled: true },
       { id: PaymentGateway.PAYSTACK, enabled: paystackEnabled },
       { id: PaymentGateway.FLUTTERWAVE, enabled: flutterwaveEnabled },
+      { id: PaymentGateway.BANK_TRANSFER, enabled: bankTransferEnabled },
+      { id: PaymentGateway.CRYPTO, enabled: cryptoEnabled },
+      { id: PaymentGateway.UTILITY_TOKEN, enabled: utilityTokenEnabled },
     ];
 
     if (process.env.NODE_ENV !== "production") {
@@ -53,8 +75,7 @@ export class PaymentProcessor {
    * Get gateway configuration from database
    */
   private static async getGatewayConfig(gateway: PaymentGateway): Promise<GatewayConfig> {
-    // TODO: Fetch from database payment_gateways table
-    // For now, return mock configuration
+    // MOCK_DEV and WALLET use static config; Paystack/Flutterwave read from DB with env fallback.
 
     if (gateway === PaymentGateway.MOCK_DEV) {
       if (process.env.NODE_ENV === "production") {
@@ -113,11 +134,65 @@ export class PaymentProcessor {
         environment: (process.env.FLUTTERWAVE_ENV as "test" | "live") || "test",
         publicKey,
         secretKey,
-        webhookSecret: process.env.FLUTTERWAVE_WEBHOOK_SECRET || "myngul.com22",
+        webhookSecret: process.env.FLUTTERWAVE_WEBHOOK_SECRET,
         features: {
           paymentMethods: ["card", "banktransfer", "ussd", "account"],
           encryptionKey,
         },
+      };
+    }
+
+    // Bank Transfer uses Paystack under the hood (channels: ["bank_transfer"])
+    if (gateway === PaymentGateway.BANK_TRANSFER) {
+      const dbConfig = await prisma.paymentGatewayConfig.findUnique({
+        where: { gatewayName: "paystack" },
+        select: { isActive: true, secretKey: true, publicKey: true },
+      });
+
+      const secretKey = dbConfig?.secretKey || process.env.PAYSTACK_SECRET_KEY;
+      const enabled = !!secretKey && (dbConfig ? dbConfig.isActive : process.env.NODE_ENV !== "production");
+
+      return {
+        enabled,
+        environment: (process.env.PAYSTACK_ENV as "test" | "live") || "test",
+        secretKey,
+        publicKey: dbConfig?.publicKey || undefined,
+        features: { paymentMethods: ["bank_transfer"] },
+      };
+    }
+
+    // Crypto gateway — keys from crypto-specific fields or generic fields
+    if (gateway === PaymentGateway.CRYPTO) {
+      const dbConfig = await prisma.paymentGatewayConfig.findUnique({
+        where: { gatewayName: "crypto" },
+        select: { isActive: true, publicKey: true, secretKey: true, cryptoPublicKey: true, cryptoSecretKey: true, apiProvider: true },
+      });
+
+      const publicKey = dbConfig?.cryptoPublicKey || dbConfig?.publicKey;
+      const secretKey = dbConfig?.cryptoSecretKey || dbConfig?.secretKey;
+      const enabled = dbConfig?.isActive === true && !!publicKey;
+
+      return {
+        enabled,
+        environment: "live",
+        publicKey: publicKey || undefined,
+        secretKey: secretKey || undefined,
+        features: { paymentMethods: ["crypto"] },
+      };
+    }
+
+    // Utility Token — fully internal, no external keys needed
+    if (gateway === PaymentGateway.UTILITY_TOKEN) {
+      const dbConfig = await prisma.paymentGatewayConfig.findUnique({
+        where: { gatewayName: "utility-token" },
+        select: { isActive: true, currentPriceNgn: true },
+      });
+
+      const enabled = dbConfig?.isActive === true && !!dbConfig?.currentPriceNgn && dbConfig.currentPriceNgn > 0;
+
+      return {
+        enabled,
+        environment: "live",
       };
     }
 
@@ -233,8 +308,18 @@ export class PaymentProcessor {
       const config = await this.getGatewayConfig(gateway);
       const gatewayInstance = await PaymentGatewayFactory.getGateway(gateway, config);
 
-      // TODO: Implement refundPayment in IPaymentGateway interface
-      throw new Error("Refund functionality not yet implemented in gateway interface");
+      if (!gatewayInstance.refundPayment) {
+        throw new Error(`Refund is not supported by the ${gateway} gateway`);
+      }
+
+      const response = await gatewayInstance.refundPayment(transactionId, amount);
+
+      console.log("🔄 Payment Processor: Refund result", {
+        success: response.success,
+        status: response.status,
+      });
+
+      return response;
     } catch (error) {
       console.error("❌ Payment Processor: Refund failed", error);
 
@@ -257,35 +342,26 @@ export class PaymentProcessor {
     response: PaymentResponse
   ): Promise<void> {
     try {
-      // TODO: Create payment_transactions table entry
-      // For now, just log to console
-      console.log("📝 Payment log:", {
-        userId: request.userId,
-        gateway: request.gateway,
-        amount: request.amount,
-        currency: request.currency,
-        status: response.status,
-        success: response.success,
-        transactionId: response.transactionId,
-        purpose: request.purpose,
+      await prisma.auditLog.create({
+        data: {
+          id: crypto.randomUUID(),
+          userId: request.userId || "system",
+          action: response.success ? "PAYMENT_INITIATED" : "PAYMENT_FAILED",
+          entity: "Payment",
+          entityId: response.transactionId || response.gatewayReference || "unknown",
+          changes: JSON.stringify({
+            gateway: request.gateway,
+            amount: request.amount,
+            currency: request.currency,
+            purpose: request.purpose,
+            status: response.status,
+            success: response.success,
+            error: response.error,
+          }),
+          status: response.success ? "success" : "error",
+          createdAt: new Date(),
+        },
       });
-
-      // This will be implemented when payment_transactions table is created
-      // await prisma.paymentTransaction.create({
-      //   data: {
-      //     userId: request.userId,
-      //     gateway: request.gateway,
-      //     amount: request.amount,
-      //     currency: request.currency,
-      //     status: response.status,
-      //     gatewayReference: response.gatewayReference,
-      //     purpose: request.purpose,
-      //     metadata: {
-      //       request: request.metadata,
-      //       response: response.metadata,
-      //     },
-      //   },
-      // });
     } catch (error) {
       console.error("❌ Failed to log payment attempt:", error);
       // Don't throw - logging failure shouldn't affect payment
@@ -299,10 +375,10 @@ export class PaymentProcessor {
     userId: string,
     amount: number
   ): Promise<PaymentGateway> {
-    // Get user's wallet balance
+    // Get user's wallet balance and country for geo-based selection
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { wallet: true },
+      select: { wallet: true, country: true, countryId: true },
     });
 
     const walletBalance = user?.wallet || 0;
@@ -312,10 +388,20 @@ export class PaymentProcessor {
       return PaymentGateway.WALLET;
     }
 
-    // TODO: Detect if Nigerian user → recommend Flutterwave
-    // TODO: Detect if International user → recommend Flutterwave multi-currency
+    // Geo-based gateway selection: Nigerian users get Paystack (lower fees),
+    // international users get Flutterwave (multi-currency support).
+    const userCountry = user?.country?.toLowerCase().trim() ?? "";
+    const isNigerian =
+      userCountry === "nigeria" ||
+      userCountry === "ng" ||
+      user?.countryId === 161; // Nigeria country ID in the lookup table
 
-    // Default to Flutterwave for card/bank rails in other cases
+    if (isNigerian) {
+      // Prefer Paystack for Nigerian users (lower transaction fees)
+      return PaymentGateway.PAYSTACK;
+    }
+
+    // Default to Flutterwave for international users (multi-currency)
     return PaymentGateway.FLUTTERWAVE;
   }
 }

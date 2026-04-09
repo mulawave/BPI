@@ -113,9 +113,15 @@ export default function BackupRestorePanel() {
     try {
       const t = toast.loading("Restoring database...");
       const text = await file.text();
-      const json = JSON.parse(text);
-      await restoreMutation.mutateAsync({ data: json });
+      const isSql = file.name.endsWith(".sql") || text.trimStart().startsWith("--");
+      if (isSql) {
+        await restoreMutation.mutateAsync({ data: text, format: "sql" });
+      } else {
+        const json = JSON.parse(text);
+        await restoreMutation.mutateAsync({ data: json, format: "json" });
+      }
       toast.dismiss(t);
+      toast.success("Database restored successfully");
     } catch (error: any) {
       toast.error(error?.message || "Failed to restore database");
     } finally {
@@ -155,7 +161,7 @@ export default function BackupRestorePanel() {
         <div className="text-sm text-orange-900 dark:text-orange-200">
           <p className="font-medium">Important:</p>
           <ul className="mt-1 list-inside list-disc space-y-1">
-            <li>Backups include all user data, payments, and settings</li>
+            <li>Backups include the entire database (all tables, relationships, and data)</li>
             <li>Restoring will REPLACE all current database content</li>
             <li>Schedule regular backups to prevent data loss</li>
           </ul>

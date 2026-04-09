@@ -1,7 +1,15 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
+
+function requireAdmin(ctx: { session: any }) {
+  const role = (ctx.session?.user as any)?.role;
+  if (role !== "admin" && role !== "super_admin") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+  }
+}
 
 // Helper function to send leadership notifications
 async function sendLeadershipNotification(
@@ -110,7 +118,7 @@ export const leadershipRouter = createTRPCRouter({
       },
       select: { id: true },
     });
-    const eligiblePackageIds = eligiblePackages.map(p => p.id);
+    const eligiblePackageIds = eligiblePackages.map((p: { id: string }) => p.id);
 
     // Get direct referrals from Referral table (Option 1 count)
     const directReferrals = await prisma.referral.findMany({
@@ -128,14 +136,14 @@ export const leadershipRouter = createTRPCRouter({
     });
 
     // Filter for Regular Plus+ referrals
-    const directRegularPlus = directReferrals.filter(ref => 
+    const directRegularPlus = directReferrals.filter((ref: any) => 
       ref.User_Referral_referredIdToUser.activeMembershipPackageId && 
       eligiblePackageIds.includes(ref.User_Referral_referredIdToUser.activeMembershipPackageId)
     );
     const directSponsors = directRegularPlus.length;
 
     // Get first generation users (for Option 2)
-    const firstGenUserIds = directRegularPlus.map(ref => ref.User_Referral_referredIdToUser.id);
+    const firstGenUserIds = directRegularPlus.map((ref: any) => ref.User_Referral_referredIdToUser.id);
     
     // Get second generation count (referrals of your referrals)
     const secondGenReferrals = await prisma.referral.findMany({
@@ -151,7 +159,7 @@ export const leadershipRouter = createTRPCRouter({
       },
     });
 
-    const secondGenRegularPlus = secondGenReferrals.filter(ref =>
+    const secondGenRegularPlus = secondGenReferrals.filter((ref: any) =>
       ref.User_Referral_referredIdToUser.activeMembershipPackageId &&
       eligiblePackageIds.includes(ref.User_Referral_referredIdToUser.activeMembershipPackageId)
     );
@@ -411,7 +419,7 @@ export const leadershipRouter = createTRPCRouter({
         },
         select: { id: true },
       });
-      const eligiblePackageIds = eligiblePackages.map(p => p.id);
+      const eligiblePackageIds = eligiblePackages.map((p: { id: string }) => p.id);
 
       // Count sponsors using Referral table
       const directReferrals = await prisma.referral.findMany({
@@ -426,12 +434,12 @@ export const leadershipRouter = createTRPCRouter({
         },
       });
 
-      const directRegularPlus = directReferrals.filter(ref =>
+      const directRegularPlus = directReferrals.filter((ref: any) =>
         ref.User_Referral_referredIdToUser.activeMembershipPackageId &&
         eligiblePackageIds.includes(ref.User_Referral_referredIdToUser.activeMembershipPackageId)
       );
       const directSponsors = directRegularPlus.length;
-      const firstGenUserIds = directRegularPlus.map(ref => ref.User_Referral_referredIdToUser.id);
+      const firstGenUserIds = directRegularPlus.map((ref: any) => ref.User_Referral_referredIdToUser.id);
 
       const secondGenReferrals = await prisma.referral.findMany({
         where: { referrerId: { in: firstGenUserIds } },
@@ -442,7 +450,7 @@ export const leadershipRouter = createTRPCRouter({
         },
       });
 
-      const secondGenCount = secondGenReferrals.filter(ref =>
+      const secondGenCount = secondGenReferrals.filter((ref: any) =>
         ref.User_Referral_referredIdToUser.activeMembershipPackageId &&
         eligiblePackageIds.includes(ref.User_Referral_referredIdToUser.activeMembershipPackageId)
       ).length;
@@ -532,8 +540,7 @@ export const leadershipRouter = createTRPCRouter({
   // Get all qualified members (admin only)
   adminGetAllQualified: protectedProcedure
     .query(async ({ ctx }) => {
-      // TODO: Add admin role check
-      // if (ctx.session.user.role !== 'admin') throw new Error("Admin only");
+      requireAdmin(ctx);
 
       const qualified = await prisma.leadershipPoolQualification.findMany({
         where: { isQualified: true },
@@ -565,7 +572,7 @@ export const leadershipRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      // TODO: Add admin role check
+      requireAdmin(ctx);
 
       const where: any = {};
 
@@ -625,7 +632,7 @@ export const leadershipRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // TODO: Add admin role check
+      requireAdmin(ctx);
 
       const qualification = await prisma.leadershipPoolQualification.findUnique({
         where: { userId: input.userId },
@@ -684,7 +691,7 @@ export const leadershipRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // TODO: Add admin role check
+      requireAdmin(ctx);
 
       let userIds: string[] = [];
 
@@ -735,7 +742,7 @@ export const leadershipRouter = createTRPCRouter({
   // Get challenge analytics (admin only)
   adminGetAnalytics: protectedProcedure
     .query(async ({ ctx }) => {
-      // TODO: Add admin role check
+      requireAdmin(ctx);
 
       const totalQualified = await prisma.leadershipPoolQualification.count({
         where: { isQualified: true },

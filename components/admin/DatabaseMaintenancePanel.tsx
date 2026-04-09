@@ -307,10 +307,6 @@ export default function DatabaseMaintenancePanel() {
         <div className="absolute -right-16 bottom-0 h-48 w-48 rounded-full bg-[hsl(var(--secondary))]/20 blur-3xl" />
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-foreground/80">
-              <MdShield className="h-4 w-4" />
-              Super Admin Only
-            </div>
             <h1 className="text-3xl font-bold text-foreground lg:text-4xl">Database Maintenance</h1>
             <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">
               Review every table, run a truncate + identity reset instantly, and keep schema intact.

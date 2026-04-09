@@ -72,4 +72,57 @@ export class PaystackGateway implements IPaymentGateway {
       message: result.message,
     };
   }
+
+  async refundPayment(transactionId: string, amount?: number): Promise<PaymentResponse> {
+    if (!this.secretKey) {
+      throw new Error("Paystack secret key not configured");
+    }
+
+    try {
+      const body: Record<string, unknown> = { transaction: transactionId };
+      if (amount != null) {
+        body.amount = Math.round(amount * 100); // kobo
+      }
+
+      const response = await fetch("https://api.paystack.co/refund", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.secretKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      const result = await response.json();
+
+      if (result.status) {
+        return {
+          success: true,
+          status: PaymentStatus.REFUNDED,
+          transactionId: `REFUND-${transactionId}`,
+          amount: amount || (result.data?.transaction?.amount ? result.data.transaction.amount / 100 : 0),
+          currency: "NGN",
+          message: "Refund processed successfully",
+        };
+      }
+
+      return {
+        success: false,
+        status: PaymentStatus.FAILED,
+        amount: amount || 0,
+        currency: "NGN",
+        error: result.message || "Refund processing failed",
+        message: "Failed to process refund",
+      };
+    } catch (error) {
+      return {
+        success: false,
+        status: PaymentStatus.FAILED,
+        amount: amount || 0,
+        currency: "NGN",
+        error: error instanceof Error ? error.message : "Refund processing failed",
+        message: "An error occurred while processing refund",
+      };
+    }
+  }
 }
