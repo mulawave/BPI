@@ -3,7 +3,8 @@ import "@/styles/admin-premium.css";
 import Providers from "@/components/providers";
 import { cn } from "@/styles/utils";
 import ViewportFitBanner from "@/components/ViewportFitBanner";
-import ImpersonationBanner from "@/components/admin/ImpersonationBanner";
+import dynamic from "next/dynamic";
+const ImpersonationBanner = dynamic(() => import("@/components/admin/ImpersonationBanner"), { ssr: false });
 import { resolveAppBaseUrl } from "@/lib/appUrl";
 
 export const metadata = {

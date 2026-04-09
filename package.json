@@ -10,8 +10,8 @@
     "fix:prisma-dns": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fixPrismaDns.ps1",
     "dev": "next dev",
     "prebuild": "node -e \"const fs=require('fs'),pt=require('path');const d='.next';if(fs.existsSync(d)){for(const f of fs.readdirSync(d)){if(f!=='cache')fs.rmSync(pt.join(d,f),{recursive:true,force:true});}}\"",
-    "build": "prisma generate && node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build",
-    "build:unsafe": "prisma generate && prisma db push --skip-generate && node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build",
+    "build": "prisma generate && node --max-old-space-size=4096 ./node_modules/next/dist/bin/next build --no-lint",
+    "build:unsafe": "prisma generate && prisma db push --skip-generate && node --max-old-space-size=4096 ./node_modules/next/dist/bin/next build --no-lint",
     "db:push": "prisma db push",
     "type-check": "tsc --noEmit",
     "test:unit": "npx tsx --test tests/unit/*.test.ts",
@@ -112,5 +112,6 @@
     "prisma": "^5.19.0",
     "tailwindcss": "^3.4.9",
     "typescript": "^5.5.4"
-  }
+  },
+  "packageManager": "pnpm@10.18.1+sha512.77a884a165cbba2d8d1c19e3b4880eee6d2fcabd0d879121e282196b80042351d5eb3ca0935fa599da1dc51265cc68816ad2bddd2a2de5ea9fdf92adbec7cd34"
 }

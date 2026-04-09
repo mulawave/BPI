@@ -2,7 +2,7 @@
 
 ## Prereqs
 
-- Node 18+
+- Node 20+ (see `.nvmrc` — currently pinned to 22)
 - Postgres database (Neon, Supabase, Railway, etc.)
 
 ## 1) Install deps
@@ -13,7 +13,7 @@ pnpm i # or npm i / yarn
 
 ## 2) Configure env
 
-Copy `.env.example` to `.env.local` and set `DATABASE_URL`, `AUTH_SECRET` (use `openssl rand -base64 32`). Add provider creds if using GitHub/Google.
+Copy `.env.example` to `.env.local` and set `DATABASE_URL`, `NEXTAUTH_SECRET` (use `openssl rand -base64 32`). Set `AUTH_SECRET` to the same value only if you still have older runtime paths depending on it. Add provider creds if using GitHub/Google.
 
 ## 3) Prisma schema sync & generate
 
@@ -69,14 +69,8 @@ Troubleshooting:
 
 ## Documentation
 
-### System Guides
-- **[ADMIN_NOTIFICATION_SYSTEM.md](./ADMIN_NOTIFICATION_SYSTEM.md)** - Complete guide to withdrawal notification system
-- **[WITHDRAWAL_AUDIT_REPORT.md](./WITHDRAWAL_AUDIT_REPORT.md)** - Comprehensive audit and code quality report
-- **[WITHDRAWAL_EXECUTIVE_SUMMARY.md](./WITHDRAWAL_EXECUTIVE_SUMMARY.md)** - Executive summary and deployment status
-- **[DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md)** - Production deployment checklist
-
 ### Deployment Guides
-- **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** - General deployment guide
+- **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** - General / VPS deployment guide
+- **[DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md)** - Production deployment checklist
 - **[CPANEL_DEPLOYMENT.md](./CPANEL_DEPLOYMENT.md)** - cPanel-specific deployment
-- **[PRODUCTION_SUMMARY.md](./PRODUCTION_SUMMARY.md)** - Production configuration summary
 

@@ -1,5 +1,3 @@
-import { prisma } from "@/lib/prisma";
-
 const normalizeUrl = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -31,6 +29,7 @@ export async function resolveAppBaseUrl(): Promise<string> {
   }
 
   try {
+    const { prisma } = await import("@/lib/prisma");
     const setting = await prisma.adminSettings.findFirst({
       where: { settingKey: "app_base_url" },
       select: { settingValue: true },

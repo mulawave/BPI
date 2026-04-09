@@ -21,7 +21,7 @@ All preparation tasks completed:
 - 2+ CPU cores
 - 4GB+ RAM
 - 40GB+ storage
-- Node.js 18.x or 20.x
+- Node.js 20.x or 22.x (see `.nvmrc`)
 - PostgreSQL 14+
 - PM2 for process management
 - Nginx for reverse proxy
@@ -312,7 +312,8 @@ sudo ufw status
 ```bash
 # Via API endpoint
 curl -X POST https://yourdomain.com/api/admin/seed-packages \
-  -H "Authorization: Bearer <your-admin-token>"
+  -H "Content-Type: application/json" \
+  --cookie "next-auth.session-token=<admin-session-cookie>"
 
 # Or manually via admin panel:
 # Admin → Packages → Create Package

@@ -1,0 +1,45 @@
+# Large/unnecessary directories
+backups/
+logs/
+test-results/
+table-exports/
+seed-exports/
+reports/
+docs/
+public/homepage/
+
+# Build artifacts and debug files
+*.exit.txt
+*.txt
+build_*
+ci_*
+ci-*
+cmd_test.txt
+dev-log.txt
+sanity.txt
+nmcheck.txt
+zzz*.txt
+tmp-build.js
+
+# Keys (should never be uploaded)
+teminal_key
+teminal_key.pub
+
+# Tracker/report markdown files (not needed in deployment)
+*_TRACKER.md
+*_REPORT.md
+*_AUDIT*.md
+*_SUMMARY.md
+*_HANDOFF.md
+*_CHECKLIST.md
+*_GUIDE.md
+*_IMPLEMENTATION.md
+*_COMPLETE.md
+*_FIXES*.md
+*_DEPLOYMENT.md
+*_NEXT_STEPS.md
+CSP_update.md
+DARK_THEME_HANDOFF.md
+PAYMENT_FIXES_SUMMARY.md
+PRODUCTION_SUMMARY.md
+ADMIN_NOTIFICATION_SYSTEM.md

@@ -25,11 +25,8 @@
 - [ ] **End-to-end test completed** ⚠️
 
 ### ✅ Documentation
-- [x] ADMIN_NOTIFICATION_SYSTEM.md created
-- [x] WITHDRAWAL_AUDIT_REPORT.md created
-- [x] WITHDRAWAL_EXECUTIVE_SUMMARY.md created
-- [x] Test script documented
 - [x] Environment variables documented
+- [x] Test script documented
 
 ### ✅ Security
 - [x] Authentication enforced
@@ -50,7 +47,7 @@
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
+SMTP_PASSWORD=your-app-password
 SMTP_SECURE=true
 SMTP_FROM_EMAIL=noreply@bpiagrobase.com
 SMTP_FROM_NAME=BeeP Agro Platform
@@ -67,7 +64,7 @@ SMTP_FROM_NAME=BeeP Agro Platform
 1. Go to Google Account Settings
 2. Security → 2-Step Verification
 3. App Passwords → Generate
-4. Copy password to SMTP_PASS
+4. Copy password to SMTP_PASSWORD
 
 **Verification:**
 ```bash
@@ -269,7 +266,7 @@ FLUTTERWAVE_SECRET_KEY="FLWSECK-..."
 SMTP_HOST="smtp.gmail.com"
 SMTP_PORT="587"
 SMTP_USER="notifications@bpiagrobase.com"
-SMTP_PASS="xxxx xxxx xxxx xxxx"
+SMTP_PASSWORD="xxxx xxxx xxxx xxxx"
 SMTP_SECURE="true"
 SMTP_FROM_EMAIL="noreply@bpiagrobase.com"
 SMTP_FROM_NAME="BeeP Agro Platform"

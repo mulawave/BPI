@@ -62,7 +62,8 @@ Since this is a cPanel server with multiple accounts, you have **two options**:
    DATABASE_URL="postgresql://beepagro_user:your_db_password@localhost:5432/beepagro_bpi"
    
    # NextAuth
-   AUTH_SECRET="generate_with: openssl rand -base64 32"
+   NEXTAUTH_SECRET="generate_with: openssl rand -base64 32"
+   AUTH_SECRET="same_value_as_nextauth_secret"
    NEXTAUTH_URL="https://beepagro.com"
    
    # Admin
@@ -227,7 +228,7 @@ This gives you:
 ```bash
 # Connect to server
 ssh beepagro@66.29.149.90
-# Password: gc7KgnFK3cX3R76E4m
+# Password: request from hosting provider or set your own secure credential
 
 # Navigate to home directory
 cd ~

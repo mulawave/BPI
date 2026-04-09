@@ -4004,10 +4004,12 @@ export const adminRouter = createTRPCRouter({
       await fs.promises.mkdir(backupDir, { recursive: true });
 
       // Use pg_dump for a complete database backup (all tables, FK ordering, data integrity)
-      const dbUrl = process.env.DATABASE_URL;
-      if (!dbUrl) {
+      const rawDbUrl = process.env.DATABASE_URL;
+      if (!rawDbUrl) {
         throw new Error("DATABASE_URL is not configured");
       }
+      // pg_dump doesn't support the ?schema= query parameter — strip it
+      const dbUrl = rawDbUrl.replace(/[?&]schema=[^&]*/g, "").replace(/\?$/, "");
 
       try {
         execSync(
