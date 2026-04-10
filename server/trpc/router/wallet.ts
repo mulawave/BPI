@@ -85,7 +85,7 @@ export const walletRouter = createTRPCRouter({
             userId,
             depositAmount: amount,
             vatAmount,
-            purpose: 'wallet_deposit',
+            purpose: 'DEPOSIT',
           },
         });
 
@@ -117,7 +117,7 @@ export const walletRouter = createTRPCRouter({
             metadata: {
               depositAmount: amount,
               vatAmount,
-              purpose: 'wallet_deposit'
+              purpose: 'DEPOSIT'
             },
             updatedAt: new Date(),
           },
@@ -166,6 +166,7 @@ export const walletRouter = createTRPCRouter({
             userId,
             depositAmount: amount,
             vatAmount,
+            purpose: 'DEPOSIT',
           },
         });
 
@@ -197,7 +198,7 @@ export const walletRouter = createTRPCRouter({
             metadata: {
               depositAmount: amount,
               vatAmount,
-              purpose: 'wallet_deposit'
+              purpose: 'DEPOSIT'
             },
             updatedAt: new Date(),
           },
@@ -248,7 +249,7 @@ export const walletRouter = createTRPCRouter({
               metadata: {
                 depositAmount: amount,
                 vatAmount,
-                purpose: 'wallet_deposit'
+                purpose: 'DEPOSIT'
               },
               updatedAt: new Date(),
             },
@@ -285,7 +286,7 @@ export const walletRouter = createTRPCRouter({
             userId,
             depositAmount: amount,
             vatAmount,
-            purpose: 'wallet_deposit',
+            purpose: 'DEPOSIT',
             gateway: 'bank_transfer',
           },
         });
@@ -316,7 +317,7 @@ export const walletRouter = createTRPCRouter({
             metadata: {
               depositAmount: amount,
               vatAmount,
-              purpose: 'wallet_deposit',
+              purpose: 'DEPOSIT',
               automated: true,
             },
             updatedAt: new Date(),
@@ -368,7 +369,7 @@ export const walletRouter = createTRPCRouter({
           name: userName,
           paymentMethod: "crypto",
           currency: "NGN",
-          purpose: "wallet_deposit",
+          purpose: "DEPOSIT",
           metadata: { callbackUrl, depositAmount: amount, vatAmount },
         });
 
@@ -402,7 +403,7 @@ export const walletRouter = createTRPCRouter({
             metadata: {
               depositAmount: amount,
               vatAmount,
-              purpose: 'wallet_deposit',
+              purpose: 'DEPOSIT',
               provider: result.metadata?.provider,
               cryptoCurrency: result.metadata?.cryptoCurrency,
               amountCrypto: result.metadata?.amountCrypto,
@@ -440,7 +441,7 @@ export const walletRouter = createTRPCRouter({
           name: userName,
           paymentMethod: "utility_token",
           currency: "NGN",
-          purpose: "wallet_deposit",
+          purpose: "DEPOSIT",
         });
 
         if (!result.success) {

@@ -3673,6 +3673,107 @@ export const packageRouter = createTRPCRouter({
         };
       }
 
+      // ── STORE_PURCHASE ──────────────────────────────────────────
+      if (transactionType === "STORE_PURCHASE") {
+        const orderId = pendingMetadata.orderId;
+        if (!orderId) {
+          throw new Error("Order ID missing from payment record. Please contact support.");
+        }
+
+        const order = await prisma.order.findUnique({
+          where: { id: orderId },
+          include: { product: { include: { pickupCenter: true } }, user: true, pickupCenter: true },
+        });
+
+        if (!order) {
+          throw new Error("Store order not found. Please contact support.");
+        }
+
+        if (order.userId !== userId) {
+          throw new Error("Order does not belong to this user.");
+        }
+
+        if (order.status === "PENDING") {
+          let claimCode = "";
+          let codeExists = true;
+          while (codeExists) {
+            const rand = Math.floor(100000 + Math.random() * 900000);
+            claimCode = `BPI-${rand}-PC`;
+            const found = await prisma.order.findFirst({ where: { claimCode } });
+            codeExists = Boolean(found);
+          }
+
+          await prisma.order.update({
+            where: { id: order.id },
+            data: { status: "PROCESSING", claimStatus: "CODE_ISSUED", claimCode },
+          });
+
+          try {
+            const { sendEmail } = await import("@/lib/email");
+            if (order.user?.email) {
+              await sendEmail({
+                to: order.user.email,
+                subject: "Your BPI pickup claim code",
+                html: `<p>Hello ${order.user.name ?? ""},</p><p>Your order for <strong>${order.product?.name ?? "your item"}</strong> is confirmed.</p><p><strong>Claim Code:</strong> ${claimCode}</p><p>Please present this code and a valid ID at the pickup center to receive your item.</p>`,
+              });
+            }
+          } catch { /* Email failures should not block approval */ }
+
+          const profitFiat = Number((order.pricingSnapshot as any)?.profit_fiat ?? 0);
+          const totalFiat = Number((order.pricingSnapshot as any)?.total_fiat ?? pending.amount ?? 0);
+          const amountForPools = profitFiat > 0 ? profitFiat : totalFiat;
+          if (amountForPools > 0) {
+            try {
+              await recordRevenue(prisma, {
+                source: "STORE_PURCHASE",
+                amount: amountForPools,
+                currency: "NGN",
+                sourceId: order.id,
+                description: `Store purchase profit: ${order.product?.name || "Product"} (verified via callback)`,
+                userId,
+                orderId: order.id,
+                productId: order.productId,
+                programType: "STORE",
+                country: order.user?.country ?? undefined,
+                state: order.user?.state ?? undefined,
+                region: getNigerianRegion(order.user?.state),
+                metadata: {
+                  paymentRef: input.reference,
+                  profitFiat,
+                  totalFiat,
+                  verifiedViaCallback: true,
+                },
+              });
+            } catch (err: any) {
+              if (err?.code !== "P2002") throw err;
+            }
+          }
+        }
+
+        await prisma.transaction.updateMany({
+          where: { reference: input.reference, userId, status: "pending" },
+          data: { status: "completed" },
+        });
+
+        await prisma.pendingPayment.update({
+          where: { id: pending.id },
+          data: {
+            status: "completed",
+            reviewedAt: new Date(),
+            reviewNotes: `Auto-completed via payment verification page (${input.gateway} store purchase)`,
+            updatedAt: new Date(),
+          },
+        });
+
+        return {
+          success: true,
+          message: "Store purchase confirmed! Check your email for the pickup claim code.",
+          transactionType,
+          reference: input.reference,
+          alreadyProcessed: false,
+        };
+      }
+
       // Unknown type — mark as reviewed but return a warning
       throw new Error(`Unknown payment type: ${transactionType}. Please contact support.`);
     }),

@@ -439,7 +439,7 @@ export async function POST(req: NextRequest) {
         });
 
         console.log('✅ [PAYSTACK-WEBHOOK] Empowerment payment auto-approved');
-      } else if (purpose === 'DEPOSIT' || purpose === 'TOPUP') {
+      } else if (purpose === 'DEPOSIT' || purpose === 'TOPUP' || purpose === 'WALLET_DEPOSIT') {
         console.log('💰 [PAYSTACK-WEBHOOK] Processing wallet deposit...');
 
         const claim = await claimPendingPayment(reference, purpose);
@@ -585,13 +585,135 @@ export async function POST(req: NextRequest) {
                 }
               }
             }
+          } else if ((recoveredPurpose === 'DEPOSIT' || recoveredPurpose === 'TOPUP' || recoveredPurpose === 'WALLET_DEPOSIT') && recoveredUserId) {
+            // Fallback recovery for wallet deposits (handles legacy 'wallet_deposit' purpose mismatch)
+            const claim = await claimPendingPayment(reference, 'DEPOSIT', recoveredUserId);
+            if (claim.status === 'claimed') {
+              if (await verifyPaymentAmount(claim.paymentId, amount / 100, reference, 'DEPOSIT')) {
+                const transaction = await prisma.transaction.findFirst({
+                  where: { reference, userId: recoveredUserId, status: 'pending', transactionType: 'DEPOSIT' },
+                });
+                if (transaction) {
+                  try {
+                    await prisma.$transaction([
+                      prisma.user.update({
+                        where: { id: transaction.userId },
+                        data: { wallet: { increment: transaction.amount } },
+                      }),
+                      prisma.transaction.update({
+                        where: { id: transaction.id },
+                        data: { status: 'completed' },
+                      }),
+                      prisma.pendingPayment.update({
+                        where: { id: claim.paymentId },
+                        data: {
+                          status: 'approved',
+                          reviewedAt: new Date(),
+                          reviewNotes: 'Auto-approved via Paystack webhook (deposit purpose recovered from PendingPayment record)',
+                        },
+                      }),
+                    ]);
+                    await notifyDepositStatus(transaction.userId, 'completed', transaction.amount, reference, generateReceiptLink(transaction.id, 'deposit'));
+                    console.log('✅ [PAYSTACK-WEBHOOK] Deposit processed via fallback recovery');
+                  } catch (error) {
+                    await markPaymentNeedsReview(claim.paymentId, `Paystack fallback deposit failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                    console.error('❌ [PAYSTACK-WEBHOOK] Fallback deposit failed:', error);
+                  }
+                } else {
+                  await markPaymentNeedsReview(claim.paymentId, 'Paystack fallback deposit recovery: no pending deposit transaction found.');
+                  console.warn('⚠️  [PAYSTACK-WEBHOOK] Fallback deposit: no pending transaction for:', reference);
+                }
+              }
+            }
+          } else if (recoveredPurpose === 'EMPOWERMENT' && recoveredUserId) {
+            // Fallback recovery for empowerment payments
+            const claim = await claimPendingPayment(reference, 'EMPOWERMENT', recoveredUserId);
+            if (claim.status === 'claimed') {
+              if (await verifyPaymentAmount(claim.paymentId, amount / 100, reference, 'EMPOWERMENT')) {
+                try {
+                  await prisma.$transaction([
+                    prisma.transaction.updateMany({
+                      where: { reference, userId: recoveredUserId, status: 'pending' },
+                      data: { status: 'completed' },
+                    }),
+                    prisma.pendingPayment.update({
+                      where: { id: claim.paymentId },
+                      data: {
+                        status: 'approved',
+                        reviewedAt: new Date(),
+                        reviewNotes: 'Auto-approved via Paystack webhook (empowerment purpose recovered from PendingPayment record)',
+                      },
+                    }),
+                  ]);
+                  if (recoveredMeta.beneficiaryId && recoveredMeta.empowermentType) {
+                    const beneficiary = await prisma.user.findUnique({
+                      where: { id: recoveredMeta.beneficiaryId },
+                      select: { id: true, name: true, email: true },
+                    });
+                    if (beneficiary) {
+                      const { finalizeEmpowermentPackage } = await import('@/server/services/empowermentPayments.service');
+                      await finalizeEmpowermentPackage({
+                        sponsorId: recoveredUserId,
+                        beneficiary,
+                        empowermentType: recoveredMeta.empowermentType,
+                        packageFee: recoveredMeta.packageFee ?? 330000,
+                        vat: recoveredMeta.vat ?? 24750,
+                        totalCost: recoveredMeta.totalCost ?? (recoveredMeta.packageFee ?? 330000) + (recoveredMeta.vat ?? 24750),
+                      });
+                    }
+                  }
+                  console.log('✅ [PAYSTACK-WEBHOOK] Empowerment processed via fallback recovery');
+                } catch (error) {
+                  await markPaymentNeedsReview(claim.paymentId, `Paystack fallback empowerment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                  console.error('❌ [PAYSTACK-WEBHOOK] Fallback empowerment failed:', error);
+                }
+              }
+            }
+          } else if (recoveredPurpose === 'STORE_PURCHASE' && recoveredUserId && recoveredMeta.orderId) {
+            // Fallback recovery for store purchases
+            const claim = await claimPendingPayment(reference, 'STORE_PURCHASE', recoveredUserId);
+            if (claim.status === 'claimed') {
+              if (await verifyPaymentAmount(claim.paymentId, amount / 100, reference, 'STORE_PURCHASE')) {
+                try {
+                  const order = await prisma.order.findUnique({
+                    where: { id: recoveredMeta.orderId },
+                    include: { product: { include: { pickupCenter: true } }, user: true, pickupCenter: true },
+                  });
+                  if (order && order.userId === recoveredUserId && order.status === 'PENDING') {
+                    let claimCode = '';
+                    let codeExists = true;
+                    while (codeExists) {
+                      const rand = Math.floor(100000 + Math.random() * 900000);
+                      claimCode = `BPI-${rand}-PC`;
+                      const found = await prisma.order.findFirst({ where: { claimCode } });
+                      codeExists = Boolean(found);
+                    }
+                    await prisma.order.update({
+                      where: { id: order.id },
+                      data: { status: 'PROCESSING', claimStatus: 'CODE_ISSUED', claimCode },
+                    });
+                    await prisma.transaction.updateMany({
+                      where: { reference, userId: recoveredUserId, status: 'pending' },
+                      data: { status: 'completed' },
+                    });
+                    await markPaymentApproved(claim.paymentId, 'Auto-approved via Paystack webhook (store purchase recovered from PendingPayment record)');
+                    console.log('✅ [PAYSTACK-WEBHOOK] Store purchase processed via fallback recovery');
+                  } else {
+                    await markPaymentNeedsReview(claim.paymentId, `Store order ${recoveredMeta.orderId} not found, not owned by user, or not in PENDING status.`);
+                  }
+                } catch (error) {
+                  await markPaymentNeedsReview(claim.paymentId, `Paystack fallback store purchase failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                  console.error('❌ [PAYSTACK-WEBHOOK] Fallback store purchase failed:', error);
+                }
+              }
+            }
           } else {
-            // Recovered purpose but missing required fields — still needs review
+            // Recovered purpose but missing required fields — log warning
             console.warn('⚠️  [PAYSTACK-WEBHOOK] Recovered purpose but missing required fields:', { recoveredPurpose, recoveredPackageId, recoveredUserId });
             await prisma.pendingPayment.updateMany({
               where: { gatewayReference: reference, status: { in: ['pending', 'processing'] } },
               data: {
-                reviewNotes: `Paystack webhook: metadata purpose missing, recovered transactionType=${recoveredPurpose} but required fields incomplete. Manual review needed.`,
+                reviewNotes: `Paystack webhook: metadata purpose missing, recovered transactionType=${recoveredPurpose} but required fields incomplete.`,
               },
             });
           }
