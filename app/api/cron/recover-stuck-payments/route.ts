@@ -344,19 +344,26 @@ async function handleCron(req: NextRequest) {
     const recovered = results.filter(r => r.status === "recovered").length;
     console.log(`✅ [PAYMENT-RECOVERY] Complete: ${recovered}/${stuckPayments.length} recovered`);
 
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
-        id: randomUUID(),
-        userId: "system",
-        action: "PAYMENT_AUTO_RECOVERY_CRON",
-        entity: "PendingPayment",
-        entityId: "cron-run",
-        changes: JSON.stringify({ found: stuckPayments.length, recovered, results }),
-        status: recovered === stuckPayments.length ? "success" : "warning",
-        createdAt: new Date(),
-      },
-    });
+    // Audit log — use first recovered payment's userId, or first payment's userId as fallback
+    try {
+      const auditUserId = stuckPayments[0]?.userId;
+      if (auditUserId) {
+        await prisma.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: auditUserId,
+            action: "PAYMENT_AUTO_RECOVERY_CRON",
+            entity: "PendingPayment",
+            entityId: "cron-run",
+            changes: JSON.stringify({ found: stuckPayments.length, recovered, results }),
+            status: recovered === stuckPayments.length ? "success" : "warning",
+            createdAt: new Date(),
+          },
+        });
+      }
+    } catch (auditErr) {
+      console.error("⚠️ [PAYMENT-RECOVERY] Audit log write failed (non-blocking):", auditErr);
+    }
 
     return NextResponse.json({ message: `Processed ${stuckPayments.length} stuck payments`, recovered, total: stuckPayments.length, results });
   } catch (error) {
