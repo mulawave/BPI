@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import type Mail from 'nodemailer/lib/mailer';
 import { prisma } from './prisma';
 import { resolveAppBaseUrl } from '@/lib/appUrl';
 
@@ -52,50 +53,77 @@ async function getSmtpConfig() {
     throw new Error('SMTP_CONFIG_ERROR: SMTP password is not configured. Please set smtpPassword in admin settings or SMTP_PASSWORD in environment variables.');
   }
 
-  console.log('📧 [SMTP CONFIG] Loaded configuration:', {
-    host: smtpConfig.host,
-    port: smtpConfig.port,
-    secure: smtpConfig.secure,
-    user: smtpConfig.auth.user,
-    fromEmail: smtpConfig.fromEmail,
-    fromName: smtpConfig.fromName,
-  });
-
   return smtpConfig;
 }
 
+// ── Pooled transporter for bulk sends ────────────────────────────────
+// Re-uses TCP connections instead of opening a new one per email.
+// Automatically closed after 60s idle (nodemailer pool default).
+let _bulkTransporter: Mail | null = null;
+let _bulkTransporterConfigHash: string | null = null;
+
+export async function getBulkTransporter(): Promise<Mail> {
+  const config = await getSmtpConfig();
+  const hash = `${config.host}:${config.port}:${config.auth.user}`;
+
+  // Return cached transporter if config hasn't changed
+  if (_bulkTransporter && _bulkTransporterConfigHash === hash) {
+    return _bulkTransporter;
+  }
+
+  // Close old transporter if config changed
+  if (_bulkTransporter) {
+    try { (_bulkTransporter as any).close?.(); } catch {}
+  }
+
+  _bulkTransporter = nodemailer.createTransport({
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 100,
+    rateDelta: 1000,
+    rateLimit: 5,           // max 5 messages per second across connections
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: config.auth,
+    connectionTimeout: 10_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 30_000,
+  });
+  _bulkTransporterConfigHash = hash;
+
+  // Verify connection once
+  await _bulkTransporter.verify();
+  console.log('✅ [EMAIL] Bulk SMTP pool verified');
+
+  return _bulkTransporter;
+}
+
+export function closeBulkTransporter() {
+  if (_bulkTransporter) {
+    try { (_bulkTransporter as any).close?.(); } catch {}
+    _bulkTransporter = null;
+    _bulkTransporterConfigHash = null;
+  }
+}
+
+// ── Single-email sender (transactional emails) ──────────────────────
 export async function sendEmail(options: EmailOptions) {
   try {
-    console.log('📧 [EMAIL] Preparing to send email to:', options.to);
     const config = await getSmtpConfig();
 
-    // Create transporter
     const transporter = nodemailer.createTransport({
       host: config.host,
       port: config.port,
       secure: config.secure,
       auth: config.auth,
-      connectionTimeout: 10000,  // 10s to establish connection
-      greetingTimeout: 10000,    // 10s for SMTP greeting
-      socketTimeout: 30000,      // 30s for socket inactivity
-      // Add connection debugging
-      debug: true,
-      logger: true,
+      connectionTimeout: 10_000,
+      greetingTimeout: 15_000,
+      socketTimeout: 30_000,
     });
 
-    console.log('📧 [EMAIL] Verifying SMTP connection...');
-    
-    // Verify connection
-    try {
-      await transporter.verify();
-      console.log('✅ [EMAIL] SMTP connection verified successfully');
-    } catch (verifyError: any) {
-      console.error('❌ [EMAIL] SMTP verification failed:', verifyError);
-      throw new Error(`SMTP Connection Failed: ${verifyError.message}. Please check your SMTP credentials and server settings.`);
-    }
+    await transporter.verify();
 
-    // Send email
-    console.log('📧 [EMAIL] Sending email...');
     const info = await transporter.sendMail({
       from: options.from || `${config.fromName} <${config.fromEmail}>`,
       to: options.to,
@@ -105,45 +133,29 @@ export async function sendEmail(options: EmailOptions) {
       attachments: options.attachments,
     });
 
-    console.log('✅ [EMAIL] Email sent successfully:', {
-      messageId: info.messageId,
-      accepted: info.accepted,
-      rejected: info.rejected,
-      response: info.response,
-    });
-
+    console.log('✅ [EMAIL] Sent to', options.to, info.messageId);
     return { success: true, messageId: info.messageId };
   } catch (error: any) {
-    console.error('❌ [EMAIL] Failed to send email:', {
-      error: error.message,
-      code: error.code,
-      command: error.command,
-      stack: error.stack,
-    });
+    console.error('❌ [EMAIL] Failed to send to', options.to, error.message);
     throw error;
   }
 }
 
-/**
- * Create a reusable nodemailer transporter for bulk sending (newsletters).
- * Caller should call transporter.close() when done.
- */
-export async function createBulkTransporter() {
+// ── Bulk send via pooled transporter ────────────────────────────────
+export async function sendBulkEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string }> {
   const config = await getSmtpConfig();
-  const transporter = nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
-    secure: config.secure,
-    auth: config.auth,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 30000,
-    pool: true,           // keep connection alive between messages
-    maxConnections: 3,    // up to 3 parallel connections
-    maxMessages: 100,     // recreate connection after 100 messages
+  const transporter = await getBulkTransporter();
+
+  const info = await transporter.sendMail({
+    from: options.from || `${config.fromName} <${config.fromEmail}>`,
+    to: options.to,
+    subject: options.subject,
+    html: options.html,
+    replyTo: options.replyTo,
+    attachments: options.attachments,
   });
-  await transporter.verify();
-  return { transporter, config };
+
+  return { success: true, messageId: info.messageId };
 }
 
 export async function sendPasswordResetEmail(email: string, resetToken: string) {

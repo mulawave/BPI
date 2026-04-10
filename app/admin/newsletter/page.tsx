@@ -1,18 +1,50 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
 import {
   Mail, Users, Send, Filter, Monitor, Tablet, Smartphone,
   Upload, X, FileText, Image as ImageIcon, Check, AlertCircle,
-  Settings, BarChart3, Loader2, CheckCircle, XCircle, Clock, Eye
+  Settings, BarChart3, Loader2, CheckCircle, XCircle, Clock, Eye,
+  Shield, Zap, Gauge, StopCircle, RotateCcw
 } from "lucide-react";
 import toast from "react-hot-toast";
 import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 type PreviewMode = "desktop" | "tablet" | "mobile";
 type FilterType = "all" | "activated" | "non-activated" | "membership";
+type SpamPreset = "conservative" | "moderate" | "aggressive";
+
+const SPAM_PRESETS: Record<SpamPreset, { batchSize: number; delayBetweenEmailsMs: number; delayBetweenBatchesMs: number; warmUp: boolean; label: string; description: string; icon: typeof Shield }> = {
+  conservative: {
+    batchSize: 5,
+    delayBetweenEmailsMs: 6000,
+    delayBetweenBatchesMs: 90000,
+    warmUp: true,
+    label: "Conservative",
+    description: "5 emails/batch · 6s between emails · 90s cooldown · Warm-up ON",
+    icon: Shield,
+  },
+  moderate: {
+    batchSize: 10,
+    delayBetweenEmailsMs: 4000,
+    delayBetweenBatchesMs: 45000,
+    warmUp: true,
+    label: "Moderate",
+    description: "10 emails/batch · 4s between emails · 45s cooldown · Warm-up ON",
+    icon: Gauge,
+  },
+  aggressive: {
+    batchSize: 25,
+    delayBetweenEmailsMs: 2000,
+    delayBetweenBatchesMs: 15000,
+    warmUp: false,
+    label: "Fast",
+    description: "25 emails/batch · 2s between emails · 15s cooldown · No warm-up",
+    icon: Zap,
+  },
+};
 
 export default function NewsletterPage() {
   const [step, setStep] = useState<"compose" | "sending" | "complete">("compose");
@@ -25,12 +57,15 @@ export default function NewsletterPage() {
   const [previewMode, setPreviewMode] = useState<PreviewMode>("desktop");
   const [attachments, setAttachments] = useState<File[]>([]);
   const [embeddedImages, setEmbeddedImages] = useState<Array<{ id: string; file: File; position: number }>>([]);
-  const [sendRate, setSendRate] = useState({ emails: 50, interval: 10 });
-  const [sending, setSending] = useState(false);
-  const [paused, setPaused] = useState(false);
-  const [cancelled, setCancelled] = useState(false);
-  const [progress, setProgress] = useState({ sent: 0, total: 0, failed: 0 });
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+
+  // Anti-spam send rate
+  const [spamPreset, setSpamPreset] = useState<SpamPreset>("moderate");
+  const [sendRate, setSendRate] = useState(SPAM_PRESETS.moderate);
+  const [customMode, setCustomMode] = useState(false);
+
+  // Job tracking
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [progress, setProgress] = useState({ sent: 0, total: 0, failed: 0, currentBatch: 0, totalBatches: 0, status: "" as string, elapsedMs: 0, failedRecipients: [] as string[], lastError: null as string | null });
 
   const attachmentRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
@@ -42,44 +77,59 @@ export default function NewsletterPage() {
     membershipPackage: selectedFilter === "membership" ? membershipFilter : undefined
   });
 
-  // Poll for progress while a job is active
-  const { data: jobProgress } = api.admin.getNewsletterProgress.useQuery(
-    { jobId: activeJobId! },
-    {
-      enabled: !!activeJobId && step === "sending",
-      refetchInterval: 2000, // poll every 2 seconds
-    }
+  // Poll progress every 2s while job is running
+  const progressQuery = api.admin.getNewsletterProgress.useQuery(
+    { jobId: jobId || "" },
+    { enabled: !!jobId && step === "sending", refetchInterval: 2000 }
   );
 
-  // React to polling updates
   useEffect(() => {
-    if (!jobProgress || !activeJobId) return;
-    setProgress({ sent: jobProgress.sent, total: jobProgress.total, failed: jobProgress.failed });
-
-    if (jobProgress.status === "completed") {
-      setStep("complete");
-      setSending(false);
-      setActiveJobId(null);
-      toast.success(`Newsletter sent to ${jobProgress.sent} recipients`);
-    } else if (jobProgress.status === "failed") {
-      setStep("complete");
-      setSending(false);
-      setActiveJobId(null);
-      toast.error(jobProgress.error || "Newsletter campaign failed");
+    if (progressQuery.data && progressQuery.data.status !== "not_found") {
+      const d = progressQuery.data;
+      setProgress({
+        sent: d.sent,
+        total: d.total,
+        failed: d.failed,
+        currentBatch: d.currentBatch,
+        totalBatches: d.totalBatches,
+        status: d.status,
+        elapsedMs: d.elapsedMs,
+        failedRecipients: d.failedRecipients,
+        lastError: d.lastError,
+      });
+      if (d.status === "completed" || d.status === "error" || d.status === "cancelled") {
+        setStep("complete");
+      }
     }
-  }, [jobProgress, activeJobId]);
+  }, [progressQuery.data]);
+
+  // Apply preset
+  useEffect(() => {
+    if (!customMode) {
+      setSendRate(SPAM_PRESETS[spamPreset]);
+    }
+  }, [spamPreset, customMode]);
 
   const sendNewsletterMutation = api.admin.sendNewsletter.useMutation({
-    onSuccess: (data: { jobId: string; total: number; status: string }) => {
-      setActiveJobId(data.jobId);
-      setProgress({ sent: 0, total: data.total, failed: 0 });
-      toast.success(`Campaign started — sending to ${data.total} recipients`);
+    onSuccess: (data) => {
+      if (data.jobId) {
+        setJobId(data.jobId);
+        setProgress(p => ({ ...p, total: data.total, status: "running" }));
+        toast.success(`Campaign started — ${data.total} recipients`);
+      } else {
+        toast.error(data.message || "No recipients");
+        setStep("compose");
+      }
     },
     onError: (error: any) => {
-      toast.error(`Failed to start newsletter: ${error.message}`);
-      setSending(false);
+      toast.error(`Failed: ${error.message}`);
       setStep("compose");
     }
+  });
+
+  const cancelMutation = api.admin.cancelNewsletter.useMutation({
+    onSuccess: () => toast.success("Campaign cancelled"),
+    onError: (e: any) => toast.error(e.message),
   });
 
   const handleAttachmentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,16 +156,13 @@ export default function NewsletterPage() {
       toast.error("Subject and body are required");
       return;
     }
-
     if ((recipientCount?.count || 0) === 0) {
       toast.error("No recipients match the selected filter");
       return;
     }
 
-    setSending(true);
     setStep("sending");
 
-    // Convert files to base64
     const attachmentData = await Promise.all(
       attachments.map(async (file) => ({
         filename: file.name,
@@ -134,13 +181,18 @@ export default function NewsletterPage() {
     sendNewsletterMutation.mutate({
       filter: selectedFilter,
       membershipPackage: selectedFilter === "membership" ? membershipFilter : undefined,
-      fromEmail,
-      replyToEmail,
+      fromEmail: fromEmail || undefined,
+      replyToEmail: replyToEmail || undefined,
       subject,
       body,
       attachments: attachmentData,
       embeddedImages: imageData,
-      sendRate
+      sendRate: {
+        batchSize: sendRate.batchSize,
+        delayBetweenEmailsMs: sendRate.delayBetweenEmailsMs,
+        delayBetweenBatchesMs: sendRate.delayBetweenBatchesMs,
+        warmUp: sendRate.warmUp,
+      },
     });
   };
 
@@ -153,51 +205,130 @@ export default function NewsletterPage() {
     });
   };
 
+  const formatDuration = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return `${m}m ${rem}s`;
+  };
+
+  const estimatedTime = useCallback(() => {
+    const count = recipientCount?.count || 0;
+    if (count === 0) return "—";
+    const batches = Math.ceil(count / sendRate.batchSize);
+    const emailTime = count * (sendRate.delayBetweenEmailsMs / 1000);
+    const batchTime = Math.max(0, batches - 1) * (sendRate.delayBetweenBatchesMs / 1000);
+    const totalSec = emailTime + batchTime;
+    if (totalSec < 60) return `~${Math.round(totalSec)}s`;
+    if (totalSec < 3600) return `~${Math.round(totalSec / 60)}min`;
+    return `~${(totalSec / 3600).toFixed(1)}hr`;
+  }, [recipientCount?.count, sendRate]);
+
+  // ── COMPLETE SCREEN ──────────────────────────────────────────────
   if (step === "complete") {
+    const successRate = progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0;
+    const isCancelled = progress.status === "cancelled";
+    const isError = progress.status === "error";
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-900 dark:to-gray-800 p-6">
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="max-w-2xl mx-auto bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 text-center"
+          className="max-w-2xl mx-auto bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8"
         >
-          <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle className="w-12 h-12 text-green-600" />
+          <div className="text-center mb-6">
+            <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 ${
+              isCancelled ? "bg-yellow-100 dark:bg-yellow-900/30" :
+              isError ? "bg-red-100 dark:bg-red-900/30" :
+              progress.failed > 0 ? "bg-orange-100 dark:bg-orange-900/30" :
+              "bg-green-100 dark:bg-green-900/30"
+            }`}>
+              {isCancelled ? <StopCircle className="w-12 h-12 text-yellow-600" /> :
+               isError ? <XCircle className="w-12 h-12 text-red-600" /> :
+               progress.failed > 0 ? <AlertCircle className="w-12 h-12 text-orange-600" /> :
+               <CheckCircle className="w-12 h-12 text-green-600" />}
+            </div>
+            <h2 className="text-2xl font-bold">
+              {isCancelled ? "Campaign Cancelled" :
+               isError ? "Campaign Error" :
+               progress.failed > 0 ? "Campaign Completed with Errors" :
+               "Campaign Sent Successfully!"}
+            </h2>
+            {progress.elapsedMs > 0 && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Duration: {formatDuration(progress.elapsedMs)}
+              </p>
+            )}
           </div>
-          <h2 className="text-3xl font-bold mb-4">Newsletter Sent Successfully!</h2>
-          <div className="grid grid-cols-3 gap-4 mb-8">
-            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
-              <div className="text-3xl font-bold text-green-600">{progress.sent}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Sent</div>
+
+          {/* Stats Grid */}
+          <div className="grid grid-cols-4 gap-3 mb-6">
+            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-green-600">{progress.sent}</div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Sent</div>
             </div>
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-              <div className="text-3xl font-bold">{progress.total}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Total</div>
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-red-600">{progress.failed}</div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Failed</div>
             </div>
-            <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4">
-              <div className="text-3xl font-bold text-red-600">{progress.failed}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Failed</div>
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold">{progress.total}</div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Total</div>
+            </div>
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-blue-600">{successRate}%</div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Success</div>
             </div>
           </div>
+
+          {/* Failed recipients */}
+          {progress.failedRecipients.length > 0 && (
+            <div className="mb-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
+                <XCircle className="w-4 h-4" /> Failed Recipients ({progress.failedRecipients.length})
+              </h4>
+              <div className="max-h-32 overflow-y-auto text-xs text-red-600 dark:text-red-400 space-y-1">
+                {progress.failedRecipients.map((email, i) => (
+                  <div key={i} className="font-mono">{email}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Error message */}
+          {progress.lastError && (
+            <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 text-sm text-yellow-800 dark:text-yellow-300">
+              Last error: {progress.lastError}
+            </div>
+          )}
+
           <button
             onClick={() => {
               setStep("compose");
+              setJobId(null);
               setSubject("");
               setBody("");
               setAttachments([]);
               setEmbeddedImages([]);
-              setProgress({ sent: 0, total: 0, failed: 0 });
+              setProgress({ sent: 0, total: 0, failed: 0, currentBatch: 0, totalBatches: 0, status: "", elapsedMs: 0, failedRecipients: [], lastError: null });
             }}
-            className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-3 rounded-lg hover:shadow-lg transition-all"
+            className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-3 rounded-lg hover:shadow-lg transition-all flex items-center justify-center gap-2"
           >
-            Send Another Newsletter
+            <RotateCcw className="w-5 h-5" />
+            New Campaign
           </button>
         </motion.div>
       </div>
     );
   }
 
+  // ── SENDING SCREEN ──────────────────────────────────────────────
   if (step === "sending") {
+    const pct = progress.total > 0 ? Math.round(((progress.sent + progress.failed) / progress.total) * 100) : 0;
+    const isCancelled = progress.status === "cancelled";
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-900 dark:to-gray-800 p-6 flex items-center justify-center">
         <motion.div
@@ -206,94 +337,81 @@ export default function NewsletterPage() {
           className="max-w-xl w-full bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8"
         >
           <div className="text-center mb-6">
-            {cancelled ? (
+            {isCancelled ? (
               <>
-                <XCircle className="w-16 h-16 text-red-600 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold">Sending Cancelled</h2>
-                <p className="text-gray-600 dark:text-gray-400 mt-2">
-                  Newsletter sending was stopped
-                </p>
-              </>
-            ) : paused ? (
-              <>
-                <Clock className="w-16 h-16 text-yellow-600 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold">Sending Paused</h2>
-                <p className="text-gray-600 dark:text-gray-400 mt-2">
-                  Click resume to continue sending
-                </p>
+                <StopCircle className="w-16 h-16 text-yellow-600 mx-auto mb-4" />
+                <h2 className="text-2xl font-bold">Cancelling...</h2>
               </>
             ) : (
               <>
                 <Loader2 className="w-16 h-16 animate-spin text-green-600 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold">Sending Newsletter...</h2>
-                <p className="text-gray-600 dark:text-gray-400 mt-2">
-                  Sending {sendRate.emails} emails every {sendRate.interval} minutes
+                <h2 className="text-2xl font-bold">Sending Newsletter</h2>
+                <p className="text-gray-600 dark:text-gray-400 mt-2 text-sm">
+                  Batch {progress.currentBatch}/{progress.totalBatches} · {formatDuration(progress.elapsedMs)} elapsed
                 </p>
               </>
             )}
           </div>
-          <div className="space-y-4">
-            <div className="flex justify-between text-sm">
+
+          {/* Progress bar */}
+          <div className="space-y-3">
+            <div className="flex justify-between text-sm font-medium">
               <span>Progress</span>
-              <span>{progress.sent} / {progress.total}</span>
+              <span>{progress.sent + progress.failed} / {progress.total} ({pct}%)</span>
             </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-              <div
-                className="bg-gradient-to-r from-green-600 to-emerald-600 h-3 rounded-full transition-all duration-300"
-                style={{ width: `${progress.total > 0 ? (progress.sent / progress.total) * 100 : 0}%` }}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4 mt-6">
-              <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 text-center">
-                <div className="text-2xl font-bold text-green-600">{progress.sent}</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">Successfully Sent</div>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-500 flex">
+                <div
+                  className="bg-gradient-to-r from-green-500 to-green-600 h-full transition-all duration-500"
+                  style={{ width: `${progress.total > 0 ? (progress.sent / progress.total) * 100 : 0}%` }}
+                />
+                <div
+                  className="bg-red-500 h-full transition-all duration-500"
+                  style={{ width: `${progress.total > 0 ? (progress.failed / progress.total) * 100 : 0}%` }}
+                />
               </div>
-              <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 text-center">
-                <div className="text-2xl font-bold text-red-600">{progress.failed}</div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mt-4">
+              <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
+                <div className="text-xl font-bold text-green-600">{progress.sent}</div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Sent</div>
+              </div>
+              <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 text-center">
+                <div className="text-xl font-bold text-red-600">{progress.failed}</div>
                 <div className="text-xs text-gray-600 dark:text-gray-400">Failed</div>
               </div>
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
+                <div className="text-xl font-bold">{progress.total - progress.sent - progress.failed}</div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Remaining</div>
+              </div>
             </div>
-            
-            {/* Control Buttons */}
-            <div className="flex gap-3 mt-6">
-              {!cancelled && !paused && (
-                <button
-                  onClick={() => setPaused(true)}
-                  className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  <Clock className="w-5 h-5" />
-                  Pause
-                </button>
-              )}
-              {paused && !cancelled && (
-                <button
-                  onClick={() => setPaused(false)}
-                  className="flex-1 bg-green-500 hover:bg-green-600 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  <Send className="w-5 h-5" />
-                  Resume
-                </button>
-              )}
-              {!cancelled && (
-                <button
-                  onClick={() => {
-                    setCancelled(true);
-                    setPaused(false);
-                    setTimeout(() => setStep('complete'), 2000);
-                  }}
-                  className="flex-1 bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  <XCircle className="w-5 h-5" />
-                  Cancel
-                </button>
-              )}
-            </div>
+
+            {progress.lastError && (
+              <div className="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/10 rounded p-2 mt-2">
+                Last error: {progress.lastError}
+              </div>
+            )}
+
+            {/* Cancel button */}
+            {!isCancelled && (
+              <button
+                onClick={() => {
+                  if (jobId) cancelMutation.mutate({ jobId });
+                }}
+                className="w-full mt-4 bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+              >
+                <StopCircle className="w-5 h-5" />
+                Cancel Campaign
+              </button>
+            )}
           </div>
         </motion.div>
       </div>
     );
   }
 
+  // ── COMPOSE SCREEN ──────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-900 dark:to-gray-800 p-6">
       {/* Header */}
@@ -318,81 +436,55 @@ export default function NewsletterPage() {
         title="Newsletter Campaign Guide"
         sections={[
           {
-            title: "Newsletter System Overview",
-            icon: <Mail className="w-5 h-5 text-blue-600" />,
+            title: "Anti-Spam Delivery Strategy",
+            icon: <Shield className="w-5 h-5 text-green-600" />,
             items: [
-              "Send <strong>professional HTML emails</strong> to all users or targeted segments",
-              "<strong>Attach files</strong> (PDF, images) or <strong>embed images</strong> in email body",
-              "<strong>Preview emails</strong> on desktop, tablet, and mobile devices",
-              "<strong>Throttle sending rate</strong> to avoid spam filters (50 emails/10 seconds default)",
-              "Track <strong>send progress</strong> in real-time with success/failure counts"
+              "<strong>Conservative mode:</strong> 5 emails/batch, 6s gap, 90s cooldown — safest for new domains",
+              "<strong>Moderate mode:</strong> 10 emails/batch, 4s gap, 45s cooldown — recommended default",
+              "<strong>Fast mode:</strong> 25 emails/batch, 2s gap, 15s cooldown — for established senders",
+              "<strong>Warm-up:</strong> First batch starts small (3 emails), then ramps up to full batch size",
+              "<strong>Random jitter:</strong> Extra 0-2s random delay between emails to avoid pattern detection",
+              "Emails are sent via a <strong>pooled SMTP connection</strong> for reliability and speed"
             ]
           },
           {
-            title: "Creating a Newsletter Campaign",
+            title: "Creating a Campaign",
             icon: <FileText className="w-5 h-5 text-green-600" />,
             type: "ol",
             items: [
-              "<strong>Select Recipients</strong> - Choose All Users, Activated Only, Non-Activated, or By Membership",
-              "<strong>Set sender details</strong> - From email (uses system default if empty), Reply-To email",
-              "<strong>Compose subject</strong> - Clear, compelling subject line (avoid spam trigger words)",
-              "<strong>Write email body</strong> - Use HTML formatting, personalization tokens, professional tone",
-              "<strong>Add attachments</strong> - PDF, JPG, JPEG, PNG files (optional)",
-              "<strong>Embed images</strong> - Insert images directly in email body (optional)",
-              "<strong>Preview</strong> - Check desktop/tablet/mobile views before sending",
-              "<strong>Send campaign</strong> - Click Send to start throttled distribution"
+              "<strong>Select Recipients</strong> — filter by activation status or membership package",
+              "<strong>Configure sender</strong> — From email and Reply-To (defaults to system settings)",
+              "<strong>Compose content</strong> — Subject line + HTML body with embedded images",
+              "<strong>Choose delivery speed</strong> — Pick a preset or customize for your SMTP provider",
+              "<strong>Preview and send</strong> — Check all device sizes, then launch the campaign",
+              "<strong>Track progress</strong> — Real-time polling shows sent/failed counts"
             ]
           },
           {
-            title: "Recipient Filtering",
-            icon: <Filter className="w-5 h-5 text-orange-600" />,
+            title: "Best Practices to Avoid Spam Filters",
+            icon: <AlertCircle className="w-5 h-5 text-orange-600" />,
             items: [
-              "<strong>All Users</strong> - Send to entire user base (highest reach)",
-              "<strong>Activated Only</strong> - Target users who completed account activation",
-              "<strong>Non-Activated</strong> - Re-engage users who haven't activated yet",
-              "<strong>By Membership</strong> - Filter by specific membership package (Freemium, Premium, Enterprise)",
-              "Recipient count updates <strong>live</strong> as you change filters",
-              "Zero recipients? Check filter selection and user database"
-            ]
-          },
-          {
-            title: "Email Delivery & Throttling",
-            icon: <Send className="w-5 h-5 text-purple-600" />,
-            items: [
-              "<strong>Default rate:</strong> 50 emails every 10 seconds (300/minute)",
-              "Throttling prevents <strong>spam filter triggers</strong> and IP blacklisting",
-              "<strong>Monitor progress</strong> - Live updates show sent/failed/total counts",
-              "<strong>Pause/Resume</strong> - Control sending if needed (feature in UI)",
-              "<strong>Failed emails</strong> tracked separately - review for invalid addresses",
-              "Large campaigns (1000+ users) may take several minutes"
-            ]
-          },
-          {
-            title: "Best Practices",
-            icon: <Settings className="w-5 h-5 text-blue-600" />,
-            items: [
-              "<strong>Subject lines:</strong> Keep under 50 characters for mobile visibility",
-              "<strong>Preview text:</strong> First 100 characters show in inbox - make them count",
-              "<strong>HTML formatting:</strong> Use semantic HTML, avoid excessive images",
-              "<strong>Attachments:</strong> Limit to 2-3 files, keep total size under 5MB",
-              "<strong>Testing:</strong> Send test email to yourself before full campaign",
-              "<strong>Timing:</strong> Send during business hours for higher open rates",
-              "<strong>Mobile-first:</strong> 60%+ users read on mobile - always preview mobile view"
+              "Use <strong>Conservative or Moderate</strong> mode for new sending domains",
+              "Keep subject lines <strong>under 50 characters</strong> — avoid ALL CAPS and excessive punctuation",
+              "Include a <strong>text-to-image ratio</strong> of at least 60% text to 40% images",
+              "Avoid spam trigger words: <em>FREE, ACT NOW, URGENT, CLICK HERE, WINNER</em>",
+              "Ensure your domain has <strong>SPF, DKIM, and DMARC</strong> records configured",
+              "Always <strong>send a test email</strong> first to verify deliverability"
             ]
           }
         ]}
         features={[
-          "Segment recipient targeting",
-          "HTML email composer",
-          "File attachments & image embedding",
-          "Multi-device preview (desktop/tablet/mobile)",
-          "Throttled sending (spam prevention)",
-          "Real-time progress tracking",
-          "Success/failure analytics",
-          "Membership-based filtering"
+          "Background processing (no timeout)",
+          "Real-time progress polling",
+          "Anti-spam delivery presets",
+          "SMTP connection pooling",
+          "Warm-up mode for new domains",
+          "Random jitter anti-pattern",
+          "Campaign cancellation",
+          "Failed recipient tracking"
         ]}
-        proTip="To <strong>maximize open rates</strong>, send newsletters on <strong>Tuesday-Thursday between 10 AM - 2 PM</strong>. Use <strong>personalized subject lines</strong> and keep emails under <strong>500 words</strong>. Always send a <strong>test email to yourself</strong> first to catch formatting issues!"
-        warning="Newsletter campaigns are <strong>sent immediately</strong> and cannot be recalled once started. Always <strong>preview all device sizes</strong> and <strong>verify recipient count</strong> before clicking Send. Typos, broken links, or wrong recipients can damage credibility."
+        proTip="Start with <strong>Conservative mode</strong> if your domain is new or hasn't sent bulk email before. After successful campaigns, you can move to <strong>Moderate</strong>. The warm-up feature sends only 3 emails in the first batch to let recipient servers recognize your sender reputation."
+        warning="Newsletter campaigns run in the background. You can <strong>navigate away</strong> and return later — progress is tracked server-side. Use <strong>Cancel</strong> to stop a running campaign."
       />
 
       {/* Stats Cards */}
@@ -408,30 +500,28 @@ export default function NewsletterPage() {
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
           <div className="flex items-center gap-3">
-            <CheckCircle className="w-8 h-8 text-green-600" />
+            <Clock className="w-8 h-8 text-indigo-600" />
             <div>
-              <div className="text-2xl font-bold">{progress.sent}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Sent Today</div>
+              <div className="text-2xl font-bold">{estimatedTime()}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">Est. Time</div>
             </div>
           </div>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
           <div className="flex items-center gap-3">
-            <XCircle className="w-8 h-8 text-red-600" />
+            <Gauge className="w-8 h-8 text-green-600" />
             <div>
-              <div className="text-2xl font-bold">{progress.failed}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Failed</div>
+              <div className="text-2xl font-bold">{sendRate.batchSize}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">Batch Size</div>
             </div>
           </div>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
           <div className="flex items-center gap-3">
-            <BarChart3 className="w-8 h-8 text-purple-600" />
+            <Shield className="w-8 h-8 text-purple-600" />
             <div>
-              <div className="text-2xl font-bold">
-                {progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0}%
-              </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Success Rate</div>
+              <div className="text-2xl font-bold capitalize">{spamPreset}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">Speed Mode</div>
             </div>
           </div>
         </div>
@@ -453,15 +543,15 @@ export default function NewsletterPage() {
             </h3>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                {[
+                {([
                   { value: "all", label: "All Users", icon: Users },
                   { value: "activated", label: "Activated Only", icon: CheckCircle },
                   { value: "non-activated", label: "Non-Activated", icon: XCircle },
                   { value: "membership", label: "By Membership", icon: Filter }
-                ].map(({ value, label, icon: Icon }) => (
+                ] as const).map(({ value, label, icon: Icon }) => (
                   <button
                     key={value}
-                    onClick={() => setSelectedFilter(value as FilterType)}
+                    onClick={() => setSelectedFilter(value)}
                     className={`p-3 rounded-lg border-2 transition-all ${
                       selectedFilter === value
                         ? "border-green-600 bg-green-50 dark:bg-green-900/20"
@@ -544,7 +634,6 @@ export default function NewsletterPage() {
               required
             />
             
-            {/* Image Embed Button */}
             <div className="flex gap-2 mt-3">
               <button
                 onClick={() => imageRef.current?.click()}
@@ -614,51 +703,137 @@ export default function NewsletterPage() {
             )}
           </div>
 
-          {/* Send Rate Configuration */}
+          {/* Anti-Spam Delivery Configuration */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Settings className="w-5 h-5 text-gray-600" />
-              Send Rate Limiting
+              <Shield className="w-5 h-5 text-green-600" />
+              Delivery Speed & Anti-Spam
             </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Emails per Batch</label>
-                <input
-                  type="number"
-                  value={sendRate.emails}
-                  onChange={(e) => setSendRate({ ...sendRate, emails: parseInt(e.target.value) || 50 })}
-                  min="1"
-                  max="100"
-                  className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Interval (minutes)</label>
-                <input
-                  type="number"
-                  value={sendRate.interval}
-                  onChange={(e) => setSendRate({ ...sendRate, interval: parseInt(e.target.value) || 10 })}
-                  min="1"
-                  max="60"
-                  className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                />
+
+            {/* Preset Selector */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {(Object.entries(SPAM_PRESETS) as [SpamPreset, typeof SPAM_PRESETS[SpamPreset]][]).map(([key, preset]) => {
+                const Icon = preset.icon;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => { setSpamPreset(key); setCustomMode(false); }}
+                    className={`p-3 rounded-lg border-2 transition-all text-center ${
+                      spamPreset === key && !customMode
+                        ? "border-green-600 bg-green-50 dark:bg-green-900/20"
+                        : "border-gray-200 dark:border-gray-700 hover:border-green-400"
+                    }`}
+                  >
+                    <Icon className="w-5 h-5 mx-auto mb-1" />
+                    <div className="text-xs font-semibold">{preset.label}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Current config summary */}
+            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 mb-4">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Batch size:</span>
+                  <span className="font-semibold">{sendRate.batchSize} emails</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Email delay:</span>
+                  <span className="font-semibold">{(sendRate.delayBetweenEmailsMs / 1000).toFixed(0)}s + jitter</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Batch cooldown:</span>
+                  <span className="font-semibold">{(sendRate.delayBetweenBatchesMs / 1000).toFixed(0)}s</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Warm-up:</span>
+                  <span className={`font-semibold ${sendRate.warmUp ? "text-green-600" : "text-gray-400"}`}>
+                    {sendRate.warmUp ? "ON" : "OFF"}
+                  </span>
+                </div>
               </div>
             </div>
+
+            {/* Custom toggle */}
+            <button
+              onClick={() => setCustomMode(!customMode)}
+              className="text-xs text-green-600 hover:text-green-700 font-medium mb-3"
+            >
+              {customMode ? "← Use presets" : "Custom settings →"}
+            </button>
+
+            {/* Custom controls */}
+            <AnimatePresence>
+              {customMode && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Batch Size</label>
+                      <input
+                        type="number"
+                        value={sendRate.batchSize}
+                        onChange={(e) => setSendRate({ ...sendRate, batchSize: Math.max(1, Math.min(50, parseInt(e.target.value) || 10)) })}
+                        min="1" max="50"
+                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Delay Between Emails (sec)</label>
+                      <input
+                        type="number"
+                        value={Math.round(sendRate.delayBetweenEmailsMs / 1000)}
+                        onChange={(e) => setSendRate({ ...sendRate, delayBetweenEmailsMs: Math.max(1, Math.min(30, parseInt(e.target.value) || 4)) * 1000 })}
+                        min="1" max="30"
+                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">Batch Cooldown (sec)</label>
+                      <input
+                        type="number"
+                        value={Math.round(sendRate.delayBetweenBatchesMs / 1000)}
+                        onChange={(e) => setSendRate({ ...sendRate, delayBetweenBatchesMs: Math.max(5, Math.min(300, parseInt(e.target.value) || 45)) * 1000 })}
+                        min="5" max="300"
+                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={sendRate.warmUp}
+                          onChange={(e) => setSendRate({ ...sendRate, warmUp: e.target.checked })}
+                          className="w-4 h-4 text-green-600 rounded"
+                        />
+                        <span className="text-sm font-medium">Warm-up Mode</span>
+                      </label>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <div className="mt-3 text-xs text-gray-600 dark:text-gray-400 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-              💡 Recommended: 50 emails every 10 minutes to avoid SMTP throttling
+              💡 <strong>Estimated delivery time:</strong> {estimatedTime()} for {recipientCount?.count || 0} recipients
             </div>
           </div>
 
           {/* Send Button */}
           <button
             onClick={handleSend}
-            disabled={sending || !subject.trim() || !body.trim() || (recipientCount?.count || 0) === 0}
+            disabled={sendNewsletterMutation.isPending || !subject.trim() || !body.trim() || (recipientCount?.count || 0) === 0}
             className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-4 rounded-xl font-bold hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {sending ? (
+            {sendNewsletterMutation.isPending ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Sending...
+                Starting Campaign...
               </>
             ) : (
               <>
@@ -682,11 +857,11 @@ export default function NewsletterPage() {
                 Live Preview
               </h3>
               <div className="flex gap-2">
-                {[
+                {([
                   { mode: "desktop" as PreviewMode, icon: Monitor },
                   { mode: "tablet" as PreviewMode, icon: Tablet },
                   { mode: "mobile" as PreviewMode, icon: Smartphone }
-                ].map(({ mode, icon: Icon }) => (
+                ]).map(({ mode, icon: Icon }) => (
                   <button
                     key={mode}
                     onClick={() => setPreviewMode(mode)}
@@ -702,7 +877,6 @@ export default function NewsletterPage() {
               </div>
             </div>
             
-            {/* Email Preview with Responsive Container */}
             <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 overflow-auto" style={{ maxHeight: "calc(100vh - 200px)" }}>
               <div
                 className={`bg-white mx-auto transition-all ${

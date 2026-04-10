@@ -45,27 +45,6 @@ const superAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next();
 });
 
-// ── In-memory newsletter job tracker ─────────────────────────────
-interface NewsletterJob {
-  id: string;
-  status: "processing" | "completed" | "failed";
-  sent: number;
-  failed: number;
-  total: number;
-  error?: string;
-  startedAt: number;
-  completedAt?: number;
-}
-const newsletterJobs = new Map<string, NewsletterJob>();
-// Auto-cleanup jobs older than 1 hour
-function cleanupOldJobs() {
-  const ONE_HOUR = 60 * 60 * 1000;
-  const now = Date.now();
-  for (const [id, job] of newsletterJobs) {
-    if (now - job.startedAt > ONE_HOUR) newsletterJobs.delete(id);
-  }
-}
-
 function generateSscCode(): string {
   const segment = (length: number) =>
     Array.from({ length }, () => Math.floor(Math.random() * 36).toString(36).toUpperCase()).join("");
@@ -75,6 +54,194 @@ function generateSscCode(): string {
 
 function normalizeSsc(input: string): string {
   return input.trim().toUpperCase();
+}
+
+// ── Newsletter Background Job Tracking ──────────────────────────────
+interface NewsletterJobState {
+  jobId: string;
+  status: 'running' | 'completed' | 'error' | 'cancelled';
+  sent: number;
+  failed: number;
+  total: number;
+  currentBatch: number;
+  totalBatches: number;
+  startedAt: number;
+  lastError: string | null;
+  failedRecipients: string[];
+}
+
+const newsletterJobs = new Map<string, NewsletterJobState>();
+
+// Clean up completed jobs older than 1 hour
+setInterval(() => {
+  const oneHourAgo = Date.now() - 60 * 60 * 1000;
+  for (const [id, job] of newsletterJobs) {
+    if (job.status !== 'running' && job.startedAt < oneHourAgo) {
+      newsletterJobs.delete(id);
+    }
+  }
+}, 5 * 60 * 1000);
+
+async function processNewsletterInBackground(
+  jobId: string,
+  opts: {
+    validRecipients: { id: string; email: string; name: string | null }[];
+    fromEmail: string;
+    replyToEmail: string;
+    subject: string;
+    body: string;
+    attachments?: { filename: string; content: string }[];
+    embeddedImages?: { id: string; content: string; position: number }[];
+    companyInfo: any;
+    sendRate: { batchSize: number; delayBetweenEmailsMs: number; delayBetweenBatchesMs: number; warmUp: boolean };
+    adminUserId: string;
+  }
+) {
+  const job = newsletterJobs.get(jobId);
+  if (!job) return;
+
+  const { validRecipients, fromEmail, replyToEmail, subject, body, attachments, embeddedImages, companyInfo, sendRate, adminUserId } = opts;
+  const { sendBulkEmail, closeBulkTransporter } = await import('@/lib/email');
+
+  // Warm-up: start with smaller first batch, then ramp up
+  const firstBatchSize = sendRate.warmUp ? Math.min(3, sendRate.batchSize) : sendRate.batchSize;
+  const batchSize = sendRate.batchSize;
+
+  // Split recipients into batches with warm-up
+  const batches: typeof validRecipients[] = [];
+  let cursor = 0;
+  // First batch (warm-up)
+  batches.push(validRecipients.slice(0, firstBatchSize));
+  cursor = firstBatchSize;
+  // Remaining batches at full size
+  while (cursor < validRecipients.length) {
+    batches.push(validRecipients.slice(cursor, cursor + batchSize));
+    cursor += batchSize;
+  }
+
+  job.totalBatches = batches.length;
+  console.log(`📧 [NEWSLETTER] Job ${jobId}: ${job.total} recipients in ${batches.length} batches (warm-up: ${sendRate.warmUp})`);
+
+  const attachmentData = attachments?.map(att => ({
+    filename: att.filename,
+    content: att.content.split(',')[1],
+    encoding: 'base64' as const,
+  }));
+
+  for (let bIdx = 0; bIdx < batches.length; bIdx++) {
+    // Check for cancellation
+    if (job.status === 'cancelled') {
+      console.log(`🚫 [NEWSLETTER] Job ${jobId} cancelled at batch ${bIdx + 1}`);
+      break;
+    }
+
+    const batch = batches[bIdx];
+    job.currentBatch = bIdx + 1;
+    console.log(`📦 [NEWSLETTER] Job ${jobId}: batch ${bIdx + 1}/${batches.length} (${batch.length} emails)`);
+
+    for (const recipient of batch) {
+      if (job.status === 'cancelled') break;
+
+      const MAX_RETRIES = 2;
+      let sent = false;
+
+      for (let attempt = 0; attempt <= MAX_RETRIES && !sent; attempt++) {
+        try {
+          const emailHtml = buildNewsletterEmail({
+            userName: recipient.name || 'User',
+            subject,
+            body,
+            companyInfo,
+            embeddedImages: embeddedImages || [],
+          });
+
+          await sendBulkEmail({
+            to: recipient.email,
+            from: fromEmail,
+            replyTo: replyToEmail,
+            subject,
+            html: emailHtml,
+            attachments: attachmentData,
+          });
+
+          job.sent++;
+          sent = true;
+        } catch (err: any) {
+          if (attempt >= MAX_RETRIES) {
+            job.failed++;
+            job.failedRecipients.push(recipient.email);
+            job.lastError = err?.message || 'Unknown';
+            console.error(`❌ [NEWSLETTER] Job ${jobId}: failed ${recipient.email} after ${MAX_RETRIES + 1} attempts:`, err?.message);
+          } else {
+            // Exponential backoff before retry
+            await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
+          }
+        }
+      }
+
+      // Random jitter delay between emails (anti-spam)
+      const jitter = sendRate.delayBetweenEmailsMs + Math.floor(Math.random() * 2000);
+      await new Promise(r => setTimeout(r, jitter));
+    }
+
+    // Batch cooldown (except last batch)
+    if (bIdx < batches.length - 1 && job.status !== 'cancelled') {
+      const cooldown = sendRate.delayBetweenBatchesMs + Math.floor(Math.random() * 5000);
+      console.log(`⏳ [NEWSLETTER] Job ${jobId}: batch cooldown ${Math.round(cooldown / 1000)}s`);
+      await new Promise(r => setTimeout(r, cooldown));
+    }
+  }
+
+  // Close the pooled transporter
+  closeBulkTransporter();
+
+  if (job.status === 'cancelled') {
+    console.log(`🚫 [NEWSLETTER] Job ${jobId} finished (cancelled). Sent: ${job.sent}, Failed: ${job.failed}`);
+  } else {
+    job.status = 'completed';
+    console.log(`✅ [NEWSLETTER] Job ${jobId} complete. Sent: ${job.sent}, Failed: ${job.failed}, Total: ${job.total}`);
+  }
+
+  // Audit log for the campaign
+  try {
+    await prisma.auditLog.create({
+      data: {
+        id: randomUUID(),
+        userId: adminUserId,
+        action: 'NEWSLETTER_CAMPAIGN_COMPLETE',
+        entity: 'newsletter',
+        entityId: jobId,
+        status: job.failed > 0 ? 'warning' : 'success',
+        metadata: {
+          subject: opts.subject,
+          sent: job.sent,
+          failed: job.failed,
+          total: job.total,
+          durationMs: Date.now() - job.startedAt,
+          failedRecipients: job.failedRecipients.slice(0, 50),
+        },
+      },
+    });
+  } catch {}
+
+  // Notify admin if there were failures
+  if (job.failed > 0) {
+    try {
+      const { sendEmail } = await import('@/lib/email');
+      const adminUser = await prisma.user.findUnique({
+        where: { id: adminUserId },
+        select: { email: true, name: true },
+      });
+      if (adminUser?.email) {
+        const duration = ((Date.now() - job.startedAt) / 1000 / 60).toFixed(1);
+        await sendEmail({
+          to: adminUser.email,
+          subject: `⚠️ Newsletter Campaign — ${job.failed} Failed of ${job.total}`,
+          html: `<p>Campaign "${opts.subject}" finished in ${duration} min.<br>Sent: ${job.sent} | Failed: ${job.failed} | Total: ${job.total}<br>Failed addresses: ${job.failedRecipients.slice(0, 20).join(', ')}${job.failedRecipients.length > 20 ? '...' : ''}</p>`,
+        });
+      }
+    } catch {}
+  }
 }
 
 export const adminRouter = createTRPCRouter({
@@ -9624,24 +9791,20 @@ export const adminRouter = createTRPCRouter({
         position: z.number(),
       })).optional(),
       sendRate: z.object({
-        emails: z.number(),
-        interval: z.number(),
+        batchSize: z.number().min(1).max(50).default(10),
+        delayBetweenEmailsMs: z.number().min(1000).max(30000).default(4000),
+        delayBetweenBatchesMs: z.number().min(5000).max(300000).default(45000),
+        warmUp: z.boolean().default(true),
       }),
     }))
     .mutation(async ({ input, ctx }) => {
       const { filter, membershipPackage, fromEmail, replyToEmail, subject, body, attachments, embeddedImages, sendRate } = input;
-      const adminUserId = ctx.session?.user?.id || 'admin';
-
-      // Validate SMTP is configured before starting the job
-      const { createBulkTransporter } = await import('@/lib/email');
-      try {
-        const { transporter } = await createBulkTransporter();
-        transporter.close();
-      } catch (smtpErr: any) {
-        throw new Error(`SMTP configuration error: ${smtpErr.message}`);
-      }
-
-      // Get recipients synchronously so we can return accurate total
+      
+      const jobId = randomUUID();
+      console.log(`\n📧 [NEWSLETTER] Job ${jobId} created`);
+      console.log('📋 [NEWSLETTER] Config:', { filter, membershipPackage, subject, sendRate });
+      
+      // Get recipients
       const where: any = {};
       if (filter === 'activated') {
         where.activated = true;
@@ -9655,166 +9818,58 @@ export const adminRouter = createTRPCRouter({
         where,
         select: { id: true, email: true, name: true }
       });
+
       const validRecipients = recipients.filter((r: any): r is typeof r & { email: string } => !!r.email);
       const total = validRecipients.length;
 
       if (total === 0) {
-        throw new Error("No recipients match the selected filter");
+        return { jobId, total: 0, message: 'No valid recipients found' };
       }
 
-      // Create job and return immediately
-      cleanupOldJobs();
-      const jobId = randomUUID();
-      const job: NewsletterJob = { id: jobId, status: "processing", sent: 0, failed: 0, total, startedAt: Date.now() };
-      newsletterJobs.set(jobId, job);
-
-      // Get company info before detaching
+      // Get company info for email template
       const companySettings = await prisma.adminSettings.findMany();
       const companyInfo = Object.fromEntries(
         companySettings.map((s: any) => [s.settingKey, { value: s.settingValue, description: s.description }])
       );
 
-      // ── Fire-and-forget: process emails in background ──────────
-      (async () => {
-        const startTime = Date.now();
-        console.log('\n📧 [NEWSLETTER] Campaign started (background)');
-        console.log('📋 [NEWSLETTER] Config:', { jobId, filter, membershipPackage, subject, sendRate, total });
+      const adminUserId = ctx.session?.user?.id || 'admin';
 
-        let bulkTransporter: any = null;
-        let bulkConfig: any = null;
+      // Initialize job state
+      newsletterJobs.set(jobId, {
+        jobId,
+        status: 'running',
+        sent: 0,
+        failed: 0,
+        total,
+        currentBatch: 0,
+        totalBatches: 0,
+        startedAt: Date.now(),
+        lastError: null,
+        failedRecipients: [],
+      });
 
-        try {
-          const bulk = await createBulkTransporter();
-          bulkTransporter = bulk.transporter;
-          bulkConfig = bulk.config;
-
-          const batchSize = sendRate.emails;
-          const intervalMs = sendRate.interval * 60 * 1000;
-
-          for (let i = 0; i < validRecipients.length; i += batchSize) {
-            const batch = validRecipients.slice(i, i + batchSize);
-            const batchNum = Math.floor(i / batchSize) + 1;
-            const totalBatches = Math.ceil(validRecipients.length / batchSize);
-
-            console.log(`\n📦 [NEWSLETTER] Processing batch ${batchNum}/${totalBatches} (${batch.length} emails)`);
-
-            for (const recipient of batch) {
-              const MAX_RETRIES = 3;
-              let retryCount = 0;
-              let emailSent = false;
-
-              while (retryCount < MAX_RETRIES && !emailSent) {
-                try {
-                  const emailHtml = buildNewsletterEmail({
-                    userName: recipient.name || 'User',
-                    subject,
-                    body,
-                    companyInfo,
-                    embeddedImages: embeddedImages || [],
-                  });
-
-                  await bulkTransporter.sendMail({
-                    from: fromEmail || `${bulkConfig.fromName} <${bulkConfig.fromEmail}>`,
-                    to: recipient.email,
-                    replyTo: replyToEmail || companyInfo.support_email?.value || 'support@beepagro.com',
-                    subject,
-                    html: emailHtml,
-                    attachments: attachments?.map(att => ({
-                      filename: att.filename,
-                      content: att.content.split(',')[1],
-                      encoding: 'base64' as const,
-                    })),
-                  });
-
-                  job.sent++;
-                  emailSent = true;
-
-                  if (job.sent % 10 === 0) {
-                    console.log(`✅ [NEWSLETTER] Progress: ${job.sent}/${total} sent (${job.failed} failed)`);
-                  }
-
-                  // Audit log (fire-and-forget, don't block sending)
-                  prisma.auditLog.create({
-                    data: {
-                      id: randomUUID(),
-                      userId: adminUserId,
-                      action: 'NEWSLETTER_SEND',
-                      entity: 'newsletter',
-                      entityId: recipient.id,
-                      metadata: { subject, recipientEmail: recipient.email, jobId, retryCount },
-                    },
-                  }).catch(() => {});
-                } catch (error) {
-                  retryCount++;
-                  if (retryCount >= MAX_RETRIES) {
-                    job.failed++;
-                    console.error(`Failed to send to ${recipient.email} after ${MAX_RETRIES} retries:`, error);
-
-                    prisma.auditLog.create({
-                      data: {
-                        id: randomUUID(),
-                        userId: adminUserId,
-                        action: 'NEWSLETTER_SEND_FAILED',
-                        entity: 'newsletter',
-                        entityId: recipient.id,
-                        status: 'failed',
-                        errorMessage: `Failed after ${MAX_RETRIES} retries`,
-                        metadata: { subject, recipientEmail: recipient.email, jobId, attempts: MAX_RETRIES },
-                      },
-                    }).catch(() => {});
-                  } else {
-                    await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
-                  }
-                }
-              }
-            }
-
-            // Wait before next batch (except for last batch)
-            if (i + batchSize < validRecipients.length) {
-              console.log(`⏳ [NEWSLETTER] Waiting ${sendRate.interval} minutes before next batch...`);
-              await new Promise(resolve => setTimeout(resolve, intervalMs));
-            }
-          }
-
-          job.status = "completed";
-          job.completedAt = Date.now();
-          const duration = ((Date.now() - startTime) / 1000 / 60).toFixed(2);
-          console.log(`\n✅ [NEWSLETTER] Campaign completed in ${duration} minutes`);
-          console.log(`📊 [NEWSLETTER] Final stats: ${job.sent} sent, ${job.failed} failed, ${total} total`);
-
-          // Notify admin of failures
-          if (job.failed > 0) {
-            try {
-              const { sendEmail } = await import('@/lib/email');
-              const adminUser = await prisma.user.findUnique({
-                where: { id: adminUserId },
-                select: { email: true, name: true }
-              });
-              if (adminUser?.email) {
-                await sendEmail({
-                  to: adminUser.email,
-                  subject: `⚠️ Newsletter Campaign Alert - ${job.failed} Failed Deliveries`,
-                  html: `<p>Newsletter "${subject}" completed: ${job.sent} sent, ${job.failed} failed out of ${total} recipients. Check admin audit logs for details.</p>`
-                });
-              }
-            } catch (emailError) {
-              console.error('❌ [NEWSLETTER] Failed to send admin notification:', emailError);
-            }
-          }
-        } catch (outerError: any) {
-          job.status = "failed";
-          job.error = outerError.message || "Unknown error";
-          job.completedAt = Date.now();
-          console.error('❌ [NEWSLETTER] Campaign failed:', outerError);
-        } finally {
-          if (bulkTransporter) {
-            try { bulkTransporter.close(); } catch (_) {}
-          }
+      // Fire and forget — process in background
+      processNewsletterInBackground(jobId, {
+        validRecipients,
+        fromEmail: fromEmail || companyInfo.company_email?.value || 'noreply@beepagro.com',
+        replyToEmail: replyToEmail || companyInfo.support_email?.value || 'support@beepagro.com',
+        subject,
+        body,
+        attachments,
+        embeddedImages,
+        companyInfo,
+        sendRate,
+        adminUserId,
+      }).catch(err => {
+        console.error(`❌ [NEWSLETTER] Job ${jobId} fatal error:`, err);
+        const job = newsletterJobs.get(jobId);
+        if (job) {
+          job.status = 'error';
+          job.lastError = err instanceof Error ? err.message : 'Unknown fatal error';
         }
-      })();
+      });
 
-      // Return immediately — client will poll getNewsletterProgress
-      return { jobId, total, status: "started" as const };
+      return { jobId, total, message: `Newsletter campaign started — ${total} recipients` };
     }),
 
   getNewsletterProgress: adminProcedure
@@ -9822,16 +9877,22 @@ export const adminRouter = createTRPCRouter({
     .query(({ input }) => {
       const job = newsletterJobs.get(input.jobId);
       if (!job) {
-        return { status: "not_found" as const, sent: 0, failed: 0, total: 0 };
+        return { status: 'not_found' as const, sent: 0, failed: 0, total: 0, currentBatch: 0, totalBatches: 0, lastError: null, failedRecipients: [] as string[], elapsedMs: 0 };
       }
       return {
-        status: job.status,
-        sent: job.sent,
-        failed: job.failed,
-        total: job.total,
-        error: job.error,
-        durationMs: job.completedAt ? job.completedAt - job.startedAt : Date.now() - job.startedAt,
+        ...job,
+        elapsedMs: Date.now() - job.startedAt,
       };
+    }),
+
+  cancelNewsletter: adminProcedure
+    .input(z.object({ jobId: z.string() }))
+    .mutation(({ input }) => {
+      const job = newsletterJobs.get(input.jobId);
+      if (!job) throw new Error('Job not found');
+      if (job.status !== 'running') throw new Error('Job is not running');
+      job.status = 'cancelled';
+      return { success: true };
     }),
 
   // ========================================
