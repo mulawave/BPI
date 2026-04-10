@@ -96,8 +96,25 @@ async function handleCron(req: NextRequest) {
         const isSuccess = verification.success && (!verification.status || successStates.includes(verification.status));
 
         if (!isSuccess) {
-          // Payment not successful at gateway — skip (may still be in progress or failed)
-          results.push({ reference: ref, type: payment.transactionType, status: "not_successful_at_gateway" });
+          // Distinguish gateway-confirmed failures from verification errors (network issues)
+          // When PaymentProcessor.verifyPayment catches an exception, it sets error + message fields.
+          // When the gateway API responds but the payment failed, no error field is set.
+          const isVerificationError = !!verification.error;
+
+          if (!isVerificationError) {
+            // Gateway confirmed this payment was not successful — mark rejected
+            await prisma.pendingPayment.update({
+              where: { id: payment.id },
+              data: {
+                status: "rejected",
+                reviewNotes: `Auto-rejected by recovery cron: gateway returned ${verification.status || "not_successful"} at ${now.toISOString()}`,
+              },
+            });
+            results.push({ reference: ref, type: payment.transactionType, status: "rejected_gateway_failed" });
+          } else {
+            // Could not reach gateway or verification error — skip, retry next run
+            results.push({ reference: ref, type: payment.transactionType, status: "verification_error_skipped" });
+          }
           continue;
         }
 
