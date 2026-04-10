@@ -75,6 +75,9 @@ export async function sendEmail(options: EmailOptions) {
       port: config.port,
       secure: config.secure,
       auth: config.auth,
+      connectionTimeout: 10000,  // 10s to establish connection
+      greetingTimeout: 10000,    // 10s for SMTP greeting
+      socketTimeout: 30000,      // 30s for socket inactivity
       // Add connection debugging
       debug: true,
       logger: true,
@@ -119,6 +122,28 @@ export async function sendEmail(options: EmailOptions) {
     });
     throw error;
   }
+}
+
+/**
+ * Create a reusable nodemailer transporter for bulk sending (newsletters).
+ * Caller should call transporter.close() when done.
+ */
+export async function createBulkTransporter() {
+  const config = await getSmtpConfig();
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: config.auth,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 30000,
+    pool: true,           // keep connection alive between messages
+    maxConnections: 3,    // up to 3 parallel connections
+    maxMessages: 100,     // recreate connection after 100 messages
+  });
+  await transporter.verify();
+  return { transporter, config };
 }
 
 export async function sendPasswordResetEmail(email: string, resetToken: string) {

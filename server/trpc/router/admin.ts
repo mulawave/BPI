@@ -45,6 +45,27 @@ const superAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next();
 });
 
+// ── In-memory newsletter job tracker ─────────────────────────────
+interface NewsletterJob {
+  id: string;
+  status: "processing" | "completed" | "failed";
+  sent: number;
+  failed: number;
+  total: number;
+  error?: string;
+  startedAt: number;
+  completedAt?: number;
+}
+const newsletterJobs = new Map<string, NewsletterJob>();
+// Auto-cleanup jobs older than 1 hour
+function cleanupOldJobs() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const now = Date.now();
+  for (const [id, job] of newsletterJobs) {
+    if (now - job.startedAt > ONE_HOUR) newsletterJobs.delete(id);
+  }
+}
+
 function generateSscCode(): string {
   const segment = (length: number) =>
     Array.from({ length }, () => Math.floor(Math.random() * 36).toString(36).toUpperCase()).join("");
@@ -9609,12 +9630,18 @@ export const adminRouter = createTRPCRouter({
     }))
     .mutation(async ({ input, ctx }) => {
       const { filter, membershipPackage, fromEmail, replyToEmail, subject, body, attachments, embeddedImages, sendRate } = input;
-      
-      const startTime = Date.now();
-      console.log('\n📧 [NEWSLETTER] Campaign started');
-      console.log('📋 [NEWSLETTER] Config:', { filter, membershipPackage, subject, sendRate });
-      
-      // Get recipients
+      const adminUserId = ctx.session?.user?.id || 'admin';
+
+      // Validate SMTP is configured before starting the job
+      const { createBulkTransporter } = await import('@/lib/email');
+      try {
+        const { transporter } = await createBulkTransporter();
+        transporter.close();
+      } catch (smtpErr: any) {
+        throw new Error(`SMTP configuration error: ${smtpErr.message}`);
+      }
+
+      // Get recipients synchronously so we can return accurate total
       const where: any = {};
       if (filter === 'activated') {
         where.activated = true;
@@ -9628,227 +9655,183 @@ export const adminRouter = createTRPCRouter({
         where,
         select: { id: true, email: true, name: true }
       });
-
-      // Filter out recipients without valid emails
       const validRecipients = recipients.filter((r: any): r is typeof r & { email: string } => !!r.email);
-
       const total = validRecipients.length;
-      let sent = 0;
-      let failed = 0;
-      
-      console.log(`👥 [NEWSLETTER] Recipients: ${total} users (${recipients.length - total} invalid emails filtered)`);
 
-      // Get company info for email template
+      if (total === 0) {
+        throw new Error("No recipients match the selected filter");
+      }
+
+      // Create job and return immediately
+      cleanupOldJobs();
+      const jobId = randomUUID();
+      const job: NewsletterJob = { id: jobId, status: "processing", sent: 0, failed: 0, total, startedAt: Date.now() };
+      newsletterJobs.set(jobId, job);
+
+      // Get company info before detaching
       const companySettings = await prisma.adminSettings.findMany();
       const companyInfo = Object.fromEntries(
         companySettings.map((s: any) => [s.settingKey, { value: s.settingValue, description: s.description }])
       );
 
-      // Process in batches based on send rate
-      const batchSize = sendRate.emails;
-      const intervalMs = sendRate.interval * 60 * 1000;
-      
-      console.log(`⚙️ [NEWSLETTER] Batch config: ${batchSize} emails per ${sendRate.interval} minutes`);
+      // ── Fire-and-forget: process emails in background ──────────
+      (async () => {
+        const startTime = Date.now();
+        console.log('\n📧 [NEWSLETTER] Campaign started (background)');
+        console.log('📋 [NEWSLETTER] Config:', { jobId, filter, membershipPackage, subject, sendRate, total });
 
-      for (let i = 0; i < validRecipients.length; i += batchSize) {
-        const batch = validRecipients.slice(i, i + batchSize);
-        const batchNum = Math.floor(i / batchSize) + 1;
-        const totalBatches = Math.ceil(validRecipients.length / batchSize);
-        
-        console.log(`\n📦 [NEWSLETTER] Processing batch ${batchNum}/${totalBatches} (${batch.length} emails)`);
-        
-        // Send batch
-        for (const recipient of batch) {
-          const MAX_RETRIES = 3;
-          let retryCount = 0;
-          let emailSent = false;
+        let bulkTransporter: any = null;
+        let bulkConfig: any = null;
 
-          while (retryCount < MAX_RETRIES && !emailSent) {
-            try {
-              const { sendEmail } = await import('@/lib/email');
-              
-              // Build email HTML with template
-              const emailHtml = buildNewsletterEmail({
-                userName: recipient.name || 'User',
-                subject,
-                body,
-                companyInfo,
-                embeddedImages: embeddedImages || [],
-              });
+        try {
+          const bulk = await createBulkTransporter();
+          bulkTransporter = bulk.transporter;
+          bulkConfig = bulk.config;
 
-              await sendEmail({
-                to: recipient.email,
-                from: fromEmail || companyInfo.company_email?.value || 'noreply@beepagro.com',
-                replyTo: replyToEmail || companyInfo.support_email?.value || 'support@beepagro.com',
-                subject,
-                html: emailHtml,
-                attachments: attachments?.map(att => ({
-                  filename: att.filename,
-                  content: att.content.split(',')[1],
-                  encoding: 'base64'
-                })),
-              });
+          const batchSize = sendRate.emails;
+          const intervalMs = sendRate.interval * 60 * 1000;
 
-              sent++;
-              emailSent = true;
-              
-              if (sent % 10 === 0) {
-                console.log(`✅ [NEWSLETTER] Progress: ${sent}/${total} sent (${failed} failed)`);
-              }
-              
-              // Log to audit
-              await prisma.auditLog.create({
-                data: {
-                  id: randomUUID(),
-                  userId: ctx.session?.user?.id || 'admin',
-                  action: 'NEWSLETTER_SEND',
-                  entity: 'newsletter',
-                  entityId: recipient.id,
-                  metadata: {
+          for (let i = 0; i < validRecipients.length; i += batchSize) {
+            const batch = validRecipients.slice(i, i + batchSize);
+            const batchNum = Math.floor(i / batchSize) + 1;
+            const totalBatches = Math.ceil(validRecipients.length / batchSize);
+
+            console.log(`\n📦 [NEWSLETTER] Processing batch ${batchNum}/${totalBatches} (${batch.length} emails)`);
+
+            for (const recipient of batch) {
+              const MAX_RETRIES = 3;
+              let retryCount = 0;
+              let emailSent = false;
+
+              while (retryCount < MAX_RETRIES && !emailSent) {
+                try {
+                  const emailHtml = buildNewsletterEmail({
+                    userName: recipient.name || 'User',
                     subject,
-                    recipientEmail: recipient.email,
-                    retryCount
+                    body,
+                    companyInfo,
+                    embeddedImages: embeddedImages || [],
+                  });
+
+                  await bulkTransporter.sendMail({
+                    from: fromEmail || `${bulkConfig.fromName} <${bulkConfig.fromEmail}>`,
+                    to: recipient.email,
+                    replyTo: replyToEmail || companyInfo.support_email?.value || 'support@beepagro.com',
+                    subject,
+                    html: emailHtml,
+                    attachments: attachments?.map(att => ({
+                      filename: att.filename,
+                      content: att.content.split(',')[1],
+                      encoding: 'base64' as const,
+                    })),
+                  });
+
+                  job.sent++;
+                  emailSent = true;
+
+                  if (job.sent % 10 === 0) {
+                    console.log(`✅ [NEWSLETTER] Progress: ${job.sent}/${total} sent (${job.failed} failed)`);
                   }
-                },
-              });
-            } catch (error) {
-              retryCount++;
-              if (retryCount >= MAX_RETRIES) {
-                failed++;
-                console.error(`Failed to send to ${recipient.email} after ${MAX_RETRIES} retries:`, error);
-                
-                // Log failed attempt to audit
-                await prisma.auditLog.create({
-                  data: {
-                    id: randomUUID(),
-                    userId: ctx.session?.user?.id || 'admin',
-                    action: 'NEWSLETTER_SEND_FAILED',
-                    entity: 'newsletter',
-                    entityId: recipient.id,
-                    status: 'failed',
-                    errorMessage: `Failed after ${MAX_RETRIES} retries`,
-                    metadata: {
-                      subject,
-                      recipientEmail: recipient.email,
-                      attempts: MAX_RETRIES
-                    }
-                  },
-                });
-              } else {
-                // Wait before retry (exponential backoff)
-                await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+
+                  // Audit log (fire-and-forget, don't block sending)
+                  prisma.auditLog.create({
+                    data: {
+                      id: randomUUID(),
+                      userId: adminUserId,
+                      action: 'NEWSLETTER_SEND',
+                      entity: 'newsletter',
+                      entityId: recipient.id,
+                      metadata: { subject, recipientEmail: recipient.email, jobId, retryCount },
+                    },
+                  }).catch(() => {});
+                } catch (error) {
+                  retryCount++;
+                  if (retryCount >= MAX_RETRIES) {
+                    job.failed++;
+                    console.error(`Failed to send to ${recipient.email} after ${MAX_RETRIES} retries:`, error);
+
+                    prisma.auditLog.create({
+                      data: {
+                        id: randomUUID(),
+                        userId: adminUserId,
+                        action: 'NEWSLETTER_SEND_FAILED',
+                        entity: 'newsletter',
+                        entityId: recipient.id,
+                        status: 'failed',
+                        errorMessage: `Failed after ${MAX_RETRIES} retries`,
+                        metadata: { subject, recipientEmail: recipient.email, jobId, attempts: MAX_RETRIES },
+                      },
+                    }).catch(() => {});
+                  } else {
+                    await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+                  }
+                }
               }
             }
+
+            // Wait before next batch (except for last batch)
+            if (i + batchSize < validRecipients.length) {
+              console.log(`⏳ [NEWSLETTER] Waiting ${sendRate.interval} minutes before next batch...`);
+              await new Promise(resolve => setTimeout(resolve, intervalMs));
+            }
+          }
+
+          job.status = "completed";
+          job.completedAt = Date.now();
+          const duration = ((Date.now() - startTime) / 1000 / 60).toFixed(2);
+          console.log(`\n✅ [NEWSLETTER] Campaign completed in ${duration} minutes`);
+          console.log(`📊 [NEWSLETTER] Final stats: ${job.sent} sent, ${job.failed} failed, ${total} total`);
+
+          // Notify admin of failures
+          if (job.failed > 0) {
+            try {
+              const { sendEmail } = await import('@/lib/email');
+              const adminUser = await prisma.user.findUnique({
+                where: { id: adminUserId },
+                select: { email: true, name: true }
+              });
+              if (adminUser?.email) {
+                await sendEmail({
+                  to: adminUser.email,
+                  subject: `⚠️ Newsletter Campaign Alert - ${job.failed} Failed Deliveries`,
+                  html: `<p>Newsletter "${subject}" completed: ${job.sent} sent, ${job.failed} failed out of ${total} recipients. Check admin audit logs for details.</p>`
+                });
+              }
+            } catch (emailError) {
+              console.error('❌ [NEWSLETTER] Failed to send admin notification:', emailError);
+            }
+          }
+        } catch (outerError: any) {
+          job.status = "failed";
+          job.error = outerError.message || "Unknown error";
+          job.completedAt = Date.now();
+          console.error('❌ [NEWSLETTER] Campaign failed:', outerError);
+        } finally {
+          if (bulkTransporter) {
+            try { bulkTransporter.close(); } catch (_) {}
           }
         }
+      })();
 
-        // Wait before next batch (except for last batch)
-        if (i + batchSize < validRecipients.length) {
-          console.log(`⏳ [NEWSLETTER] Waiting ${sendRate.interval} minutes before next batch...`);
-          await new Promise(resolve => setTimeout(resolve, intervalMs));
-        }
+      // Return immediately — client will poll getNewsletterProgress
+      return { jobId, total, status: "started" as const };
+    }),
+
+  getNewsletterProgress: adminProcedure
+    .input(z.object({ jobId: z.string() }))
+    .query(({ input }) => {
+      const job = newsletterJobs.get(input.jobId);
+      if (!job) {
+        return { status: "not_found" as const, sent: 0, failed: 0, total: 0 };
       }
-
-      const duration = ((Date.now() - startTime) / 1000 / 60).toFixed(2);
-      console.log(`\n✅ [NEWSLETTER] Campaign completed in ${duration} minutes`);
-      console.log(`📊 [NEWSLETTER] Final stats: ${sent} sent, ${failed} failed, ${total} total`);
-
-      // EMAIL NOTIFICATION: Alert admins if any failures occurred
-      if (failed > 0) {
-        try {
-          const { sendEmail } = await import('@/lib/email');
-          const adminUser = await prisma.user.findUnique({
-            where: { id: ctx.session?.user?.id || '' },
-            select: { email: true, name: true }
-          });
-
-          if (adminUser?.email) {
-            await sendEmail({
-              to: adminUser.email,
-              subject: `⚠️ Newsletter Campaign Alert - ${failed} Failed Deliveries`,
-              html: `
-                <!DOCTYPE html>
-                <html>
-                  <head>
-                    <style>
-                      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                      .header { background: linear-gradient(135deg, #dc2626 0%, #ea580c 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-                      .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-                      .alert-box { background: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin: 20px 0; border-radius: 5px; }
-                      .stats { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; }
-                      .stat-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
-                      .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
-                    </style>
-                  </head>
-                  <body>
-                    <div class="container">
-                      <div class="header">
-                        <h1>⚠️ Newsletter Campaign Alert</h1>
-                      </div>
-                      <div class="content">
-                        <p>Dear ${adminUser.name || 'Admin'},</p>
-                        
-                        <div class="alert-box">
-                          <strong>⚠️ Some newsletter emails failed to send!</strong>
-                        </div>
-
-                        <div class="stats">
-                          <div class="stat-row">
-                            <span>Subject:</span>
-                            <strong>${subject}</strong>
-                          </div>
-                          <div class="stat-row">
-                            <span>Successfully Sent:</span>
-                            <strong>${sent}</strong>
-                          </div>
-                          <div class="stat-row">
-                            <span>Failed:</span>
-                            <strong style="color: #dc2626;">${failed}</strong>
-                          </div>
-                          <div class="stat-row">
-                            <span>Total Recipients:</span>
-                            <strong>${total}</strong>
-                          </div>
-                          <div class="stat-row">
-                            <span>Duration:</span>
-                            <strong>${duration} minutes</strong>
-                          </div>
-                          <div class="stat-row">
-                            <span>Success Rate:</span>
-                            <strong>${((sent / total) * 100).toFixed(1)}%</strong>
-                          </div>
-                        </div>
-
-                        <p>Please check the admin audit logs for detailed failure information. Failed recipients may need to be contacted manually or added to a retry queue.</p>
-
-                        <p><strong>Possible causes:</strong></p>
-                        <ul>
-                          <li>Invalid email addresses in the database</li>
-                          <li>SMTP server rate limiting or temporary failures</li>
-                          <li>Recipient mail servers blocking or rejecting messages</li>
-                          <li>Network connectivity issues</li>
-                        </ul>
-                        
-                        <p>Best regards,<br>BPI System Notifications</p>
-                      </div>
-                      <div class="footer">
-                        <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
-                      </div>
-                    </div>
-                  </body>
-                </html>
-              `
-            });
-            console.log('✅ [NEWSLETTER] Admin failure notification sent');
-          }
-        } catch (emailError) {
-          console.error('❌ [NEWSLETTER] Failed to send admin notification email:', emailError);
-          // Don't fail the newsletter response if admin notification fails
-        }
-      }
-
-      return { sent, failed, total };
+      return {
+        status: job.status,
+        sent: job.sent,
+        failed: job.failed,
+        total: job.total,
+        error: job.error,
+        durationMs: job.completedAt ? job.completedAt - job.startedAt : Date.now() - job.startedAt,
+      };
     }),
 
   // ========================================

@@ -30,6 +30,7 @@ export default function NewsletterPage() {
   const [paused, setPaused] = useState(false);
   const [cancelled, setCancelled] = useState(false);
   const [progress, setProgress] = useState({ sent: 0, total: 0, failed: 0 });
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   const attachmentRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
@@ -41,15 +42,43 @@ export default function NewsletterPage() {
     membershipPackage: selectedFilter === "membership" ? membershipFilter : undefined
   });
 
-  const sendNewsletterMutation = api.admin.sendNewsletter.useMutation({
-    onSuccess: (data: { sent: number; failed: number; total: number }) => {
-      setProgress({ sent: data.sent, total: data.total, failed: data.failed });
+  // Poll for progress while a job is active
+  const { data: jobProgress } = api.admin.getNewsletterProgress.useQuery(
+    { jobId: activeJobId! },
+    {
+      enabled: !!activeJobId && step === "sending",
+      refetchInterval: 2000, // poll every 2 seconds
+    }
+  );
+
+  // React to polling updates
+  useEffect(() => {
+    if (!jobProgress || !activeJobId) return;
+    setProgress({ sent: jobProgress.sent, total: jobProgress.total, failed: jobProgress.failed });
+
+    if (jobProgress.status === "completed") {
       setStep("complete");
-      toast.success(`Newsletter sent to ${data.sent} recipients`);
+      setSending(false);
+      setActiveJobId(null);
+      toast.success(`Newsletter sent to ${jobProgress.sent} recipients`);
+    } else if (jobProgress.status === "failed") {
+      setStep("complete");
+      setSending(false);
+      setActiveJobId(null);
+      toast.error(jobProgress.error || "Newsletter campaign failed");
+    }
+  }, [jobProgress, activeJobId]);
+
+  const sendNewsletterMutation = api.admin.sendNewsletter.useMutation({
+    onSuccess: (data: { jobId: string; total: number; status: string }) => {
+      setActiveJobId(data.jobId);
+      setProgress({ sent: 0, total: data.total, failed: 0 });
+      toast.success(`Campaign started — sending to ${data.total} recipients`);
     },
     onError: (error: any) => {
-      toast.error(`Failed to send newsletter: ${error.message}`);
+      toast.error(`Failed to start newsletter: ${error.message}`);
       setSending(false);
+      setStep("compose");
     }
   });
 
