@@ -100,6 +100,8 @@ async function processNewsletterInBackground(
   const job = newsletterJobs.get(jobId);
   if (!job) return;
 
+  const isCancelled = () => (newsletterJobs.get(jobId)?.status as string) === 'cancelled';
+
   const { validRecipients, fromEmail, replyToEmail, subject, body, attachments, embeddedImages, companyInfo, sendRate, adminUserId } = opts;
   const { sendBulkEmail, closeBulkTransporter } = await import('@/lib/email');
 
@@ -130,7 +132,7 @@ async function processNewsletterInBackground(
 
   for (let bIdx = 0; bIdx < batches.length; bIdx++) {
     // Check for cancellation
-    if (job.status === 'cancelled') {
+    if (isCancelled()) {
       console.log(`🚫 [NEWSLETTER] Job ${jobId} cancelled at batch ${bIdx + 1}`);
       break;
     }
@@ -140,7 +142,7 @@ async function processNewsletterInBackground(
     console.log(`📦 [NEWSLETTER] Job ${jobId}: batch ${bIdx + 1}/${batches.length} (${batch.length} emails)`);
 
     for (const recipient of batch) {
-      if (job.status === 'cancelled') break;
+      if (isCancelled()) break;
 
       const MAX_RETRIES = 2;
       let sent = false;
@@ -185,7 +187,7 @@ async function processNewsletterInBackground(
     }
 
     // Batch cooldown (except last batch)
-    if (bIdx < batches.length - 1 && job.status !== 'cancelled') {
+    if (bIdx < batches.length - 1 && !isCancelled()) {
       const cooldown = sendRate.delayBetweenBatchesMs + Math.floor(Math.random() * 5000);
       console.log(`⏳ [NEWSLETTER] Job ${jobId}: batch cooldown ${Math.round(cooldown / 1000)}s`);
       await new Promise(r => setTimeout(r, cooldown));
@@ -195,7 +197,7 @@ async function processNewsletterInBackground(
   // Close the pooled transporter
   closeBulkTransporter();
 
-  if (job.status === 'cancelled') {
+  if (isCancelled()) {
     console.log(`🚫 [NEWSLETTER] Job ${jobId} finished (cancelled). Sent: ${job.sent}, Failed: ${job.failed}`);
   } else {
     job.status = 'completed';
@@ -6460,6 +6462,11 @@ export const adminRouter = createTRPCRouter({
       }
     });
 
+    // Pending KYC submissions
+    const pendingKyc = await prisma.kycSubmission.count({
+      where: { status: { in: ["pending", "under_review"] } },
+    });
+
     // Total revenue (last 30 days)
     const revenueTransactions = await prisma.transaction.aggregate({
       where: {
@@ -6516,6 +6523,7 @@ export const adminRouter = createTRPCRouter({
       usersChange,
       pendingPayments,
       pendingWithdrawals,
+      pendingKyc,
       totalRevenue,
       revenueChange,
       activeMembers,

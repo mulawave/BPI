@@ -179,6 +179,7 @@ export default function AdminLayout({
       <AdminSidebar 
         pendingCount={dashboardStats?.pendingPayments || 0}
         pendingWithdrawalsCount={dashboardStats?.pendingWithdrawals || 0}
+        pendingKycCount={dashboardStats?.pendingKyc || 0}
       />
       
       <div className="lg:pl-[280px]">

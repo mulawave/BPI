@@ -283,9 +283,10 @@ const navigation = [
 interface AdminSidebarProps {
   pendingCount?: number;
   pendingWithdrawalsCount?: number;
+  pendingKycCount?: number;
 }
 
-export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount = 0 }: AdminSidebarProps) {
+export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount = 0, pendingKycCount = 0 }: AdminSidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
@@ -341,9 +342,9 @@ export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount
             {navigation.map((item) => {
               const isActive = pathname === item.href || item.submenu?.some(sub => pathname === sub.href);
               const Icon = item.icon;
-              const showBadge = item.badge === "pending" && pendingCount > 0;
-              const showWithdrawalBadge = item.name === "Withdrawals" && pendingWithdrawalsCount > 0;
-              const badgeCount = item.badge === "pending" ? pendingCount : item.name === "Withdrawals" ? pendingWithdrawalsCount : 0;
+              const itemBadgeCount = item.name === "Payments" ? pendingCount : item.name === "KYC" ? pendingKycCount : item.name === "Withdrawals" ? pendingWithdrawalsCount : 0;
+              const showBadge = (item.badge === "pending" || item.name === "Withdrawals") && itemBadgeCount > 0;
+              const badgeCount = itemBadgeCount;
               const isPending = pendingHref === item.href;
               const isExpanded = expandedMenus.includes(item.name);
               const hasSubmenu = !!item.submenu;
@@ -390,7 +391,7 @@ export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount
                                 Loading
                               </span>
                             )}
-                            {(showBadge || showWithdrawalBadge) && badgeCount > 0 && (
+                            {showBadge && badgeCount > 0 && (
                               <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white">
                                 {badgeCount}
                               </span>
@@ -407,7 +408,7 @@ export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount
                         </div>
                       </>
                     )}
-                    {collapsed && (showBadge || showWithdrawalBadge) && badgeCount > 0 && (
+                    {collapsed && showBadge && badgeCount > 0 && (
                       <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
                         {badgeCount > 9 ? "9+" : badgeCount}
                       </span>

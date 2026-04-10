@@ -48,7 +48,12 @@ async function handleCron(req: NextRequest) {
   }
 
   const authHeader = req.headers.get("authorization");
-  if (!authHeader || authHeader !== `Bearer ${CRON_SECRET}`) {
+  const querySecret = req.nextUrl.searchParams.get("secret");
+  const isAuthorized =
+    (authHeader && authHeader === `Bearer ${CRON_SECRET}`) ||
+    (querySecret && querySecret === CRON_SECRET);
+
+  if (!isAuthorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
