@@ -57,6 +57,26 @@ function normalizeSsc(input: string): string {
 }
 
 // ── Newsletter Background Job Tracking ──────────────────────────────
+interface SentEmailEntry {
+  email: string;
+  name: string;
+  sentAt: number;
+}
+
+interface FailedEmailEntry {
+  email: string;
+  name: string;
+  error: string;
+  failedAt: number;
+}
+
+interface ErrorLogEntry {
+  message: string;
+  email: string;
+  timestamp: number;
+  attempt: number;
+}
+
 interface NewsletterJobState {
   jobId: string;
   status: 'running' | 'completed' | 'error' | 'cancelled';
@@ -67,7 +87,24 @@ interface NewsletterJobState {
   totalBatches: number;
   startedAt: number;
   lastError: string | null;
-  failedRecipients: string[];
+  // Granular tracking
+  currentEmail: string | null;
+  sentEmails: SentEmailEntry[];
+  failedEmails: FailedEmailEntry[];
+  errorLog: ErrorLogEntry[];
+  failedRecipients: string[]; // kept for backward compat
+  // Resume support
+  campaignConfig: {
+    filter: string;
+    membershipPackage?: string;
+    fromEmail: string;
+    replyToEmail: string;
+    subject: string;
+    body: string;
+    sendRate: { batchSize: number; delayBetweenEmailsMs: number; delayBetweenBatchesMs: number; warmUp: boolean };
+  } | null;
+  allRecipientIds: string[];
+  sentRecipientIds: Set<string>;
 }
 
 const newsletterJobs = new Map<string, NewsletterJobState>();
@@ -144,6 +181,8 @@ async function processNewsletterInBackground(
     for (const recipient of batch) {
       if (isCancelled()) break;
 
+      job.currentEmail = recipient.email;
+
       const MAX_RETRIES = 2;
       let sent = false;
 
@@ -167,19 +206,27 @@ async function processNewsletterInBackground(
           });
 
           job.sent++;
+          job.sentEmails.push({ email: recipient.email, name: recipient.name || 'User', sentAt: Date.now() });
+          job.sentRecipientIds.add(recipient.id);
           sent = true;
         } catch (err: any) {
+          const errMsg = err?.message || 'Unknown';
+          job.errorLog.push({ message: errMsg, email: recipient.email, timestamp: Date.now(), attempt: attempt + 1 });
+
           if (attempt >= MAX_RETRIES) {
             job.failed++;
             job.failedRecipients.push(recipient.email);
-            job.lastError = err?.message || 'Unknown';
-            console.error(`❌ [NEWSLETTER] Job ${jobId}: failed ${recipient.email} after ${MAX_RETRIES + 1} attempts:`, err?.message);
+            job.failedEmails.push({ email: recipient.email, name: recipient.name || 'User', error: errMsg, failedAt: Date.now() });
+            job.lastError = errMsg;
+            console.error(`❌ [NEWSLETTER] Job ${jobId}: failed ${recipient.email} after ${MAX_RETRIES + 1} attempts:`, errMsg);
           } else {
             // Exponential backoff before retry
             await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
           }
         }
       }
+
+      job.currentEmail = null;
 
       // Random jitter delay between emails (anti-spam)
       const jitter = sendRate.delayBetweenEmailsMs + Math.floor(Math.random() * 2000);
@@ -9841,6 +9888,8 @@ export const adminRouter = createTRPCRouter({
       );
 
       const adminUserId = ctx.session?.user?.id || 'admin';
+      const resolvedFromEmail = fromEmail || companyInfo.company_email?.value || 'noreply@beepagro.com';
+      const resolvedReplyTo = replyToEmail || companyInfo.support_email?.value || 'support@beepagro.com';
 
       // Initialize job state
       newsletterJobs.set(jobId, {
@@ -9853,14 +9902,29 @@ export const adminRouter = createTRPCRouter({
         totalBatches: 0,
         startedAt: Date.now(),
         lastError: null,
+        currentEmail: null,
+        sentEmails: [],
+        failedEmails: [],
+        errorLog: [],
         failedRecipients: [],
+        campaignConfig: {
+          filter,
+          membershipPackage,
+          fromEmail: resolvedFromEmail,
+          replyToEmail: resolvedReplyTo,
+          subject,
+          body,
+          sendRate,
+        },
+        allRecipientIds: validRecipients.map(r => r.id),
+        sentRecipientIds: new Set(),
       });
 
       // Fire and forget — process in background
       processNewsletterInBackground(jobId, {
         validRecipients,
-        fromEmail: fromEmail || companyInfo.company_email?.value || 'noreply@beepagro.com',
-        replyToEmail: replyToEmail || companyInfo.support_email?.value || 'support@beepagro.com',
+        fromEmail: resolvedFromEmail,
+        replyToEmail: resolvedReplyTo,
         subject,
         body,
         attachments,
@@ -9881,15 +9945,52 @@ export const adminRouter = createTRPCRouter({
     }),
 
   getNewsletterProgress: adminProcedure
-    .input(z.object({ jobId: z.string() }))
+    .input(z.object({ jobId: z.string(), sentSince: z.number().optional() }))
     .query(({ input }) => {
       const job = newsletterJobs.get(input.jobId);
       if (!job) {
-        return { status: 'not_found' as const, sent: 0, failed: 0, total: 0, currentBatch: 0, totalBatches: 0, lastError: null, failedRecipients: [] as string[], elapsedMs: 0 };
+        return {
+          status: 'not_found' as const,
+          sent: 0, failed: 0, total: 0,
+          currentBatch: 0, totalBatches: 0,
+          lastError: null,
+          currentEmail: null,
+          sentEmails: [] as SentEmailEntry[],
+          failedEmails: [] as FailedEmailEntry[],
+          errorLog: [] as ErrorLogEntry[],
+          failedRecipients: [] as string[],
+          elapsedMs: 0,
+          canResume: false,
+        };
       }
+      // Only return sent emails since the given timestamp (incremental updates)
+      const sentSince = input.sentSince || 0;
+      const newSentEmails = sentSince > 0
+        ? job.sentEmails.filter(e => e.sentAt > sentSince)
+        : job.sentEmails.slice(-50); // Initial load: last 50
+      const newFailedEmails = sentSince > 0
+        ? job.failedEmails.filter(e => e.failedAt > sentSince)
+        : job.failedEmails;
+      const newErrorLog = sentSince > 0
+        ? job.errorLog.filter(e => e.timestamp > sentSince)
+        : job.errorLog.slice(-100);
+
       return {
-        ...job,
+        status: job.status,
+        jobId: job.jobId,
+        sent: job.sent,
+        failed: job.failed,
+        total: job.total,
+        currentBatch: job.currentBatch,
+        totalBatches: job.totalBatches,
+        lastError: job.lastError,
+        currentEmail: job.currentEmail,
+        sentEmails: newSentEmails,
+        failedEmails: newFailedEmails,
+        errorLog: newErrorLog,
+        failedRecipients: job.failedRecipients,
         elapsedMs: Date.now() - job.startedAt,
+        canResume: (job.status === 'cancelled' || job.status === 'error') && job.sent < job.total,
       };
     }),
 
@@ -9900,7 +10001,93 @@ export const adminRouter = createTRPCRouter({
       if (!job) throw new Error('Job not found');
       if (job.status !== 'running') throw new Error('Job is not running');
       job.status = 'cancelled';
-      return { success: true };
+      return { success: true, sent: job.sent, remaining: job.total - job.sent - job.failed };
+    }),
+
+  resumeNewsletter: adminProcedure
+    .input(z.object({ jobId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const oldJob = newsletterJobs.get(input.jobId);
+      if (!oldJob) throw new Error('Job not found');
+      if (oldJob.status === 'running') throw new Error('Job is still running');
+      if (!oldJob.campaignConfig) throw new Error('Cannot resume — campaign config not available');
+
+      const alreadySentIds = oldJob.sentRecipientIds;
+      const config = oldJob.campaignConfig;
+
+      // Fetch remaining recipients (exclude already sent)
+      const allRecipientIds = oldJob.allRecipientIds.filter(id => !alreadySentIds.has(id));
+      if (allRecipientIds.length === 0) {
+        throw new Error('All recipients have already been sent to');
+      }
+
+      const remainingRecipients = await prisma.user.findMany({
+        where: { id: { in: allRecipientIds } },
+        select: { id: true, email: true, name: true },
+      });
+
+      const validRecipients = remainingRecipients.filter((r: any): r is typeof r & { email: string } => !!r.email);
+      if (validRecipients.length === 0) {
+        throw new Error('No valid recipients remaining');
+      }
+
+      // Get company info
+      const companySettings = await prisma.adminSettings.findMany();
+      const companyInfo = Object.fromEntries(
+        companySettings.map((s: any) => [s.settingKey, { value: s.settingValue, description: s.description }])
+      );
+
+      const newJobId = randomUUID();
+      const adminUserId = ctx.session?.user?.id || 'admin';
+
+      // Create new job that carries forward the sent data from old job
+      newsletterJobs.set(newJobId, {
+        jobId: newJobId,
+        status: 'running',
+        sent: oldJob.sent,
+        failed: 0,
+        total: oldJob.total,
+        currentBatch: 0,
+        totalBatches: 0,
+        startedAt: Date.now(),
+        lastError: null,
+        currentEmail: null,
+        sentEmails: [...oldJob.sentEmails],
+        failedEmails: [],
+        errorLog: [],
+        failedRecipients: [],
+        campaignConfig: config,
+        allRecipientIds: oldJob.allRecipientIds,
+        sentRecipientIds: new Set(alreadySentIds),
+      });
+
+      // Mark old job so we don't try to resume it again
+      oldJob.status = 'completed';
+
+      processNewsletterInBackground(newJobId, {
+        validRecipients,
+        fromEmail: config.fromEmail,
+        replyToEmail: config.replyToEmail,
+        subject: config.subject,
+        body: config.body,
+        companyInfo,
+        sendRate: config.sendRate,
+        adminUserId,
+      }).catch(err => {
+        console.error(`❌ [NEWSLETTER] Resumed job ${newJobId} fatal error:`, err);
+        const job = newsletterJobs.get(newJobId);
+        if (job) {
+          job.status = 'error';
+          job.lastError = err instanceof Error ? err.message : 'Unknown fatal error';
+        }
+      });
+
+      return {
+        jobId: newJobId,
+        remaining: validRecipients.length,
+        alreadySent: oldJob.sent,
+        message: `Resumed campaign — ${validRecipients.length} remaining (${oldJob.sent} already sent)`,
+      };
     }),
 
   // ========================================

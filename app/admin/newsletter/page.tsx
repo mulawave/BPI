@@ -85,7 +85,6 @@ export default function NewsletterPage() {
   const [sentEmails, setSentEmails] = useState<SentEntry[]>([]);
   const [failedEmails, setFailedEmails] = useState<FailedEntry[]>([]);
   const [errorLog, setErrorLog] = useState<ErrorEntry[]>([]);
-  const [lastPollTimestamp, setLastPollTimestamp] = useState(0);
 
   // Monitor panel state
   const [monitorTab, setMonitorTab] = useState<MonitorTab>("live");
@@ -103,7 +102,7 @@ export default function NewsletterPage() {
 
   // Poll progress every 2s while job is running (or on complete screen to keep data)
   const progressQuery = api.admin.getNewsletterProgress.useQuery(
-    { jobId: jobId || "", sentSince: lastPollTimestamp },
+    { jobId: jobId || "" },
     { enabled: !!jobId && (step === "sending" || step === "complete"), refetchInterval: step === "sending" ? 2000 : false }
   );
 
@@ -124,14 +123,13 @@ export default function NewsletterPage() {
         canResume: d.canResume,
       });
 
-      // Accumulate new sent emails
+      // Accumulate new sent emails (backend returns last 50, frontend deduplicates)
       if (d.sentEmails && d.sentEmails.length > 0) {
         setSentEmails(prev => {
-          const existingTimes = new Set(prev.map(e => `${e.email}-${e.sentAt}`));
-          const newEntries = d.sentEmails.filter((e: SentEntry) => !existingTimes.has(`${e.email}-${e.sentAt}`));
-          return [...prev, ...newEntries];
+          const existingKeys = new Set(prev.map(e => `${e.email}-${e.sentAt}`));
+          const newEntries = d.sentEmails.filter((e: SentEntry) => !existingKeys.has(`${e.email}-${e.sentAt}`));
+          return newEntries.length > 0 ? [...prev, ...newEntries] : prev;
         });
-        setLastPollTimestamp(Math.max(...d.sentEmails.map((e: SentEntry) => e.sentAt)));
       }
 
       // Accumulate failed emails
@@ -180,7 +178,6 @@ export default function NewsletterPage() {
         setSentEmails([]);
         setFailedEmails([]);
         setErrorLog([]);
-        setLastPollTimestamp(0);
         toast.success(`Campaign started — ${data.total} recipients`);
       } else {
         toast.error(data.message || "No recipients");
@@ -204,7 +201,6 @@ export default function NewsletterPage() {
       setStep("sending");
       setFailedEmails([]);
       setErrorLog([]);
-      setLastPollTimestamp(0);
       setProgress(p => ({ ...p, status: "running", failed: 0, canResume: false }));
       toast.success(data.message);
     },
@@ -384,7 +380,6 @@ export default function NewsletterPage() {
                   setSentEmails([]);
                   setFailedEmails([]);
                   setErrorLog([]);
-                  setLastPollTimestamp(0);
                   setSubject("");
                   setBody("");
                   setAttachments([]);
