@@ -10315,7 +10315,7 @@ export const adminRouter = createTRPCRouter({
           totalRecipients: campaign.totalRecipients,
           sentCount: campaign.sentCount,
           sentRecipientIds: Array.from(sentIds),
-          allRecipientIds: campaign.allRecipientIds,
+          allRecipientIds: (campaign.allRecipientIds ?? []) as any,
         },
       });
 
