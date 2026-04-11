@@ -100,6 +100,34 @@ export default function NewsletterPage() {
     membershipPackage: selectedFilter === "membership" ? membershipFilter : undefined
   });
 
+  // Auto-restore: check for active/paused campaign on page load
+  const { data: activeCampaign } = api.admin.getActiveNewsletterCampaign.useQuery(undefined, {
+    enabled: !jobId, // only run when we don't already have a job
+  });
+
+  // On mount, if there's an active campaign from DB, restore state so banner appears
+  const [hasAutoRestored, setHasAutoRestored] = useState(false);
+  useEffect(() => {
+    if (activeCampaign && !hasAutoRestored && !jobId) {
+      setHasAutoRestored(true);
+      setJobId(activeCampaign.jobId);
+      setSubject(activeCampaign.subject);
+      setProgress(p => ({
+        ...p,
+        sent: activeCampaign.sentCount,
+        total: activeCampaign.totalRecipients,
+        failed: activeCampaign.failedCount,
+        status: activeCampaign.status,
+        elapsedMs: activeCampaign.elapsedMs,
+        lastError: activeCampaign.lastError,
+      }));
+      // If running, jump straight to monitor
+      if (activeCampaign.status === "running") {
+        setStep("sending");
+      }
+    }
+  }, [activeCampaign, hasAutoRestored, jobId]);
+
   // Poll progress every 2s while job is running, one final refetch on complete
   const progressQuery = api.admin.getNewsletterProgress.useQuery(
     { jobId: jobId || "" },
@@ -785,6 +813,39 @@ export default function NewsletterPage() {
         </div>
       </motion.div>
 
+      {/* Campaign History — shown immediately so user can find paused campaigns */}
+      <CampaignHistory
+        onViewCampaign={(campaign) => {
+          // If it's running in memory, go to sending screen
+          if (campaign.jobId && campaign.status === "running") {
+            setJobId(campaign.jobId);
+            setStep("sending");
+          } else {
+            // Load campaign data into the monitor for viewing
+            setJobId(campaign.jobId);
+            setProgress({
+              sent: campaign.sentCount,
+              total: campaign.totalRecipients,
+              failed: campaign.failedCount,
+              currentBatch: 0,
+              totalBatches: 0,
+              status: campaign.status,
+              elapsedMs: campaign.elapsedMs,
+              failedRecipients: [],
+              lastError: campaign.lastError,
+              currentEmail: null,
+              canResume: false,
+            });
+            setSubject(campaign.subject);
+            setStep("complete");
+          }
+        }}
+        onResumeCampaign={(campaignId) => {
+          resumeFromDbMutation.mutate({ campaignId });
+        }}
+        isResuming={resumeFromDbMutation.isPending}
+      />
+
       {/* User Guide */}
       <AdminPageGuide
         title="Newsletter Campaign Guide"
@@ -880,39 +941,6 @@ export default function NewsletterPage() {
           </div>
         </div>
       </div>
-
-      {/* Campaign History */}
-      <CampaignHistory
-        onViewCampaign={(campaign) => {
-          // If it's running in memory, go to sending screen
-          if (campaign.jobId && campaign.status === "running") {
-            setJobId(campaign.jobId);
-            setStep("sending");
-          } else {
-            // Load campaign data into the monitor for viewing
-            setJobId(campaign.jobId);
-            setProgress({
-              sent: campaign.sentCount,
-              total: campaign.totalRecipients,
-              failed: campaign.failedCount,
-              currentBatch: 0,
-              totalBatches: 0,
-              status: campaign.status,
-              elapsedMs: campaign.elapsedMs,
-              failedRecipients: [],
-              lastError: campaign.lastError,
-              currentEmail: null,
-              canResume: false,
-            });
-            setSubject(campaign.subject);
-            setStep("complete");
-          }
-        }}
-        onResumeCampaign={(campaignId) => {
-          resumeFromDbMutation.mutate({ campaignId });
-        }}
-        isResuming={resumeFromDbMutation.isPending}
-      />
 
       {/* Main Content - Split Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1297,10 +1325,9 @@ function CampaignHistory({
   onResumeCampaign: (campaignId: string) => void;
   isResuming: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const { data, isLoading } = api.admin.getNewsletterCampaigns.useQuery(
-    { limit: 10 },
-    { enabled: expanded }
+    { limit: 10 }
   );
 
   const campaigns = data?.campaigns || [];
@@ -1365,12 +1392,17 @@ function CampaignHistory({
                     const cfg = statusConfig[c.status] || statusConfig.completed;
                     const StatusIcon = cfg.icon;
                     const canResume = (c.status === "cancelled" || c.status === "error") && c.sentCount < c.totalRecipients;
+                    const isActive = c.status === "running" || c.status === "cancelled";
                     const successRate = c.sentCount > 0 ? Math.round((c.sentCount / (c.sentCount + c.failedCount)) * 100) : 0;
 
                     return (
                       <div
                         key={c.id}
-                        className="px-5 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                        className={`px-5 py-3 transition-colors ${
+                          isActive
+                            ? "bg-yellow-50/60 dark:bg-yellow-900/10 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 border-l-4 border-l-yellow-400 dark:border-l-yellow-600"
+                            : "hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                        }`}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3 min-w-0 flex-1">

@@ -10146,6 +10146,44 @@ export const adminRouter = createTRPCRouter({
       };
     }),
 
+  // ── Active Campaign (for auto-restore on page load) ────────────────
+  getActiveNewsletterCampaign: adminProcedure
+    .query(async () => {
+      // First check in-memory for any running job
+      for (const [, job] of newsletterJobs) {
+        if (job.status === 'running') {
+          return {
+            id: '',
+            jobId: job.jobId,
+            status: 'running' as const,
+            subject: job.campaignConfig?.subject || 'Newsletter',
+            totalRecipients: job.total,
+            sentCount: job.sent,
+            failedCount: job.failed,
+            elapsedMs: Date.now() - job.startedAt,
+            lastError: job.lastError,
+          };
+        }
+      }
+      // Fall back to DB — find most recent non-completed campaign
+      const campaign = await prisma.newsletterCampaign.findFirst({
+        where: { status: { in: ['running', 'cancelled'] } },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          jobId: true,
+          status: true,
+          subject: true,
+          totalRecipients: true,
+          sentCount: true,
+          failedCount: true,
+          elapsedMs: true,
+          lastError: true,
+        },
+      });
+      return campaign;
+    }),
+
   // ── Campaign History ──────────────────────────────────────────────
   getNewsletterCampaigns: adminProcedure
     .input(z.object({
