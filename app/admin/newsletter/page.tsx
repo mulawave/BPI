@@ -7,7 +7,8 @@ import {
   Mail, Users, Send, Filter, Monitor, Tablet, Smartphone,
   Upload, X, FileText, Image as ImageIcon, Check, AlertCircle,
   Settings, BarChart3, Loader2, CheckCircle, XCircle, Clock, Eye,
-  Shield, Zap, Gauge, StopCircle, RotateCcw
+  Shield, Zap, Gauge, StopCircle, RotateCcw, Play, Terminal,
+  ChevronDown, ChevronUp, Activity, TrendingUp, ArrowRight, Bug
 } from "lucide-react";
 import toast from "react-hot-toast";
 import AdminPageGuide from "@/components/admin/AdminPageGuide";
@@ -15,6 +16,11 @@ import AdminPageGuide from "@/components/admin/AdminPageGuide";
 type PreviewMode = "desktop" | "tablet" | "mobile";
 type FilterType = "all" | "activated" | "non-activated" | "membership";
 type SpamPreset = "conservative" | "moderate" | "aggressive";
+type MonitorTab = "live" | "sent" | "failed" | "errors";
+
+interface SentEntry { email: string; name: string; sentAt: number }
+interface FailedEntry { email: string; name: string; error: string; failedAt: number }
+interface ErrorEntry { message: string; email: string; timestamp: number; attempt: number }
 
 const SPAM_PRESETS: Record<SpamPreset, { batchSize: number; delayBetweenEmailsMs: number; delayBetweenBatchesMs: number; warmUp: boolean; label: string; description: string; icon: typeof Shield }> = {
   conservative: {
@@ -65,7 +71,25 @@ export default function NewsletterPage() {
 
   // Job tracking
   const [jobId, setJobId] = useState<string | null>(null);
-  const [progress, setProgress] = useState({ sent: 0, total: 0, failed: 0, currentBatch: 0, totalBatches: 0, status: "" as string, elapsedMs: 0, failedRecipients: [] as string[], lastError: null as string | null });
+  const [progress, setProgress] = useState({
+    sent: 0, total: 0, failed: 0,
+    currentBatch: 0, totalBatches: 0,
+    status: "" as string, elapsedMs: 0,
+    failedRecipients: [] as string[],
+    lastError: null as string | null,
+    currentEmail: null as string | null,
+    canResume: false,
+  });
+
+  // Per-email tracking (accumulated from incremental polls)
+  const [sentEmails, setSentEmails] = useState<SentEntry[]>([]);
+  const [failedEmails, setFailedEmails] = useState<FailedEntry[]>([]);
+  const [errorLog, setErrorLog] = useState<ErrorEntry[]>([]);
+  const [lastPollTimestamp, setLastPollTimestamp] = useState(0);
+
+  // Monitor panel state
+  const [monitorTab, setMonitorTab] = useState<MonitorTab>("live");
+  const sentListRef = useRef<HTMLDivElement>(null);
 
   const attachmentRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
@@ -77,10 +101,10 @@ export default function NewsletterPage() {
     membershipPackage: selectedFilter === "membership" ? membershipFilter : undefined
   });
 
-  // Poll progress every 2s while job is running
+  // Poll progress every 2s while job is running (or on complete screen to keep data)
   const progressQuery = api.admin.getNewsletterProgress.useQuery(
-    { jobId: jobId || "" },
-    { enabled: !!jobId && step === "sending", refetchInterval: 2000 }
+    { jobId: jobId || "", sentSince: lastPollTimestamp },
+    { enabled: !!jobId && (step === "sending" || step === "complete"), refetchInterval: step === "sending" ? 2000 : false }
   );
 
   useEffect(() => {
@@ -96,12 +120,50 @@ export default function NewsletterPage() {
         elapsedMs: d.elapsedMs,
         failedRecipients: d.failedRecipients,
         lastError: d.lastError,
+        currentEmail: d.currentEmail,
+        canResume: d.canResume,
       });
+
+      // Accumulate new sent emails
+      if (d.sentEmails && d.sentEmails.length > 0) {
+        setSentEmails(prev => {
+          const existingTimes = new Set(prev.map(e => `${e.email}-${e.sentAt}`));
+          const newEntries = d.sentEmails.filter((e: SentEntry) => !existingTimes.has(`${e.email}-${e.sentAt}`));
+          return [...prev, ...newEntries];
+        });
+        setLastPollTimestamp(Math.max(...d.sentEmails.map((e: SentEntry) => e.sentAt)));
+      }
+
+      // Accumulate failed emails
+      if (d.failedEmails && d.failedEmails.length > 0) {
+        setFailedEmails(prev => {
+          const existingKeys = new Set(prev.map(e => `${e.email}-${e.failedAt}`));
+          const newEntries = d.failedEmails.filter((e: FailedEntry) => !existingKeys.has(`${e.email}-${e.failedAt}`));
+          return [...prev, ...newEntries];
+        });
+      }
+
+      // Accumulate error log
+      if (d.errorLog && d.errorLog.length > 0) {
+        setErrorLog(prev => {
+          const existingKeys = new Set(prev.map(e => `${e.email}-${e.timestamp}`));
+          const newEntries = d.errorLog.filter((e: ErrorEntry) => !existingKeys.has(`${e.email}-${e.timestamp}`));
+          return [...prev, ...newEntries];
+        });
+      }
+
       if (d.status === "completed" || d.status === "error" || d.status === "cancelled") {
         setStep("complete");
       }
     }
   }, [progressQuery.data]);
+
+  // Auto-scroll sent list
+  useEffect(() => {
+    if (monitorTab === "live" && sentListRef.current) {
+      sentListRef.current.scrollTop = sentListRef.current.scrollHeight;
+    }
+  }, [sentEmails, monitorTab]);
 
   // Apply preset
   useEffect(() => {
@@ -115,6 +177,10 @@ export default function NewsletterPage() {
       if (data.jobId) {
         setJobId(data.jobId);
         setProgress(p => ({ ...p, total: data.total, status: "running" }));
+        setSentEmails([]);
+        setFailedEmails([]);
+        setErrorLog([]);
+        setLastPollTimestamp(0);
         toast.success(`Campaign started — ${data.total} recipients`);
       } else {
         toast.error(data.message || "No recipients");
@@ -128,8 +194,21 @@ export default function NewsletterPage() {
   });
 
   const cancelMutation = api.admin.cancelNewsletter.useMutation({
-    onSuccess: () => toast.success("Campaign cancelled"),
+    onSuccess: () => toast.success("Campaign cancelled — you can resume later"),
     onError: (e: any) => toast.error(e.message),
+  });
+
+  const resumeMutation = api.admin.resumeNewsletter.useMutation({
+    onSuccess: (data) => {
+      setJobId(data.jobId);
+      setStep("sending");
+      setFailedEmails([]);
+      setErrorLog([]);
+      setLastPollTimestamp(0);
+      setProgress(p => ({ ...p, status: "running", failed: 0, canResume: false }));
+      toast.success(data.message);
+    },
+    onError: (e: any) => toast.error(`Resume failed: ${e.message}`),
   });
 
   const handleAttachmentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,6 +241,7 @@ export default function NewsletterPage() {
     }
 
     setStep("sending");
+    setMonitorTab("live");
 
     const attachmentData = await Promise.all(
       attachments.map(async (file) => ({
@@ -213,6 +293,11 @@ export default function NewsletterPage() {
     return `${m}m ${rem}s`;
   };
 
+  const formatTime = (ts: number) => {
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  };
+
   const estimatedTime = useCallback(() => {
     const count = recipientCount?.count || 0;
     if (count === 0) return "—";
@@ -225,190 +310,367 @@ export default function NewsletterPage() {
     return `~${(totalSec / 3600).toFixed(1)}hr`;
   }, [recipientCount?.count, sendRate]);
 
-  // ── COMPLETE SCREEN ──────────────────────────────────────────────
-  if (step === "complete") {
-    const successRate = progress.total > 0 ? Math.round((progress.sent / progress.total) * 100) : 0;
+  const avgTimePerEmail = progress.sent > 0 && progress.elapsedMs > 0
+    ? (progress.elapsedMs / progress.sent / 1000).toFixed(1)
+    : "—";
+
+  const eta = progress.sent > 0 && progress.elapsedMs > 0
+    ? formatDuration(((progress.total - progress.sent - progress.failed) * progress.elapsedMs) / progress.sent)
+    : "Calculating...";
+
+  // ── MONITOR DASHBOARD (shared by sending + complete) ───────────
+  const renderMonitorDashboard = () => {
+    const pct = progress.total > 0 ? Math.round(((progress.sent + progress.failed) / progress.total) * 100) : 0;
+    const successRate = progress.sent > 0 ? Math.round((progress.sent / (progress.sent + progress.failed)) * 100) : 0;
+    const isRunning = progress.status === "running";
     const isCancelled = progress.status === "cancelled";
+    const isComplete = progress.status === "completed";
     const isError = progress.status === "error";
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-900 dark:to-gray-800 p-6">
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="max-w-2xl mx-auto bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8"
-        >
-          <div className="text-center mb-6">
-            <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 ${
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-900 dark:to-gray-800 p-4 md:p-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+              isRunning ? "bg-green-100 dark:bg-green-900/30" :
               isCancelled ? "bg-yellow-100 dark:bg-yellow-900/30" :
               isError ? "bg-red-100 dark:bg-red-900/30" :
-              progress.failed > 0 ? "bg-orange-100 dark:bg-orange-900/30" :
               "bg-green-100 dark:bg-green-900/30"
             }`}>
-              {isCancelled ? <StopCircle className="w-12 h-12 text-yellow-600" /> :
-               isError ? <XCircle className="w-12 h-12 text-red-600" /> :
-               progress.failed > 0 ? <AlertCircle className="w-12 h-12 text-orange-600" /> :
-               <CheckCircle className="w-12 h-12 text-green-600" />}
+              {isRunning ? <Activity className="w-5 h-5 text-green-600 animate-pulse" /> :
+               isCancelled ? <StopCircle className="w-5 h-5 text-yellow-600" /> :
+               isError ? <XCircle className="w-5 h-5 text-red-600" /> :
+               <CheckCircle className="w-5 h-5 text-green-600" />}
             </div>
-            <h2 className="text-2xl font-bold">
-              {isCancelled ? "Campaign Cancelled" :
-               isError ? "Campaign Error" :
-               progress.failed > 0 ? "Campaign Completed with Errors" :
-               "Campaign Sent Successfully!"}
-            </h2>
-            {progress.elapsedMs > 0 && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Duration: {formatDuration(progress.elapsedMs)}
+            <div>
+              <h1 className="text-xl font-bold">
+                {isRunning ? "Campaign In Progress" :
+                 isCancelled ? "Campaign Paused" :
+                 isError ? "Campaign Error" :
+                 "Campaign Complete"}
+              </h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {subject || "Newsletter"} · {formatDuration(progress.elapsedMs)} elapsed
               </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            {isRunning && (
+              <button
+                onClick={() => { if (jobId) cancelMutation.mutate({ jobId }); }}
+                disabled={cancelMutation.isPending}
+                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                <StopCircle className="w-4 h-4" />
+                {cancelMutation.isPending ? "Stopping..." : "Stop Campaign"}
+              </button>
+            )}
+            {progress.canResume && jobId && (
+              <button
+                onClick={() => resumeMutation.mutate({ jobId })}
+                disabled={resumeMutation.isPending}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                <Play className="w-4 h-4" />
+                {resumeMutation.isPending ? "Resuming..." : `Resume (${progress.total - progress.sent - progress.failed} left)`}
+              </button>
+            )}
+            {!isRunning && (
+              <button
+                onClick={() => {
+                  setStep("compose");
+                  setJobId(null);
+                  setSentEmails([]);
+                  setFailedEmails([]);
+                  setErrorLog([]);
+                  setLastPollTimestamp(0);
+                  setSubject("");
+                  setBody("");
+                  setAttachments([]);
+                  setEmbeddedImages([]);
+                  setProgress({ sent: 0, total: 0, failed: 0, currentBatch: 0, totalBatches: 0, status: "", elapsedMs: 0, failedRecipients: [], lastError: null, currentEmail: null, canResume: false });
+                }}
+                className="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                New Campaign
+              </button>
             )}
           </div>
+        </div>
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-4 gap-3 mb-6">
-            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">{progress.sent}</div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">Sent</div>
-            </div>
-            <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-red-600">{progress.failed}</div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">Failed</div>
-            </div>
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold">{progress.total}</div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">Total</div>
-            </div>
-            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">{successRate}%</div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">Success</div>
+        {/* Stats Bar */}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Progress</div>
+            <div className="text-lg font-bold">{pct}%</div>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Sent</div>
+            <div className="text-lg font-bold text-green-600">{progress.sent}</div>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Failed</div>
+            <div className="text-lg font-bold text-red-600">{progress.failed}</div>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Remaining</div>
+            <div className="text-lg font-bold">{progress.total - progress.sent - progress.failed}</div>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Avg/Email</div>
+            <div className="text-lg font-bold">{avgTimePerEmail}s</div>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">ETA</div>
+            <div className="text-lg font-bold">{isRunning ? eta : "—"}</div>
+          </div>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm mb-4">
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span className="font-medium">
+              Batch {progress.currentBatch}/{progress.totalBatches} · {progress.sent + progress.failed} / {progress.total}
+            </span>
+            <span className="text-gray-500 dark:text-gray-400">
+              Success rate: <span className={successRate >= 95 ? "text-green-600 font-semibold" : successRate >= 80 ? "text-yellow-600 font-semibold" : "text-red-600 font-semibold"}>{successRate}%</span>
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+            <div className="h-full rounded-full transition-all duration-500 flex">
+              <div
+                className="bg-gradient-to-r from-green-500 to-green-600 h-full transition-all duration-500"
+                style={{ width: `${progress.total > 0 ? (progress.sent / progress.total) * 100 : 0}%` }}
+              />
+              <div
+                className="bg-red-500 h-full transition-all duration-500"
+                style={{ width: `${progress.total > 0 ? (progress.failed / progress.total) * 100 : 0}%` }}
+              />
             </div>
           </div>
+          {/* Currently sending indicator */}
+          {isRunning && progress.currentEmail && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="mt-3 flex items-center gap-2 text-sm bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2"
+            >
+              <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+              <span className="text-blue-700 dark:text-blue-300">Now sending to:</span>
+              <span className="font-mono text-blue-800 dark:text-blue-200 font-medium">{progress.currentEmail}</span>
+            </motion.div>
+          )}
+        </div>
 
-          {/* Failed recipients */}
-          {progress.failedRecipients.length > 0 && (
-            <div className="mb-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
-              <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
-                <XCircle className="w-4 h-4" /> Failed Recipients ({progress.failedRecipients.length})
-              </h4>
-              <div className="max-h-32 overflow-y-auto text-xs text-red-600 dark:text-red-400 space-y-1">
-                {progress.failedRecipients.map((email, i) => (
-                  <div key={i} className="font-mono">{email}</div>
+        {/* Tab Navigation */}
+        <div className="flex border-b border-gray-200 dark:border-gray-700 mb-4 bg-white dark:bg-gray-800 rounded-t-lg overflow-hidden shadow-sm">
+          {([
+            { key: "live" as MonitorTab, label: "Live Feed", icon: Activity, count: sentEmails.length },
+            { key: "sent" as MonitorTab, label: "Sent", icon: CheckCircle, count: progress.sent },
+            { key: "failed" as MonitorTab, label: "Failed", icon: XCircle, count: progress.failed },
+            { key: "errors" as MonitorTab, label: "Debug Log", icon: Bug, count: errorLog.length },
+          ]).map(({ key, label, icon: Icon, count }) => (
+            <button
+              key={key}
+              onClick={() => setMonitorTab(key)}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium border-b-2 transition-colors ${
+                monitorTab === key
+                  ? "border-green-600 text-green-700 dark:text-green-400 bg-green-50/50 dark:bg-green-900/10"
+                  : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+              {count > 0 && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                  key === "failed" || key === "errors"
+                    ? "bg-red-100 dark:bg-red-900/30 text-red-600"
+                    : "bg-green-100 dark:bg-green-900/30 text-green-600"
+                }`}>{count}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab Content */}
+        <div className="bg-white dark:bg-gray-800 rounded-b-lg rounded-lg shadow-sm" style={{ minHeight: "400px" }}>
+          {/* LIVE FEED TAB */}
+          {monitorTab === "live" && (
+            <div className="p-4">
+              <div ref={sentListRef} className="space-y-1 max-h-[500px] overflow-y-auto font-mono text-xs">
+                {sentEmails.length === 0 && !progress.currentEmail && (
+                  <div className="text-center text-gray-400 dark:text-gray-500 py-12">
+                    <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p>{isRunning ? "Waiting for first email..." : "No emails sent yet."}</p>
+                  </div>
+                )}
+                {sentEmails.map((entry, i) => (
+                  <motion.div
+                    key={`${entry.email}-${entry.sentAt}`}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                    <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">{formatTime(entry.sentAt)}</span>
+                    <ArrowRight className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                    <span className="text-gray-700 dark:text-gray-300 truncate">{entry.email}</span>
+                    <span className="text-gray-400 dark:text-gray-500 ml-auto flex-shrink-0">{entry.name}</span>
+                  </motion.div>
                 ))}
+                {/* Show failed entries intermixed in live feed */}
+                {failedEmails.map((entry, i) => (
+                  <motion.div
+                    key={`fail-${entry.email}-${entry.failedAt}`}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="flex items-center gap-2 py-1.5 px-2 rounded bg-red-50/50 dark:bg-red-900/10 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  >
+                    <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                    <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">{formatTime(entry.failedAt)}</span>
+                    <ArrowRight className="w-3 h-3 text-red-300 flex-shrink-0" />
+                    <span className="text-red-600 dark:text-red-400 truncate">{entry.email}</span>
+                    <span className="text-red-400 dark:text-red-500 ml-auto text-[10px] flex-shrink-0 max-w-[200px] truncate">{entry.error}</span>
+                  </motion.div>
+                ))}
+                {/* Pending indicator */}
+                {isRunning && progress.currentEmail && (
+                  <motion.div
+                    animate={{ opacity: [0.5, 1, 0.5] }}
+                    transition={{ repeat: Infinity, duration: 1.5 }}
+                    className="flex items-center gap-2 py-1.5 px-2 rounded bg-blue-50/50 dark:bg-blue-900/10"
+                  >
+                    <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin flex-shrink-0" />
+                    <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">sending</span>
+                    <ArrowRight className="w-3 h-3 text-blue-300 flex-shrink-0" />
+                    <span className="text-blue-600 dark:text-blue-400">{progress.currentEmail}</span>
+                  </motion.div>
+                )}
               </div>
             </div>
           )}
 
-          {/* Error message */}
-          {progress.lastError && (
-            <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 text-sm text-yellow-800 dark:text-yellow-300">
-              Last error: {progress.lastError}
+          {/* SENT TAB */}
+          {monitorTab === "sent" && (
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-green-600" />
+                  Successfully Sent ({sentEmails.length})
+                </h4>
+              </div>
+              <div className="max-h-[500px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      <th className="text-left py-2 px-3 font-medium text-gray-500">#</th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-500">Email</th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-500">Name</th>
+                      <th className="text-left py-2 px-3 font-medium text-gray-500">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {sentEmails.map((entry, i) => (
+                      <tr key={`${entry.email}-${entry.sentAt}`} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <td className="py-2 px-3 text-gray-400">{i + 1}</td>
+                        <td className="py-2 px-3 font-mono">{entry.email}</td>
+                        <td className="py-2 px-3 text-gray-600 dark:text-gray-400">{entry.name}</td>
+                        <td className="py-2 px-3 text-gray-400">{formatTime(entry.sentAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {sentEmails.length === 0 && (
+                  <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+                    <Mail className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p>No emails sent yet.</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          <button
-            onClick={() => {
-              setStep("compose");
-              setJobId(null);
-              setSubject("");
-              setBody("");
-              setAttachments([]);
-              setEmbeddedImages([]);
-              setProgress({ sent: 0, total: 0, failed: 0, currentBatch: 0, totalBatches: 0, status: "", elapsedMs: 0, failedRecipients: [], lastError: null });
-            }}
-            className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-8 py-3 rounded-lg hover:shadow-lg transition-all flex items-center justify-center gap-2"
-          >
-            <RotateCcw className="w-5 h-5" />
-            New Campaign
-          </button>
-        </motion.div>
+          {/* FAILED TAB */}
+          {monitorTab === "failed" && (
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-red-600">
+                  <XCircle className="w-4 h-4" />
+                  Failed Emails ({failedEmails.length})
+                </h4>
+              </div>
+              <div className="max-h-[500px] overflow-y-auto">
+                {failedEmails.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+                    <CheckCircle className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p>No failures — all emails delivered successfully!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {failedEmails.map((entry, i) => (
+                      <div key={`${entry.email}-${entry.failedAt}`} className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-mono text-sm font-medium text-red-700 dark:text-red-400">{entry.email}</span>
+                          <span className="text-xs text-gray-400">{formatTime(entry.failedAt)}</span>
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">{entry.name}</div>
+                        <div className="bg-red-100 dark:bg-red-900/20 rounded p-2 text-xs font-mono text-red-800 dark:text-red-300 break-all">
+                          {entry.error}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* DEBUG LOG TAB */}
+          {monitorTab === "errors" && (
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Bug className="w-4 h-4 text-orange-600" />
+                  Debug Error Log ({errorLog.length})
+                </h4>
+                {progress.lastError && (
+                  <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 px-2 py-1 rounded-full">Last: {progress.lastError.slice(0, 60)}{progress.lastError.length > 60 ? "..." : ""}</span>
+                )}
+              </div>
+              <div className="max-h-[500px] overflow-y-auto bg-gray-900 dark:bg-black rounded-lg p-3 font-mono text-xs text-green-400">
+                {errorLog.length === 0 ? (
+                  <div className="text-center py-12 text-gray-600">
+                    <Terminal className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p className="text-gray-500">No errors logged.</p>
+                  </div>
+                ) : (
+                  errorLog.map((entry, i) => (
+                    <div key={`${entry.email}-${entry.timestamp}-${i}`} className="mb-2 leading-relaxed">
+                      <span className="text-gray-500">[{formatTime(entry.timestamp)}]</span>{" "}
+                      <span className="text-yellow-400">attempt {entry.attempt}</span>{" "}
+                      <span className="text-cyan-400">{entry.email}</span>{"\n"}
+                      <span className="text-red-400 pl-4 block break-all">{entry.message}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
+  };
+
+  // ── COMPLETE SCREEN ──────────────────────────────────────────────
+  if (step === "complete") {
+    return renderMonitorDashboard();
   }
 
   // ── SENDING SCREEN ──────────────────────────────────────────────
   if (step === "sending") {
-    const pct = progress.total > 0 ? Math.round(((progress.sent + progress.failed) / progress.total) * 100) : 0;
-    const isCancelled = progress.status === "cancelled";
-
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-900 dark:to-gray-800 p-6 flex items-center justify-center">
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="max-w-xl w-full bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8"
-        >
-          <div className="text-center mb-6">
-            {isCancelled ? (
-              <>
-                <StopCircle className="w-16 h-16 text-yellow-600 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold">Cancelling...</h2>
-              </>
-            ) : (
-              <>
-                <Loader2 className="w-16 h-16 animate-spin text-green-600 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold">Sending Newsletter</h2>
-                <p className="text-gray-600 dark:text-gray-400 mt-2 text-sm">
-                  Batch {progress.currentBatch}/{progress.totalBatches} · {formatDuration(progress.elapsedMs)} elapsed
-                </p>
-              </>
-            )}
-          </div>
-
-          {/* Progress bar */}
-          <div className="space-y-3">
-            <div className="flex justify-between text-sm font-medium">
-              <span>Progress</span>
-              <span>{progress.sent + progress.failed} / {progress.total} ({pct}%)</span>
-            </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-500 flex">
-                <div
-                  className="bg-gradient-to-r from-green-500 to-green-600 h-full transition-all duration-500"
-                  style={{ width: `${progress.total > 0 ? (progress.sent / progress.total) * 100 : 0}%` }}
-                />
-                <div
-                  className="bg-red-500 h-full transition-all duration-500"
-                  style={{ width: `${progress.total > 0 ? (progress.failed / progress.total) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 mt-4">
-              <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
-                <div className="text-xl font-bold text-green-600">{progress.sent}</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">Sent</div>
-              </div>
-              <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 text-center">
-                <div className="text-xl font-bold text-red-600">{progress.failed}</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">Failed</div>
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-center">
-                <div className="text-xl font-bold">{progress.total - progress.sent - progress.failed}</div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">Remaining</div>
-              </div>
-            </div>
-
-            {progress.lastError && (
-              <div className="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/10 rounded p-2 mt-2">
-                Last error: {progress.lastError}
-              </div>
-            )}
-
-            {/* Cancel button */}
-            {!isCancelled && (
-              <button
-                onClick={() => {
-                  if (jobId) cancelMutation.mutate({ jobId });
-                }}
-                className="w-full mt-4 bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-              >
-                <StopCircle className="w-5 h-5" />
-                Cancel Campaign
-              </button>
-            )}
-          </div>
-        </motion.div>
-      </div>
-    );
+    return renderMonitorDashboard();
   }
 
   // ── COMPOSE SCREEN ──────────────────────────────────────────────
