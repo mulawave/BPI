@@ -210,6 +210,19 @@ export default function NewsletterPage() {
     onError: (e: any) => toast.error(`Resume failed: ${e.message}`),
   });
 
+  const resumeFromDbMutation = api.admin.resumeNewsletterFromDb.useMutation({
+    onSuccess: (data) => {
+      setJobId(data.jobId);
+      setStep("sending");
+      setSentEmails([]);
+      setFailedEmails([]);
+      setErrorLog([]);
+      setProgress(p => ({ ...p, sent: data.alreadySent, status: "running", failed: 0, canResume: false }));
+      toast.success(data.message);
+    },
+    onError: (e: any) => toast.error(`Resume failed: ${e.message}`),
+  });
+
   const handleAttachmentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     const validFiles = files.filter(f => {
@@ -868,6 +881,39 @@ export default function NewsletterPage() {
         </div>
       </div>
 
+      {/* Campaign History */}
+      <CampaignHistory
+        onViewCampaign={(campaign) => {
+          // If it's running in memory, go to sending screen
+          if (campaign.jobId && campaign.status === "running") {
+            setJobId(campaign.jobId);
+            setStep("sending");
+          } else {
+            // Load campaign data into the monitor for viewing
+            setJobId(campaign.jobId);
+            setProgress({
+              sent: campaign.sentCount,
+              total: campaign.totalRecipients,
+              failed: campaign.failedCount,
+              currentBatch: 0,
+              totalBatches: 0,
+              status: campaign.status,
+              elapsedMs: campaign.elapsedMs,
+              failedRecipients: [],
+              lastError: campaign.lastError,
+              currentEmail: null,
+              canResume: false,
+            });
+            setSubject(campaign.subject);
+            setStep("complete");
+          }
+        }}
+        onResumeCampaign={(campaignId) => {
+          resumeFromDbMutation.mutate({ campaignId });
+        }}
+        isResuming={resumeFromDbMutation.isPending}
+      />
+
       {/* Main Content - Split Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Panel - Composer */}
@@ -1237,6 +1283,141 @@ export default function NewsletterPage() {
           </div>
         </motion.div>
       </div>
+    </div>
+  );
+}
+
+// ── Campaign History Component ────────────────────────────────────
+function CampaignHistory({
+  onViewCampaign,
+  onResumeCampaign,
+  isResuming,
+}: {
+  onViewCampaign: (campaign: any) => void;
+  onResumeCampaign: (campaignId: string) => void;
+  isResuming: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const { data, isLoading } = api.admin.getNewsletterCampaigns.useQuery(
+    { limit: 10 },
+    { enabled: expanded }
+  );
+
+  const campaigns = data?.campaigns || [];
+
+  const statusConfig: Record<string, { color: string; bg: string; label: string; icon: typeof CheckCircle }> = {
+    completed: { color: "text-green-600", bg: "bg-green-100 dark:bg-green-900/20", label: "Completed", icon: CheckCircle },
+    running: { color: "text-blue-600", bg: "bg-blue-100 dark:bg-blue-900/20", label: "Running", icon: Activity },
+    cancelled: { color: "text-yellow-600", bg: "bg-yellow-100 dark:bg-yellow-900/20", label: "Paused", icon: StopCircle },
+    error: { color: "text-red-600", bg: "bg-red-100 dark:bg-red-900/20", label: "Error", icon: XCircle },
+  };
+
+  const formatDur = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    return `${m}m ${s % 60}s`;
+  };
+
+  return (
+    <div className="mb-6">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between bg-white dark:bg-gray-800 rounded-xl px-5 py-3 shadow-sm hover:shadow-md transition-shadow"
+      >
+        <div className="flex items-center gap-3">
+          <BarChart3 className="w-5 h-5 text-green-600" />
+          <span className="font-semibold text-sm">Campaign History</span>
+          {!expanded && campaigns.length > 0 && (
+            <span className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full text-gray-500">{campaigns.length}</span>
+          )}
+        </div>
+        {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+      </button>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="bg-white dark:bg-gray-800 rounded-b-xl shadow-sm mt-px overflow-hidden">
+              {isLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin text-green-600" />
+                  <span className="ml-2 text-sm text-gray-500">Loading campaigns...</span>
+                </div>
+              )}
+
+              {!isLoading && campaigns.length === 0 && (
+                <div className="text-center py-8 text-gray-400 dark:text-gray-500">
+                  <Mail className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No campaigns yet — send your first newsletter above.</p>
+                </div>
+              )}
+
+              {!isLoading && campaigns.length > 0 && (
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {campaigns.map((c: any) => {
+                    const cfg = statusConfig[c.status] || statusConfig.completed;
+                    const StatusIcon = cfg.icon;
+                    const canResume = (c.status === "cancelled" || c.status === "error") && c.sentCount < c.totalRecipients;
+                    const successRate = c.sentCount > 0 ? Math.round((c.sentCount / (c.sentCount + c.failedCount)) * 100) : 0;
+
+                    return (
+                      <div
+                        key={c.id}
+                        className="px-5 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${cfg.bg}`}>
+                              <StatusIcon className={`w-4 h-4 ${cfg.color}`} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium text-sm truncate">{c.subject}</div>
+                              <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                <span className={`font-medium ${cfg.color}`}>{cfg.label}</span>
+                                <span>{c.sentCount}/{c.totalRecipients} sent</span>
+                                {c.failedCount > 0 && <span className="text-red-500">{c.failedCount} failed</span>}
+                                {c.elapsedMs > 0 && <span>{formatDur(c.elapsedMs)}</span>}
+                                {successRate > 0 && <span>{successRate}%</span>}
+                                <span>{new Date(c.createdAt).toLocaleDateString()}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                            {canResume && (
+                              <button
+                                onClick={() => onResumeCampaign(c.id)}
+                                disabled={isResuming}
+                                className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
+                              >
+                                <Play className="w-3 h-3" />
+                                {isResuming ? "..." : "Resume"}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => onViewCampaign(c)}
+                              className="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1"
+                            >
+                              <Eye className="w-3 h-3" />
+                              View
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

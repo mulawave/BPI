@@ -1866,6 +1866,7 @@ model User {
   LeadershipPoolQualification                                          LeadershipPoolQualification?
   MaterialDownload                                                     MaterialDownload[]
   Notification                                                         Notification[]
+  NewsletterCampaigns                                                  NewsletterCampaign[]         @relation("NewsletterCampaignAdmin")
   PackageActivation                                                    PackageActivation[]
   PalliativeMaturity                                                   PalliativeMaturity[]
   PalliativeTicket_PalliativeTicket_createdByToUser                    PalliativeTicket[]           @relation("PalliativeTicket_createdByToUser")
@@ -3892,4 +3893,49 @@ model KycAuditLog {
 
   @@index([submissionId])
   @@index([action])
+}
+
+// ── Newsletter Campaign Persistence ─────────────────────────────
+model NewsletterCampaign {
+  id                String   @id @default(cuid())
+  jobId             String   @unique
+  adminId           String
+  status            String   @default("running") // running, completed, cancelled, error
+  subject           String
+  body              String   @db.Text
+  filter            String   @default("all")
+  membershipPackage String?
+  fromEmail         String?
+  replyToEmail      String?
+
+  // Send rate config
+  batchSize         Int      @default(10)
+  delayBetweenMs    Int      @default(4000)
+  batchCooldownMs   Int      @default(45000)
+  warmUp            Boolean  @default(true)
+
+  // Stats
+  totalRecipients   Int      @default(0)
+  sentCount         Int      @default(0)
+  failedCount       Int      @default(0)
+  elapsedMs         Int      @default(0)
+  lastError         String?
+
+  // Per-email data (JSON arrays)
+  sentEmails        Json     @default("[]")
+  failedEmails      Json     @default("[]")
+  errorLog          Json     @default("[]")
+  sentRecipientIds  Json     @default("[]") // string[] of user IDs already sent
+  allRecipientIds   Json     @default("[]") // string[] of all target user IDs
+
+  startedAt         DateTime @default(now())
+  completedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  admin             User     @relation("NewsletterCampaignAdmin", fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([status])
+  @@index([createdAt])
 }

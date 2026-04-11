@@ -119,6 +119,29 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// Sync in-memory job state to database periodically
+async function syncJobToDb(job: NewsletterJobState) {
+  try {
+    await prisma.newsletterCampaign.update({
+      where: { jobId: job.jobId },
+      data: {
+        status: job.status,
+        sentCount: job.sent,
+        failedCount: job.failed,
+        elapsedMs: Date.now() - job.startedAt,
+        lastError: job.lastError,
+        sentEmails: job.sentEmails.slice(-200) as any, // keep last 200 in DB
+        failedEmails: job.failedEmails as any,
+        errorLog: job.errorLog.slice(-200) as any,
+        sentRecipientIds: Array.from(job.sentRecipientIds) as any,
+        completedAt: job.status !== 'running' ? new Date() : null,
+      },
+    });
+  } catch (err) {
+    console.error(`[NEWSLETTER] Failed to sync job ${job.jobId} to DB:`, err);
+  }
+}
+
 async function processNewsletterInBackground(
   jobId: string,
   opts: {
@@ -228,6 +251,11 @@ async function processNewsletterInBackground(
 
       job.currentEmail = null;
 
+      // Sync to DB every 10 emails
+      if ((job.sent + job.failed) % 10 === 0) {
+        syncJobToDb(job);
+      }
+
       // Random jitter delay between emails (anti-spam)
       const jitter = sendRate.delayBetweenEmailsMs + Math.floor(Math.random() * 2000);
       await new Promise(r => setTimeout(r, jitter));
@@ -250,6 +278,9 @@ async function processNewsletterInBackground(
     job.status = 'completed';
     console.log(`✅ [NEWSLETTER] Job ${jobId} complete. Sent: ${job.sent}, Failed: ${job.failed}, Total: ${job.total}`);
   }
+
+  // Final sync to database
+  await syncJobToDb(job);
 
   // Audit log for the campaign
   try {
@@ -9920,6 +9951,31 @@ export const adminRouter = createTRPCRouter({
         sentRecipientIds: new Set(),
       });
 
+      // Persist campaign to database
+      try {
+        await prisma.newsletterCampaign.create({
+          data: {
+            jobId,
+            adminId: adminUserId,
+            status: 'running',
+            subject,
+            body,
+            filter,
+            membershipPackage: membershipPackage || null,
+            fromEmail: resolvedFromEmail,
+            replyToEmail: resolvedReplyTo,
+            batchSize: sendRate.batchSize,
+            delayBetweenMs: sendRate.delayBetweenEmailsMs,
+            batchCooldownMs: sendRate.delayBetweenBatchesMs,
+            warmUp: sendRate.warmUp,
+            totalRecipients: total,
+            allRecipientIds: validRecipients.map(r => r.id),
+          },
+        });
+      } catch (err) {
+        console.error(`[NEWSLETTER] Failed to persist campaign ${jobId}:`, err);
+      }
+
       // Fire and forget — process in background
       processNewsletterInBackground(jobId, {
         validRecipients,
@@ -10087,6 +10143,215 @@ export const adminRouter = createTRPCRouter({
         remaining: validRecipients.length,
         alreadySent: oldJob.sent,
         message: `Resumed campaign — ${validRecipients.length} remaining (${oldJob.sent} already sent)`,
+      };
+    }),
+
+  // ── Campaign History ──────────────────────────────────────────────
+  getNewsletterCampaigns: adminProcedure
+    .input(z.object({
+      limit: z.number().min(1).max(50).default(10),
+      cursor: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      const campaigns = await prisma.newsletterCampaign.findMany({
+        take: input.limit + 1,
+        ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          jobId: true,
+          status: true,
+          subject: true,
+          filter: true,
+          membershipPackage: true,
+          totalRecipients: true,
+          sentCount: true,
+          failedCount: true,
+          elapsedMs: true,
+          lastError: true,
+          startedAt: true,
+          completedAt: true,
+          createdAt: true,
+        },
+      });
+
+      let nextCursor: string | undefined;
+      if (campaigns.length > input.limit) {
+        const next = campaigns.pop()!;
+        nextCursor = next.id;
+      }
+
+      // Check if any in-memory jobs are still running (supplement DB data)
+      const enriched = campaigns.map(c => {
+        const memJob = newsletterJobs.get(c.jobId);
+        if (memJob && memJob.status === 'running') {
+          return {
+            ...c,
+            status: 'running',
+            sentCount: memJob.sent,
+            failedCount: memJob.failed,
+            elapsedMs: Date.now() - memJob.startedAt,
+          };
+        }
+        return c;
+      });
+
+      return { campaigns: enriched, nextCursor };
+    }),
+
+  getNewsletterCampaignDetail: adminProcedure
+    .input(z.object({ campaignId: z.string() }))
+    .query(async ({ input }) => {
+      const campaign = await prisma.newsletterCampaign.findUnique({
+        where: { id: input.campaignId },
+      });
+      if (!campaign) throw new Error('Campaign not found');
+
+      // If it's running in memory, return live data
+      const memJob = newsletterJobs.get(campaign.jobId);
+      if (memJob) {
+        return {
+          ...campaign,
+          status: memJob.status,
+          sentCount: memJob.sent,
+          failedCount: memJob.failed,
+          elapsedMs: Date.now() - memJob.startedAt,
+          currentEmail: memJob.currentEmail,
+          sentEmails: memJob.sentEmails.slice(-50),
+          failedEmails: memJob.failedEmails,
+          errorLog: memJob.errorLog.slice(-100),
+          canResume: (memJob.status === 'cancelled' || memJob.status === 'error') && memJob.sent < memJob.total,
+        };
+      }
+
+      return {
+        ...campaign,
+        currentEmail: null,
+        canResume: (campaign.status === 'cancelled' || campaign.status === 'error') && campaign.sentCount < campaign.totalRecipients,
+      };
+    }),
+
+  resumeNewsletterFromDb: adminProcedure
+    .input(z.object({ campaignId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const campaign = await prisma.newsletterCampaign.findUnique({
+        where: { id: input.campaignId },
+      });
+      if (!campaign) throw new Error('Campaign not found');
+      if (campaign.status === 'running') throw new Error('Campaign is still running');
+      if (campaign.sentCount >= campaign.totalRecipients) throw new Error('All recipients already sent');
+
+      const sentIds = new Set(campaign.sentRecipientIds as string[]);
+      const remainingIds = (campaign.allRecipientIds as string[]).filter(id => !sentIds.has(id));
+
+      if (remainingIds.length === 0) throw new Error('No recipients remaining');
+
+      const validRecipients = await prisma.user.findMany({
+        where: { id: { in: remainingIds } },
+        select: { id: true, email: true, name: true },
+      });
+
+      const emailableRecipients = validRecipients.filter((r: any): r is typeof r & { email: string } => !!r.email);
+      if (emailableRecipients.length === 0) throw new Error('No valid recipients remaining');
+
+      const companySettings = await prisma.adminSettings.findMany();
+      const companyInfo = Object.fromEntries(
+        companySettings.map((s: any) => [s.settingKey, { value: s.settingValue, description: s.description }])
+      );
+
+      const newJobId = randomUUID();
+      const adminUserId = ctx.session?.user?.id || 'admin';
+
+      // Create new in-memory job carrying forward sent data
+      newsletterJobs.set(newJobId, {
+        jobId: newJobId,
+        status: 'running',
+        sent: campaign.sentCount,
+        failed: 0,
+        total: campaign.totalRecipients,
+        currentBatch: 0,
+        totalBatches: 0,
+        startedAt: Date.now(),
+        lastError: null,
+        currentEmail: null,
+        sentEmails: [],
+        failedEmails: [],
+        errorLog: [],
+        failedRecipients: [],
+        campaignConfig: {
+          filter: campaign.filter,
+          membershipPackage: campaign.membershipPackage || undefined,
+          fromEmail: campaign.fromEmail || 'noreply@beepagro.com',
+          replyToEmail: campaign.replyToEmail || 'support@beepagro.com',
+          subject: campaign.subject,
+          body: campaign.body,
+          sendRate: {
+            batchSize: campaign.batchSize,
+            delayBetweenEmailsMs: campaign.delayBetweenMs,
+            delayBetweenBatchesMs: campaign.batchCooldownMs,
+            warmUp: campaign.warmUp,
+          },
+        },
+        allRecipientIds: campaign.allRecipientIds as string[],
+        sentRecipientIds: sentIds,
+      });
+
+      // Create new DB campaign row linked to old one
+      await prisma.newsletterCampaign.create({
+        data: {
+          jobId: newJobId,
+          adminId: adminUserId,
+          status: 'running',
+          subject: campaign.subject,
+          body: campaign.body,
+          filter: campaign.filter,
+          membershipPackage: campaign.membershipPackage,
+          fromEmail: campaign.fromEmail,
+          replyToEmail: campaign.replyToEmail,
+          batchSize: campaign.batchSize,
+          delayBetweenMs: campaign.delayBetweenMs,
+          batchCooldownMs: campaign.batchCooldownMs,
+          warmUp: campaign.warmUp,
+          totalRecipients: campaign.totalRecipients,
+          sentCount: campaign.sentCount,
+          sentRecipientIds: Array.from(sentIds),
+          allRecipientIds: campaign.allRecipientIds,
+        },
+      });
+
+      // Mark old campaign as completed
+      await prisma.newsletterCampaign.update({
+        where: { id: campaign.id },
+        data: { status: 'completed', completedAt: new Date() },
+      });
+
+      processNewsletterInBackground(newJobId, {
+        validRecipients: emailableRecipients,
+        fromEmail: campaign.fromEmail || 'noreply@beepagro.com',
+        replyToEmail: campaign.replyToEmail || 'support@beepagro.com',
+        subject: campaign.subject,
+        body: campaign.body,
+        companyInfo,
+        sendRate: {
+          batchSize: campaign.batchSize,
+          delayBetweenEmailsMs: campaign.delayBetweenMs,
+          delayBetweenBatchesMs: campaign.batchCooldownMs,
+          warmUp: campaign.warmUp,
+        },
+        adminUserId,
+      }).catch(err => {
+        const job = newsletterJobs.get(newJobId);
+        if (job) {
+          job.status = 'error';
+          job.lastError = err instanceof Error ? err.message : 'Unknown error';
+        }
+      });
+
+      return {
+        jobId: newJobId,
+        remaining: emailableRecipients.length,
+        alreadySent: campaign.sentCount,
+        message: `Resumed — ${emailableRecipients.length} remaining (${campaign.sentCount} already sent)`,
       };
     }),
 
