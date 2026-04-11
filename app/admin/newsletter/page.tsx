@@ -100,11 +100,14 @@ export default function NewsletterPage() {
     membershipPackage: selectedFilter === "membership" ? membershipFilter : undefined
   });
 
-  // Poll progress every 2s while job is running (or on complete screen to keep data)
+  // Poll progress every 2s while job is running, one final refetch on complete
   const progressQuery = api.admin.getNewsletterProgress.useQuery(
     { jobId: jobId || "" },
     { enabled: !!jobId && (step === "sending" || step === "complete"), refetchInterval: step === "sending" ? 2000 : false }
   );
+
+  // Calculate canResume locally so it works even if backend doesn't return it
+  const canResume = (progress.status === "cancelled" || progress.status === "error") && progress.sent < progress.total && !!jobId;
 
   useEffect(() => {
     if (progressQuery.data && progressQuery.data.status !== "not_found") {
@@ -322,6 +325,7 @@ export default function NewsletterPage() {
     const isCancelled = progress.status === "cancelled";
     const isComplete = progress.status === "completed";
     const isError = progress.status === "error";
+    const isDone = !isRunning; // cancelled, completed, or error
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-900 dark:to-gray-800 p-4 md:p-6">
@@ -351,7 +355,7 @@ export default function NewsletterPage() {
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {isRunning && (
               <button
                 onClick={() => { if (jobId) cancelMutation.mutate({ jobId }); }}
@@ -362,17 +366,17 @@ export default function NewsletterPage() {
                 {cancelMutation.isPending ? "Stopping..." : "Stop Campaign"}
               </button>
             )}
-            {progress.canResume && jobId && (
+            {canResume && (
               <button
-                onClick={() => resumeMutation.mutate({ jobId })}
+                onClick={() => { if (jobId) resumeMutation.mutate({ jobId }); }}
                 disabled={resumeMutation.isPending}
                 className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
               >
                 <Play className="w-4 h-4" />
-                {resumeMutation.isPending ? "Resuming..." : `Resume (${progress.total - progress.sent - progress.failed} left)`}
+                {resumeMutation.isPending ? "Resuming..." : `Resume (${progress.total - progress.sent - progress.failed} remaining)`}
               </button>
             )}
-            {!isRunning && (
+            {isDone && (
               <button
                 onClick={() => {
                   setStep("compose");
@@ -392,6 +396,16 @@ export default function NewsletterPage() {
                 New Campaign
               </button>
             )}
+            <button
+              onClick={() => {
+                setStep("compose");
+                // Keep jobId and data so user can come back
+              }}
+              className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+            >
+              <Mail className="w-4 h-4" />
+              Back to Compose
+            </button>
           </div>
         </div>
 
@@ -495,10 +509,31 @@ export default function NewsletterPage() {
           {monitorTab === "live" && (
             <div className="p-4">
               <div ref={sentListRef} className="space-y-1 max-h-[500px] overflow-y-auto font-mono text-xs">
-                {sentEmails.length === 0 && !progress.currentEmail && (
+                {sentEmails.length === 0 && !progress.currentEmail && progress.sent === 0 && (
                   <div className="text-center text-gray-400 dark:text-gray-500 py-12">
                     <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
                     <p>{isRunning ? "Waiting for first email..." : "No emails sent yet."}</p>
+                  </div>
+                )}
+                {/* Fallback: if emails are being sent but per-email data isn't available from backend */}
+                {sentEmails.length === 0 && !progress.currentEmail && progress.sent > 0 && (
+                  <div className="text-center py-8">
+                    <div className="inline-flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-6 py-4 mb-4">
+                      {isRunning && <Loader2 className="w-5 h-5 text-green-600 animate-spin" />}
+                      {!isRunning && <CheckCircle className="w-5 h-5 text-green-600" />}
+                      <div className="text-left">
+                        <div className="text-green-700 dark:text-green-400 font-semibold text-sm">
+                          {progress.sent} emails delivered{progress.failed > 0 ? `, ${progress.failed} failed` : ""}
+                        </div>
+                        <div className="text-green-600/70 dark:text-green-500/70 text-[11px]">
+                          {isRunning ? `Batch ${progress.currentBatch}/${progress.totalBatches} · ${progress.total - progress.sent - progress.failed} remaining` : `Campaign ${progress.status}`}
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-gray-400 dark:text-gray-500 text-xs">
+                      Per-email tracking requires the latest server update.
+                      <br />Stats above are accurate — see Sent tab for count summary.
+                    </p>
                   </div>
                 )}
                 {sentEmails.map((entry, i) => (
@@ -553,7 +588,7 @@ export default function NewsletterPage() {
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
                   <CheckCircle className="w-4 h-4 text-green-600" />
-                  Successfully Sent ({sentEmails.length})
+                  Successfully Sent ({sentEmails.length > 0 ? sentEmails.length : progress.sent})
                 </h4>
               </div>
               <div className="max-h-[500px] overflow-y-auto">
@@ -577,10 +612,17 @@ export default function NewsletterPage() {
                     ))}
                   </tbody>
                 </table>
-                {sentEmails.length === 0 && (
+                {sentEmails.length === 0 && progress.sent === 0 && (
                   <div className="text-center py-12 text-gray-400 dark:text-gray-500">
                     <Mail className="w-10 h-10 mx-auto mb-3 opacity-30" />
                     <p>No emails sent yet.</p>
+                  </div>
+                )}
+                {sentEmails.length === 0 && progress.sent > 0 && (
+                  <div className="text-center py-12">
+                    <CheckCircle className="w-10 h-10 mx-auto mb-3 text-green-500 opacity-50" />
+                    <p className="text-gray-600 dark:text-gray-400 font-medium">{progress.sent} emails delivered successfully</p>
+                    <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">Individual email addresses will appear here with the latest server update.</p>
                   </div>
                 )}
               </div>
@@ -671,6 +713,48 @@ export default function NewsletterPage() {
   // ── COMPOSE SCREEN ──────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 dark:from-gray-900 dark:to-gray-800 p-6">
+      {/* Active Campaign Banner */}
+      {jobId && progress.status && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`mb-4 flex items-center justify-between rounded-xl px-5 py-3 shadow-sm ${
+            progress.status === "running"
+              ? "bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-800"
+              : progress.status === "cancelled"
+              ? "bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800"
+              : progress.status === "error"
+              ? "bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800"
+              : "bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800"
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            {progress.status === "running" && <Activity className="w-5 h-5 text-green-600 animate-pulse" />}
+            {progress.status === "cancelled" && <StopCircle className="w-5 h-5 text-yellow-600" />}
+            {progress.status === "error" && <XCircle className="w-5 h-5 text-red-600" />}
+            {progress.status === "completed" && <CheckCircle className="w-5 h-5 text-blue-600" />}
+            <div>
+              <span className="font-semibold text-sm">
+                {progress.status === "running" ? "Campaign Running" :
+                 progress.status === "cancelled" ? "Campaign Paused" :
+                 progress.status === "error" ? "Campaign Error" :
+                 "Campaign Completed"}
+              </span>
+              <span className="text-xs text-gray-600 dark:text-gray-400 ml-2">
+                {progress.sent}/{progress.total} sent · {progress.failed} failed
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setStep(progress.status === "running" ? "sending" : "complete")}
+            className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+          >
+            <Monitor className="w-4 h-4" />
+            View Campaign
+          </button>
+        </motion.div>
+      )}
+
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
