@@ -35,6 +35,17 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const currencySign = selectedCurrency?.sign || '₦';
   const VAT_RATE = 0.075; // 7.5%
 
+  // Format an amount already in the user's selected currency (no conversion)
+  const formatDirect = (val: number) =>
+    `${currencySign}${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  // Convert from selected currency back to NGN for backend
+  const toNaira = (amount: number): number => {
+    if (!selectedCurrency || selectedCurrency.symbol === 'NGN') return amount;
+    const rate = selectedCurrency.rate || 1;
+    return rate !== 0 ? amount / rate : amount;
+  };
+
   const { data: gatewayConfigs } = api.payment.getPaymentGateways.useQuery(undefined, {
     enabled: isOpen,
   });
@@ -160,7 +171,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
     // Utility-token and others go directly to processing
     setCurrentStep('processing');
     depositMutation.mutate({
-      amount: numAmount,
+      amount: toNaira(numAmount),
       paymentGateway: selectedGateway,
       reference: `DEP-${Date.now()}`
     });
@@ -170,7 +181,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const handleAutomatedBankTransfer = () => {
     setCurrentStep('processing');
     depositMutation.mutate({
-      amount: numAmount,
+      amount: toNaira(numAmount),
       paymentGateway: 'bank-transfer',
       reference: `DEP-BANK-${Date.now()}`,
       // No proofOfPayment → triggers automated Paystack flow in backend
@@ -221,7 +232,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
       reader.onloadend = () => {
         const base64 = reader.result as string;
         depositMutation.mutate({
-          amount: numAmount,
+          amount: toNaira(numAmount),
           paymentGateway: 'bank-transfer',
           reference: `DEP-BANK-${Date.now()}`,
           proofOfPayment: base64,
@@ -240,9 +251,9 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
       setSubmittingCrypto(false);
       setSuccessData({
         message: data.message,
-        depositedAmount: numAmount,
-        vatAmount,
-        totalPaid: totalAmount,
+        depositedAmount: toNaira(numAmount),
+        vatAmount: toNaira(vatAmount),
+        totalPaid: toNaira(totalAmount),
       });
       setCurrentStep('success');
     },
@@ -266,14 +277,14 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
     setError('');
     setSubmittingCrypto(true);
     cryptoProofMutation.mutate({
-      amount: numAmount,
+      amount: toNaira(numAmount),
       currency: 'USDT',
       purpose: PaymentPurpose.DEPOSIT,
       txHash: trimmed,
       metadata: {
-        depositAmount: numAmount,
-        vatAmount,
-        totalAmount: totalAmount,
+        depositAmount: toNaira(numAmount),
+        vatAmount: toNaira(vatAmount),
+        totalAmount: toNaira(totalAmount),
       },
     });
   };
@@ -384,16 +395,16 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Deposit Amount:</span>
-                      <span className="font-semibold">{formatAmount(numAmount)}</span>
+                      <span className="font-semibold">{formatDirect(numAmount)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">VAT (7.5%):</span>
-                      <span className="font-semibold text-orange-600">+{formatAmount(vatAmount)}</span>
+                      <span className="font-semibold text-orange-600">+{formatDirect(vatAmount)}</span>
                     </div>
                     <div className="pt-2 border-t border-blue-300 dark:border-blue-700">
                       <div className="flex justify-between">
                         <span className="font-bold">Total to Pay:</span>
-                        <span className="font-bold text-lg text-green-600">{formatAmount(totalAmount)}</span>
+                        <span className="font-bold text-lg text-green-600">{formatDirect(totalAmount)}</span>
                       </div>
                     </div>
                   </div>
@@ -513,9 +524,9 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
               <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-800">
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground mb-1">Amount to Transfer</p>
-                  <p className="text-3xl font-bold text-green-600">{formatAmount(totalAmount)}</p>
+                  <p className="text-3xl font-bold text-green-600">{formatDirect(totalAmount)}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    ({formatAmount(numAmount)} + {formatAmount(vatAmount)} VAT)
+                    ({formatDirect(numAmount)} + {formatDirect(vatAmount)} VAT)
                   </p>
                 </div>
               </div>
@@ -565,7 +576,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                   Important Instructions
                 </h4>
                 <ol className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1">
-                  <li>1. Transfer exactly <strong>{formatAmount(totalAmount)}</strong> to the account above</li>
+                  <li>1. Transfer exactly <strong>{formatDirect(totalAmount)}</strong> to the account above</li>
                   <li>2. Take a screenshot of the transfer receipt</li>
                   <li>3. Upload the screenshot below</li>
                   <li>4. Wait for admin approval (usually within 24 hours)</li>
@@ -661,9 +672,9 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
               <div className="p-4 bg-gradient-to-br from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/20 rounded-xl border border-orange-200 dark:border-orange-800">
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground mb-1">Amount to Send</p>
-                  <p className="text-3xl font-bold text-orange-600">{formatAmount(totalAmount)}</p>
+                  <p className="text-3xl font-bold text-orange-600">{formatDirect(totalAmount)}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    ({formatAmount(numAmount)} + {formatAmount(vatAmount)} VAT)
+                    ({formatDirect(numAmount)} + {formatDirect(vatAmount)} VAT)
                   </p>
                 </div>
               </div>
@@ -678,7 +689,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                   Important Instructions
                 </h4>
                 <ol className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1">
-                  <li>1. Send exactly <strong>{formatAmount(totalAmount)}</strong> worth of USDT</li>
+                  <li>1. Send exactly <strong>{formatDirect(totalAmount)}</strong> worth of USDT</li>
                   <li>2. Use only the <strong>TRC-20</strong> network</li>
                   <li>3. Copy the transaction hash after sending</li>
                   <li>4. Paste the hash below and submit for approval</li>
@@ -754,15 +765,15 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center pb-3 border-b border-green-200 dark:border-green-700">
                     <span className="text-muted-foreground">Deposit Amount</span>
-                    <span className="text-2xl font-bold text-green-600">{formatAmount(numAmount)}</span>
+                    <span className="text-2xl font-bold text-green-600">{formatDirect(numAmount)}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">VAT (7.5%)</span>
-                    <span className="font-semibold text-orange-600">+{formatAmount(vatAmount)}</span>
+                    <span className="font-semibold text-orange-600">+{formatDirect(vatAmount)}</span>
                   </div>
                   <div className="flex justify-between items-center pt-3 border-t border-green-200 dark:border-green-700">
                     <span className="font-bold text-lg">Total to Pay</span>
-                    <span className="font-bold text-2xl text-green-600">{formatAmount(totalAmount)}</span>
+                    <span className="font-bold text-2xl text-green-600">{formatDirect(totalAmount)}</span>
                   </div>
                 </div>
               </div>
