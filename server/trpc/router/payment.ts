@@ -72,7 +72,7 @@ export const paymentRouter = createTRPCRouter({
     });
 
     const gateways = await ctx.prisma.paymentGatewayConfig.findMany({
-      where: { gatewayName: { in: ["paystack", "flutterwave", "mock"] } },
+      where: { gatewayName: { in: ["paystack", "flutterwave", "mock", "crypto"] } },
       orderBy: { displayOrder: "asc" },
       select: {
         id: true,

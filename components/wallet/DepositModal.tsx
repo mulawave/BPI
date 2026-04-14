@@ -106,8 +106,8 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
       name: 'Cryptocurrency',
       description: 'USDT, BTC and more',
       icon: Bitcoin,
-      available: isEnabled('crypto', false),
-      badge: isEnabled('crypto', false) ? 'Active' : 'Coming Soon'
+      available: isEnabled('crypto', true),
+      badge: isEnabled('crypto', true) ? 'Active' : 'Coming Soon'
     },
     {
       id: 'mock' as PaymentGateway,

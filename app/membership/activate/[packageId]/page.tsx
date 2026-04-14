@@ -242,8 +242,8 @@ export default function ActivateMembershipPage() {
       name: 'Cryptocurrency',
       description: 'Pay with Bitcoin, USDT, or other supported crypto',
       icon: Bitcoin,
-      available: isEnabled('crypto', false),
-      comingSoon: comingSoonFromDb('crypto', true)
+      available: isEnabled('crypto', true),
+      comingSoon: comingSoonFromDb('crypto', false)
     },
     {
       id: 'mock',
