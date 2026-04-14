@@ -31,7 +31,8 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const [txHash, setTxHash] = useState<string>('');
   const [submittingCrypto, setSubmittingCrypto] = useState(false);
   
-  const { formatAmount } = useCurrency();
+  const { formatAmount, selectedCurrency } = useCurrency();
+  const currencySign = selectedCurrency?.sign || '₦';
   const VAT_RATE = 0.075; // 7.5%
 
   const { data: gatewayConfigs } = api.payment.getPaymentGateways.useQuery(undefined, {
@@ -125,7 +126,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
 
   const handleAmountNext = () => {
     if (numAmount < 1) {
-      setError('Please enter an amount of at least ₦1');
+      setError(`Please enter an amount of at least ${currencySign}1`);
       return;
     }
     setError('');
@@ -367,7 +368,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
 
             <div className="max-w-md mx-auto">
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-muted-foreground">₦</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-muted-foreground">{currencySign}</span>
                 <Input
                   type="number"
                   value={amount}
@@ -514,7 +515,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                   <p className="text-sm text-muted-foreground mb-1">Amount to Transfer</p>
                   <p className="text-3xl font-bold text-green-600">{formatAmount(totalAmount)}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    (₦{numAmount.toLocaleString()} + ₦{vatAmount.toFixed(2)} VAT)
+                    ({formatAmount(numAmount)} + {formatAmount(vatAmount)} VAT)
                   </p>
                 </div>
               </div>
@@ -662,7 +663,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                   <p className="text-sm text-muted-foreground mb-1">Amount to Send</p>
                   <p className="text-3xl font-bold text-orange-600">{formatAmount(totalAmount)}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    (₦{numAmount.toLocaleString()} + ₦{vatAmount.toFixed(2)} VAT)
+                    ({formatAmount(numAmount)} + {formatAmount(vatAmount)} VAT)
                   </p>
                 </div>
               </div>
