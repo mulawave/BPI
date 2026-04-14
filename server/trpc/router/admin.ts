@@ -1210,15 +1210,17 @@ export const adminRouter = createTRPCRouter({
         pageSize: z.number().default(10),
         status: z.string().optional(),
         search: z.string().optional(),
+        type: z.string().optional(),
       }),
     )
     .query(async ({ input }) => {
-      const { page, pageSize, status, search } = input;
+      const { page, pageSize, status, search, type } = input;
       const skip = (page - 1) * pageSize;
 
       const where: any = {};
 
       if (status) where.status = status;
+      if (type) where.transactionType = type;
       if (search) {
         where.OR = [
           { reference: { contains: search, mode: "insensitive" } },
@@ -1264,15 +1266,17 @@ export const adminRouter = createTRPCRouter({
         pageSize: z.number().default(10),
         status: z.enum(["pending", "approved", "rejected", "expired"]).optional(),
         search: z.string().optional(),
+        paymentMethod: z.string().optional(),
       })
     )
     .query(async ({ input }) => {
-      const { page, pageSize, status, search } = input;
+      const { page, pageSize, status, search, paymentMethod } = input;
       const skip = (page - 1) * pageSize;
 
       const where: any = {};
       
       if (status) where.status = status;
+      if (paymentMethod) where.paymentMethod = paymentMethod;
       if (search) {
         where.OR = [
           { gatewayReference: { contains: search, mode: "insensitive" } },

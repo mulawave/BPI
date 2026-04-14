@@ -35,6 +35,8 @@ export default function PaymentsPage() {
   const [pageSize] = useState(10);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
+  const [methodFilter, setMethodFilter] = useState<string | undefined>(undefined);
   const [showFilters, setShowFilters] = useState(false);
   const [activeTab, setActiveTab] = useState<"ledger" | "pending">("ledger");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -48,6 +50,7 @@ export default function PaymentsPage() {
     pageSize,
     search: search || undefined,
     status: statusFilter,
+    type: typeFilter,
   });
 
   const {
@@ -59,6 +62,7 @@ export default function PaymentsPage() {
     pageSize,
     status: undefined,
     search: search || undefined,
+    paymentMethod: methodFilter,
   }, { enabled: activeTab === "pending" });
 
   const bulkReview = api.admin.bulkReviewPayments.useMutation({
@@ -70,7 +74,7 @@ export default function PaymentsPage() {
     onError: (e) => toast.error(e.message),
   });
 
-  const activeFiltersCount = (search ? 1 : 0) + (statusFilter ? 1 : 0);
+  const activeFiltersCount = (search ? 1 : 0) + (statusFilter ? 1 : 0) + (typeFilter ? 1 : 0) + (methodFilter ? 1 : 0);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -427,10 +431,59 @@ export default function PaymentsPage() {
                 </select>
               </div>
 
-              <div className="flex items-end md:col-span-2">
+              {activeTab === "ledger" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Transaction Type
+                  </label>
+                  <select
+                    value={typeFilter || ""}
+                    onChange={(e) => setTypeFilter(e.target.value || undefined)}
+                    className="w-full rounded-xl border-2 border-border bg-background/50 px-3 py-3 text-foreground"
+                  >
+                    <option value="">All Types</option>
+                    <option value="DEPOSIT">Deposit</option>
+                    <option value="WITHDRAWAL_CASH">Withdrawal (Cash)</option>
+                    <option value="WITHDRAWAL_BPT">Withdrawal (BPT)</option>
+                    <option value="WITHDRAWAL_USDT">Withdrawal (USDT)</option>
+                    <option value="MEMBERSHIP_PAYMENT">Membership Payment</option>
+                    <option value="STORE_PURCHASE">Store Purchase</option>
+                    <option value="VAT">VAT</option>
+                    <option value="REFUND">Refund</option>
+                    <option value="REVERSAL">Reversal</option>
+                    <option value="INTER_WALLET_TRANSFER">Inter-Wallet Transfer</option>
+                    <option value="TRANSFER_SENT">Transfer Sent</option>
+                    <option value="TRANSFER_RECEIVED">Transfer Received</option>
+                    <option value="CSP_CONTRIBUTION">CSP Contribution</option>
+                  </select>
+                </div>
+              )}
+
+              {activeTab === "pending" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Payment Method
+                  </label>
+                  <select
+                    value={methodFilter || ""}
+                    onChange={(e) => setMethodFilter(e.target.value || undefined)}
+                    className="w-full rounded-xl border-2 border-border bg-background/50 px-3 py-3 text-foreground"
+                  >
+                    <option value="">All Methods</option>
+                    <option value="crypto">Crypto (USDT)</option>
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="paystack">Paystack</option>
+                    <option value="flutterwave">Flutterwave</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="flex items-end">
                 <button
                   onClick={() => {
                     setStatusFilter(undefined);
+                    setTypeFilter(undefined);
+                    setMethodFilter(undefined);
                     setSearch("");
                   }}
                   className="w-full rounded-xl border-2 border-border bg-background/40 px-4 py-3 font-medium text-foreground/80 transition-all hover:bg-background hover:text-foreground"
@@ -508,7 +561,16 @@ export default function PaymentsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full ${
+                          payment.transactionType === "WITHDRAWAL_USDT"
+                            ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300"
+                            : payment.transactionType === "DEPOSIT"
+                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                            : payment.transactionType.startsWith("WITHDRAWAL_")
+                            ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                            : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                        }`}>
+                          {payment.transactionType === "WITHDRAWAL_USDT" && "💲 "}
                           {payment.transactionType}
                         </span>
                       </td>
@@ -631,7 +693,17 @@ export default function PaymentsPage() {
                             <span className="text-sm text-gray-500">{p.User?.email}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4"><span className="text-sm text-gray-700 dark:text-gray-300">{p.transactionType}</span></td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full ${
+                            (p.paymentMethod || "").toLowerCase() === "crypto"
+                              ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300"
+                              : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                          }`}>
+                            {(p.paymentMethod || "").toLowerCase() === "crypto" && "💲 "}
+                            {p.transactionType}
+                            {(p.paymentMethod || "").toLowerCase() === "crypto" && " (Crypto)"}
+                          </span>
+                        </td>
                         <td className="px-6 py-4"><span className="font-semibold text-gray-900 dark:text-white">NGN {p.amount.toLocaleString()}</span></td>
                         <td className="px-6 py-4"><span className="text-sm font-mono text-gray-600 dark:text-gray-400">{p.gatewayReference || "N/A"}</span></td>
                         <td className="px-6 py-4">
