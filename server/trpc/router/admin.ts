@@ -6698,7 +6698,7 @@ export const adminRouter = createTRPCRouter({
     const pendingWithdrawals = await prisma.transaction.count({
       where: {
         status: "pending",
-        transactionType: { in: ["WITHDRAWAL_CASH", "WITHDRAWAL_BPT"] }
+        transactionType: { in: ["WITHDRAWAL_CASH", "WITHDRAWAL_BPT", "WITHDRAWAL_USDT"] }
       }
     });
 
