@@ -1986,7 +1986,7 @@ export const adminRouter = createTRPCRouter({
 
       const where: any = {
         status: "pending",
-        transactionType: { in: ["WITHDRAWAL_CASH", "WITHDRAWAL_BPT"] }
+        transactionType: { in: ["WITHDRAWAL_CASH", "WITHDRAWAL_BPT", "WITHDRAWAL_USDT"] }
       };
 
       if (search) {
@@ -2138,7 +2138,7 @@ export const adminRouter = createTRPCRouter({
               withdrawal.User.email || '',
               withdrawal.User.name || 'User',
               amount,
-              isCashWithdrawal ? 'cash' : 'bpt',
+              isCashWithdrawal ? 'cash' : withdrawal.transactionType === 'WITHDRAWAL_USDT' ? 'usdt' : 'bpt',
               txReference,
               receiptUrl
             );
@@ -2238,6 +2238,12 @@ export const adminRouter = createTRPCRouter({
       const amount = Math.abs(withdrawal.amount);
       const txReference = withdrawal.reference || `WD-${Date.now()}`;
       const isCashWithdrawal = withdrawal.transactionType === "WITHDRAWAL_CASH";
+      const isUsdtWithdrawal = withdrawal.transactionType === "WITHDRAWAL_USDT";
+
+      // USDT withdrawals must use the dedicated approveUsdtWithdrawal endpoint
+      if (isUsdtWithdrawal) {
+        throw new Error("USDT withdrawals require a transaction hash. Please use the USDT approval flow.");
+      }
       
       console.log("⚙️  [ADMIN-APPROVAL] Processing:", {
         amount,
@@ -2534,6 +2540,100 @@ export const adminRouter = createTRPCRouter({
       });
 
       return updated;
+    }),
+
+  // ============================================
+  // USDT WITHDRAWAL APPROVAL (with tx hash)
+  // ============================================
+  approveUsdtWithdrawal: adminProcedure
+    .input(z.object({
+      withdrawalId: z.string(),
+      txHash: z.string().min(10, "Transaction hash is required"),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { withdrawalId, txHash, notes } = input;
+      const reviewerId = (ctx.session?.user as any)?.id;
+
+      const withdrawal = await prisma.transaction.findUnique({
+        where: { id: withdrawalId },
+        include: { User: { select: { id: true, name: true, email: true } } },
+      });
+
+      if (!withdrawal) throw new Error("Withdrawal not found");
+      if (withdrawal.transactionType !== "WITHDRAWAL_USDT") {
+        throw new Error("This endpoint is only for USDT withdrawals");
+      }
+      if ((withdrawal.status || "").toLowerCase() !== "pending") {
+        throw new Error("This withdrawal has already been processed.");
+      }
+
+      const amount = Math.abs(withdrawal.amount);
+      const txReference = withdrawal.reference || `WD-USDT-${Date.now()}`;
+
+      // Parse existing metadata and add admin tx hash
+      let meta: any = {};
+      try { meta = JSON.parse(withdrawal.metadata || "{}"); } catch {}
+      meta.adminTxHash = txHash;
+      meta.approvedAt = new Date().toISOString();
+      meta.approvedBy = reviewerId;
+      meta.notes = notes;
+
+      // Update transaction with tx hash and mark completed (atomic)
+      await prisma.$transaction([
+        prisma.transaction.update({
+          where: { id: withdrawalId },
+          data: {
+            status: "completed",
+            metadata: JSON.stringify(meta),
+          },
+        }),
+        prisma.withdrawalHistory.updateMany({
+          where: { userId: withdrawal.userId, amount, status: "pending" },
+          data: { status: "completed" },
+        }),
+        prisma.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: reviewerId || "system",
+            action: "WITHDRAWAL_USDT_APPROVAL",
+            entity: "Transaction",
+            entityId: withdrawalId,
+            changes: JSON.stringify({
+              action: "approve_usdt",
+              amount,
+              userId: withdrawal.userId,
+              txHash,
+              usdtAddress: meta.usdtAddress,
+              notes,
+            }),
+            status: "success",
+            createdAt: new Date(),
+          },
+        }),
+      ]);
+
+      // Generate receipt
+      const receiptUrl = generateReceiptLink(withdrawalId, 'withdrawal');
+
+      // Notify user
+      await notifyWithdrawalStatus(withdrawal.userId, "completed", amount, txReference, receiptUrl);
+
+      // Send email
+      try {
+        await sendWithdrawalApprovedToUser(
+          withdrawal.User.email || '',
+          withdrawal.User.name || 'User',
+          amount,
+          'usdt',
+          txReference,
+          receiptUrl
+        );
+      } catch (emailError) {
+        console.error('Failed to send USDT approval email:', emailError);
+      }
+
+      return { success: true, txHash, amount, reference: txReference };
     }),
 
   // Transaction Reversal - For correcting errors in completed transactions

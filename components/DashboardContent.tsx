@@ -57,6 +57,7 @@ import CommunityStatsModal from "./community/CommunityStatsModal";
 import Footer from "./Footer";
 import toast from "react-hot-toast";
 import WithdrawalModal from "./wallet/WithdrawalModal";
+import UsdtWithdrawalHistory from "./wallet/UsdtWithdrawalHistory";
 import TransferModal from "./wallet/TransferModal";
 import WalletTimelineModal from "./wallet/WalletTimelineModal";
 import BptTimelineModal from "./wallet/BptTimelineModal";
@@ -227,6 +228,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   // Wallet operation modals
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false);
+  const [isUsdtHistoryOpen, setIsUsdtHistoryOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   
   // Email verification dialog state
@@ -4917,6 +4919,12 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
       <WithdrawalModal
         isOpen={isWithdrawalModalOpen}
         onClose={() => setIsWithdrawalModalOpen(false)}
+        onOpenUsdtHistory={() => setIsUsdtHistoryOpen(true)}
+      />
+      
+      <UsdtWithdrawalHistory
+        isOpen={isUsdtHistoryOpen}
+        onClose={() => setIsUsdtHistoryOpen(false)}
       />
       
       <TransferModal

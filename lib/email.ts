@@ -301,7 +301,7 @@ export async function sendWithdrawalRequestToAdmins(
   userName: string,
   userEmail: string,
   amount: number,
-  withdrawalType: 'cash' | 'bpt',
+  withdrawalType: 'cash' | 'bpt' | 'usdt',
   reference: string
 ) {
   // Get all admin emails
@@ -354,11 +354,11 @@ export async function sendWithdrawalRequestToAdmins(
               </div>
               <div class="info-row">
                 <span class="info-label">Amount:</span>
-                <span class="info-value" style="color: #dc2626; font-size: 18px;">₦${amount.toLocaleString()}</span>
+                <span class="info-value" style="color: #dc2626; font-size: 18px;">${withdrawalType === 'usdt' ? '$' : '₦'}${amount.toLocaleString()}</span>
               </div>
               <div class="info-row">
                 <span class="info-label">Type:</span>
-                <span class="info-value">${withdrawalType === 'cash' ? 'Cash (Bank Transfer)' : 'BPT Token'}</span>
+                <span class="info-value">${withdrawalType === 'cash' ? 'Cash (Bank Transfer)' : withdrawalType === 'usdt' ? 'USDT (TRC-20)' : 'BPT Token'}</span>
               </div>
               <div class="info-row">
                 <span class="info-label">Reference:</span>
@@ -391,7 +391,7 @@ export async function sendWithdrawalRequestToAdmins(
   const emailPromises = admins.map(admin =>
     sendEmail({
       to: admin.email || '',
-      subject: `🔔 New Withdrawal Request - ₦${amount.toLocaleString()} from ${userName}`,
+      subject: `🔔 New Withdrawal Request - ${withdrawalType === 'usdt' ? '$' : '₦'}${amount.toLocaleString()} from ${userName}`,
       html,
     }).catch(error => {
       console.error(`Failed to send withdrawal notification to ${admin.email}:`, error);
@@ -405,7 +405,7 @@ export async function sendWithdrawalApprovedToUser(
   email: string,
   name: string,
   amount: number,
-  withdrawalType: 'cash' | 'bpt',
+  withdrawalType: 'cash' | 'bpt' | 'usdt',
   reference: string,
   receiptUrl?: string
 ) {
@@ -440,19 +440,21 @@ export async function sendWithdrawalApprovedToUser(
 
             <div class="amount-box">
               <p style="margin: 0; color: #6b7280; font-size: 14px;">You've Withdrawn</p>
-              <div class="amount">₦${amount.toLocaleString()}</div>
+              <div class="amount">${withdrawalType === 'usdt' ? '$' : '₦'}${amount.toLocaleString()}</div>
               <p style="margin: 0; color: #6b7280; font-size: 12px; font-family: monospace;">${reference}</p>
             </div>
 
             <p><strong>Withdrawal Details:</strong></p>
             <ul>
-              <li><strong>Type:</strong> ${withdrawalType === 'cash' ? 'Bank Transfer' : 'BPT Token Transfer'}</li>
+              <li><strong>Type:</strong> ${withdrawalType === 'cash' ? 'Bank Transfer' : withdrawalType === 'usdt' ? 'USDT TRC-20 Transfer' : 'BPT Token Transfer'}</li>
               <li><strong>Status:</strong> <span style="color: #059669;">Completed</span></li>
               <li><strong>Processing Time:</strong> ${withdrawalType === 'cash' ? '1-2 business days' : 'Within 24 hours'}</li>
             </ul>
 
             ${withdrawalType === 'cash' 
               ? '<p>The funds will be transferred to your registered bank account shortly. Please allow 1-2 business days for the transfer to reflect in your account.</p>' 
+              : withdrawalType === 'usdt'
+              ? '<p>Your USDT has been sent to your TRC-20 wallet address. You can track the transaction using the hash provided in your withdrawal history on the dashboard.</p>'
               : '<p>Your BPT tokens will be transferred to your registered BNB wallet address within 24 hours.</p>'
             }
 

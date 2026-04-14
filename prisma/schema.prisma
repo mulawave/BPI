@@ -1718,6 +1718,7 @@ model Transaction {
   reference       String?
   createdAt       DateTime @default(now())
   walletType      String   @default("main")
+  metadata        String?  // JSON: stores extra data (USDT address, network, admin txHash, etc.)
   User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 

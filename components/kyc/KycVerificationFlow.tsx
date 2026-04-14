@@ -180,7 +180,26 @@ export default function KycVerificationFlow() {
       toast.success("KYC submitted successfully! You will be notified once reviewed.");
       router.push("/dashboard");
     } catch (error: any) {
-      toast.error(error?.message || "Failed to submit KYC. Please try again.");
+      // Parse tRPC/Zod validation errors into user-friendly messages
+      let msg = "Failed to submit KYC. Please try again.";
+      try {
+        const parsed = JSON.parse(error?.message || "");
+        if (Array.isArray(parsed)) {
+          msg = parsed.map((e: any) => {
+            const field = e.path?.join(".");
+            const humanField = field
+              ? field.replace(/Url$/, "").replace(/([A-Z])/g, " $1").trim()
+              : "field";
+            return e.message || `Invalid ${humanField}`;
+          }).join(". ");
+        }
+      } catch {
+        // Not JSON – use message as-is or fall back
+        if (error?.message && !error.message.startsWith("[")) {
+          msg = error.message;
+        }
+      }
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }

@@ -555,7 +555,7 @@ export const walletRouter = createTRPCRouter({
   withdraw: protectedProcedure
     .input(z.object({
       amount: z.number().positive("Amount must be greater than 0"),
-      withdrawalType: z.enum(['cash', 'bpt']),
+      withdrawalType: z.enum(['cash', 'bpt', 'usdt']),
       sourceWallet: z.enum(['wallet', 'spendable', 'shareholder', 'cashback', 'community', 'education', 'empowermentSponsorReward', 'car', 'business', 'shelter']),
       // Security validation
       pin: z.string().length(4, "PIN must be 4 digits"),
@@ -564,13 +564,30 @@ export const walletRouter = createTRPCRouter({
       accountNumber: z.string().optional(),
       accountName: z.string().optional(),
       // Crypto details (required for BPT withdrawal)
-      bnbWalletAddress: z.string().optional()
+      bnbWalletAddress: z.string().optional(),
+      // USDT TRC-20 details (required for usdt withdrawal)
+      usdtAddress: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = (ctx.session?.user as any)?.id;
       if (!userId) throw new Error("UNAUTHORIZED");
 
-      const { amount, withdrawalType, sourceWallet, pin, bankCode, accountNumber, accountName, bnbWalletAddress } = input;
+      const { amount, withdrawalType, sourceWallet, pin, bankCode, accountNumber, accountName, bnbWalletAddress, usdtAddress } = input;
+
+      // USDT withdrawal: non-Nigerian check + country requirement
+      if (withdrawalType === 'usdt') {
+        const userCountry = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { country: true, countryRelation: { select: { name: true } } }
+        });
+        const countryName = userCountry?.countryRelation?.name || userCountry?.country || null;
+        if (!countryName) {
+          throw new Error("Please set your country in profile settings before requesting a USDT withdrawal.");
+        }
+        if (countryName.toLowerCase() === 'nigeria') {
+          throw new Error("USDT withdrawal is not available for Nigerian users. Please use cash withdrawal to your bank account.");
+        }
+      }
 
       // CTO policy: Cashback Wallet is for store spending/transfers-to-cashback only;
       // users cannot withdraw cashback externally.
@@ -646,7 +663,7 @@ export const walletRouter = createTRPCRouter({
       const withdrawalsToday = await prisma.transaction.count({
         where: {
           userId,
-          transactionType: { in: ["WITHDRAWAL_CASH", "WITHDRAWAL_BPT"] },
+          transactionType: { in: ["WITHDRAWAL_CASH", "WITHDRAWAL_BPT", "WITHDRAWAL_USDT"] },
           createdAt: { gte: todayStart },
         },
       });
@@ -727,6 +744,10 @@ export const walletRouter = createTRPCRouter({
         if (!bankCode || !accountNumber || !accountName) {
           throw new Error("Bank details are required for cash withdrawal. Please provide bank code, account number, and account name.");
         }
+      } else if (withdrawalType === 'usdt') {
+        if (!usdtAddress || !usdtAddress.startsWith('T') || usdtAddress.length !== 34) {
+          throw new Error("A valid USDT TRC-20 wallet address is required (must start with T, 34 characters).");
+        }
       } else {
         // BPT withdrawal
         if (!bnbWalletAddress) {
@@ -734,9 +755,9 @@ export const walletRouter = createTRPCRouter({
         }
       }
 
-      // Check if withdrawal requires admin approval
+      // USDT withdrawals always require admin approval
       const autoWithdrawalThreshold = await getAdminSetting('AUTO_WITHDRAWAL_THRESHOLD', DEFAULT_AUTO_WITHDRAWAL_THRESHOLD);
-      const requiresApproval = amount >= autoWithdrawalThreshold;
+      const requiresApproval = withdrawalType === 'usdt' ? true : amount >= autoWithdrawalThreshold;
       const status = requiresApproval ? "pending" : "processing";
       
       console.log("⚙️  [WITHDRAWAL] Auto-approval threshold:", autoWithdrawalThreshold);
@@ -756,15 +777,23 @@ export const walletRouter = createTRPCRouter({
 
         // Create withdrawal transaction
         console.log("🔄 [WITHDRAWAL] Creating transaction record...");
+        const usdtMetadata = withdrawalType === 'usdt' ? JSON.stringify({
+          usdtAddress,
+          network: 'TRC-20',
+          amountUSD: amount,
+        }) : undefined;
         const transaction = await prisma.transaction.create({
           data: {
             id: randomUUID(),
             userId,
             transactionType: `WITHDRAWAL_${withdrawalType.toUpperCase()}`,
             amount: -amount,
-            description: `${withdrawalType === 'cash' ? 'Cash' : 'BPT'} withdrawal from ${sourceWallet} wallet`,
+            description: withdrawalType === 'usdt'
+              ? `USDT TRC-20 withdrawal from ${sourceWallet} wallet`
+              : `${withdrawalType === 'cash' ? 'Cash' : 'BPT'} withdrawal from ${sourceWallet} wallet`,
             status,
-            reference: txReference
+            reference: txReference,
+            ...(usdtMetadata && { metadata: usdtMetadata }),
           }
         });
         console.log("✅ [WITHDRAWAL] Transaction created:", transaction.id);
@@ -1605,5 +1634,55 @@ export const walletRouter = createTRPCRouter({
         success: false,
         message: "Bank details fields are not yet added to the schema. Please add bankName, accountNumber, accountName, and bnbWalletAddress to the User model in schema.prisma, then apply the schema with your standard Prisma migration." 
       };
-    })
+    }),
+
+  // ============================================
+  // USDT WITHDRAWAL STATUS (user-facing)
+  // ============================================
+  getMyUsdtWithdrawals: protectedProcedure.query(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id;
+    if (!userId) throw new Error("UNAUTHORIZED");
+
+    const withdrawals = await prisma.transaction.findMany({
+      where: {
+        userId,
+        transactionType: "WITHDRAWAL_USDT",
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+
+    return withdrawals.map((w) => {
+      let meta: any = {};
+      try { meta = JSON.parse(w.metadata || "{}"); } catch {}
+      return {
+        id: w.id,
+        amount: Math.abs(w.amount),
+        status: w.status,
+        reference: w.reference,
+        createdAt: w.createdAt,
+        usdtAddress: meta.usdtAddress || "",
+        network: meta.network || "TRC-20",
+        adminTxHash: meta.adminTxHash || null,
+        approvedAt: meta.approvedAt || null,
+      };
+    });
+  }),
+
+  // Check if user is eligible for USDT withdrawal (non-Nigerian)
+  canWithdrawUsdt: protectedProcedure.query(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id;
+    if (!userId) throw new Error("UNAUTHORIZED");
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { country: true, countryRelation: { select: { name: true } } },
+    });
+
+    const countryName = user?.countryRelation?.name || user?.country || null;
+    if (!countryName) return { eligible: false, country: '' };
+    const isNigerian = countryName.toLowerCase() === 'nigeria';
+
+    return { eligible: !isNigerian, country: countryName };
+  }),
 });

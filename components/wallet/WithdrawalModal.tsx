@@ -2,22 +2,24 @@
 
 import { useState } from "react";
 import { FiX, FiCheck, FiAlertCircle } from "react-icons/fi";
-import { Wallet, CreditCard, Bitcoin, CheckCircle, Loader2, AlertTriangle, Building, BadgeCheck } from "lucide-react";
+import { Wallet, CreditCard, Bitcoin, CheckCircle, Loader2, AlertTriangle, Building, BadgeCheck, DollarSign, Copy, ExternalLink } from "lucide-react";
 import { api } from "@/client/trpc";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useSession } from "next-auth/react";
+import toast from "react-hot-toast";
 
 interface WithdrawalModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenUsdtHistory?: () => void;
 }
 
-type WithdrawalType = 'cash' | 'bpt';
+type WithdrawalType = 'cash' | 'bpt' | 'usdt';
 type Step = 'type' | 'details' | 'summary' | 'processing' | 'success' | 'error';
 
-export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProps) {
+export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: WithdrawalModalProps) {
   const { data: session } = useSession();
   const [withdrawalType, setWithdrawalType] = useState<WithdrawalType>('cash');
   const [currentStep, setCurrentStep] = useState<Step>('type');
@@ -29,7 +31,11 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
   // Bank account selection
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
   const [bnbWallet, setBnbWallet] = useState<string>('');
+  const [usdtAddress, setUsdtAddress] = useState<string>('');
   const [pin, setPin] = useState<string>('');
+
+  // Check USDT eligibility (non-Nigerian users only)
+  const { data: usdtEligibility } = api.wallet.canWithdrawUsdt.useQuery();
 
   // Fetch user's bank accounts
   const { data: bankAccounts } = api.bank.getUserBankRecords.useQuery();
@@ -67,9 +73,9 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
   const mainWalletBalance = dashboardData?.wallets?.primary?.main?.balance || 0;
 
   const numAmount = parseFloat(amount) || 0;
-  const fee = withdrawalType === 'cash' ? CASH_FEE : BPT_FEE;
+  const fee = withdrawalType === 'cash' ? CASH_FEE : withdrawalType === 'bpt' ? BPT_FEE : 0;
   const totalDebit = numAmount + fee; // Total amount debited from wallet (withdrawal + fee)
-  const requiresApproval = numAmount >= AUTO_APPROVAL_THRESHOLD;
+  const requiresApproval = withdrawalType === 'usdt' ? true : numAmount >= AUTO_APPROVAL_THRESHOLD;
 
   const handleTypeNext = () => {
     setError('');
@@ -90,6 +96,11 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
     if (withdrawalType === 'cash') {
       if (!selectedBankAccountId || !selectedBankAccount) {
         setError('Please select a bank account');
+        return;
+      }
+    } else if (withdrawalType === 'usdt') {
+      if (!usdtAddress || !usdtAddress.startsWith('T') || usdtAddress.length !== 34) {
+        setError('Please enter a valid USDT TRC-20 wallet address (starts with T, 34 characters)');
         return;
       }
     } else {
@@ -115,23 +126,34 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
   const handleConfirm = () => {
     setCurrentStep('processing');
     
-    const payload = withdrawalType === 'cash'
-      ? {
-          withdrawalType: 'cash' as const,
-          amount: numAmount,
-          sourceWallet: 'wallet' as const,
-          bankCode: selectedBankAccount?.bank?.bankCode || '',
-          accountNumber: selectedBankAccount?.accountNumber || '',
-          accountName: selectedBankAccount?.accountName || '',
-          pin,
-        }
-      : {
-          withdrawalType: 'bpt' as const,
-          amount: numAmount,
-          sourceWallet: 'wallet' as const,
-          bnbWalletAddress: bnbWallet,
-          pin,
-        };
+    let payload: any;
+    if (withdrawalType === 'cash') {
+      payload = {
+        withdrawalType: 'cash' as const,
+        amount: numAmount,
+        sourceWallet: 'wallet' as const,
+        bankCode: selectedBankAccount?.bank?.bankCode || '',
+        accountNumber: selectedBankAccount?.accountNumber || '',
+        accountName: selectedBankAccount?.accountName || '',
+        pin,
+      };
+    } else if (withdrawalType === 'usdt') {
+      payload = {
+        withdrawalType: 'usdt' as const,
+        amount: numAmount,
+        sourceWallet: 'wallet' as const,
+        usdtAddress,
+        pin,
+      };
+    } else {
+      payload = {
+        withdrawalType: 'bpt' as const,
+        amount: numAmount,
+        sourceWallet: 'wallet' as const,
+        bnbWalletAddress: bnbWallet,
+        pin,
+      };
+    }
 
     withdrawalMutation.mutate(payload);
   };
@@ -141,6 +163,7 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
     setAmount('');
     setSelectedBankAccountId(null);
     setBnbWallet('');
+    setUsdtAddress('');
     setPin('');
     setError('');
     setSuccessData(null);
@@ -185,7 +208,7 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
             >
               <div className="flex items-center justify-center gap-2">
                 <Building className="w-5 h-5" />
-                <span>Cash Withdrawal</span>
+                <span>Cash</span>
               </div>
             </button>
             <button
@@ -198,9 +221,24 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
             >
               <div className="flex items-center justify-center gap-2">
                 <Bitcoin className="w-5 h-5" />
-                <span>BPT Withdrawal</span>
+                <span>BPT</span>
               </div>
             </button>
+            {usdtEligibility?.eligible && (
+              <button
+                onClick={() => setWithdrawalType('usdt')}
+                className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
+                  withdrawalType === 'usdt'
+                    ? 'bg-white text-emerald-600 shadow-lg'
+                    : 'bg-white/10 hover:bg-white/20 text-white'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <DollarSign className="w-5 h-5" />
+                  <span>USDT</span>
+                </div>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -211,39 +249,66 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
         {currentStep === 'type' && (
           <div className="space-y-6 animate-fadeIn">
             <div className="text-center mb-8">
-              <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                withdrawalType === 'usdt'
+                  ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
+                  : 'bg-gradient-to-br from-blue-500 to-purple-600'
+              }`}>
                 {withdrawalType === 'cash' ? (
                   <Building className="w-10 h-10 text-white" />
+                ) : withdrawalType === 'usdt' ? (
+                  <DollarSign className="w-10 h-10 text-white" />
                 ) : (
                   <Bitcoin className="w-10 h-10 text-white" />
                 )}
               </div>
               <h2 className="text-2xl font-bold text-foreground mb-2">
-                {withdrawalType === 'cash' ? 'Bank Withdrawal' : 'BPT Token Withdrawal'}
+                {withdrawalType === 'cash' ? 'Bank Withdrawal' : withdrawalType === 'usdt' ? 'USDT TRC-20 Withdrawal' : 'BPT Token Withdrawal'}
               </h2>
               <p className="text-muted-foreground">
                 {withdrawalType === 'cash' 
                   ? 'Withdraw funds directly to your bank account'
+                  : withdrawalType === 'usdt'
+                  ? 'Withdraw via USDT to your TRC-20 wallet'
                   : 'Transfer BPT tokens to your BNB wallet'
                 }
               </p>
             </div>
 
             <div className="max-w-md mx-auto space-y-4">
-              <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl border border-blue-200 dark:border-blue-800">
+              <div className={`p-6 rounded-2xl border ${
+                withdrawalType === 'usdt'
+                  ? 'bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border-emerald-200 dark:border-emerald-800'
+                  : 'bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800'
+              }`}>
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    withdrawalType === 'usdt' ? 'bg-emerald-500' : 'bg-blue-500'
+                  }`}>
                     <FiAlertCircle className="w-6 h-6 text-white" />
                   </div>
                   <div className="space-y-2">
                     <h3 className="font-bold text-foreground">Important Information</h3>
                     <ul className="text-sm text-muted-foreground space-y-1">
-                      <li>• Processing Fee: <strong className={withdrawalType === 'cash' ? 'text-orange-600' : 'text-green-600'}>
-                        {withdrawalType === 'cash' ? formatAmount(CASH_FEE) : 'FREE'}
-                      </strong></li>
-                      <li>• Amounts under {formatAmount(AUTO_APPROVAL_THRESHOLD)} are auto-approved</li>
-                      <li>• Larger amounts require admin approval (1-2 business days)</li>
-                      {withdrawalType === 'bpt' && <li>• Ensure your BNB wallet address is correct</li>}
+                      {withdrawalType === 'usdt' ? (
+                        <>
+                          <li>• Network: <strong className="text-emerald-600">TRON (TRC-20)</strong></li>
+                          <li>• Processing Fee: <strong className="text-green-600">FREE</strong></li>
+                          <li>• All USDT withdrawals require <strong>admin approval</strong></li>
+                          <li>• Admin will send USDT and provide a transaction hash</li>
+                          <li>• You can track your payment using the hash</li>
+                          <li>• Ensure your TRC-20 address is correct — cannot be reversed</li>
+                        </>
+                      ) : (
+                        <>
+                          <li>• Processing Fee: <strong className={withdrawalType === 'cash' ? 'text-orange-600' : 'text-green-600'}>
+                            {withdrawalType === 'cash' ? formatAmount(CASH_FEE) : 'FREE'}
+                          </strong></li>
+                          <li>• Amounts under {formatAmount(AUTO_APPROVAL_THRESHOLD)} are auto-approved</li>
+                          <li>• Larger amounts require admin approval (1-2 business days)</li>
+                          {withdrawalType === 'bpt' && <li>• Ensure your BNB wallet address is correct</li>}
+                        </>
+                      )}
                     </ul>
                   </div>
                 </div>
@@ -377,6 +442,39 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
                 </div>
               )}
 
+              {/* USDT TRC-20 fields */}
+              {withdrawalType === 'usdt' && (
+                <div className="space-y-4 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                  <h3 className="font-semibold text-foreground flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-emerald-600" />
+                    USDT TRC-20 Wallet Address
+                  </h3>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">TRC-20 Address</label>
+                    <Input
+                      type="text"
+                      value={usdtAddress}
+                      onChange={(e) => setUsdtAddress(e.target.value)}
+                      placeholder="TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Enter your TRON (TRC-20) USDT wallet address (starts with T, 34 characters). Double-check — transactions cannot be reversed.
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800/50">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        <strong>Network: TRON (TRC-20) only.</strong> Sending to a wrong network will result in permanent loss of funds.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-muted-foreground mb-1">Transaction PIN</label>
                 <Input
@@ -501,6 +599,23 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
                       <span className="font-semibold">{selectedBankAccount?.accountName}</span>
                     </div>
                   </div>
+                ) : withdrawalType === 'usdt' ? (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Network:</span>
+                      <span className="font-semibold text-emerald-600">TRON (TRC-20)</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Token:</span>
+                      <span className="font-semibold">USDT</span>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground mb-1">Wallet Address:</p>
+                      <p className="font-mono text-xs bg-white dark:bg-gray-900/30 p-2 rounded border break-all">
+                        {usdtAddress}
+                      </p>
+                    </div>
+                  </div>
                 ) : (
                   <div className="space-y-2 text-sm">
                     <div>
@@ -612,12 +727,20 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
 
               {successData.status === 'pending' && (
                 <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
-                  <h3 className="font-semibold text-foreground mb-2">What's Next?</h3>
+                  <h3 className="font-semibold text-foreground mb-2">What&apos;s Next?</h3>
                   <ul className="text-sm text-muted-foreground space-y-1">
                     <li>✓ Your withdrawal request has been received</li>
                     <li>✓ Admin will review within 1-2 business days</li>
-                    <li>✓ You'll receive email notification upon approval</li>
-                    <li>✓ Funds will be transferred to your account</li>
+                    <li>✓ You&apos;ll receive email notification upon approval</li>
+                    {withdrawalType === 'usdt' ? (
+                      <>
+                        <li>✓ Admin will send USDT to your TRC-20 address</li>
+                        <li>✓ You&apos;ll receive a transaction hash to track your payment</li>
+                        <li>✓ Check your USDT withdrawal history for updates</li>
+                      </>
+                    ) : (
+                      <li>✓ Funds will be transferred to your account</li>
+                    )}
                   </ul>
                 </div>
               )}
@@ -631,14 +754,25 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
               >
                 Done
               </Button>
-              <Button
-                onClick={handleReset}
-                variant="outline"
-                className="flex-1 py-6"
-                size="lg"
-              >
-                Make Another Withdrawal
-              </Button>
+              {withdrawalType === 'usdt' && onOpenUsdtHistory ? (
+                <Button
+                  onClick={() => { handleClose(); onOpenUsdtHistory(); }}
+                  variant="outline"
+                  className="flex-1 py-6 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                  size="lg"
+                >
+                  View USDT History
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleReset}
+                  variant="outline"
+                  className="flex-1 py-6"
+                  size="lg"
+                >
+                  Make Another Withdrawal
+                </Button>
+              )}
             </div>
           </div>
         )}
