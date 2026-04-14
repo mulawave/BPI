@@ -2111,6 +2111,8 @@ model PaymentGatewayConfig {
   bankName             String?
   cryptoPublicKey      String?
   cryptoSecretKey      String?
+  cryptoDepositAddress String?
+  cryptoNetwork        String?
   currentPriceNgn      Float?
   currentPriceUsd      Float?
   homePageUrl          String?

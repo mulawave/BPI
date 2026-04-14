@@ -1378,6 +1378,9 @@ export const adminRouter = createTRPCRouter({
         const purpose = (payment.transactionType || "").toUpperCase();
         const metadata = (payment.metadata ?? {}) as any;
         const paymentRef = payment.gatewayReference || payment.id;
+        const isCrypto = (payment.paymentMethod || "").toLowerCase() === "crypto";
+        const paymentMethodLabel = isCrypto ? "Crypto Transfer" : "Bank Transfer";
+        const sourceKey = isCrypto ? "CRYPTO" : "BANK_TRANSFER";
 
         const normalizePercent = (maybePercent: number, fallback: number) => {
           if (!Number.isFinite(maybePercent)) return fallback;
@@ -1423,7 +1426,7 @@ export const adminRouter = createTRPCRouter({
             packageId: pkgId,
             selectedPalliative: metadata.selectedPalliative,
             paymentReference: paymentRef,
-            paymentMethodLabel: "Bank Transfer",
+            paymentMethodLabel,
             activatorName: payment.User?.name || payment.User?.email || "New Member",
           });
 
@@ -1434,7 +1437,7 @@ export const adminRouter = createTRPCRouter({
             currency: "NGN",
             sourceId: payment.id,
             description: `Membership purchase: Package ${pkgId}`,
-            sourceKey: "BANK_TRANSFER",
+            sourceKey,
             userId: payment.userId,
             packageId: pkgId,
             programType: "MEMBERSHIP",
@@ -1448,7 +1451,7 @@ export const adminRouter = createTRPCRouter({
               vat: membershipPackage.vat,
               packageName: membershipPackage.name,
               selectedPalliative: metadata.selectedPalliative ?? null,
-              paymentMethod: "BANK_TRANSFER",
+              paymentMethod: sourceKey,
             },
           });
         } else if (purpose === "STORE_PURCHASE") {
@@ -1606,7 +1609,7 @@ export const adminRouter = createTRPCRouter({
             currentPackageId: fromId,
             selectedPalliative: metadata.selectedPalliative,
             paymentReference: paymentRef,
-            paymentMethodLabel: "Bank Transfer",
+            paymentMethodLabel,
           });
 
           // Record revenue for membership upgrade  
@@ -1616,7 +1619,7 @@ export const adminRouter = createTRPCRouter({
             currency: "NGN",
             sourceId: payment.id,
             description: `Membership upgrade: From ${fromId} to ${pkgId}`,
-            sourceKey: "BANK_TRANSFER",
+            sourceKey,
             userId: payment.userId,
             packageId: pkgId,
             programType: "MEMBERSHIP_UPGRADE",
@@ -1629,7 +1632,7 @@ export const adminRouter = createTRPCRouter({
               fromPackageId: fromId,
               toPackageId: pkgId,
               selectedPalliative: metadata.selectedPalliative ?? null,
-              paymentMethod: "BANK_TRANSFER",
+              paymentMethod: sourceKey,
             },
           });
         } else if (purpose === "TOPUP" || purpose === "DEPOSIT") {
@@ -1714,6 +1717,61 @@ export const adminRouter = createTRPCRouter({
               transactionType: "DEPOSIT",
               amount: payment.amount,
               description: `Wallet top-up (admin verified) - ${payment.paymentMethod}`,
+              status: "completed",
+              reference: paymentRef,
+              walletType: "main",
+            },
+          });
+        } else if (purpose === "CSP_CONTRIBUTION") {
+          // Crypto-funded CSP contribution: credit the holding wallet without wallet deduction
+          const cspRequestId = metadata.cspRequestId as string | undefined;
+          if (cspRequestId) {
+            const cspRequest = await prisma.cspSupportRequest.findUnique({ where: { id: cspRequestId } });
+            if (cspRequest) {
+              const newRaised = cspRequest.raisedAmount + payment.amount;
+              const newStatus = newRaised >= cspRequest.thresholdAmount ? "ready_for_release" : cspRequest.status;
+
+              await prisma.cspSupportRequest.update({
+                where: { id: cspRequestId },
+                data: {
+                  raisedAmount: { increment: payment.amount },
+                  contributorsCount: { increment: 1 },
+                  status: newStatus,
+                },
+              });
+
+              await prisma.cspContribution.create({
+                data: {
+                  requestId: cspRequestId,
+                  contributorId: payment.userId,
+                  amount: payment.amount,
+                  walletType: "wallet",
+                },
+              });
+
+              await prisma.transaction.create({
+                data: {
+                  id: randomUUID(),
+                  userId: payment.userId,
+                  transactionType: "CSP_CONTRIBUTION",
+                  amount: -payment.amount,
+                  description: `CSP crypto contribution to request ${cspRequestId} (admin verified)`,
+                  status: "completed",
+                  reference: paymentRef,
+                  walletType: "main",
+                },
+              });
+            }
+          }
+        } else if (purpose === "STORE_PURCHASE") {
+          // Crypto-funded store purchase - record the payment transaction
+          await prisma.transaction.create({
+            data: {
+              id: randomUUID(),
+              userId: payment.userId,
+              transactionType: "STORE_PURCHASE",
+              amount: -payment.amount,
+              description: `Store purchase via crypto (admin verified)`,
               status: "completed",
               reference: paymentRef,
               walletType: "main",
@@ -1823,6 +1881,8 @@ export const adminRouter = createTRPCRouter({
           const purpose = (payment.transactionType || "").toUpperCase();
           const metadata = (payment.metadata ?? {}) as any;
           const paymentRef = payment.gatewayReference || payment.id;
+          const isCryptoBulk = (payment.paymentMethod || "").toLowerCase() === "crypto";
+          const bulkMethodLabel = isCryptoBulk ? "Crypto Transfer" : "Bank Transfer";
 
           if (purpose === "MEMBERSHIP") {
             const pkgId = metadata.packageId as string | undefined;
@@ -1834,7 +1894,7 @@ export const adminRouter = createTRPCRouter({
               packageId: pkgId,
               selectedPalliative: metadata.selectedPalliative,
               paymentReference: paymentRef,
-              paymentMethodLabel: "Bank Transfer",
+              paymentMethodLabel: bulkMethodLabel,
               activatorName: payment.User?.name || payment.User?.email || "New Member",
             });
           } else if (purpose === "UPGRADE") {
@@ -1851,7 +1911,7 @@ export const adminRouter = createTRPCRouter({
               currentPackageId: fromId,
               selectedPalliative: metadata.selectedPalliative,
               paymentReference: paymentRef,
-              paymentMethodLabel: "Bank Transfer",
+              paymentMethodLabel: bulkMethodLabel,
             });
           } else {
             await prisma.user.update({
@@ -4109,6 +4169,8 @@ export const adminRouter = createTRPCRouter({
         merchantKey: z.string().optional(),
         cryptoPublicKey: z.string().optional(),
         cryptoSecretKey: z.string().optional(),
+        cryptoDepositAddress: z.string().optional(),
+        cryptoNetwork: z.string().optional(),
         // Bank Transfer fields
         bankName: z.string().optional(),
         bankAccount: z.string().optional(),
@@ -4129,7 +4191,7 @@ export const adminRouter = createTRPCRouter({
       // Guard: prevent activating gateways that have no backend implementation
       if (data.isActive === true) {
         const existing = await prisma.paymentGatewayConfig.findUnique({ where: { id } });
-        const IMPLEMENTED_GATEWAYS = new Set(["paystack", "flutterwave", "mock"]);
+        const IMPLEMENTED_GATEWAYS = new Set(["paystack", "flutterwave", "mock", "crypto", "bank-transfer", "utility-token"]);
         if (existing && !IMPLEMENTED_GATEWAYS.has(existing.gatewayName)) {
           throw new Error(
             `Cannot activate '${existing.displayName}' — this payment gateway does not have a backend implementation yet. ` +

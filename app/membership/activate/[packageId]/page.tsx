@@ -298,6 +298,11 @@ export default function ActivateMembershipPage() {
         const palliativeQuery = selectedPalliative ? `&palliative=${encodeURIComponent(selectedPalliative)}` : '';
         router.push(`/membership/payment/bank-transfer?packageId=${selectedPackage.id}&amount=${totalCost}${isUpgrade ? `&upgrade=true&from=${fromPackageId}` : ''}${palliativeQuery}`);
         setProcessing(false);
+      } else if (selectedGateway === 'crypto') {
+        // Redirect to crypto payment page with payment details
+        const palliativeQuery = selectedPalliative ? `&palliative=${encodeURIComponent(selectedPalliative)}` : '';
+        router.push(`/membership/payment/crypto?packageId=${selectedPackage.id}&amount=${totalCost}${isUpgrade ? `&upgrade=true&from=${fromPackageId}` : ''}${palliativeQuery}`);
+        setProcessing(false);
       } else if (selectedGateway === 'flutterwave') {
         if (isUpgrade && fromPackageId) {
           await processUpgradeMutation.mutateAsync({

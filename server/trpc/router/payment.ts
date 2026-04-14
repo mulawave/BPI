@@ -456,4 +456,112 @@ export const paymentRouter = createTRPCRouter({
         message: "Proof submitted. Awaiting admin verification.",
       };
     }),
+
+  /**
+   * Get crypto deposit settings (USDT TRC-20 address, network) for users.
+   */
+  getCryptoDepositInfo: protectedProcedure.query(async ({ ctx }) => {
+    const cryptoGateway = await ctx.prisma.paymentGatewayConfig.findUnique({
+      where: { gatewayName: "crypto" },
+      select: {
+        isActive: true,
+        cryptoDepositAddress: true,
+        cryptoNetwork: true,
+        tokenName: true,
+        tokenSymbol: true,
+      },
+    });
+
+    if (!cryptoGateway || !cryptoGateway.isActive || !cryptoGateway.cryptoDepositAddress) {
+      return { available: false as const, depositAddress: null, network: null, tokenName: null, tokenSymbol: null };
+    }
+
+    return {
+      available: true as const,
+      depositAddress: cryptoGateway.cryptoDepositAddress,
+      network: cryptoGateway.cryptoNetwork || "TRC-20",
+      tokenName: cryptoGateway.tokenName || "USDT",
+      tokenSymbol: cryptoGateway.tokenSymbol || "USDT",
+    };
+  }),
+
+  /**
+   * Submit crypto transaction hash for admin verification.
+   * Creates a PendingPayment record with the tx hash as proof.
+   */
+  submitCryptoProof: protectedProcedure
+    .input(
+      z.object({
+        amount: z.number().positive(),
+        currency: z.string().default("USDT"),
+        purpose: z.nativeEnum(PaymentPurpose),
+        txHash: z.string().min(10, "Transaction hash is required"),
+        packageId: z.string().optional(),
+        isUpgrade: z.boolean().optional(),
+        fromPackageId: z.string().optional(),
+        metadata: z.record(z.any()).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session!.user as any).id as string;
+
+      // Validate that crypto gateway is active and has an address
+      const cryptoGateway = await ctx.prisma.paymentGatewayConfig.findUnique({
+        where: { gatewayName: "crypto" },
+        select: { isActive: true, cryptoDepositAddress: true, cryptoNetwork: true },
+      });
+
+      if (!cryptoGateway?.isActive || !cryptoGateway.cryptoDepositAddress) {
+        throw new Error("Crypto payments are not currently available");
+      }
+
+      // Prevent duplicate submission of same tx hash
+      const existingWithHash = await ctx.prisma.pendingPayment.findFirst({
+        where: {
+          paymentMethod: "crypto",
+          proofOfPayment: input.txHash,
+          status: { in: ["pending", "approved"] },
+        },
+      });
+      if (existingWithHash) {
+        throw new Error("This transaction hash has already been submitted");
+      }
+
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000); // 48h for crypto
+
+      const gatewayReference = `CRYPTO-${Date.now()}-${userId.substring(0, 8)}`;
+
+      const created = await ctx.prisma.pendingPayment.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          transactionType: input.purpose,
+          amount: input.amount,
+          currency: input.currency,
+          paymentMethod: "crypto",
+          gatewayReference,
+          status: "pending",
+          proofOfPayment: input.txHash,
+          metadata: {
+            packageId: input.packageId,
+            isUpgrade: input.isUpgrade,
+            fromPackageId: input.fromPackageId,
+            txHash: input.txHash,
+            network: cryptoGateway.cryptoNetwork || "TRC-20",
+            depositAddress: cryptoGateway.cryptoDepositAddress,
+            ...input.metadata,
+          },
+          expiresAt,
+          updatedAt: now,
+        },
+      });
+
+      return {
+        success: true,
+        pendingPaymentId: created.id,
+        gatewayReference,
+        message: "Transaction hash submitted. Awaiting admin verification.",
+      };
+    }),
 });

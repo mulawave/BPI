@@ -8,6 +8,8 @@ import { useCurrency } from "@/contexts/CurrencyContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import BankTransferDetails from "../payment/BankTransferDetails";
+import CryptoTransferDetails from "../payment/CryptoTransferDetails";
+import { PaymentPurpose } from "@/server/services/payment";
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -15,7 +17,7 @@ interface DepositModalProps {
 }
 
 type PaymentGateway = 'paystack' | 'flutterwave' | 'bank-transfer' | 'utility-token' | 'crypto' | 'mock';
-type Step = 'amount' | 'gateway' | 'summary' | 'bank-details' | 'processing' | 'success' | 'error';
+type Step = 'amount' | 'gateway' | 'summary' | 'bank-details' | 'crypto-details' | 'processing' | 'success' | 'error';
 
 export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const [currentStep, setCurrentStep] = useState<Step>('amount');
@@ -26,6 +28,8 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState<string>('');
   const [uploadingProof, setUploadingProof] = useState(false);
+  const [txHash, setTxHash] = useState<string>('');
+  const [submittingCrypto, setSubmittingCrypto] = useState(false);
   
   const { formatAmount } = useCurrency();
   const VAT_RATE = 0.075; // 7.5%
@@ -142,13 +146,17 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
     
     // Bank transfer: offer manual proof upload step OR automated Paystack flow
     if (selectedGateway === 'bank-transfer') {
-      // If Paystack is enabled, the backend supports automated bank transfer.
-      // Show bank-details step which now has both options.
       setCurrentStep('bank-details');
       return;
     }
+
+    // Crypto: show deposit address + tx hash input
+    if (selectedGateway === 'crypto') {
+      setCurrentStep('crypto-details');
+      return;
+    }
     
-    // Utility-token and crypto go directly to processing
+    // Utility-token and others go directly to processing
     setCurrentStep('processing');
     depositMutation.mutate({
       amount: numAmount,
@@ -226,6 +234,49 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
     }
   };
 
+  const cryptoProofMutation = api.payment.submitCryptoProof.useMutation({
+    onSuccess: (data) => {
+      setSubmittingCrypto(false);
+      setSuccessData({
+        message: data.message,
+        depositedAmount: numAmount,
+        vatAmount,
+        totalPaid: totalAmount,
+      });
+      setCurrentStep('success');
+    },
+    onError: (err) => {
+      setSubmittingCrypto(false);
+      setError(err.message);
+      setCurrentStep('error');
+    },
+  });
+
+  const handleCryptoSubmit = () => {
+    const trimmed = txHash.trim();
+    if (!trimmed) {
+      setError('Please enter the transaction hash');
+      return;
+    }
+    if (trimmed.length < 10) {
+      setError('Transaction hash appears too short');
+      return;
+    }
+    setError('');
+    setSubmittingCrypto(true);
+    cryptoProofMutation.mutate({
+      amount: numAmount,
+      currency: 'USDT',
+      purpose: PaymentPurpose.DEPOSIT,
+      txHash: trimmed,
+      metadata: {
+        depositAmount: numAmount,
+        vatAmount,
+        totalAmount: totalAmount,
+      },
+    });
+  };
+
   const handleReset = () => {
     setCurrentStep('amount');
     setAmount('');
@@ -235,6 +286,8 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
     setProofFile(null);
     setProofPreview('');
     setUploadingProof(false);
+    setTxHash('');
+    setSubmittingCrypto(false);
   };
 
   const handleClose = () => {
@@ -578,6 +631,99 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                   size="lg"
                 >
                   {uploadingProof ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                      Submitting...
+                    </>
+                  ) : (
+                    'Submit for Approval'
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Crypto Details Step */}
+        {currentStep === 'crypto-details' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="text-center mb-8">
+              <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Bitcoin className="w-10 h-10 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Crypto Transfer</h2>
+              <p className="text-muted-foreground">Send USDT to the address below</p>
+            </div>
+
+            <div className="max-w-md mx-auto space-y-6">
+              {/* Amount Summary */}
+              <div className="p-4 bg-gradient-to-br from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/20 rounded-xl border border-orange-200 dark:border-orange-800">
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground mb-1">Amount to Send</p>
+                  <p className="text-3xl font-bold text-orange-600">{formatAmount(totalAmount)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    (₦{numAmount.toLocaleString()} + ₦{vatAmount.toFixed(2)} VAT)
+                  </p>
+                </div>
+              </div>
+
+              {/* Crypto Deposit Address */}
+              <CryptoTransferDetails className="space-y-3" />
+
+              {/* Instructions */}
+              <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800">
+                <h4 className="font-bold text-sm mb-2 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                  Important Instructions
+                </h4>
+                <ol className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1">
+                  <li>1. Send exactly <strong>{formatAmount(totalAmount)}</strong> worth of USDT</li>
+                  <li>2. Use only the <strong>TRC-20</strong> network</li>
+                  <li>3. Copy the transaction hash after sending</li>
+                  <li>4. Paste the hash below and submit for approval</li>
+                </ol>
+              </div>
+
+              {/* Transaction Hash Input */}
+              <div className="space-y-3">
+                <label className="block">
+                  <span className="text-sm font-medium mb-2 block">Transaction Hash *</span>
+                  <Input
+                    type="text"
+                    value={txHash}
+                    onChange={(e) => setTxHash(e.target.value)}
+                    placeholder="Paste your transaction hash here"
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Find this in your wallet&apos;s transaction history after sending
+                  </p>
+                </label>
+              </div>
+
+              {error && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2 text-red-700 dark:text-red-400">
+                  <FiAlertCircle />
+                  <span className="text-sm">{error}</span>
+                </div>
+              )}
+
+              <div className="flex gap-4">
+                <Button
+                  onClick={() => setCurrentStep('summary')}
+                  variant="outline"
+                  className="flex-1 py-6"
+                  size="lg"
+                >
+                  Back
+                </Button>
+                <Button
+                  onClick={handleCryptoSubmit}
+                  disabled={!txHash.trim() || submittingCrypto}
+                  className="flex-1 py-6 bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 disabled:opacity-50"
+                  size="lg"
+                >
+                  {submittingCrypto ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin mr-2" />
                       Submitting...

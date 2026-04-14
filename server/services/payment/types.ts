@@ -72,6 +72,8 @@ export enum PaymentPurpose {
   TOPUP = "TOPUP",
   EMPOWERMENT = "EMPOWERMENT",
   DEPOSIT = "DEPOSIT",
+  STORE_PURCHASE = "STORE_PURCHASE",
+  CSP_CONTRIBUTION = "CSP_CONTRIBUTION",
 }
 
 export interface GatewayConfig {

@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/client/trpc";
 import { Button } from "@/components/ui/button";
-import { Loader2, Shield, ArrowLeft, AlertTriangle, Wallet } from "lucide-react";
+import { Loader2, Shield, ArrowLeft, AlertTriangle, Wallet, Bitcoin } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import { PaymentPurpose } from "@/server/services/payment";
+import CryptoTransferDetails from "@/components/payment/CryptoTransferDetails";
+import { Input } from "@/components/ui/input";
 import type { AppRouter } from "@/server/trpc/router/_app";
 import type { inferRouterOutputs } from "@trpc/server";
 
@@ -23,13 +26,24 @@ interface Props {
 export default function CheckoutClient({ intentId, productId, quantity }: Props) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
-  const [paymentMode, setPaymentMode] = useState<"fiat" | "hybrid" | "token">("fiat");
+  const [paymentMode, setPaymentMode] = useState<"fiat" | "hybrid" | "token" | "crypto">("fiat");
   const [cashbackInsufficient, setCashbackInsufficient] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cryptoTxHash, setCryptoTxHash] = useState("");
 
   const { data: product } = api.store.getProduct.useQuery({ id: productId }, { enabled: !!productId });
   const { data: tokenRates } = api.store.listTokenRates.useQuery(undefined, { enabled: !!product });
   const confirmCheckout = api.store.confirmCheckoutIntent.useMutation();
+  const submitCryptoProof = api.payment.submitCryptoProof.useMutation({
+    onSuccess: () => {
+      toast.success("Crypto proof submitted. Awaiting admin approval for your order.");
+      router.push("/store/orders");
+    },
+    onError: (err) => {
+      toast.error(err.message);
+      setSubmitting(false);
+    },
+  });
 
   const primaryToken = product?.accepted_tokens?.[0];
   const tokenLimit = primaryToken ? product?.token_payment_limits?.[primaryToken] ?? 0 : 0;
@@ -77,6 +91,31 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
       toast.error("Cannot confirm checkout.");
       return;
     }
+
+    if (paymentMode === "crypto") {
+      if (!cryptoTxHash.trim()) {
+        toast.error("Please enter your transaction hash.");
+        return;
+      }
+      setSubmitting(true);
+      const toastId = toast.loading("Submitting crypto proof...");
+      try {
+        await submitCryptoProof.mutateAsync({
+          amount: split?.gross ?? product.base_price_fiat * (quantity || 1),
+          currency: "USDT",
+          purpose: PaymentPurpose.STORE_PURCHASE,
+          txHash: cryptoTxHash.trim(),
+          metadata: { intentId, productId, quantity },
+        });
+      } catch {
+        // error handled by mutation onError
+      } finally {
+        toast.dismiss(toastId);
+        setSubmitting(false);
+      }
+      return;
+    }
+
     setSubmitting(true);
     const toastId = toast.loading("Confirming checkout...");
     try {
@@ -170,6 +209,9 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
               <Button size="sm" variant={paymentMode === "fiat" ? "default" : "outline"} onClick={() => { setPaymentMode("fiat"); setCashbackInsufficient(false); }}>100% Cashback Wallet</Button>
               <Button size="sm" variant={paymentMode === "hybrid" ? "default" : "outline"} onClick={() => { setPaymentMode("hybrid"); setCashbackInsufficient(false); }} disabled={!tokenAllowed}>BPT + Cashback Wallet</Button>
               <Button size="sm" variant={paymentMode === "token" ? "default" : "outline"} onClick={() => { setPaymentMode("token"); setCashbackInsufficient(false); }} disabled={!canTokenOnly}>100% BPT</Button>
+              <Button size="sm" variant={paymentMode === "crypto" ? "default" : "outline"} onClick={() => { setPaymentMode("crypto"); setCashbackInsufficient(false); }} className={paymentMode === "crypto" ? "bg-gradient-to-r from-orange-600 to-yellow-600 text-white" : ""}>
+                <Bitcoin className="h-4 w-4 mr-1" /> Crypto (USDT)
+              </Button>
             </div>
 
             <div className="flex items-center justify-between">
@@ -186,6 +228,25 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
               <span className="text-muted-foreground">Cashback Wallet portion</span>
               <span className="font-semibold text-foreground">{split ? split.fiatPortion.toFixed(2) : "—"}</span>
             </div>
+
+            {paymentMode === "crypto" && (
+              <div className="border-t border-border/50 pt-4 mt-2 space-y-3">
+                <CryptoTransferDetails className="space-y-3" />
+                <div>
+                  <label className="text-sm font-medium text-foreground">Transaction Hash *</label>
+                  <Input
+                    type="text"
+                    value={cryptoTxHash}
+                    onChange={(e) => setCryptoTxHash(e.target.value)}
+                    placeholder="Paste your transaction hash here"
+                    className="mt-1 font-mono text-sm"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Send the exact USDT amount, then paste the tx hash above
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-3">

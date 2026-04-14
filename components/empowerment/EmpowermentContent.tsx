@@ -49,7 +49,7 @@ const PACKAGE_COST = 354750; // ₦330,000 + ₦24,750 VAT
 type TabView = 'activate' | 'history' | 'analytics' | 'config';
 type StatusFilter = 'all' | 'active' | 'pending' | 'mature' | 'approved' | 'released' | 'fallback' | 'converted';
 type EmpowermentType = 'CHILD_EDUCATION' | 'VOCATIONAL_SKILL';
-type Gateway = 'wallet' | 'paystack' | 'flutterwave' | 'bank-transfer';
+type Gateway = 'wallet' | 'paystack' | 'flutterwave' | 'bank-transfer' | 'crypto';
 type OutcomeType =
   | 'FULL_APPROVAL'
   | 'PARTIAL_DECLINE_50'
@@ -374,6 +374,18 @@ export default function EmpowermentContent() {
         packageId: 'empowerment',
       });
       window.location.href = `/membership/payment/bank-transfer?${params.toString()}`;
+      return;
+    }
+
+    if (paymentGateway === 'crypto') {
+      const params = new URLSearchParams({
+        amount: String(PACKAGE_COST),
+        purpose: 'empowerment',
+        beneficiaryId: selectedBeneficiary.id,
+        empowermentType,
+        packageId: 'empowerment',
+      });
+      window.location.href = `/membership/payment/crypto?${params.toString()}`;
       return;
     }
 
@@ -1214,6 +1226,31 @@ export default function EmpowermentContent() {
                           paymentGateway === 'bank-transfer' ? 'text-emerald-900 dark:text-emerald-100' : 'text-gray-900 dark:text-white'
                         }`}>
                           Bank Transfer
+                        </p>
+                        <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                          Admin verification required
+                        </p>
+                      </motion.button>
+                    )}
+
+                    {availableGateways && availableGateways.some((g) => g.gatewayName === 'crypto' && g.isActive) && (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => setPaymentGateway('crypto')}
+                        className={`p-4 rounded-lg border-2 transition-all ${
+                          paymentGateway === 'crypto'
+                            ? 'border-orange-500 bg-orange-50 dark:bg-orange-950/30'
+                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300'
+                        }`}
+                      >
+                        <FiDollarSign className={`w-6 h-6 mx-auto mb-2 ${
+                          paymentGateway === 'crypto' ? 'text-orange-600' : 'text-gray-600'
+                        }`} />
+                        <p className={`text-sm font-semibold ${
+                          paymentGateway === 'crypto' ? 'text-orange-900 dark:text-orange-100' : 'text-gray-900 dark:text-white'
+                        }`}>
+                          Crypto (USDT)
                         </p>
                         <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
                           Admin verification required

@@ -5,6 +5,9 @@ import { api } from "@/client/trpc";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
+import { PaymentPurpose } from "@/server/services/payment";
+import CryptoTransferDetails from "@/components/payment/CryptoTransferDetails";
+import { Input } from "@/components/ui/input";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -62,7 +65,8 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   const [notes, setNotes] = useState("");
   const [selectedBroadcast, setSelectedBroadcast] = useState<any | null>(null);
   const [contributionAmount, setContributionAmount] = useState("");
-  const [contributionWallet, setContributionWallet] = useState<"community" | "wallet">("wallet");
+  const [contributionWallet, setContributionWallet] = useState<"community" | "wallet" | "crypto">("wallet");
+  const [cryptoTxHash, setCryptoTxHash] = useState("");
   const [shuffledBroadcasts, setShuffledBroadcasts] = useState<typeof broadcastsQuery.data>([]);
 
   const categoryRulesFallback = {
@@ -126,6 +130,17 @@ export function CspDashboard({ userName }: CspDashboardProps) {
       broadcastsQuery.refetch();
       liveStatusQuery.refetch();
       eligibilityQuery.refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const cryptoContributeMutation = api.payment.submitCryptoProof.useMutation({
+    onSuccess: () => {
+      toast.success("Crypto proof submitted. Awaiting admin verification.");
+      setSelectedBroadcast(null);
+      setContributionAmount("");
+      setCryptoTxHash("");
+      broadcastsQuery.refetch();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -781,31 +796,71 @@ export function CspDashboard({ userName }: CspDashboardProps) {
               </div>
 
               <div>
-                <label className="text-sm font-medium text-foreground">Wallet</label>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {["wallet", "community"].map((w) => (
+                <label className="text-sm font-medium text-foreground">Payment Method</label>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {(["wallet", "community", "crypto"] as const).map((w) => (
                     <button
                       key={w}
-                      onClick={() => setContributionWallet(w as "wallet" | "community")}
+                      onClick={() => setContributionWallet(w)}
                       className={`rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition ${contributionWallet === w ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "border-gray-200 dark:border-bpi-dark-accent"}`}
                     >
                       {w === "wallet"
                         ? `Cash Wallet • ₦${balances.cash.toLocaleString()}`
-                        : `Community Wallet • ₦${balances.community.toLocaleString()}`}
+                        : w === "community"
+                          ? `Community • ₦${balances.community.toLocaleString()}`
+                          : "Crypto (USDT)"}
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Only Cash or Community wallets are accepted. Balances refresh after each contribution.</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {contributionWallet === "crypto"
+                    ? "Send USDT and paste the transaction hash below."
+                    : "Only Cash or Community wallets are accepted. Balances refresh after each contribution."}
+                </p>
               </div>
+
+              {contributionWallet === "crypto" && (
+                <div className="space-y-3 pt-2">
+                  <CryptoTransferDetails className="space-y-3" />
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Transaction Hash *</label>
+                    <Input
+                      type="text"
+                      value={cryptoTxHash}
+                      onChange={(e) => setCryptoTxHash(e.target.value)}
+                      placeholder="Paste your transaction hash here"
+                      className="mt-1 font-mono text-sm"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-              disabled={contributeMutation.isPending || !contributionAmount}
+              disabled={
+                (contributionWallet === "crypto" ? cryptoContributeMutation.isPending : contributeMutation.isPending)
+                || !contributionAmount
+                || (contributionWallet === "crypto" && !cryptoTxHash.trim())
+              }
               onClick={() => {
                 const amt = Number(contributionAmount);
                 if (Number.isNaN(amt) || amt < 500) {
                   toast.error("Minimum contribution is ₦500");
+                  return;
+                }
+                if (contributionWallet === "crypto") {
+                  if (!cryptoTxHash.trim()) {
+                    toast.error("Please enter the transaction hash");
+                    return;
+                  }
+                  cryptoContributeMutation.mutate({
+                    amount: amt,
+                    currency: "USDT",
+                    purpose: PaymentPurpose.CSP_CONTRIBUTION,
+                    txHash: cryptoTxHash.trim(),
+                    metadata: { cspRequestId: selectedBroadcast.id },
+                  });
                   return;
                 }
                 contributeMutation.mutate({

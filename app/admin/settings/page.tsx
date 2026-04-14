@@ -113,6 +113,8 @@ export default function SettingsPage() {
     | "merchantKey"
     | "cryptoPublicKey"
     | "cryptoSecretKey"
+    | "cryptoDepositAddress"
+    | "cryptoNetwork"
     | "bankName"
     | "bankAccount"
     | "bankAccountName"
@@ -196,6 +198,8 @@ export default function SettingsPage() {
         merchantKey: edits.merchantKey ?? gateway.merchantKey ?? undefined,
         cryptoPublicKey: edits.cryptoPublicKey ?? gateway.cryptoPublicKey ?? undefined,
         cryptoSecretKey: edits.cryptoSecretKey ?? gateway.cryptoSecretKey ?? undefined,
+        cryptoDepositAddress: edits.cryptoDepositAddress ?? gateway.cryptoDepositAddress ?? undefined,
+        cryptoNetwork: edits.cryptoNetwork ?? gateway.cryptoNetwork ?? undefined,
       });
       return;
     }
@@ -1096,6 +1100,34 @@ export default function SettingsPage() {
                               value={gatewayEdits[gateway.id]?.cryptoSecretKey ?? gateway.cryptoSecretKey ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "cryptoSecretKey", e.target.value)}
                               placeholder="Enter secret key"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
+                            />
+                          </div>
+
+                          <div className="md:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
+                            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Manual Crypto Deposit Settings</p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                              Deposit Wallet Address (USDT TRC-20)
+                            </label>
+                            <input
+                              value={gatewayEdits[gateway.id]?.cryptoDepositAddress ?? gateway.cryptoDepositAddress ?? ""}
+                              onChange={(e) => setGatewayEdit(gateway.id, "cryptoDepositAddress", e.target.value)}
+                              placeholder="e.g. TXyz1234...abcd"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white font-mono text-sm"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                              Network
+                            </label>
+                            <input
+                              value={gatewayEdits[gateway.id]?.cryptoNetwork ?? gateway.cryptoNetwork ?? ""}
+                              onChange={(e) => setGatewayEdit(gateway.id, "cryptoNetwork", e.target.value)}
+                              placeholder="e.g. TRC-20"
                               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
                             />
                           </div>
