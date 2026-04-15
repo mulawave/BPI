@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
-import { Award, Check, TrendingUp, Users, Gift, Shield, Moon, Sun, LogOut, ChevronDown, ChevronUp, ArrowLeft, Loader2 } from "lucide-react";
+import { Award, Check, TrendingUp, Users, Gift, Shield, Moon, Sun, LogOut, ChevronDown, ChevronUp, ArrowLeft, Loader2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -18,7 +18,8 @@ export default function MembershipPage() {
   const { data: activeMembership, isLoading: loadingActive } = api.package.getUserActiveMembership.useQuery();
   const activateMutation = api.package.activateStandard.useMutation();
   const { theme, toggleTheme } = useTheme();
-  const { formatAmount } = useCurrency();
+  const { formatAmount, selectedCurrency, currencies, setSelectedCurrencyId } = useCurrency();
+  const selectedCurrencyId = selectedCurrency?.id || '';
   const router = useRouter();
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [expandedPackages, setExpandedPackages] = useState<Record<string, boolean>>({});
@@ -359,6 +360,23 @@ export default function MembershipPage() {
                   {theme === 'light' ? 'Dark' : 'Light'}
                 </span>
               </Button>
+
+              {/* Currency Selector */}
+              <div className="relative">
+                <select
+                  value={selectedCurrencyId}
+                  onChange={(e) => setSelectedCurrencyId(e.target.value)}
+                  className="h-9 px-3 pr-8 text-sm font-medium bg-white dark:bg-green-900/40 hover:bg-accent border border-gray-300 dark:border-green-700/50 rounded-md appearance-none cursor-pointer transition-colors text-gray-900 dark:text-white"
+                  disabled={!currencies || currencies.length === 0}
+                >
+                  {currencies?.map((currency) => (
+                    <option key={currency.id} value={currency.id}>
+                      {currency.sign} {currency.symbol}
+                    </option>
+                  ))}
+                </select>
+                <RefreshCw className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+              </div>
 
               <Button
                 variant="outline"

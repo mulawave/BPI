@@ -18,35 +18,26 @@ interface CurrencyContextType {
   setSelectedCurrencyId: (id: string) => void;
   formatAmount: (amount: number, decimals?: number) => string;
   convertAmount: (amount: number) => number;
+  convertToNGN: (amountInSelected: number) => number;
 }
 
 const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined);
 
 export function CurrencyProvider({ children }: { children: ReactNode }) {
-  const [selectedCurrencyId, setSelectedCurrencyIdState] = useState("");
+  // Read localStorage synchronously on mount to avoid flash of wrong currency
+  const [selectedCurrencyId, setSelectedCurrencyIdState] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('bpi:selectedCurrency') || '';
+    }
+    return '';
+  });
   const { data: currencies = [] } = api.currency.getAll.useQuery();
   const { data: defaultCurrency } = api.currency.getDefault.useQuery();
 
-  // Load saved currency from localStorage on mount
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedCurrencyId = localStorage.getItem('bpi:selectedCurrency');
-      if (savedCurrencyId) {
-        setSelectedCurrencyIdState(savedCurrencyId);
-      }
-    }
-  }, []);
-
-  // Set default currency if no selection exists
+  // Set default currency if no selection exists (no localStorage value)
   useEffect(() => {
     if (defaultCurrency && !selectedCurrencyId) {
-      const savedCurrencyId = typeof window !== 'undefined' 
-        ? localStorage.getItem('bpi:selectedCurrency') 
-        : null;
-      
-      if (!savedCurrencyId) {
-        setSelectedCurrencyIdState(defaultCurrency.id);
-      }
+      setSelectedCurrencyIdState(defaultCurrency.id);
     }
   }, [defaultCurrency, selectedCurrencyId]);
 
@@ -55,16 +46,29 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     setSelectedCurrencyIdState(id);
     if (typeof window !== 'undefined') {
       localStorage.setItem('bpi:selectedCurrency', id);
+      // Also save symbol for robust fallback matching
+      const currency = currencies.find(c => c.id === id);
+      if (currency) {
+        localStorage.setItem('bpi:selectedCurrencySymbol', currency.symbol);
+      }
     }
   };
 
-  const selectedCurrency = currencies.find(c => c.id === selectedCurrencyId) || defaultCurrency || null;
+  // Resolve selected currency with fallback to symbol-based match
+  const savedSymbol = typeof window !== 'undefined' ? localStorage.getItem('bpi:selectedCurrencySymbol') : null;
+  const selectedCurrency = currencies.find(c => c.id === selectedCurrencyId)
+    || (savedSymbol ? currencies.find(c => c.symbol === savedSymbol) : null)
+    || defaultCurrency
+    || null;
 
-  // Currency conversion helper
+  // Currency conversion helper — matches server-side: (amount / fromRate) * toRate
   const convertAmount = (amountInNGN: number): number => {
     if (amountInNGN === null || amountInNGN === undefined || isNaN(amountInNGN)) return 0;
     if (!selectedCurrency || selectedCurrency.symbol === 'NGN') return amountInNGN;
-    return (amountInNGN / 1.0) * (selectedCurrency.rate || 1);
+    // Use actual NGN rate from DB instead of hardcoded 1.0
+    const ngnCurrency = currencies.find(c => c.symbol === 'NGN');
+    const ngnRate = ngnCurrency?.rate || 1;
+    return (amountInNGN / ngnRate) * (selectedCurrency.rate || 1);
   };
 
   const formatAmount = (amountInNGN: number, decimals?: number): string => {
@@ -80,6 +84,16 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     return `${selectedCurrency?.sign || '₦'}${formatted}`;
   };
 
+  // Reverse conversion: from selected currency back to NGN
+  const convertToNGN = (amountInSelected: number): number => {
+    if (amountInSelected === null || amountInSelected === undefined || isNaN(amountInSelected)) return 0;
+    if (!selectedCurrency || selectedCurrency.symbol === 'NGN') return amountInSelected;
+    const ngnCurrency = currencies.find(c => c.symbol === 'NGN');
+    const ngnRate = ngnCurrency?.rate || 1;
+    const selectedRate = selectedCurrency.rate || 1;
+    return selectedRate !== 0 ? (amountInSelected / selectedRate) * ngnRate : amountInSelected;
+  };
+
   return (
     <CurrencyContext.Provider
       value={{
@@ -88,6 +102,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
         setSelectedCurrencyId,
         formatAmount,
         convertAmount,
+        convertToNGN,
       }}
     >
       {children}

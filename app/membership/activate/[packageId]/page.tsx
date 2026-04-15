@@ -19,6 +19,7 @@ import {
   Bitcoin,
   LogOut,
   FlaskConical,
+  RefreshCw,
 } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -55,7 +56,9 @@ export default function ActivateMembershipPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
-  const { formatAmount } = useCurrency();
+  const { formatAmount, selectedCurrency, currencies, setSelectedCurrencyId } = useCurrency();
+  const isCryptoAllowed = selectedCurrency?.symbol !== 'NGN';
+  const selectedCurrencyId = selectedCurrency?.id || '';
   const packageId = params?.packageId as string;
   
   // Check if this is an upgrade
@@ -240,10 +243,10 @@ export default function ActivateMembershipPage() {
     {
       id: 'crypto',
       name: 'Cryptocurrency',
-      description: 'Pay with Bitcoin, USDT, or other supported crypto',
+      description: isCryptoAllowed ? 'Pay with Bitcoin, USDT, or other supported crypto' : 'Switch currency to USD to unlock crypto payments',
       icon: Bitcoin,
-      available: isEnabled('crypto', true),
-      comingSoon: comingSoonFromDb('crypto', false)
+      available: isCryptoAllowed && isEnabled('crypto', true),
+      comingSoon: !isCryptoAllowed ? false : comingSoonFromDb('crypto', false)
     },
     {
       id: 'mock',
@@ -472,6 +475,23 @@ export default function ActivateMembershipPage() {
                   {theme === 'light' ? 'Dark' : 'Light'}
                 </span>
               </Button>
+
+              {/* Currency Selector */}
+              <div className="relative">
+                <select
+                  value={selectedCurrencyId}
+                  onChange={(e) => setSelectedCurrencyId(e.target.value)}
+                  className="h-9 px-3 pr-8 text-sm font-medium bg-white dark:bg-green-900/40 hover:bg-accent border border-gray-300 dark:border-green-700/50 rounded-md appearance-none cursor-pointer transition-colors text-gray-900 dark:text-white"
+                  disabled={!currencies || currencies.length === 0}
+                >
+                  {currencies?.map((currency) => (
+                    <option key={currency.id} value={currency.id}>
+                      {currency.sign} {currency.symbol}
+                    </option>
+                  ))}
+                </select>
+                <RefreshCw className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+              </div>
               
               <Button 
                 variant="outline" 

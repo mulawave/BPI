@@ -578,7 +578,7 @@ export default function PaymentsPage() {
                         <div className="flex items-center gap-2">
                           <MdAttachMoney className="text-green-600" size={18} />
                           <span className="font-semibold text-gray-900 dark:text-white">
-                            NGN {payment.amount.toLocaleString()}
+                            {payment.transactionType === "WITHDRAWAL_USDT" ? "$" : "NGN"} {payment.amount.toLocaleString()}
                           </span>
                         </div>
                       </td>
@@ -704,7 +704,7 @@ export default function PaymentsPage() {
                             {(p.paymentMethod || "").toLowerCase() === "crypto" && " (Crypto)"}
                           </span>
                         </td>
-                        <td className="px-6 py-4"><span className="font-semibold text-gray-900 dark:text-white">NGN {p.amount.toLocaleString()}</span></td>
+                        <td className="px-6 py-4"><span className="font-semibold text-gray-900 dark:text-white">{(p.currency && p.currency !== "NGN") ? "$" : "NGN"} {p.amount.toLocaleString()}</span></td>
                         <td className="px-6 py-4"><span className="text-sm font-mono text-gray-600 dark:text-gray-400">{p.gatewayReference || "N/A"}</span></td>
                         <td className="px-6 py-4">
                           <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">{p.status.toUpperCase()}</span>

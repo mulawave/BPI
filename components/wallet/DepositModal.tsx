@@ -31,20 +31,13 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const [txHash, setTxHash] = useState<string>('');
   const [submittingCrypto, setSubmittingCrypto] = useState(false);
   
-  const { formatAmount, selectedCurrency } = useCurrency();
+  const { formatAmount, selectedCurrency, convertToNGN: toNaira } = useCurrency();
   const currencySign = selectedCurrency?.sign || '₦';
   const VAT_RATE = 0.075; // 7.5%
 
   // Format an amount already in the user's selected currency (no conversion)
   const formatDirect = (val: number) =>
     `${currencySign}${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-  // Convert from selected currency back to NGN for backend
-  const toNaira = (amount: number): number => {
-    if (!selectedCurrency || selectedCurrency.symbol === 'NGN') return amount;
-    const rate = selectedCurrency.rate || 1;
-    return rate !== 0 ? amount / rate : amount;
-  };
 
   const { data: gatewayConfigs } = api.payment.getPaymentGateways.useQuery(undefined, {
     enabled: isOpen,
@@ -60,6 +53,9 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
     if (enabled === undefined) return fallback;
     return enabled;
   };
+
+  // Crypto is only available for non-NGN currencies (USD, EUR, etc.)
+  const isCryptoAllowed = selectedCurrency?.symbol !== 'NGN';
 
   const depositMutation = api.wallet.deposit.useMutation({
     onSuccess: (data) => {
@@ -116,10 +112,10 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
     {
       id: 'crypto' as PaymentGateway,
       name: 'Cryptocurrency',
-      description: 'USDT, BTC and more',
+      description: isCryptoAllowed ? 'USDT, BTC and more' : 'Switch currency to USD to unlock',
       icon: Bitcoin,
-      available: isEnabled('crypto', true),
-      badge: isEnabled('crypto', true) ? 'Active' : 'Coming Soon'
+      available: isCryptoAllowed && isEnabled('crypto', true),
+      badge: !isCryptoAllowed ? 'NGN Only' : isEnabled('crypto', true) ? 'Active' : 'Coming Soon'
     },
     {
       id: 'mock' as PaymentGateway,

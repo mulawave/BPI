@@ -42,6 +42,7 @@ import {
   FiTag,
 } from 'react-icons/fi';
 import { api } from '@/client/trpc';
+import { useCurrency } from '@/contexts/CurrencyContext';
 import toast from 'react-hot-toast';
 
 const PACKAGE_COST = 354750; // ₦330,000 + ₦24,750 VAT
@@ -110,6 +111,8 @@ function PkgTranchesRow({
 export default function EmpowermentContent() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
+  const { selectedCurrency } = useCurrency();
+  const isCryptoAllowed = selectedCurrency?.symbol !== 'NGN';
   const isAdminView = pathname?.startsWith('/admin/empowerment');
   const [activeTab, setActiveTab] = useState<TabView>(isAdminView ? 'history' : 'activate');
   const [searchQuery, setSearchQuery] = useState('');
@@ -1233,7 +1236,7 @@ export default function EmpowermentContent() {
                       </motion.button>
                     )}
 
-                    {availableGateways && availableGateways.some((g) => g.gatewayName === 'crypto' && g.isActive) && (
+                    {isCryptoAllowed && availableGateways && availableGateways.some((g) => g.gatewayName === 'crypto' && g.isActive) && (
                       <motion.button
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}

@@ -10,6 +10,7 @@ import toast from "react-hot-toast";
 import { PaymentPurpose } from "@/server/services/payment";
 import CryptoTransferDetails from "@/components/payment/CryptoTransferDetails";
 import { Input } from "@/components/ui/input";
+import { useCurrency } from "@/contexts/CurrencyContext";
 import type { AppRouter } from "@/server/trpc/router/_app";
 import type { inferRouterOutputs } from "@trpc/server";
 
@@ -25,6 +26,8 @@ interface Props {
 
 export default function CheckoutClient({ intentId, productId, quantity }: Props) {
   const router = useRouter();
+  const { selectedCurrency } = useCurrency();
+  const isCryptoAllowed = selectedCurrency?.symbol !== 'NGN';
   const [submitting, setSubmitting] = useState(false);
   const [paymentMode, setPaymentMode] = useState<"fiat" | "hybrid" | "token" | "crypto">("fiat");
   const [cashbackInsufficient, setCashbackInsufficient] = useState(false);
@@ -209,7 +212,7 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
               <Button size="sm" variant={paymentMode === "fiat" ? "default" : "outline"} onClick={() => { setPaymentMode("fiat"); setCashbackInsufficient(false); }}>100% Cashback Wallet</Button>
               <Button size="sm" variant={paymentMode === "hybrid" ? "default" : "outline"} onClick={() => { setPaymentMode("hybrid"); setCashbackInsufficient(false); }} disabled={!tokenAllowed}>BPT + Cashback Wallet</Button>
               <Button size="sm" variant={paymentMode === "token" ? "default" : "outline"} onClick={() => { setPaymentMode("token"); setCashbackInsufficient(false); }} disabled={!canTokenOnly}>100% BPT</Button>
-              <Button size="sm" variant={paymentMode === "crypto" ? "default" : "outline"} onClick={() => { setPaymentMode("crypto"); setCashbackInsufficient(false); }} className={paymentMode === "crypto" ? "bg-gradient-to-r from-orange-600 to-yellow-600 text-white" : ""}>
+              <Button size="sm" variant={paymentMode === "crypto" ? "default" : "outline"} onClick={() => { setPaymentMode("crypto"); setCashbackInsufficient(false); }} disabled={!isCryptoAllowed} className={paymentMode === "crypto" ? "bg-gradient-to-r from-orange-600 to-yellow-600 text-white" : ""}  title={!isCryptoAllowed ? 'Switch currency to USD to unlock crypto' : ''}>
                 <Bitcoin className="h-4 w-4 mr-1" /> Crypto (USDT)
               </Button>
             </div>
