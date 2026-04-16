@@ -12,6 +12,8 @@ import { recordRevenue } from "@/server/services/revenue.service";
 // Default admin settings (will be overridden by DB settings)
 const DEFAULT_CASH_WITHDRAWAL_FEE = 100;
 const DEFAULT_BPT_WITHDRAWAL_FEE = 0;
+const DEFAULT_USD_WITHDRAWAL_FEE = 2;       // $2 USD processing fee for USDT withdrawals
+const DEFAULT_USD_MIN_WITHDRAWAL = 10;      // $10 USD minimum withdrawal threshold
 const DEFAULT_MAX_TRANSFER_AMOUNT = 500000;
 const DEFAULT_AUTO_WITHDRAWAL_THRESHOLD = 100000;
 
@@ -706,16 +708,38 @@ export const walletRouter = createTRPCRouter({
       // THRESHOLD VALIDATION: Check minimum withdrawal amount
       const MIN_CASH_WITHDRAWAL = await getAdminSetting('MIN_CASH_WITHDRAWAL', 1000);
       const MIN_BPT_WITHDRAWAL = await getAdminSetting('MIN_BPT_WITHDRAWAL', 100);
-      const minWithdrawal = withdrawalType === 'cash' ? MIN_CASH_WITHDRAWAL : MIN_BPT_WITHDRAWAL;
+      const USD_MIN_WITHDRAWAL_USD = await getAdminSetting('USD_MIN_WITHDRAWAL', DEFAULT_USD_MIN_WITHDRAWAL);
 
-      if (amount < minWithdrawal) {
-        throw new Error(`Minimum withdrawal amount is ₦${minWithdrawal.toLocaleString()}. Requested: ₦${amount.toLocaleString()}`);
+      if (withdrawalType === 'usdt') {
+        // For USDT: validate against USD threshold, converting NGN amount to USD for comparison
+        const usdRate = await prisma.currencyManagement.findFirst({ where: { symbol: 'USD' } });
+        const ngnRate = await prisma.currencyManagement.findFirst({ where: { symbol: 'NGN' } });
+        const amountInUsd = usdRate && ngnRate ? (amount / (ngnRate.rate || 1)) * (usdRate.rate || 1) : amount;
+        if (amountInUsd < USD_MIN_WITHDRAWAL_USD) {
+          throw new Error(`Minimum USDT withdrawal is $${USD_MIN_WITHDRAWAL_USD.toLocaleString()} USD. Your amount: $${amountInUsd.toFixed(2)} USD`);
+        }
+      } else {
+        const minWithdrawal = withdrawalType === 'cash' ? MIN_CASH_WITHDRAWAL : MIN_BPT_WITHDRAWAL;
+        if (amount < minWithdrawal) {
+          throw new Error(`Minimum withdrawal amount is ₦${minWithdrawal.toLocaleString()}. Requested: ₦${amount.toLocaleString()}`);
+        }
       }
       
       // Get withdrawal fee from admin settings
-      const withdrawalFee = withdrawalType === 'cash' 
-        ? await getAdminSetting('CASH_WITHDRAWAL_FEE', DEFAULT_CASH_WITHDRAWAL_FEE)
-        : await getAdminSetting('BPT_WITHDRAWAL_FEE', DEFAULT_BPT_WITHDRAWAL_FEE);
+      let withdrawalFee: number;
+      if (withdrawalType === 'usdt') {
+        // USD fee is stored in USD — convert to NGN for deduction
+        const usdFeeUsd = await getAdminSetting('USD_WITHDRAWAL_FEE', DEFAULT_USD_WITHDRAWAL_FEE);
+        const usdRate = await prisma.currencyManagement.findFirst({ where: { symbol: 'USD' } });
+        const ngnRate = await prisma.currencyManagement.findFirst({ where: { symbol: 'NGN' } });
+        withdrawalFee = usdRate && ngnRate && usdRate.rate && ngnRate.rate
+          ? (usdFeeUsd / (usdRate.rate || 1)) * (ngnRate.rate || 1)
+          : usdFeeUsd * 1538; // Fallback approximate conversion
+      } else {
+        withdrawalFee = withdrawalType === 'cash'
+          ? await getAdminSetting('CASH_WITHDRAWAL_FEE', DEFAULT_CASH_WITHDRAWAL_FEE)
+          : await getAdminSetting('BPT_WITHDRAWAL_FEE', DEFAULT_BPT_WITHDRAWAL_FEE);
+      }
       console.log("💸 [WITHDRAWAL] Withdrawal fee:", withdrawalFee);
 
       // Apply tax for empowerment-related wallets (education, empowermentSponsorReward)
@@ -1684,5 +1708,12 @@ export const walletRouter = createTRPCRouter({
     const isNigerian = countryName.toLowerCase() === 'nigeria';
 
     return { eligible: !isNigerian, country: countryName };
+  }),
+
+  // Get USD withdrawal configuration (fee + threshold) for client-side display
+  getUsdWithdrawalConfig: protectedProcedure.query(async () => {
+    const fee = await getAdminSetting('USD_WITHDRAWAL_FEE', DEFAULT_USD_WITHDRAWAL_FEE);
+    const minWithdrawal = await getAdminSetting('USD_MIN_WITHDRAWAL', DEFAULT_USD_MIN_WITHDRAWAL);
+    return { feeUsd: fee, minWithdrawalUsd: minWithdrawal };
   }),
 });

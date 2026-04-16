@@ -42,6 +42,11 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
   // Check USDT eligibility (non-Nigerian users only)
   const { data: usdtEligibility } = api.wallet.canWithdrawUsdt.useQuery();
 
+  // Fetch USD withdrawal config (fee + minimum threshold) from admin settings
+  const { data: usdConfig } = api.wallet.getUsdWithdrawalConfig.useQuery();
+  const usdFee = usdConfig?.feeUsd ?? 2;
+  const usdMinWithdrawal = usdConfig?.minWithdrawalUsd ?? 10;
+
   // Fetch saved USDT wallet address
   const { data: savedWallet } = api.security.getUsdtWallet.useQuery();
 
@@ -107,7 +112,9 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
   // User enters amount in the selected currency; convert to NGN for all calculations
   const numAmountRaw = parseFloat(amount) || 0;
   const numAmount = convertToNGN(numAmountRaw);
-  const fee = withdrawalType === 'cash' ? CASH_FEE : withdrawalType === 'bpt' ? BPT_FEE : 0;
+  // USD fee converted to NGN for USDT withdrawals
+  const usdFeeInNgn = convertToNGN(usdFee);
+  const fee = withdrawalType === 'usdt' ? usdFeeInNgn : withdrawalType === 'cash' ? CASH_FEE : BPT_FEE;
   const totalDebit = numAmount + fee; // Total amount debited from wallet (withdrawal + fee) — in NGN
   const requiresApproval = withdrawalType === 'usdt' ? true : numAmount >= AUTO_APPROVAL_THRESHOLD;
 
@@ -119,6 +126,12 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
   const handleDetailsNext = () => {
     if (numAmount < 1) {
       setError(`Please enter an amount of at least ${formatAmount(1)}`);
+      return;
+    }
+
+    // USDT-specific minimum check (in the user's entered USD amount)
+    if (withdrawalType === 'usdt' && numAmountRaw < usdMinWithdrawal) {
+      setError(`Minimum USDT withdrawal is $${usdMinWithdrawal.toFixed(2)}`);
       return;
     }
 
@@ -437,7 +450,8 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
                       {withdrawalType === 'usdt' ? (
                         <>
                           <li>• Network: <strong className="text-emerald-600">TRON (TRC-20)</strong></li>
-                          <li>• Processing Fee: <strong className="text-green-600">FREE</strong></li>
+                          <li>• Processing Fee: <strong className="text-orange-600">${usdFee.toFixed(2)} USD</strong></li>
+                          <li>• Minimum Withdrawal: <strong className="text-foreground">${usdMinWithdrawal.toFixed(2)} USD</strong></li>
                           <li>• All USDT withdrawals require <strong>admin approval</strong></li>
                           <li>• Admin will send USDT and provide a transaction hash</li>
                           <li>• You can track your payment using the hash</li>

@@ -569,6 +569,15 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
+  // USD withdrawal config for gating
+  const { data: usdWithdrawalConfig } = api.wallet.getUsdWithdrawalConfig.useQuery();
+  const isUsdMode = currentCurrency?.symbol !== 'NGN' && currentCurrency?.symbol != null;
+  const usdFee = usdWithdrawalConfig?.feeUsd ?? 2;
+  const usdMinWithdrawal = usdWithdrawalConfig?.minWithdrawalUsd ?? 10;
+  const usdUnlockThreshold = usdMinWithdrawal + usdFee + 1; // min + fee + $1 buffer
+  const mainBalanceNgn = dashboardData?.wallets?.primary?.main?.balance || 0;
+  const mainBalanceUsd = convertAmount(mainBalanceNgn);
+  const isUsdWithdrawalGated = isUsdMode && mainBalanceUsd < usdUnlockThreshold;
   const { data: referralStats } = api.referral.getReferralStats.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -2694,12 +2703,21 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                       toast.error('Your withdrawal access is currently restricted. Contact support for help.');
                       return;
                     }
+                    if (isUsdWithdrawalGated) {
+                      toast.error(`Insufficient balance. You need at least $${usdUnlockThreshold.toFixed(2)} to withdraw.`);
+                      return;
+                    }
                     setIsWithdrawalModalOpen(true);
                   }}
-                  className={`flex flex-col items-center gap-1 p-2 bg-bpi-secondary/50 hover:bg-white/20 rounded-lg transition-colors ${userDetails?.withdrawBan === 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`flex flex-col items-center gap-1 p-2 bg-bpi-secondary/50 hover:bg-white/20 rounded-lg transition-colors ${(userDetails?.withdrawBan === 1 || isUsdWithdrawalGated) ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <ArrowUp className="w-4 h-4" />
                   <span className="text-xs font-medium">Withdraw</span>
+                  {isUsdWithdrawalGated && (
+                    <span className="text-[10px] leading-tight text-white/60 text-center">
+                      Unlocks at ${usdUnlockThreshold.toFixed(2)}+
+                    </span>
+                  )}
                 </button>
                 <button 
                   onClick={() => setIsTransferModalOpen(true)}

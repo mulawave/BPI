@@ -751,6 +751,13 @@ export default function SettingsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
+            {/* USD Withdrawal Settings */}
+            <UsdWithdrawalSettingsCard
+              systemSettings={systemSettings}
+              onSave={handleSaveGeneralSetting}
+              isSaving={updateSettingMutation.isPending}
+            />
+
             {paymentGateways && paymentGateways.length > 0 ? (
               paymentGateways.map((gateway: any) => (
                 <div
@@ -1706,6 +1713,117 @@ function CurrencySettingField({
             <HiSave className="w-5 h-5" />
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+// USD Withdrawal Settings Card for admin-managed fee and threshold
+function UsdWithdrawalSettingsCard({
+  systemSettings,
+  onSave,
+  isSaving,
+}: {
+  systemSettings: any;
+  onSave: (key: string, value: string, description?: string) => void;
+  isSaving: boolean;
+}) {
+  const currentFee = systemSettings?.['USD_WITHDRAWAL_FEE']?.value ?? '2';
+  const currentMin = systemSettings?.['USD_MIN_WITHDRAWAL']?.value ?? '10';
+
+  const [feeValue, setFeeValue] = useState(currentFee);
+  const [minValue, setMinValue] = useState(currentMin);
+
+  useEffect(() => {
+    setFeeValue(systemSettings?.['USD_WITHDRAWAL_FEE']?.value ?? '2');
+    setMinValue(systemSettings?.['USD_MIN_WITHDRAWAL']?.value ?? '10');
+  }, [systemSettings]);
+
+  const fee = parseFloat(feeValue) || 0;
+  const min = parseFloat(minValue) || 0;
+  const unlockThreshold = min + fee + 1;
+
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
+          <HiCreditCard className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">USD Withdrawal Settings</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Processing fee and minimum threshold for USDT / USD withdrawals
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Processing Fee */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Processing Fee (USD)
+          </label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">$</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={feeValue}
+              onChange={(e) => setFeeValue(e.target.value)}
+              className="w-full pl-8 pr-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              placeholder="2.00"
+            />
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Flat fee deducted on every USD withdrawal. Default: $2.00
+          </p>
+        </div>
+
+        {/* Minimum Threshold */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Minimum Withdrawal (USD)
+          </label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">$</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={minValue}
+              onChange={(e) => setMinValue(e.target.value)}
+              className="w-full pl-8 pr-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              placeholder="10.00"
+            />
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Users cannot withdraw less than this amount. Default: $10.00
+          </p>
+        </div>
+      </div>
+
+      {/* Preview of unlock threshold */}
+      <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+        <p className="text-sm text-blue-800 dark:text-blue-300">
+          <strong>Unlock threshold preview:</strong> Users need at least{' '}
+          <span className="font-bold">${unlockThreshold.toFixed(2)}</span>{' '}
+          (${min.toFixed(2)} min + ${fee.toFixed(2)} fee + $1.00 buffer) before the withdrawal button enables.
+        </p>
+      </div>
+
+      <div className="mt-4 flex gap-3">
+        <button
+          onClick={() => {
+            onSave('USD_WITHDRAWAL_FEE', feeValue, 'USD withdrawal processing fee in dollars');
+            onSave('USD_MIN_WITHDRAWAL', minValue, 'Minimum USD withdrawal threshold in dollars');
+          }}
+          disabled={isSaving}
+          className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg font-medium text-sm shadow-sm disabled:opacity-50 transition-all flex items-center gap-2"
+        >
+          <HiSave className="w-4 h-4" />
+          {isSaving ? 'Saving...' : 'Save USD Settings'}
+        </button>
       </div>
     </div>
   );
