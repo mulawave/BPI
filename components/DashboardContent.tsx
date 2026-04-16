@@ -28,6 +28,7 @@ import {
 import { AiOutlineRobot } from "react-icons/ai";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
+import { formatNotificationCurrency } from "@/lib/formatNotificationCurrency";
 import { Modal } from "./ui/Modal";
 import { checkProfileCompletion, getCompletionMessage } from "@/lib/profile-completion";
 import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
@@ -3460,7 +3461,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                         </div>
                         <div className="flex-1">
                           <h5 className="font-semibold text-foreground text-sm mb-1">{n.title}</h5>
-                          <p className="text-xs text-muted-foreground mb-2">{n.message}</p>
+                          <p className="text-xs text-muted-foreground mb-2">{formatNotificationCurrency(n.message, formatAmount)}</p>
                           <p className="text-xs text-muted-foreground">{formatTimeAgo(n.createdAt)}</p>
                         </div>
                         {!n.isRead && (
@@ -3568,7 +3569,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                         {/* Transaction Details */}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-foreground truncate">{transaction.type}</p>
-                          <p className="text-xs text-muted-foreground truncate mt-1">{transaction.description || 'Transaction'}</p>
+                          <p className="text-xs text-muted-foreground truncate mt-1">{formatNotificationCurrency(transaction.description || 'Transaction', formatAmount)}</p>
                           
                           <div className="flex items-center gap-2 mt-2">
                             <p className={`text-sm font-bold ${

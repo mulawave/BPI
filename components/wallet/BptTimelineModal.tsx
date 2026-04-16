@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { api } from "@/client/trpc";
 import { useCurrency } from "@/contexts/CurrencyContext";
+import { formatNotificationCurrency } from "@/lib/formatNotificationCurrency";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import toast from "react-hot-toast";
@@ -434,7 +435,7 @@ export default function BptTimelineModal({ isOpen, onClose }: BptTimelineModalPr
                                   {tx.transactionType}
                                 </p>
                                 <p className="text-gray-700 dark:text-gray-300 text-sm mt-1">
-                                  {tx.description || 'BPT Transaction'}
+                                  {formatNotificationCurrency(tx.description || 'BPT Transaction', formatAmount)}
                                 </p>
                               </div>
                               

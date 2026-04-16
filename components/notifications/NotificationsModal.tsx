@@ -3,6 +3,8 @@
 import { useState, useMemo } from 'react';
 import { X, Bell, Filter, Search, Check, Archive, Trash2, Mail, MailOpen, TrendingUp, PieChart, BarChart3, Clock, AlertCircle, Wallet, Users, Gift, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useCurrency } from '@/contexts/CurrencyContext';
+import { formatNotificationCurrency } from '@/lib/formatNotificationCurrency';
 
 type NotificationCategory = 'all' | 'unread' | 'read' | 'archived' | 'system' | 'wallet' | 'membership' | 'community' | 'rewards';
 type SortOption = 'newest' | 'oldest' | 'priority';
@@ -42,6 +44,7 @@ export default function NotificationsModal({
   const [selectedNotifications, setSelectedNotifications] = useState<Set<string>>(new Set());
   const [selectedNotificationId, setSelectedNotificationId] = useState<string | null>(null);
   const [showAnalytics, setShowAnalytics] = useState(true);
+  const { formatAmount } = useCurrency();
 
   // Category icons mapping
   const categoryIcons: Record<string, any> = {
@@ -575,7 +578,7 @@ export default function NotificationsModal({
                     {/* Message */}
                     <div className="p-4 bg-white dark:bg-bpi-dark-card rounded-xl border border-gray-200 dark:border-bpi-dark-accent">
                       <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                        {selectedNotification.message}
+                        {formatNotificationCurrency(selectedNotification.message, formatAmount)}
                       </p>
                     </div>
 

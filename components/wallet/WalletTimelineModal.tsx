@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { api } from "@/client/trpc";
 import { useCurrency } from "@/contexts/CurrencyContext";
+import { formatNotificationCurrency } from "@/lib/formatNotificationCurrency";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import toast from "react-hot-toast";
@@ -641,7 +642,7 @@ export default function WalletTimelineModal({ isOpen, onClose }: WalletTimelineM
                                               {tx.transactionType}
                                             </p>
                                             <p className="text-gray-700 dark:text-gray-300 font-medium mt-1">
-                                              {tx.description || 'Transaction'}
+                                              {formatNotificationCurrency(tx.description || 'Transaction', formatAmount)}
                                             </p>
                                           </div>
                                           
@@ -742,7 +743,7 @@ export default function WalletTimelineModal({ isOpen, onClose }: WalletTimelineM
                                                         <p className={`font-semibold ${vatStyle.textColor} text-[10px] uppercase tracking-wide`}>{vatTx.transactionType}</p>
                                                         <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-[9px] font-bold rounded-full border border-amber-300 dark:border-amber-700">VAT</span>
                                                       </div>
-                                                      <p className="text-gray-600 dark:text-gray-400 text-xs mt-0.5 font-medium">{vatTx.description || 'VAT Transaction'}</p>
+                                                      <p className="text-gray-600 dark:text-gray-400 text-xs mt-0.5 font-medium">{formatNotificationCurrency(vatTx.description || 'VAT Transaction', formatAmount)}</p>
                                                     </div>
                                                     
                                                     <div className="text-right">
