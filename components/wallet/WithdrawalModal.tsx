@@ -23,7 +23,7 @@ type Step = 'type' | 'details' | 'summary' | 'processing' | 'success' | 'error' 
 export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: WithdrawalModalProps) {
   const { data: session } = useSession();
   const router = useRouter();
-  const { formatAmount, selectedCurrency } = useCurrency();
+  const { formatAmount, selectedCurrency, convertToNGN } = useCurrency();
   const isUsdMode = selectedCurrency?.symbol !== 'NGN' && selectedCurrency?.symbol != null;
 
   const [withdrawalType, setWithdrawalType] = useState<WithdrawalType>(isUsdMode ? 'usdt' : 'cash');
@@ -104,9 +104,11 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
   const { data: dashboardData } = api.dashboard.getOverview.useQuery();
   const mainWalletBalance = dashboardData?.wallets?.primary?.main?.balance || 0;
 
-  const numAmount = parseFloat(amount) || 0;
+  // User enters amount in the selected currency; convert to NGN for all calculations
+  const numAmountRaw = parseFloat(amount) || 0;
+  const numAmount = convertToNGN(numAmountRaw);
   const fee = withdrawalType === 'cash' ? CASH_FEE : withdrawalType === 'bpt' ? BPT_FEE : 0;
-  const totalDebit = numAmount + fee; // Total amount debited from wallet (withdrawal + fee)
+  const totalDebit = numAmount + fee; // Total amount debited from wallet (withdrawal + fee) — in NGN
   const requiresApproval = withdrawalType === 'usdt' ? true : numAmount >= AUTO_APPROVAL_THRESHOLD;
 
   const handleTypeNext = () => {
