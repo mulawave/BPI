@@ -5,6 +5,7 @@ import { FiX } from "react-icons/fi";
 import { HiCalculator } from "react-icons/hi";
 import { api } from "@/client/trpc";
 import { TrendingUp, Users, DollarSign, Target, RotateCcw, History, Calculator } from "lucide-react";
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 interface CalculatorModalProps {
   isOpen: boolean;
@@ -22,6 +23,7 @@ interface CalculationHistory {
 }
 
 export default function CalculatorModal({ isOpen, onClose }: CalculatorModalProps) {
+  const { formatAmount, selectedCurrency } = useCurrency();
   const { data: packages, isLoading } = api.package.getPackages.useQuery();
   const [selectedPackageId, setSelectedPackageId] = useState<string>('');
   const [personalInvites, setPersonalInvites] = useState<number>(10);
@@ -252,7 +254,7 @@ export default function CalculatorModal({ isOpen, onClose }: CalculatorModalProp
                           <option value="">-- Choose a package --</option>
                           {packages?.map((pkg) => (
                             <option key={pkg.id} value={pkg.id}>
-                              {pkg.name} - ₦{pkg.price.toLocaleString()}
+                              {pkg.name} - {formatAmount(pkg.price)}
                             </option>
                           ))}
                         </select>
@@ -306,7 +308,7 @@ export default function CalculatorModal({ isOpen, onClose }: CalculatorModalProp
                         <DollarSign className="w-4 h-4" />
                         <span className="text-xs font-medium">Total Earnings</span>
                       </div>
-                      <p className="text-2xl font-bold">₦{results.totals.grand.toLocaleString()}</p>
+                      <p className="text-2xl font-bold">{formatAmount(results.totals.grand)}</p>
                       <p className="text-xs opacity-80 mt-1">12-month projection</p>
                     </div>
                   </div>
@@ -344,25 +346,25 @@ export default function CalculatorModal({ isOpen, onClose }: CalculatorModalProp
                                 {level.cash > 0 && (
                                   <div className="flex justify-between">
                                     <span className="text-muted-foreground">Cash:</span>
-                                    <span className="font-medium text-emerald-600 dark:text-emerald-400">₦{level.cash.toLocaleString()}</span>
+                                    <span className="font-medium text-emerald-600 dark:text-emerald-400">{formatAmount(level.cash)}</span>
                                   </div>
                                 )}
                                 {level.palliative > 0 && (
                                   <div className="flex justify-between">
                                     <span className="text-muted-foreground">Palliative:</span>
-                                    <span className="font-medium text-blue-600 dark:text-blue-400">₦{level.palliative.toLocaleString()}</span>
+                                    <span className="font-medium text-blue-600 dark:text-blue-400">{formatAmount(level.palliative)}</span>
                                   </div>
                                 )}
                                 {level.bpt > 0 && (
                                   <div className="flex justify-between">
                                     <span className="text-muted-foreground">BPT:</span>
-                                    <span className="font-medium text-purple-600 dark:text-purple-400">₦{level.bpt.toLocaleString()}</span>
+                                    <span className="font-medium text-purple-600 dark:text-purple-400">{formatAmount(level.bpt)}</span>
                                   </div>
                                 )}
                                 {level.cashback > 0 && (
                                   <div className="flex justify-between">
                                     <span className="text-muted-foreground">Cashback:</span>
-                                    <span className="font-medium text-amber-600 dark:text-amber-400">₦{level.cashback.toLocaleString()}</span>
+                                    <span className="font-medium text-amber-600 dark:text-amber-400">{formatAmount(level.cashback)}</span>
                                   </div>
                                 )}
                               </div>
@@ -370,7 +372,7 @@ export default function CalculatorModal({ isOpen, onClose }: CalculatorModalProp
                               <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                                 <div className="flex justify-between items-center">
                                   <span className="text-xs font-semibold text-muted-foreground">Level Total:</span>
-                                  <span className="text-sm font-bold text-bpi-primary">₦{levelTotal.toLocaleString()}</span>
+                                  <span className="text-sm font-bold text-bpi-primary">{formatAmount(levelTotal)}</span>
                                 </div>
                               </div>
                             </div>
@@ -384,27 +386,27 @@ export default function CalculatorModal({ isOpen, onClose }: CalculatorModalProp
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm opacity-90 mb-1">Projected 12-Month Earnings</p>
-                          <p className="text-3xl font-bold">₦{results.totals.grand.toLocaleString()}</p>
+                          <p className="text-3xl font-bold">{formatAmount(results.totals.grand)}</p>
                         </div>
                         <Target className="w-12 h-12 opacity-20" />
                       </div>
                       <div className="mt-3 pt-3 border-t border-white/20 grid grid-cols-2 gap-2 text-xs">
                         <div>
                           <span className="opacity-80">Cash:</span>
-                          <span className="ml-2 font-semibold">₦{results.totals.cash.toLocaleString()}</span>
+                          <span className="ml-2 font-semibold">{formatAmount(results.totals.cash)}</span>
                         </div>
                         <div>
                           <span className="opacity-80">Palliative:</span>
-                          <span className="ml-2 font-semibold">₦{results.totals.palliative.toLocaleString()}</span>
+                          <span className="ml-2 font-semibold">{formatAmount(results.totals.palliative)}</span>
                         </div>
                         <div>
                           <span className="opacity-80">BPT:</span>
-                          <span className="ml-2 font-semibold">₦{results.totals.bpt.toLocaleString()}</span>
+                          <span className="ml-2 font-semibold">{formatAmount(results.totals.bpt)}</span>
                         </div>
                         {results.totals.cashback > 0 && (
                           <div>
                             <span className="opacity-80">Cashback:</span>
-                            <span className="ml-2 font-semibold">₦{results.totals.cashback.toLocaleString()}</span>
+                            <span className="ml-2 font-semibold">{formatAmount(results.totals.cashback)}</span>
                           </div>
                         )}
                       </div>
@@ -464,7 +466,7 @@ export default function CalculatorModal({ isOpen, onClose }: CalculatorModalProp
                         <div>
                           <h4 className="font-semibold text-foreground">{item.packageName}</h4>
                           <p className="text-sm text-muted-foreground">
-                            Package Price: ₦{item.packagePrice.toLocaleString()}
+                            Package Price: {formatAmount(item.packagePrice)}
                           </p>
                         </div>
                         <span className="text-xs text-muted-foreground">
@@ -483,7 +485,7 @@ export default function CalculatorModal({ isOpen, onClose }: CalculatorModalProp
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground mb-1">Total Earnings</p>
-                          <p className="text-lg font-bold text-bpi-primary">₦{item.totalEarnings.toLocaleString()}</p>
+                          <p className="text-lg font-bold text-bpi-primary">{formatAmount(item.totalEarnings)}</p>
                         </div>
                       </div>
                     </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { FiX, FiYoutube, FiCheck, FiCopy, FiCreditCard, FiFileText, FiShield } from "react-icons/fi";
 import { api } from "@/client/trpc";
+import { useCurrency } from "@/contexts/CurrencyContext";
 
 interface SubmitChannelModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ const STEPS = [
 ] as const;
 
 export default function SubmitChannelModal({ isOpen, onClose }: SubmitChannelModalProps) {
+  const { formatAmount } = useCurrency();
   const [step, setStep] = useState<Step>("select-plan");
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
@@ -375,7 +377,7 @@ export default function SubmitChannelModal({ isOpen, onClose }: SubmitChannelMod
                 </p>
                 <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg">
                   <span className="text-sm text-gray-600">Available Balance:</span>
-                  <span className="text-lg font-bold text-green-600">₦{userBalance.toLocaleString()}</span>
+                  <span className="text-lg font-bold text-green-600">{formatAmount(userBalance)}</span>
                 </div>
               </div>
 
@@ -428,20 +430,20 @@ export default function SubmitChannelModal({ isOpen, onClose }: SubmitChannelMod
                         <div className="space-y-2">
                           <div className="flex items-baseline gap-2">
                             <span className="text-3xl font-bold text-gray-900">
-                              ₦{planAmount.toLocaleString()}
+                              {formatAmount(planAmount)}
                             </span>
                             <span className="text-sm text-gray-500">base price</span>
                           </div>
                           <div className="flex justify-between text-sm">
                             <span className="text-gray-600">VAT (7.5%)</span>
                             <span className="font-medium text-gray-700">
-                              ₦{(planAmount * 0.075).toLocaleString()}
+                              {formatAmount(planAmount * 0.075)}
                             </span>
                           </div>
                           <div className="pt-2 border-t border-gray-200 flex justify-between">
                             <span className="font-semibold text-gray-700">Total Cost</span>
                             <span className="text-xl font-bold text-green-600">
-                              ₦{totalCost.toLocaleString()}
+                              {formatAmount(totalCost)}
                             </span>
                           </div>
                         </div>

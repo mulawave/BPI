@@ -97,7 +97,19 @@ export default function UserDetailsModal({
   const [addingWallet, setAddingWallet] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
 
+  const [withdrawBanReason, setWithdrawBanReason] = useState<string>('');
+  const [banningWithdrawals, setBanningWithdrawals] = useState(false);
+
   const impersonateMutation = api.admin.createImpersonationToken.useMutation();
+
+  const banWithdrawalsMutation = api.admin.banWithdrawals.useMutation({
+    onSuccess: (data) => { toast.success(data.message); refetch(); setWithdrawBanReason(''); setBanningWithdrawals(false); },
+    onError: (err) => { toast.error(err.message); setBanningWithdrawals(false); },
+  });
+  const unbanWithdrawalsMutation = api.admin.unbanWithdrawals.useMutation({
+    onSuccess: (data) => { toast.success(data.message); refetch(); },
+    onError: (err) => toast.error(err.message),
+  });
 
   useEffect(() => {
     setMounted(true);
@@ -469,6 +481,86 @@ export default function UserDetailsModal({
                                 label="Role"
                                 value={user.role.replace("_", " ").toUpperCase()}
                               />
+                            </div>
+                          </div>
+
+                          {/* Security Actions */}
+                          <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-6 border border-red-200 dark:border-red-800/50">
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                              <MdCancel className="text-red-500" size={22} />
+                              Security Actions
+                            </h3>
+
+                            {/* Wallet Freeze Status */}
+                            {user.walletFrozen && (
+                              <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 rounded-lg border border-red-200 dark:border-red-700">
+                                <p className="text-sm font-medium text-red-800 dark:text-red-200">🔒 Wallet is frozen</p>
+                                {user.walletFrozenReason && <p className="text-xs text-red-600 dark:text-red-300 mt-1">Reason: {user.walletFrozenReason}</p>}
+                              </div>
+                            )}
+
+                            {/* Withdrawal Ban */}
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900 dark:text-white">Withdrawal Ban</p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {user.withdrawBan === 1 ? (
+                                      <span className="text-red-600 dark:text-red-400 font-medium">
+                                        Banned {user.withdrawBanReason ? `— ${user.withdrawBanReason}` : ''}
+                                      </span>
+                                    ) : (
+                                      <span className="text-green-600 dark:text-green-400">No restriction</span>
+                                    )}
+                                  </p>
+                                </div>
+                                {user.withdrawBan === 1 ? (
+                                  <button
+                                    onClick={() => unbanWithdrawalsMutation.mutate({ userId: user.id })}
+                                    disabled={unbanWithdrawalsMutation.isPending}
+                                    className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition disabled:opacity-60"
+                                  >
+                                    {unbanWithdrawalsMutation.isPending ? 'Lifting...' : 'Lift Ban'}
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => setBanningWithdrawals(true)}
+                                    className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition"
+                                  >
+                                    Ban Withdrawals
+                                  </button>
+                                )}
+                              </div>
+
+                              {banningWithdrawals && (
+                                <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-red-200 dark:border-red-700 space-y-2">
+                                  <input
+                                    type="text"
+                                    value={withdrawBanReason}
+                                    onChange={(e) => setWithdrawBanReason(e.target.value)}
+                                    placeholder="Enter reason for withdrawal ban..."
+                                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none"
+                                  />
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => {
+                                        if (!withdrawBanReason.trim()) { toast.error('Please enter a reason'); return; }
+                                        banWithdrawalsMutation.mutate({ userId: user.id, reason: withdrawBanReason.trim() });
+                                      }}
+                                      disabled={banWithdrawalsMutation.isPending || !withdrawBanReason.trim()}
+                                      className="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition disabled:opacity-60"
+                                    >
+                                      {banWithdrawalsMutation.isPending ? 'Banning...' : 'Confirm Ban'}
+                                    </button>
+                                    <button
+                                      onClick={() => { setBanningWithdrawals(false); setWithdrawBanReason(''); }}
+                                      className="px-3 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
 

@@ -651,7 +651,7 @@ export const walletRouter = createTRPCRouter({
 
       if (user.withdrawBan === 1) {
         console.error("❌ [WITHDRAWAL] User is banned from withdrawals:", userId);
-        throw new Error("Your account is banned from withdrawals. Contact support.");
+        throw new Error("Your account has been restricted from making withdrawals by administration. Please contact support for assistance.");
       }
       
       console.log("✅ [WITHDRAWAL] PIN verified for user:", user.name || user.email);

@@ -5,6 +5,7 @@ import { FiX, FiTag, FiPercent, FiClock, FiCheck } from "react-icons/fi";
 import { Tag, Gift, Star, Calendar, TrendingUp, CheckCircle, Clock } from "lucide-react";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
+import { useCurrency } from "@/contexts/CurrencyContext";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 interface DealsModalProps {
@@ -13,6 +14,7 @@ interface DealsModalProps {
 }
 
 export default function DealsModal({ isOpen, onClose }: DealsModalProps) {
+  const { formatAmount } = useCurrency();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'available' | 'claimed'>('available');
   const [confirmDealId, setConfirmDealId] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export default function DealsModal({ isOpen, onClose }: DealsModalProps) {
     if (deal.discountType === 'percentage') {
       return `${deal.discountValue}% OFF`;
     }
-    return `₦${deal.discountValue.toLocaleString()} OFF`;
+    return `${formatAmount(deal.discountValue)} OFF`;
   };
 
   const calculateFinalPrice = (deal: any) => {
@@ -194,8 +196,8 @@ export default function DealsModal({ isOpen, onClose }: DealsModalProps) {
 
                       {deal.originalPrice && finalPrice && (
                         <div className="flex items-baseline gap-2 mb-4">
-                          <span className="text-2xl font-bold text-foreground">₦{finalPrice.toLocaleString()}</span>
-                          <span className="text-sm text-muted-foreground line-through">₦{deal.originalPrice.toLocaleString()}</span>
+                          <span className="text-2xl font-bold text-foreground">{formatAmount(finalPrice)}</span>
+                          <span className="text-sm text-muted-foreground line-through">{formatAmount(deal.originalPrice)}</span>
                         </div>
                       )}
 
@@ -251,7 +253,7 @@ export default function DealsModal({ isOpen, onClose }: DealsModalProps) {
                         <div className="flex items-center gap-4 text-xs text-muted-foreground">
                           <span>Claimed on {new Date(claim.claimedAt).toLocaleDateString()}</span>
                           <span className="inline-block px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-600 rounded">
-                            {claim.deal.discountType === 'percentage' ? `${claim.deal.discountValue}% OFF` : `₦${claim.deal.discountValue.toLocaleString()} OFF`}
+                            {claim.deal.discountType === 'percentage' ? `${claim.deal.discountValue}% OFF` : `${formatAmount(claim.deal.discountValue)} OFF`}
                           </span>
                         </div>
                       </div>

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
+import { useCurrency } from "@/contexts/CurrencyContext";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -38,6 +39,7 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
   const [plotName, setPlotName] = useState("");
   const [plotSize, setPlotSize] = useState<number>(1);
   const [investmentAmount, setInvestmentAmount] = useState<number>(0);
+  const { formatAmount, selectedCurrency } = useCurrency();
 
   // API Queries
   const { data: plots, refetch: refetchPlots } = api.digitalFarm.getMyPlots.useQuery(undefined, {
@@ -68,7 +70,7 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
 
   const harvestMutation = api.digitalFarm.harvestPlot.useMutation({
     onSuccess: (data) => {
-      toast.success(`🎉 Harvested! Earned ₦${data.actualRevenue.toLocaleString()}`);
+      toast.success(`🎉 Harvested! Earned ${formatAmount(data.actualRevenue)}`);
       refetchPlots();
     },
     onError: (error) => {
@@ -217,7 +219,7 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                           <div>
                             <p className="text-sm text-muted-foreground">Invested</p>
                             <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                              ₦{stats.totalInvested.toLocaleString()}
+                              {formatAmount(stats.totalInvested)}
                             </p>
                           </div>
                         </div>
@@ -231,7 +233,7 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                           <div>
                             <p className="text-sm text-muted-foreground">Earned</p>
                             <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                              ₦{stats.totalEarned.toLocaleString()}
+                              {formatAmount(stats.totalEarned)}
                             </p>
                           </div>
                         </div>
@@ -245,7 +247,7 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                           <div>
                             <p className="text-sm text-muted-foreground">Net Profit</p>
                             <p className={`text-2xl font-bold ${stats.netProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                              ₦{stats.netProfit.toLocaleString()}
+                              {formatAmount(stats.netProfit)}
                             </p>
                           </div>
                         </div>
@@ -307,11 +309,11 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               <div>
                                 <p className="text-muted-foreground text-xs">Investment</p>
-                                <p className="font-semibold">₦{plot.investmentAmount.toLocaleString()}</p>
+                                <p className="font-semibold">{formatAmount(plot.investmentAmount)}</p>
                               </div>
                               <div>
                                 <p className="text-muted-foreground text-xs">Est. Revenue</p>
-                                <p className="font-semibold text-green-600">₦{plot.estimatedRevenue.toLocaleString()}</p>
+                                <p className="font-semibold text-green-600">{formatAmount(plot.estimatedRevenue)}</p>
                               </div>
                               <div>
                                 <p className="text-muted-foreground text-xs">Days Left</p>
@@ -341,10 +343,10 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                               <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
                                 <p className="text-xs text-muted-foreground mb-1">Harvested</p>
                                 <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                                  ₦{plot.actualRevenue?.toLocaleString()}
+                                  {formatAmount(plot.actualRevenue || 0)}
                                 </p>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  Profit: ₦{((plot.actualRevenue || 0) - plot.investmentAmount).toLocaleString()}
+                                  Profit: {formatAmount((plot.actualRevenue || 0) - plot.investmentAmount)}
                                 </p>
                               </div>
                             )}
@@ -400,7 +402,7 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                             <div className="flex justify-between text-xs">
                               <span className="text-muted-foreground">{crop.growthDuration} days</span>
                               <span className="font-semibold text-green-600">
-                                {crop.pricePerKg} ₦/kg
+                                {crop.pricePerKg} {selectedCurrency?.sign || '₦'}/kg
                               </span>
                             </div>
                           </div>
@@ -450,7 +452,7 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                           {/* Investment Amount */}
                           <div>
                             <label className="block text-sm font-medium mb-2">
-                              Investment Amount (₦)
+                              Investment Amount ({selectedCurrency?.sign || '₦'})
                             </label>
                             <input
                               type="number"
@@ -461,7 +463,7 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                               className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-800"
                             />
                             <p className="text-xs text-muted-foreground mt-1">
-                              Min: ₦{selectedCrop.minInvestment.toLocaleString()} • Max: ₦{selectedCrop.maxInvestment.toLocaleString()}
+                              Min: {formatAmount(selectedCrop.minInvestment)} • Max: {formatAmount(selectedCrop.maxInvestment)}
                             </p>
                           </div>
 
@@ -480,7 +482,7 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                               <div className="flex justify-between text-sm">
                                 <span className="text-muted-foreground">Est. Revenue</span>
                                 <span className="font-medium text-green-600">
-                                  ₦{(plotSize * selectedCrop.yieldPerHectare * selectedCrop.pricePerKg).toLocaleString()}
+                                  {formatAmount(plotSize * selectedCrop.yieldPerHectare * selectedCrop.pricePerKg)}
                                 </span>
                               </div>
                               <div className="flex justify-between text-sm">
@@ -540,11 +542,11 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                           </div>
                           <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
                             <p className="text-xs text-muted-foreground mb-1">Price/kg</p>
-                            <p className="font-semibold text-green-600">₦{crop.pricePerKg}</p>
+                            <p className="font-semibold text-green-600">{formatAmount(crop.pricePerKg)}</p>
                           </div>
                           <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
                             <p className="text-xs text-muted-foreground mb-1">Min Investment</p>
-                            <p className="font-semibold">₦{crop.minInvestment.toLocaleString()}</p>
+                            <p className="font-semibold">{formatAmount(crop.minInvestment)}</p>
                           </div>
                           <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
                             <p className="text-xs text-muted-foreground mb-1">Yield/ha</p>
@@ -586,7 +588,7 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                         <DollarSign className="w-8 h-8 opacity-80" />
                       </div>
                       <p className="text-sm opacity-90 mb-1">Total Invested</p>
-                      <p className="text-3xl font-bold">₦{stats.totalInvested.toLocaleString()}</p>
+                      <p className="text-3xl font-bold">{formatAmount(stats.totalInvested)}</p>
                     </Card>
 
                     <Card className="p-6 bg-gradient-to-br from-purple-500 to-pink-600 text-white">
@@ -594,7 +596,7 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                         <TrendingUp className="w-8 h-8 opacity-80" />
                       </div>
                       <p className="text-sm opacity-90 mb-1">Total Earned</p>
-                      <p className="text-3xl font-bold">₦{stats.totalEarned.toLocaleString()}</p>
+                      <p className="text-3xl font-bold">{formatAmount(stats.totalEarned)}</p>
                     </Card>
 
                     <Card className="p-6 bg-gradient-to-br from-orange-500 to-yellow-600 text-white">
@@ -625,7 +627,7 @@ export default function DigitalFarmModal({ isOpen, onClose }: DigitalFarmModalPr
                         <div className="flex justify-between items-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                           <span className="text-muted-foreground">Net Profit</span>
                           <span className={`text-2xl font-bold ${stats.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            ₦{stats.netProfit.toLocaleString()}
+                            {formatAmount(stats.netProfit)}
                           </span>
                         </div>
                         <div className="flex justify-between items-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">

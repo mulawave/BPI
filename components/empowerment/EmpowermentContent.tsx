@@ -111,7 +111,7 @@ function PkgTranchesRow({
 export default function EmpowermentContent() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  const { selectedCurrency } = useCurrency();
+  const { selectedCurrency, formatAmount } = useCurrency();
   const isCryptoAllowed = selectedCurrency?.symbol !== 'NGN';
   const isAdminView = pathname?.startsWith('/admin/empowerment');
   const [activeTab, setActiveTab] = useState<TabView>(isAdminView ? 'history' : 'activate');
@@ -159,7 +159,6 @@ export default function EmpowermentContent() {
   const [benShowPass, setBenShowPass] = useState(false);
   const [benShowConfPass, setBenShowConfPass] = useState(false);
 
-  const formatAmount = (value: number) => `₦${value.toLocaleString()}`;
   const formatDate = (value?: Date | string | null) => {
     if (!value) return '—';
     const date = typeof value === 'string' ? new Date(value) : value;
@@ -1715,7 +1714,7 @@ export default function EmpowermentContent() {
                                         </select>
                                       </div>
                                       <div>
-                                        <label className="block text-[11px] font-semibold text-violet-800 dark:text-violet-200 mb-1">Amount (₦)</label>
+                                        <label className="block text-[11px] font-semibold text-violet-800 dark:text-violet-200 mb-1">Amount ({selectedCurrency?.sign || '₦'})</label>
                                         <input
                                           type="number"
                                           placeholder="300000"
@@ -2024,8 +2023,8 @@ export default function EmpowermentContent() {
                     <div className="grid gap-5 sm:grid-cols-2">
                       {[
                         { key: 'empowerment:countdown_months', label: 'Countdown Months', hint: 'Duration before maturity (months)' },
-                        { key: 'empowerment:gross_value', label: 'Gross Package Value (₦)', hint: 'Beneficiary gross value at release' },
-                        { key: 'empowerment:csp_min_threshold', label: 'CSP Min Threshold (₦)', hint: 'Min balance for normal CSP eligibility' },
+                        { key: 'empowerment:gross_value', label: `Gross Package Value (${selectedCurrency?.sign || '₦'})`, hint: 'Beneficiary gross value at release' },
+                        { key: 'empowerment:csp_min_threshold', label: `CSP Min Threshold (${selectedCurrency?.sign || '₦'})`, hint: 'Min balance for normal CSP eligibility' },
                         { key: 'empowerment:refund_interest_rate', label: 'Full Decline Interest Rate', hint: 'e.g. 0.15 = 15%' },
                         { key: 'empowerment:min_first_tranche_pct', label: 'Min First Tranche (%)', hint: 'Minimum % for the first release' },
                         { key: 'empowerment:sponsor_reward_pct_full_approval', label: 'Sponsor Reward % — Full Approval', hint: 'e.g. 0.20 = 20%' },
@@ -2339,7 +2338,7 @@ export default function EmpowermentContent() {
                                 </div>
                                 <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
                                   <span>Beneficiary credit</span>
-                                  <span>₦0</span>
+                                  <span>{formatAmount(0)}</span>
                                 </div>
                                 <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
                                   <span>CSP Waiver activated?</span>

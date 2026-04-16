@@ -380,4 +380,108 @@ export const securityRouter = createTRPCRouter({
 
       return { success: true };
     }),
+
+  // Get saved USDT wallet address
+  getUsdtWallet: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.session?.user?.id) {
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+
+    const user = await ctx.prisma.user.findUnique({
+      where: { id: ctx.session.user.id },
+      select: {
+        usdtAddress: true,
+        twoFactorEnabled: true,
+        userProfilePin: true,
+      },
+    });
+
+    return {
+      usdtAddress: user?.usdtAddress || null,
+      hasPin: !!user?.userProfilePin,
+      has2FA: !!user?.twoFactorEnabled,
+    };
+  }),
+
+  // Save USDT TRC-20 wallet address (requires PIN, and 2FA if enabled)
+  saveUsdtWallet: protectedProcedure
+    .input(
+      z.object({
+        usdtAddress: z.string().min(34).max(34).regex(/^T[A-Za-z0-9]{33}$/, "Invalid TRC-20 address format"),
+        pin: z.string().length(4, "PIN must be 4 digits"),
+        twoFactorCode: z.string().length(6).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.session?.user?.id) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: ctx.session.user.id },
+        select: {
+          userProfilePin: true,
+          twoFactorEnabled: true,
+          twoFactorSecret: true,
+        },
+      });
+
+      // Verify PIN
+      if (!user?.userProfilePin) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Please set up a transaction PIN first",
+        });
+      }
+
+      const isPinValid = await bcrypt.compare(input.pin, user.userProfilePin);
+      if (!isPinValid) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Invalid PIN",
+        });
+      }
+
+      // Verify 2FA if enabled
+      if (user.twoFactorEnabled) {
+        if (!input.twoFactorCode) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "2FA code is required",
+          });
+        }
+
+        if (!user.twoFactorSecret) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "2FA secret not found",
+          });
+        }
+
+        const is2FAValid = speakeasy.totp.verify({
+          secret: user.twoFactorSecret,
+          encoding: "base32",
+          token: input.twoFactorCode,
+          window: 2,
+        });
+
+        if (!is2FAValid) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Invalid 2FA code",
+          });
+        }
+      }
+
+      // Save the USDT address
+      await ctx.prisma.user.update({
+        where: { id: ctx.session.user.id },
+        data: { usdtAddress: input.usdtAddress },
+      });
+
+      return {
+        success: true,
+        message: "USDT wallet address saved successfully",
+      };
+    }),
 });

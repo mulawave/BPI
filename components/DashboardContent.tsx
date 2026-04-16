@@ -2689,8 +2689,14 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                   <span className="text-xs font-medium">Deposit</span>
                 </button>
                 <button 
-                  onClick={() => setIsWithdrawalModalOpen(true)}
-                  className="flex flex-col items-center gap-1 p-2 bg-bpi-secondary/50 hover:bg-white/20 rounded-lg transition-colors"
+                  onClick={() => {
+                    if (userDetails?.withdrawBan === 1) {
+                      toast.error('Your withdrawal access is currently restricted. Contact support for help.');
+                      return;
+                    }
+                    setIsWithdrawalModalOpen(true);
+                  }}
+                  className={`flex flex-col items-center gap-1 p-2 bg-bpi-secondary/50 hover:bg-white/20 rounded-lg transition-colors ${userDetails?.withdrawBan === 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <ArrowUp className="w-4 h-4" />
                   <span className="text-xs font-medium">Withdraw</span>

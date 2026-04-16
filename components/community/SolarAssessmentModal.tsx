@@ -5,6 +5,7 @@ import { FiX, FiSun, FiChevronRight } from "react-icons/fi";
 import { Sun, Zap, Home, MapPin, DollarSign, Calendar, CheckCircle } from "lucide-react";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
+import { useCurrency } from "@/contexts/CurrencyContext";
 
 interface SolarAssessmentModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface SolarAssessmentModalProps {
 type Step = 1 | 2 | 3 | 4;
 
 export default function SolarAssessmentModal({ isOpen, onClose }: SolarAssessmentModalProps) {
+  const { formatAmount, selectedCurrency } = useCurrency();
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [formData, setFormData] = useState({
     location: "",
@@ -30,7 +32,7 @@ export default function SolarAssessmentModal({ isOpen, onClose }: SolarAssessmen
       return "Pending quote";
     }
 
-    return `₦${value.toLocaleString()}`;
+    return formatAmount(value);
   };
 
   const getStatusTone = (status?: string | null) => {
@@ -136,9 +138,9 @@ export default function SolarAssessmentModal({ isOpen, onClose }: SolarAssessmen
             <div className="space-y-6 animate-fadeIn max-w-2xl mx-auto">
               <div><h3 className="text-xl font-semibold text-foreground mb-2">Current energy usage</h3><p className="text-sm text-muted-foreground">Help us calculate your potential savings</p></div>
               <div className="space-y-4">
-                <div><label className="block text-sm font-medium text-foreground mb-2">Monthly Electricity Bill (₦)</label><input type="number" value={formData.currentEnergyBill} onChange={(e) => setFormData({ ...formData, currentEnergyBill: e.target.value })} placeholder="Average monthly bill" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-foreground" /></div>
+                <div><label className="block text-sm font-medium text-foreground mb-2">Monthly Electricity Bill ({selectedCurrency?.sign || '₦'})</label><input type="number" value={formData.currentEnergyBill} onChange={(e) => setFormData({ ...formData, currentEnergyBill: e.target.value })} placeholder="Average monthly bill" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-foreground" /></div>
                 <div><label className="block text-sm font-medium text-foreground mb-2">Average Monthly Usage (kWh)</label><input type="number" value={formData.averageMonthlyUsage} onChange={(e) => setFormData({ ...formData, averageMonthlyUsage: e.target.value })} placeholder="Check your utility bill" className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-foreground" /></div>
-                <div><label className="block text-sm font-medium text-foreground mb-2">Budget Range (₦)</label><select value={formData.budgetRange} onChange={(e) => setFormData({ ...formData, budgetRange: e.target.value })} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-foreground"><option value="">Select budget range</option><option value="under-1m">Under ₦1,000,000</option><option value="1m-3m">₦1,000,000 - ₦3,000,000</option><option value="3m-5m">₦3,000,000 - ₦5,000,000</option><option value="5m-plus">₦5,000,000+</option></select></div>
+                <div><label className="block text-sm font-medium text-foreground mb-2">Budget Range ({selectedCurrency?.sign || '₦'})</label><select value={formData.budgetRange} onChange={(e) => setFormData({ ...formData, budgetRange: e.target.value })} className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-700 text-foreground"><option value="">Select budget range</option><option value="under-1m">{`Under ${formatAmount(1000000)}`}</option><option value="1m-3m">{`${formatAmount(1000000)} - ${formatAmount(3000000)}`}</option><option value="3m-5m">{`${formatAmount(3000000)} - ${formatAmount(5000000)}`}</option><option value="5m-plus">{`${formatAmount(5000000)}+`}</option></select></div>
               </div>
             </div>
           )}
@@ -147,13 +149,13 @@ export default function SolarAssessmentModal({ isOpen, onClose }: SolarAssessmen
               <div><h3 className="text-xl font-semibold text-foreground mb-2">Review & Estimate</h3><p className="text-sm text-muted-foreground">Here's your personalized solar assessment</p></div>
               {estimate && (<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div className="bg-gradient-to-br from-orange-500 to-amber-600 rounded-xl p-5 text-white shadow-lg"><div className="flex items-center gap-2 mb-2"><Sun className="w-5 h-5" /><span className="text-sm font-medium opacity-90">Estimated System Size</span></div><p className="text-3xl font-bold">{estimate.estimatedPanels} panels</p><p className="text-xs opacity-75 mt-1">Based on your roof area</p></div>
-                <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-5 text-white shadow-lg"><div className="flex items-center gap-2 mb-2"><DollarSign className="w-5 h-5" /><span className="text-sm font-medium opacity-90">Monthly Savings</span></div><p className="text-3xl font-bold">₦{estimate.monthlySavings.toLocaleString()}</p><p className="text-xs opacity-75 mt-1">Estimated average</p></div>
-                <div className="bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl p-5 text-white shadow-lg"><div className="flex items-center gap-2 mb-2"><Zap className="w-5 h-5" /><span className="text-sm font-medium opacity-90">Estimated Cost</span></div><p className="text-3xl font-bold">₦{estimate.estimatedCost.toLocaleString()}</p><p className="text-xs opacity-75 mt-1">Installation included</p></div>
+                <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-5 text-white shadow-lg"><div className="flex items-center gap-2 mb-2"><DollarSign className="w-5 h-5" /><span className="text-sm font-medium opacity-90">Monthly Savings</span></div><p className="text-3xl font-bold">{formatAmount(estimate.monthlySavings)}</p><p className="text-xs opacity-75 mt-1">Estimated average</p></div>
+                <div className="bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl p-5 text-white shadow-lg"><div className="flex items-center gap-2 mb-2"><Zap className="w-5 h-5" /><span className="text-sm font-medium opacity-90">Estimated Cost</span></div><p className="text-3xl font-bold">{formatAmount(estimate.estimatedCost)}</p><p className="text-xs opacity-75 mt-1">Installation included</p></div>
                 <div className="bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl p-5 text-white shadow-lg"><div className="flex items-center gap-2 mb-2"><Calendar className="w-5 h-5" /><span className="text-sm font-medium opacity-90">Payback Period</span></div><p className="text-3xl font-bold">{estimate.paybackPeriod} years</p><p className="text-xs opacity-75 mt-1">Return on investment</p></div>
               </div>)}
               <div className="bg-white dark:bg-bpi-dark-card border border-bpi-border dark:border-bpi-dark-accent rounded-xl p-6">
                 <h4 className="font-semibold text-foreground mb-3">Your Details</h4>
-                <dl className="space-y-2 text-sm"><div className="flex justify-between"><dt className="text-muted-foreground">Location:</dt><dd className="font-medium text-foreground">{formData.location}</dd></div><div className="flex justify-between"><dt className="text-muted-foreground">Property Type:</dt><dd className="font-medium text-foreground capitalize">{formData.propertyType}</dd></div><div className="flex justify-between"><dt className="text-muted-foreground">Roof Area:</dt><dd className="font-medium text-foreground">{formData.roofArea} sq m</dd></div><div className="flex justify-between"><dt className="text-muted-foreground">Monthly Bill:</dt><dd className="font-medium text-foreground">₦{parseFloat(formData.currentEnergyBill).toLocaleString()}</dd></div></dl>
+                <dl className="space-y-2 text-sm"><div className="flex justify-between"><dt className="text-muted-foreground">Location:</dt><dd className="font-medium text-foreground">{formData.location}</dd></div><div className="flex justify-between"><dt className="text-muted-foreground">Property Type:</dt><dd className="font-medium text-foreground capitalize">{formData.propertyType}</dd></div><div className="flex justify-between"><dt className="text-muted-foreground">Roof Area:</dt><dd className="font-medium text-foreground">{formData.roofArea} sq m</dd></div><div className="flex justify-between"><dt className="text-muted-foreground">Monthly Bill:</dt><dd className="font-medium text-foreground">{formatAmount(parseFloat(formData.currentEnergyBill))}</dd></div></dl>
               </div>
             </div>
           )}
@@ -177,11 +179,11 @@ export default function SolarAssessmentModal({ isOpen, onClose }: SolarAssessmen
                   </div>
                   <div className="rounded-xl bg-white/80 p-4 dark:bg-white/5">
                     <p className="text-xs text-muted-foreground">Projected savings</p>
-                    <p className="mt-1 text-lg font-semibold text-foreground">₦{estimate.monthlySavings.toLocaleString()}/mo</p>
+                    <p className="mt-1 text-lg font-semibold text-foreground">{formatAmount(estimate.monthlySavings)}/mo</p>
                   </div>
                   <div className="rounded-xl bg-white/80 p-4 dark:bg-white/5">
                     <p className="text-xs text-muted-foreground">Indicative quote</p>
-                    <p className="mt-1 text-lg font-semibold text-foreground">₦{estimate.estimatedCost.toLocaleString()}</p>
+                    <p className="mt-1 text-lg font-semibold text-foreground">{formatAmount(estimate.estimatedCost)}</p>
                   </div>
                 </div>
               </div>

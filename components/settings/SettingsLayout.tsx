@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import UserSecuritySettingsPanel from '@/components/user/SecuritySettingsPanel';
+import CryptoWalletSettings from '@/components/settings/CryptoWalletSettings';
 import Footer from '@/components/Footer';
 import KycWarningBanner from '@/components/kyc/KycWarningBanner';
 
@@ -73,8 +74,8 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
       id: 'billing',
       label: 'Billing',
       icon: CreditCard,
-      description: 'Payment methods and transaction history',
-      available: false,
+      description: 'Crypto wallet & payment settings',
+      available: true,
     },
   ];
 
@@ -93,6 +94,8 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
     switch (activeTab) {
       case 'security':
         return <UserSecuritySettingsPanel />;
+      case 'billing':
+        return <CryptoWalletSettings />;
       default:
         return (
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-12 text-center">

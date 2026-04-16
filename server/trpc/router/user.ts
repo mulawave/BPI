@@ -69,6 +69,8 @@ export const userRouter = createTRPCRouter({
           security: true,
           bpiTokenWallet: true,
           defaultCurrency: true,
+          usdtAddress: true,
+          withdrawBan: true,
           role: true,
           createdAt: true,
           updatedAt: true,

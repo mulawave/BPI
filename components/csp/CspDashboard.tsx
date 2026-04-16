@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
 import { PaymentPurpose } from "@/server/services/payment";
 import CryptoTransferDetails from "@/components/payment/CryptoTransferDetails";
+import { useCurrency } from '@/contexts/CurrencyContext';
 import { Input } from "@/components/ui/input";
 import {
   CheckCircle2,
@@ -59,6 +60,7 @@ function shuffleArray<T>(input: T[]) {
 }
 
 export function CspDashboard({ userName }: CspDashboardProps) {
+  const { formatAmount, selectedCurrency } = useCurrency();
   const [supportCategory, setSupportCategory] = useState<SupportCategory>("national");
   const [purpose, setPurpose] = useState("");
   const [amount, setAmount] = useState("10000");
@@ -322,14 +324,14 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         <Card className="p-4 border-l-4 border-l-emerald-500 bg-white dark:bg-bpi-dark-card flex items-center justify-between">
           <div>
             <p className="text-xs text-muted-foreground">Cash Wallet</p>
-            <p className="text-xl font-bold text-foreground">₦{balances.cash.toLocaleString()}</p>
+            <p className="text-xl font-bold text-foreground">{formatAmount(balances.cash)}</p>
           </div>
           <Wallet className="w-6 h-6 text-emerald-600" />
         </Card>
         <Card className="p-4 border-l-4 border-l-blue-500 bg-white dark:bg-bpi-dark-card flex items-center justify-between">
           <div>
             <p className="text-xs text-muted-foreground">Community Wallet</p>
-            <p className="text-xl font-bold text-foreground">₦{balances.community.toLocaleString()}</p>
+            <p className="text-xl font-bold text-foreground">{formatAmount(balances.community)}</p>
           </div>
           <Users className="w-6 h-6 text-blue-600" />
         </Card>
@@ -362,7 +364,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                 <div className="flex items-center gap-2">
                   <TrendingDown className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                   <p className="text-xs font-semibold text-foreground">
-                    Reduce wait by contributing ₦{waitStatusQuery.data.monthlyProgress.target.toLocaleString()}/mo
+                    Reduce wait by contributing {formatAmount(waitStatusQuery.data.monthlyProgress.target)}/mo
                   </p>
                 </div>
                 <div className="h-2 w-full rounded-full bg-amber-200 dark:bg-amber-900/40 overflow-hidden">
@@ -372,11 +374,11 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                   />
                 </div>
                 <p className="text-[11px] text-muted-foreground flex items-center justify-between">
-                  <span>₦{waitStatusQuery.data.monthlyProgress.contributed.toLocaleString()} contributed this month</span>
+                  <span>{formatAmount(waitStatusQuery.data.monthlyProgress.contributed)} contributed this month</span>
                   {waitStatusQuery.data.monthlyProgress.reduced ? (
                     <span className="text-emerald-600 font-medium">1 month deducted ✓</span>
                   ) : (
-                    <span>₦{Math.max(0, waitStatusQuery.data.monthlyProgress.target - waitStatusQuery.data.monthlyProgress.contributed).toLocaleString()} more to reduce by 1 month</span>
+                    <span>{formatAmount(Math.max(0, waitStatusQuery.data.monthlyProgress.target - waitStatusQuery.data.monthlyProgress.contributed))} more to reduce by 1 month</span>
                   )}
                 </p>
               </div>
@@ -412,8 +414,8 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             <Wallet className="w-5 h-5 text-emerald-600" />
             <div>
               <p className="text-xs text-muted-foreground">Contributions made</p>
-              <p className="font-semibold text-foreground">₦{profile.contributionsMade.toLocaleString()}</p>
-              <p className="text-[11px] text-muted-foreground">Min ₦{profile.minContributionRequired.toLocaleString()} to qualify</p>
+              <p className="font-semibold text-foreground">{formatAmount(profile.contributionsMade)}</p>
+              <p className="text-[11px] text-muted-foreground">Min {formatAmount(profile.minContributionRequired)} to qualify</p>
             </div>
           </div>
         </Card>
@@ -459,7 +461,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                         <span className="font-semibold text-foreground">{rules?.label ?? cat}</span>
                         <Globe className="w-4 h-4 text-muted-foreground" />
                       </div>
-                      <p className="text-xs text-muted-foreground">Directs {rules?.minDirects ?? 10}+ • Threshold ₦{(rules?.minThreshold ?? 10000).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">Directs {rules?.minDirects ?? 10}+ • Threshold {formatAmount(rules?.minThreshold ?? 10000)}</p>
                     </button>
                   );
                 })}
@@ -477,7 +479,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                 />
                 {amount && !Number.isNaN(Number(amount)) && Number(amount) > 0 && (
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    Broadcast target: ₦{Math.ceil(Number(amount) * 1.2).toLocaleString()} <span className="text-amber-600">(+20% service markup)</span>
+                    Broadcast target: {formatAmount(Math.ceil(Number(amount) * 1.2))} <span className="text-amber-600">(+20% service markup)</span>
                   </p>
                 )}
               </div>
@@ -513,7 +515,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
               {eligibility.hasDirects ? "Directs ok" : `Need ${categoryRules[supportCategory]?.minDirects ?? 10}+ qualified directs`}
             </span>
             <span className={`px-2 py-1 rounded-full ${eligibility.hasContrib ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
-              {eligibility.hasContrib ? "Contribution ok" : `Contribute ₦${(categoryRules[supportCategory]?.minCumulativeContrib ?? 10000).toLocaleString()} cumulative`}
+              {eligibility.hasContrib ? "Contribution ok" : `Contribute ${formatAmount(categoryRules[supportCategory]?.minCumulativeContrib ?? 10000)} cumulative`}
             </span>
             <span className={`px-2 py-1 rounded-full ${eligibility.hasDistinct ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
               {eligibility.hasDistinct ? "10 requests met" : `${profile.minDistinctRequests} distinct requests needed`}
@@ -555,7 +557,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
               <div className="p-3 rounded-lg bg-white dark:bg-bpi-dark-card border border-gray-100 dark:border-bpi-dark-accent">
                 <p className="text-muted-foreground">Raised</p>
-                <p className="font-semibold text-foreground">₦{(liveStatus?.raisedAmount ?? 0).toLocaleString()} / ₦{(liveStatus?.thresholdAmount ?? categoryRules[supportCategory]?.minThreshold ?? 10000).toLocaleString()}</p>
+                <p className="font-semibold text-foreground">{formatAmount(liveStatus?.raisedAmount ?? 0)} / {formatAmount(liveStatus?.thresholdAmount ?? categoryRules[supportCategory]?.minThreshold ?? 10000)}</p>
               </div>
               <div className="p-3 rounded-lg bg-white dark:bg-bpi-dark-card border border-gray-100 dark:border-bpi-dark-accent">
                 <p className="text-muted-foreground">Contributors</p>
@@ -589,7 +591,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
               {extensionPaid.map((row) => (
                 <div key={row.amount} className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gradient-to-r from-emerald-50 to-emerald-50/50 dark:from-emerald-900/10 dark:to-emerald-900/5">
                   <p className="font-semibold text-foreground">+{row.hours} hrs</p>
-                  <p className="text-xs text-muted-foreground">Pay ₦{row.amount.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">Pay {formatAmount(row.amount)}</p>
                 </div>
               ))}
             </div>
@@ -623,7 +625,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </div>
             <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
               <p className="text-xs text-muted-foreground">Total raised</p>
-              <p className="text-xl font-bold text-foreground">₦{broadcastMetrics.totalRaised.toLocaleString()}</p>
+              <p className="text-xl font-bold text-foreground">{formatAmount(broadcastMetrics.totalRaised)}</p>
             </div>
             <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
               <p className="text-xs text-muted-foreground">Avg. progress</p>
@@ -677,11 +679,11 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                       </div>
                       <div className="mt-2 flex items-center justify-between text-sm">
                         <div>
-                          <p className="font-semibold text-foreground">₦{item.thresholdAmount.toLocaleString()}</p>
+                          <p className="font-semibold text-foreground">{formatAmount(item.thresholdAmount)}</p>
                           <p className="text-xs text-muted-foreground">Requested • {item.category}</p>
                         </div>
                         <div className="text-right">
-                          <p className="font-semibold text-foreground">₦{item.raisedAmount.toLocaleString()}</p>
+                          <p className="font-semibold text-foreground">{formatAmount(item.raisedAmount)}</p>
                           <p className="text-xs text-muted-foreground">Raised</p>
                         </div>
                       </div>
@@ -723,7 +725,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                       <p className="text-xs text-muted-foreground">{item.category} • {item.date}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold text-foreground">₦{Number(item.amount).toLocaleString()}</p>
+                      <p className="font-semibold text-foreground">{formatAmount(Number(item.amount))}</p>
                       <span className={`text-[11px] px-2 py-1 rounded-full ${["approved", "broadcasting", "closed"].includes(item.status.toLowerCase()) ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
                         {item.status}
                       </span>
@@ -784,7 +786,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
 
             <div className="grid gap-3">
               <div>
-                <label className="text-sm font-medium text-foreground">Amount (min ₦500)</label>
+                <label className="text-sm font-medium text-foreground">Amount (min {formatAmount(500)})</label>
                 <input
                   type="number"
                   min={500}
@@ -805,9 +807,9 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                       className={`rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition ${contributionWallet === w ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "border-gray-200 dark:border-bpi-dark-accent"}`}
                     >
                       {w === "wallet"
-                        ? `Cash Wallet • ₦${balances.cash.toLocaleString()}`
+                        ? `Cash Wallet • ${formatAmount(balances.cash)}`
                         : w === "community"
-                          ? `Community • ₦${balances.community.toLocaleString()}`
+                          ? `Community • ${formatAmount(balances.community)}`
                           : "Crypto (USDT)"}
                     </button>
                   ))}
@@ -846,7 +848,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
               onClick={() => {
                 const amt = Number(contributionAmount);
                 if (Number.isNaN(amt) || amt < 500) {
-                  toast.error("Minimum contribution is ₦500");
+                  toast.error(`Minimum contribution is ${formatAmount(500)}`);
                   return;
                 }
                 if (contributionWallet === "crypto") {

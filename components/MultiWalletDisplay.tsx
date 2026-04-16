@@ -30,7 +30,7 @@ interface MultiWalletDisplayProps {
 }
 
 export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWalletDisplayProps) {
-  const { formatAmount } = useCurrency();
+  const { formatAmount, selectedCurrency } = useCurrency();
   const bptPrice = useBptPrice();
   // bpiTokenWallet now stores BPT UNITS directly
   const bptUnits = wallets.bpiTokenWallet;
@@ -52,7 +52,7 @@ export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWa
       icon: Coins,
       color: "text-yellow-600",
       bgColor: "bg-yellow-50 dark:bg-yellow-900/20",
-      description: `50% of BPT rewards (₦${bptPrice} per BPT)`,
+      description: `50% of BPT rewards (${selectedCurrency?.sign || '₦'}${bptPrice} per BPT)`,
       displayValue: `${bptUnits.toFixed(2)} BPT (${formatAmount(bptNairaValue)})`,
     },
     {
@@ -191,7 +191,7 @@ export default function MultiWalletDisplay({ wallets, showAll = false }: MultiWa
           <h4 className="font-semibold text-emerald-900 dark:text-emerald-100 mb-2">💡 Wallet Information</h4>
           <ul className="text-sm text-emerald-800 dark:text-emerald-200 space-y-1">
             <li><strong>Main Wallet:</strong> Fully withdrawable cash balance</li>
-            <li><strong>BPI Token (BPT):</strong> 50% of your token rewards (₦{bptPrice} per BPT). Other 50% goes to buy-back wallet</li>
+            <li><strong>BPI Token (BPT):</strong> 50% of your token rewards ({selectedCurrency?.sign || '₦'}{bptPrice} per BPT). Other 50% goes to buy-back wallet</li>
             <li><strong>Palliative:</strong> Welfare support from referral activations</li>
             <li><strong>Cashback:</strong> Available for Gold Plus, Platinum Plus, and Travel packages</li>
             <li><strong>Shelter:</strong> Housing support for Gold/Platinum packages (10 referral levels)</li>

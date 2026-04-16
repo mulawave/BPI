@@ -1772,6 +1772,9 @@ model User {
   kyc                                                                  String?
   kycPending                                                           Int                          @default(0)
   withdrawBan                                                          Int                          @default(0)
+  withdrawBanAt                                                        DateTime?
+  withdrawBanBy                                                        String?
+  withdrawBanReason                                                    String?
   verified                                                             Boolean                      @default(false)
   pendingActivation                                                    Int?
   isVip                                                                Int                          @default(0)
@@ -1837,6 +1840,7 @@ model User {
   empowermentSponsorReward                                             Float                        @default(0)
   retirement                                                           Float                        @default(0)
   travelTour                                                           Float                        @default(0)
+  usdtAddress                                                          String?
   walletFrozen                                                         Boolean                      @default(false)
   walletFrozenAt                                                       DateTime?
   walletFrozenBy                                                       String?

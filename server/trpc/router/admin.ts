@@ -11102,6 +11102,220 @@ export const adminRouter = createTRPCRouter({
           : 0,
       }));
     }),
+
+  // ========================================
+  // WITHDRAWAL BAN/UNBAN ENDPOINTS
+  // ========================================
+
+  // Ban a user from making withdrawals
+  banWithdrawals: adminProcedure
+    .input(z.object({
+      userId: z.string(),
+      reason: z.string().min(1, "Reason is required"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { userId, reason } = input;
+      const adminId = ctx.session?.user?.id || 'admin';
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, name: true, withdrawBan: true, wallet: true }
+      });
+
+      if (!user) throw new Error(`User ${userId} not found`);
+      if (user.withdrawBan === 1) throw new Error(`User ${user.name || user.email || userId} is already banned from withdrawals`);
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          withdrawBan: 1,
+          withdrawBanAt: new Date(),
+          withdrawBanBy: adminId,
+          withdrawBanReason: reason,
+        }
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId,
+          action: 'BAN_WITHDRAWALS',
+          entity: 'User',
+          entityId: userId,
+          changes: JSON.stringify({
+            withdrawBan: { from: 0, to: 1 },
+            reason,
+            walletBalance: user.wallet,
+          }),
+          status: 'success',
+        }
+      });
+
+      if (user.email) {
+        try {
+          const { sendEmail } = await import('@/lib/email');
+          await sendEmail({
+            to: user.email,
+            subject: '⚠️ Withdrawal Access Restricted on Your BPI Account',
+            html: `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <meta charset="UTF-8">
+                <style>
+                  body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                  .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                  .header { background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                  .content { background: white; padding: 30px; border: 1px solid #e0e0e0; }
+                  .alert-box { background: #fee; border-left: 4px solid #dc2626; padding: 15px; margin: 20px 0; }
+                  .footer { background: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 8px 8px; }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="header"><h1>⚠️ Withdrawal Access Restricted</h1></div>
+                  <div class="content">
+                    <p>Dear ${user.name || 'Member'},</p>
+                    <div class="alert-box">
+                      <strong>⚠️ Notice:</strong> Your withdrawal access has been restricted by administration.
+                    </div>
+                    <p><strong>Reason:</strong></p>
+                    <p style="padding-left: 20px; font-style: italic;">${reason}</p>
+                    <p><strong>What this means:</strong></p>
+                    <ul>
+                      <li>You cannot make any withdrawals (cash, BPT, or USDT)</li>
+                      <li>Your wallet balance and other features remain accessible</li>
+                      <li>Incoming funds and rewards will continue to be credited normally</li>
+                    </ul>
+                    <p>Please contact our support team to resolve this matter.</p>
+                    <p>Best regards,<br>BPI Administration Team</p>
+                  </div>
+                  <div class="footer">
+                    <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
+                  </div>
+                </div>
+              </body>
+              </html>
+            `,
+          });
+        } catch (emailError) {
+          console.error('❌ Failed to send withdrawal ban notification:', emailError);
+        }
+      }
+
+      console.log(`🚫 [ADMIN] Withdrawal ban set for user ${userId} by ${adminId}. Reason: ${reason}`);
+
+      return {
+        success: true,
+        message: `Withdrawals banned for ${user.name || user.email || userId}`,
+        userId,
+        bannedAt: new Date(),
+      };
+    }),
+
+  // Unban a user from withdrawal restriction
+  unbanWithdrawals: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const { userId } = input;
+      const adminId = ctx.session?.user?.id || 'admin';
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, name: true, withdrawBan: true, withdrawBanAt: true, withdrawBanReason: true, wallet: true }
+      });
+
+      if (!user) throw new Error(`User ${userId} not found`);
+      if (user.withdrawBan !== 1) throw new Error(`User ${user.name || user.email || userId} is not banned from withdrawals`);
+
+      const previousReason = user.withdrawBanReason;
+      const banDuration = user.withdrawBanAt
+        ? Math.round((Date.now() - user.withdrawBanAt.getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          withdrawBan: 0,
+          withdrawBanAt: null,
+          withdrawBanBy: null,
+          withdrawBanReason: null,
+        }
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId,
+          action: 'UNBAN_WITHDRAWALS',
+          entity: 'User',
+          entityId: userId,
+          changes: JSON.stringify({
+            withdrawBan: { from: 1, to: 0 },
+            previousReason,
+            banDurationDays: banDuration,
+            walletBalance: user.wallet,
+          }),
+          status: 'success',
+        }
+      });
+
+      if (user.email) {
+        try {
+          const { sendEmail } = await import('@/lib/email');
+          await sendEmail({
+            to: user.email,
+            subject: '✅ Withdrawal Access Restored on Your BPI Account',
+            html: `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <meta charset="UTF-8">
+                <style>
+                  body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                  .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                  .header { background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                  .content { background: white; padding: 30px; border: 1px solid #e0e0e0; }
+                  .success-box { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 15px; margin: 20px 0; }
+                  .footer { background: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 8px 8px; }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="header"><h1>✅ Withdrawal Access Restored</h1></div>
+                  <div class="content">
+                    <p>Dear ${user.name || 'Member'},</p>
+                    <div class="success-box">
+                      <strong>✅ Good News:</strong> Your withdrawal access has been restored.
+                    </div>
+                    <p><strong>Restriction Duration:</strong> ${banDuration} day(s)</p>
+                    <p>You can now make withdrawals from your wallet normally.</p>
+                    <p>Thank you for your patience.</p>
+                    <p>Best regards,<br>BPI Administration Team</p>
+                  </div>
+                  <div class="footer">
+                    <p>&copy; ${new Date().getFullYear()} BeepAgro Palliative Initiative. All rights reserved.</p>
+                  </div>
+                </div>
+              </body>
+              </html>
+            `,
+          });
+        } catch (emailError) {
+          console.error('❌ Failed to send withdrawal unban notification:', emailError);
+        }
+      }
+
+      console.log(`✅ [ADMIN] Withdrawal ban lifted for user ${userId} by ${adminId}. Was banned for ${banDuration} days.`);
+
+      return {
+        success: true,
+        message: `Withdrawal access restored for ${user.name || user.email || userId}`,
+        userId,
+        unbannedAt: new Date(),
+        banDuration: `${banDuration} day(s)`,
+      };
+    }),
 })
 
 ;

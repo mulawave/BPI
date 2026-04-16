@@ -31,7 +31,7 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
   const [error, setError] = useState<string>('');
   const [successData, setSuccessData] = useState<any>(null);
   
-  const { formatAmount } = useCurrency();
+  const { formatAmount, selectedCurrency } = useCurrency();
   const MAX_TRANSFER = 500000; // ₦500k
 
   // Fetch user wallet balances directly
@@ -74,7 +74,7 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
 
   const handleDetailsNext = () => {
     if (numAmount < 1) {
-      setError('Please enter an amount of at least ₦1');
+      setError(`Please enter an amount of at least ${formatAmount(1)}`);
       return;
     }
 
@@ -303,7 +303,7 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Amount to Transfer</label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-muted-foreground">₦</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-muted-foreground">{selectedCurrency?.sign || '₦'}</span>
                   <Input
                     type="number"
                     value={amount}

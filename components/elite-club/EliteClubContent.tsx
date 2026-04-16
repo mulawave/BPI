@@ -28,6 +28,7 @@ import {
   ArrowLeftRight,
 } from "lucide-react";
 import { format } from "date-fns";
+import { useCurrency } from "@/contexts/CurrencyContext";
 
 type Tier = "SILVER" | "GOLD" | "PLATINUM" | "DIAMOND";
 type Tab = "overview" | "contribute" | "investments" | "credibility" | "apply" | "manage";
@@ -93,6 +94,7 @@ function CredibilityRing({ score }: { score: number }) {
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
 function OverviewTab({ onApply }: { onApply?: () => void }) {
+  const { formatAmount } = useCurrency();
   const { data, isLoading } = api.eliteClub.myClubs.useQuery();
 
   if (isLoading) return (
@@ -183,7 +185,7 @@ function OverviewTab({ onApply }: { onApply?: () => void }) {
                 <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                   <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1.5">
                     <span>Monthly Contribution Progress</span>
-                    <span>₦{(contributed % target).toLocaleString()} / ₦{target.toLocaleString()}</span>
+                    <span>{formatAmount(contributed % target)} / {formatAmount(target)}</span>
                   </div>
                   <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                     <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.8 }}
@@ -203,6 +205,7 @@ function OverviewTab({ onApply }: { onApply?: () => void }) {
 // ─── Contributions Tab ────────────────────────────────────────────────────────
 
 function ContributionsTab() {
+  const { formatAmount } = useCurrency();
   const { data, isLoading } = api.eliteClub.myContributions.useQuery({ pageSize: 36 });
 
   if (isLoading) return (
@@ -225,7 +228,7 @@ function ContributionsTab() {
         <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-4 shadow-sm">
           <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-medium tracking-wide mb-1">Total Amount</p>
           <p className="text-xl font-bold text-[#0d3b29] dark:text-emerald-400">
-            ₦{contributions.reduce((s, c) => s + Number(c.totalAmount), 0).toLocaleString()}
+            {formatAmount(contributions.reduce((s, c) => s + Number(c.totalAmount), 0))}
           </p>
         </div>
         <div className="bg-white dark:bg-[#181f2a] border border-gray-200 dark:border-gray-700/60 rounded-2xl p-4 shadow-sm">
@@ -254,11 +257,11 @@ function ContributionsTab() {
                   {c.month}/{c.year}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Empowerment ₦{Number(c.empowermentShare).toLocaleString()} · Investment ₦{Number(c.investmentShare).toLocaleString()}
+                  Empowerment {formatAmount(Number(c.empowermentShare))} · Investment {formatAmount(Number(c.investmentShare))}
                 </p>
               </div>
               <div className="text-right flex-shrink-0">
-                <p className="text-sm font-bold text-gray-900 dark:text-white">₦{Number(c.totalAmount).toLocaleString()}</p>
+                <p className="text-sm font-bold text-gray-900 dark:text-white">{formatAmount(Number(c.totalAmount))}</p>
                 <StatusBadge status={c.status} />
               </div>
             </motion.div>
@@ -272,6 +275,7 @@ function ContributionsTab() {
 // ─── Investments Tab ──────────────────────────────────────────────────────────
 
 function InvestmentsTab() {
+  const { formatAmount } = useCurrency();
   const [activeClubId, setActiveClubId] = useState<string>("");
   const { data: clubsData } = api.eliteClub.myClubs.useQuery();
   const { data, isLoading, refetch } = api.eliteClub.listInvestments.useQuery(
@@ -316,19 +320,19 @@ function InvestmentsTab() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3">
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Gross</p>
-              <p className="font-bold text-gray-900 dark:text-white text-sm">₦{Number(latestPool.grossAmount).toLocaleString()}</p>
+              <p className="font-bold text-gray-900 dark:text-white text-sm">{formatAmount(Number(latestPool.grossAmount))}</p>
             </div>
             <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3">
               <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-1">Available</p>
-              <p className="font-bold text-emerald-700 dark:text-emerald-300 text-sm">₦{Number(latestPool.available).toLocaleString()}</p>
+              <p className="font-bold text-emerald-700 dark:text-emerald-300 text-sm">{formatAmount(Number(latestPool.available))}</p>
             </div>
             <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl p-3">
               <p className="text-xs text-indigo-600 dark:text-indigo-400 mb-1">Digital / Web3</p>
-              <p className="font-bold text-indigo-700 dark:text-indigo-300 text-sm">₦{Number(latestPool.digitalBalance).toLocaleString()}</p>
+              <p className="font-bold text-indigo-700 dark:text-indigo-300 text-sm">{formatAmount(Number(latestPool.digitalBalance))}</p>
             </div>
             <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3">
               <p className="text-xs text-amber-600 dark:text-amber-400 mb-1">Offline</p>
-              <p className="font-bold text-amber-700 dark:text-amber-300 text-sm">₦{Number(latestPool.offlineBalance).toLocaleString()}</p>
+              <p className="font-bold text-amber-700 dark:text-amber-300 text-sm">{formatAmount(Number(latestPool.offlineBalance))}</p>
             </div>
           </div>
         </div>
@@ -356,8 +360,8 @@ function InvestmentsTab() {
                     <p className="font-semibold text-gray-900 dark:text-white">{inv.title}</p>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{inv.description}</p>
                     <p className="text-sm font-bold text-[#0d3b29] dark:text-emerald-400 mt-1">
-                      ₦{Number(inv.amountRequested).toLocaleString()} requested
-                      {inv.expectedReturn && ` · ₦${Number(inv.expectedReturn).toLocaleString()} expected return`}
+                      {formatAmount(Number(inv.amountRequested))} requested
+                      {inv.expectedReturn && ` · ${formatAmount(Number(inv.expectedReturn))} expected return`}
                     </p>
                   </div>
                 </div>
@@ -510,6 +514,7 @@ function CredibilityTab() {
 // ─── Apply Tab ────────────────────────────────────────────────────────────────
 
 function ApplyTab() {
+  const { formatAmount } = useCurrency();
   const [selectedTier, setSelectedTier] = useState<Tier>("SILVER");
   const eligibilityQuery = api.eliteClub.checkEligibility.useQuery({ tier: selectedTier });
   const submitApp = api.eliteClub.submitApplication.useMutation({
@@ -533,7 +538,7 @@ function ApplyTab() {
                 <Crown size={18} className="text-white" />
               </div>
               <p className={`text-xs font-bold ${selectedTier === t ? c.text : "text-gray-600 dark:text-gray-400"}`}>{t}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">₦{TIER_THRESHOLDS[t].monthly.toLocaleString()}/mo</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatAmount(TIER_THRESHOLDS[t].monthly)}/mo</p>
             </button>
           );
         })}
@@ -591,7 +596,7 @@ function ApplyTab() {
         <div className="grid grid-cols-2 gap-3 text-xs text-gray-600 dark:text-gray-400">
           <div><span className="font-medium text-gray-800 dark:text-gray-200">BPT Holdings:</span> {TIER_THRESHOLDS[selectedTier].bpt.toLocaleString()}</div>
           <div><span className="font-medium text-gray-800 dark:text-gray-200">PACToken:</span> {TIER_THRESHOLDS[selectedTier].pac.toLocaleString()}</div>
-          <div><span className="font-medium text-gray-800 dark:text-gray-200">Monthly Contribution:</span> ₦{TIER_THRESHOLDS[selectedTier].monthly.toLocaleString()}</div>
+          <div><span className="font-medium text-gray-800 dark:text-gray-200">Monthly Contribution:</span> {formatAmount(TIER_THRESHOLDS[selectedTier].monthly)}</div>
           <div><span className="font-medium text-gray-800 dark:text-gray-200">Club Size:</span> 11 members</div>
         </div>
         <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
@@ -605,6 +610,7 @@ function ApplyTab() {
 // ─── Manage Tab ───────────────────────────────────────────────────────────────
 
 function ManageTab() {
+  const { formatAmount, selectedCurrency } = useCurrency();
   const { data: clubsData } = api.eliteClub.myClubs.useQuery();
   const memberships = clubsData?.memberships ?? [];
   const [selectedClubId, setSelectedClubId] = useState<string>("");
@@ -843,13 +849,13 @@ function ManageTab() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Amount Requested (₦)</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Amount Requested ({selectedCurrency?.sign || '₦'})</label>
                 <input value={recForm.amountRequested} onChange={(e) => setRecForm((f) => ({ ...f, amountRequested: e.target.value }))}
                   type="number" placeholder="0"
                   className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Expected Return (₦, optional)</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Expected Return ({selectedCurrency?.sign || '₦'}, optional)</label>
                 <input value={recForm.expectedReturn} onChange={(e) => setRecForm((f) => ({ ...f, expectedReturn: e.target.value }))}
                   type="number" placeholder="0"
                   className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] outline-none" />

@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FiX, FiCheck, FiAlertCircle } from "react-icons/fi";
-import { Wallet, CreditCard, Bitcoin, CheckCircle, Loader2, AlertTriangle, Building, BadgeCheck, DollarSign, Copy, ExternalLink } from "lucide-react";
+import { Wallet, CreditCard, Bitcoin, CheckCircle, Loader2, AlertTriangle, Building, BadgeCheck, DollarSign, Copy, ExternalLink, Settings } from "lucide-react";
 import { api } from "@/client/trpc";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 
 interface WithdrawalModalProps {
@@ -17,11 +18,15 @@ interface WithdrawalModalProps {
 }
 
 type WithdrawalType = 'cash' | 'bpt' | 'usdt';
-type Step = 'type' | 'details' | 'summary' | 'processing' | 'success' | 'error';
+type Step = 'type' | 'details' | 'summary' | 'processing' | 'success' | 'error' | 'wallet-gate';
 
 export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: WithdrawalModalProps) {
   const { data: session } = useSession();
-  const [withdrawalType, setWithdrawalType] = useState<WithdrawalType>('cash');
+  const router = useRouter();
+  const { formatAmount, selectedCurrency } = useCurrency();
+  const isUsdMode = selectedCurrency?.symbol !== 'NGN' && selectedCurrency?.symbol != null;
+
+  const [withdrawalType, setWithdrawalType] = useState<WithdrawalType>(isUsdMode ? 'usdt' : 'cash');
   const [currentStep, setCurrentStep] = useState<Step>('type');
   
   // Form fields
@@ -36,6 +41,34 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
 
   // Check USDT eligibility (non-Nigerian users only)
   const { data: usdtEligibility } = api.wallet.canWithdrawUsdt.useQuery();
+
+  // Fetch saved USDT wallet address
+  const { data: savedWallet } = api.security.getUsdtWallet.useQuery();
+
+  // Check withdrawal ban status
+  const { data: userDetails } = api.user.getDetails.useQuery();
+  const isWithdrawalBanned = userDetails?.withdrawBan === 1;
+
+  // Auto-populate USDT address from saved wallet
+  useEffect(() => {
+    if (savedWallet?.usdtAddress && !usdtAddress) {
+      setUsdtAddress(savedWallet.usdtAddress);
+    }
+  }, [savedWallet?.usdtAddress]);
+
+  // For USD-mode users: if they open the modal but have no saved wallet, show gating
+  useEffect(() => {
+    if (isOpen && isUsdMode && savedWallet !== undefined && !savedWallet?.usdtAddress) {
+      setCurrentStep('wallet-gate');
+    }
+  }, [isOpen, isUsdMode, savedWallet]);
+
+  // Keep withdrawal type in sync with currency mode
+  useEffect(() => {
+    if (isUsdMode) {
+      setWithdrawalType('usdt');
+    }
+  }, [isUsdMode]);
 
   // Fetch user's bank accounts
   const { data: bankAccounts } = api.bank.getUserBankRecords.useQuery();
@@ -52,7 +85,6 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
   const [error, setError] = useState<string>('');
   const [successData, setSuccessData] = useState<any>(null);
   
-  const { formatAmount } = useCurrency();
   const CASH_FEE = 100; // ₦100
   const BPT_FEE = 0; // ₦0
   const AUTO_APPROVAL_THRESHOLD = 100000; // ₦100k
@@ -84,7 +116,7 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
 
   const handleDetailsNext = () => {
     if (numAmount < 1) {
-      setError('Please enter an amount of at least ₦1');
+      setError(`Please enter an amount of at least ${formatAmount(1)}`);
       return;
     }
 
@@ -159,14 +191,15 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
   };
 
   const handleReset = () => {
-    setCurrentStep('type');
+    setCurrentStep(isUsdMode && !savedWallet?.usdtAddress ? 'wallet-gate' : 'type');
     setAmount('');
     setSelectedBankAccountId(null);
     setBnbWallet('');
-    setUsdtAddress('');
+    setUsdtAddress(savedWallet?.usdtAddress || '');
     setPin('');
     setError('');
     setSuccessData(null);
+    if (isUsdMode) setWithdrawalType('usdt');
   };
 
   const handleClose = () => {
@@ -175,6 +208,58 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
   };
 
   if (!isOpen) return null;
+
+  // Withdrawal ban — show forbidden screen
+  if (isWithdrawalBanned) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-white dark:bg-bpi-dark-card overflow-y-auto">
+        <div className="sticky top-0 z-20 bg-gradient-to-r from-red-600 via-red-700 to-red-800 text-white shadow-lg">
+          <div className="px-6 py-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-white/20 backdrop-blur-sm rounded-full">
+                  <AlertTriangle className="w-7 h-7" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold">Withdrawals Restricted</h1>
+                  <p className="text-red-100 text-sm">Your withdrawal access is currently suspended</p>
+                </div>
+              </div>
+              <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+                <FiX className="w-7 h-7" />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-lg mx-auto px-6 py-16">
+          <div className="text-center mb-8">
+            <div className="w-24 h-24 bg-gradient-to-br from-red-500 to-red-700 rounded-full flex items-center justify-center mx-auto mb-6">
+              <FiAlertCircle className="w-12 h-12 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold text-foreground mb-3">Withdrawal Access Denied</h2>
+            <p className="text-muted-foreground max-w-sm mx-auto">
+              Your account has been restricted from making withdrawals by administration. All other features remain accessible.
+            </p>
+          </div>
+          <div className="p-5 bg-red-50 dark:bg-red-900/20 rounded-2xl border border-red-200 dark:border-red-800 mb-6">
+            <div className="space-y-3 text-sm text-red-800 dark:text-red-200">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <p>Cash, BPT, and USDT withdrawals are all currently unavailable on your account.</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <Building className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <p>Please contact <strong>support</strong> or reach out via the Help Center to resolve this restriction.</p>
+              </div>
+            </div>
+          </div>
+          <Button onClick={handleClose} variant="outline" className="w-full py-6 text-lg" size="lg">
+            Close
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[9999] bg-white dark:bg-bpi-dark-card overflow-y-auto">
@@ -188,7 +273,9 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
               </div>
               <div>
                 <h1 className="text-3xl font-bold">Withdraw Funds</h1>
-                <p className="text-indigo-100 text-sm">Cash out to your bank or BNB wallet</p>
+                <p className="text-indigo-100 text-sm">
+                  {isUsdMode ? 'Withdraw USDT to your TRC-20 wallet' : 'Cash out to your bank or BNB wallet'}
+                </p>
               </div>
             </div>
             <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
@@ -196,35 +283,39 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
             </button>
           </div>
 
-          {/* Tabs */}
+          {/* Tabs — hide cash/BPT for USD-mode users */}
           <div className="flex gap-2 mt-6">
-            <button
-              onClick={() => setWithdrawalType('cash')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
-                withdrawalType === 'cash'
-                  ? 'bg-white text-blue-600 shadow-lg'
-                  : 'bg-white/10 hover:bg-white/20 text-white'
-              }`}
-            >
-              <div className="flex items-center justify-center gap-2">
-                <Building className="w-5 h-5" />
-                <span>Cash</span>
-              </div>
-            </button>
-            <button
-              onClick={() => setWithdrawalType('bpt')}
-              className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
-                withdrawalType === 'bpt'
-                  ? 'bg-white text-purple-600 shadow-lg'
-                  : 'bg-white/10 hover:bg-white/20 text-white'
-              }`}
-            >
-              <div className="flex items-center justify-center gap-2">
-                <Bitcoin className="w-5 h-5" />
-                <span>BPT</span>
-              </div>
-            </button>
-            {usdtEligibility?.eligible && (
+            {!isUsdMode && (
+              <>
+                <button
+                  onClick={() => setWithdrawalType('cash')}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
+                    withdrawalType === 'cash'
+                      ? 'bg-white text-blue-600 shadow-lg'
+                      : 'bg-white/10 hover:bg-white/20 text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <Building className="w-5 h-5" />
+                    <span>Cash</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setWithdrawalType('bpt')}
+                  className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
+                    withdrawalType === 'bpt'
+                      ? 'bg-white text-purple-600 shadow-lg'
+                      : 'bg-white/10 hover:bg-white/20 text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <Bitcoin className="w-5 h-5" />
+                    <span>BPT</span>
+                  </div>
+                </button>
+              </>
+            )}
+            {(usdtEligibility?.eligible || isUsdMode) && (
               <button
                 onClick={() => setWithdrawalType('usdt')}
                 className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
@@ -245,6 +336,57 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
 
       {/* Content */}
       <div className="max-w-4xl mx-auto px-6 py-12">
+        {/* Step: Wallet Gate — USD users must set a USDT wallet first */}
+        {currentStep === 'wallet-gate' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="text-center mb-6">
+              <div className="w-20 h-20 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-10 h-10 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground mb-2">USDT Wallet Required</h2>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                Your account is set to USD currency. To withdraw funds, you must first set up a USDT TRC-20 wallet address in your account settings.
+              </p>
+            </div>
+
+            <div className="max-w-md mx-auto space-y-4">
+              <div className="p-5 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-2xl border border-amber-200 dark:border-amber-800">
+                <div className="space-y-3 text-sm text-amber-800 dark:text-amber-200">
+                  <div className="flex items-start gap-3">
+                    <Wallet className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <p>You need a valid <strong>USDT TRC-20 wallet address</strong> saved to your account before you can initiate withdrawals.</p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Settings className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <p>Go to <strong>Settings &rarr; Billing</strong> to set your wallet address. Your transaction PIN{savedWallet?.has2FA ? ' and 2FA code' : ''} will be required.</p>
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => {
+                  handleClose();
+                  router.push('/settings');
+                }}
+                className="w-full py-6 text-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
+                size="lg"
+              >
+                <Settings className="w-5 h-5 mr-2" />
+                Go to Wallet Settings
+              </Button>
+
+              <Button
+                onClick={handleClose}
+                variant="outline"
+                className="w-full py-6"
+                size="lg"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Step: Type Selection */}
         {currentStep === 'type' && (
           <div className="space-y-6 animate-fadeIn">
@@ -341,7 +483,7 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Amount to Withdraw</label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-muted-foreground">₦</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-muted-foreground">{selectedCurrency?.sign || '₦'}</span>
                   <Input
                     type="number"
                     value={amount}
@@ -450,19 +592,34 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
                     USDT TRC-20 Wallet Address
                   </h3>
                   
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">TRC-20 Address</label>
-                    <Input
-                      type="text"
-                      value={usdtAddress}
-                      onChange={(e) => setUsdtAddress(e.target.value)}
-                      placeholder="TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                      className="font-mono text-sm"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Enter your TRON (TRC-20) USDT wallet address (starts with T, 34 characters). Double-check — transactions cannot be reversed.
-                    </p>
-                  </div>
+                  {savedWallet?.usdtAddress ? (
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">Saved TRC-20 Address</label>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 bg-white dark:bg-gray-900/50 px-3 py-2.5 rounded-lg border border-emerald-200 dark:border-emerald-800 text-sm font-mono text-gray-900 dark:text-gray-100 break-all">
+                          {savedWallet.usdtAddress}
+                        </code>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3 text-emerald-500" />
+                        Using your saved wallet address. <button onClick={() => { handleClose(); router.push('/settings'); }} className="text-emerald-600 dark:text-emerald-400 underline hover:no-underline">Change in Settings</button>
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">TRC-20 Address</label>
+                      <Input
+                        type="text"
+                        value={usdtAddress}
+                        onChange={(e) => setUsdtAddress(e.target.value)}
+                        placeholder="TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                        className="font-mono text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Enter your TRON (TRC-20) USDT wallet address (starts with T, 34 characters). Double-check — transactions cannot be reversed.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800/50">
                     <div className="flex items-start gap-2">
