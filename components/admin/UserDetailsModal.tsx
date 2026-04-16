@@ -111,6 +111,11 @@ export default function UserDetailsModal({
     onError: (err) => toast.error(err.message),
   });
 
+  const toggleUsdFeaturesMutation = api.admin.toggleAllowUsdFeatures.useMutation({
+    onSuccess: (data) => { toast.success(data.message); refetch(); },
+    onError: (err) => toast.error(err.message),
+  });
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -561,6 +566,36 @@ export default function UserDetailsModal({
                                   </div>
                                 </div>
                               )}
+                            </div>
+
+                            {/* USD Features Access */}
+                            <div className="mt-4 pt-4 border-t border-red-200 dark:border-red-700/50">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900 dark:text-white">USD Features Access</p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {user.allowUsdFeatures ? (
+                                      <span className="text-blue-600 dark:text-blue-400 font-medium">Granted — can use USD/USDT features</span>
+                                    ) : (
+                                      <span className="text-gray-500 dark:text-gray-400">Default — USD features follow country rules</span>
+                                    )}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => toggleUsdFeaturesMutation.mutate({ userId: user.id, allow: !user.allowUsdFeatures })}
+                                  disabled={toggleUsdFeaturesMutation.isPending}
+                                  className={`px-4 py-2 rounded-lg text-white text-sm font-medium transition disabled:opacity-60 ${
+                                    user.allowUsdFeatures
+                                      ? 'bg-gray-600 hover:bg-gray-700'
+                                      : 'bg-blue-600 hover:bg-blue-700'
+                                  }`}
+                                >
+                                  {toggleUsdFeaturesMutation.isPending
+                                    ? 'Updating...'
+                                    : user.allowUsdFeatures ? 'Revoke USD Access' : 'Grant USD Access'
+                                  }
+                                </button>
+                              </div>
                             </div>
                           </div>
 

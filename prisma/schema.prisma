@@ -1841,6 +1841,7 @@ model User {
   retirement                                                           Float                        @default(0)
   travelTour                                                           Float                        @default(0)
   usdtAddress                                                          String?
+  allowUsdFeatures                                                     Boolean                      @default(false)
   walletFrozen                                                         Boolean                      @default(false)
   walletFrozenAt                                                       DateTime?
   walletFrozenBy                                                       String?

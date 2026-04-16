@@ -578,6 +578,17 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   const mainBalanceNgn = dashboardData?.wallets?.primary?.main?.balance || 0;
   const mainBalanceUsd = convertAmount(mainBalanceNgn);
   const isUsdWithdrawalGated = isUsdMode && mainBalanceUsd < usdUnlockThreshold;
+
+  // Nigerian user detection: country=Nigeria OR has bank accounts, unless admin or allowUsdFeatures
+  const isAdmin = userDetails?.role === 'admin' || userDetails?.role === 'super_admin';
+  const isNigerianUser = !isAdmin && !userDetails?.allowUsdFeatures && (
+    userDetails?.country?.toLowerCase() === 'nigeria' ||
+    userDetails?.countryRelation?.name?.toLowerCase() === 'nigeria' ||
+    userDetails?.hasBankAccounts === true
+  );
+  // Block USD features for Nigerian users
+  const isUsdBlockedForNigerian = isUsdMode && isNigerianUser;
+
   const { data: referralStats } = api.referral.getReferralStats.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -2691,8 +2702,14 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
               {/* Quick Actions */}
               <div className="grid grid-cols-3 gap-2 py-4 border-t border-white/20">
                 <button 
-                  onClick={() => setIsDepositModalOpen(true)}
-                  className="flex flex-col items-center gap-1 p-2 bg-bpi-primary hover:bg-white/20 rounded-lg transition-colors"
+                  onClick={() => {
+                    if (isUsdBlockedForNigerian) {
+                      toast.error('USD deposits are not available for your account. Switch to NGN.');
+                      return;
+                    }
+                    setIsDepositModalOpen(true);
+                  }}
+                  className={`flex flex-col items-center gap-1 p-2 bg-bpi-primary hover:bg-white/20 rounded-lg transition-colors ${isUsdBlockedForNigerian ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <ArrowDown className="w-4 h-4" />
                   <span className="text-xs font-medium">Deposit</span>
@@ -2703,17 +2720,26 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                       toast.error('Your withdrawal access is currently restricted. Contact support for help.');
                       return;
                     }
+                    if (isUsdBlockedForNigerian) {
+                      toast.error('USD withdrawals are not available for your account. Switch to NGN.');
+                      return;
+                    }
                     if (isUsdWithdrawalGated) {
                       toast.error(`Insufficient balance. You need at least $${usdUnlockThreshold.toFixed(2)} to withdraw.`);
                       return;
                     }
                     setIsWithdrawalModalOpen(true);
                   }}
-                  className={`flex flex-col items-center gap-1 p-2 bg-bpi-secondary/50 hover:bg-white/20 rounded-lg transition-colors ${(userDetails?.withdrawBan === 1 || isUsdWithdrawalGated) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`flex flex-col items-center gap-1 p-2 bg-bpi-secondary/50 hover:bg-white/20 rounded-lg transition-colors ${(userDetails?.withdrawBan === 1 || isUsdWithdrawalGated || isUsdBlockedForNigerian) ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <ArrowUp className="w-4 h-4" />
                   <span className="text-xs font-medium">Withdraw</span>
-                  {isUsdWithdrawalGated && (
+                  {isUsdBlockedForNigerian && (
+                    <span className="text-[10px] leading-tight text-white/60 text-center">
+                      NGN only
+                    </span>
+                  )}
+                  {!isUsdBlockedForNigerian && isUsdWithdrawalGated && (
                     <span className="text-[10px] leading-tight text-white/60 text-center">
                       Unlocks at ${usdUnlockThreshold.toFixed(2)}+
                     </span>

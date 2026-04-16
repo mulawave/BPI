@@ -72,7 +72,13 @@ export default function WithdrawalModal({ isOpen, onClose, onOpenUsdtHistory }: 
   useEffect(() => {
     if (isUsdMode) {
       setWithdrawalType('usdt');
+    } else {
+      setWithdrawalType('cash');
     }
+    // Reset form state when currency changes
+    setAmount('');
+    setCurrentStep('type');
+    setPin('');
   }, [isUsdMode]);
 
   // Fetch user's bank accounts

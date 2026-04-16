@@ -11316,6 +11316,57 @@ export const adminRouter = createTRPCRouter({
         banDuration: `${banDuration} day(s)`,
       };
     }),
+
+  // ========================================
+  // USD FEATURES ACCESS TOGGLE
+  // ========================================
+
+  toggleAllowUsdFeatures: adminProcedure
+    .input(z.object({
+      userId: z.string(),
+      allow: z.boolean(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { userId, allow } = input;
+      const adminId = ctx.session?.user?.id || 'admin';
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, name: true, allowUsdFeatures: true }
+      });
+
+      if (!user) throw new Error(`User ${userId} not found`);
+      if (user.allowUsdFeatures === allow) {
+        throw new Error(`USD features are already ${allow ? 'enabled' : 'disabled'} for this user`);
+      }
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { allowUsdFeatures: allow },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId,
+          action: allow ? 'ENABLE_USD_FEATURES' : 'DISABLE_USD_FEATURES',
+          entity: 'User',
+          entityId: userId,
+          changes: JSON.stringify({
+            allowUsdFeatures: { from: !allow, to: allow },
+          }),
+          status: 'success',
+        }
+      });
+
+      console.log(`💱 [ADMIN] USD features ${allow ? 'enabled' : 'disabled'} for user ${userId} by ${adminId}`);
+
+      return {
+        success: true,
+        message: `USD features ${allow ? 'enabled' : 'disabled'} for ${user.name || user.email || userId}`,
+        userId,
+      };
+    }),
 })
 
 ;

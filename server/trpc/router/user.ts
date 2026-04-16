@@ -71,6 +71,7 @@ export const userRouter = createTRPCRouter({
           defaultCurrency: true,
           usdtAddress: true,
           withdrawBan: true,
+          allowUsdFeatures: true,
           role: true,
           createdAt: true,
           updatedAt: true,
@@ -110,9 +111,15 @@ export const userRouter = createTRPCRouter({
           });
       }
 
+      // Check if user has bank accounts on file (indicates Nigerian identity)
+      const bankAccountCount = await prisma.userBankRecord.count({
+        where: { userId },
+      });
+
       return {
         ...user,
         activeMembership, // This will be the full package object or null
+        hasBankAccounts: bankAccountCount > 0,
       };
     } catch (error) {
       console.error('[user.getDetails] Error:', error);

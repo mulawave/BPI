@@ -14,6 +14,7 @@ import UserSecuritySettingsPanel from '@/components/user/SecuritySettingsPanel';
 import CryptoWalletSettings from '@/components/settings/CryptoWalletSettings';
 import Footer from '@/components/Footer';
 import KycWarningBanner from '@/components/kyc/KycWarningBanner';
+import { api } from '@/client/trpc';
 
 interface SettingsLayoutProps {
   session: Session;
@@ -33,6 +34,15 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<SettingsTab>('security');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Query user details for Nigerian user detection
+  const { data: userDetails } = api.user.getDetails.useQuery();
+  const isAdmin = userDetails?.role === 'admin' || userDetails?.role === 'super_admin';
+  const isNigerianUser = !isAdmin && !userDetails?.allowUsdFeatures && (
+    userDetails?.country?.toLowerCase() === 'nigeria' ||
+    userDetails?.countryRelation?.name?.toLowerCase() === 'nigeria' ||
+    userDetails?.hasBankAccounts === true
+  );
 
   const tabs: TabConfig[] = [
     {
@@ -75,7 +85,7 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
       label: 'Billing',
       icon: CreditCard,
       description: 'Crypto wallet & payment settings',
-      available: true,
+      available: !isNigerianUser,
     },
   ];
 

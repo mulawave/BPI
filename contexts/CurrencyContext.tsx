@@ -33,6 +33,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   });
   const { data: currencies = [] } = api.currency.getAll.useQuery();
   const { data: defaultCurrency } = api.currency.getDefault.useQuery();
+  const utils = api.useUtils();
 
   // Set default currency if no selection exists (no localStorage value)
   useEffect(() => {
@@ -52,6 +53,9 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('bpi:selectedCurrencySymbol', currency.symbol);
       }
     }
+    // Invalidate dashboard and wallet queries so components re-render with new currency
+    utils.dashboard.getOverview.invalidate();
+    utils.wallet.getUsdWithdrawalConfig.invalidate();
   };
 
   // Resolve selected currency with fallback to symbol-based match
