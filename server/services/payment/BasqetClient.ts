@@ -1,24 +1,41 @@
+// Basqet API Client — Based on official docs: https://docs.basqet.com
+//
+// API Flow (Pay-in):
+//   1. Initialize: POST /v1/transaction (auth: Bearer PUBLIC_KEY)
+//      → returns { data: { id, reference, status: "INITIATED" } }
+//   2. Initiate:   POST /v1/transaction/:id/pay (auth: Bearer SECRET_KEY)
+//      → returns { data: { payment_address, payment_amount, qrCode, status: "PENDING" } }
+//   3. Verify:     GET  /v1/transaction/:id/status (auth: Bearer PUBLIC_KEY or SECRET_KEY)
+//      → returns { data: { status: "SUCCESSFUL" | "PENDING" | ... } }
+//
+// Basqet does NOT provide a hosted checkout URL. It returns a crypto address + amount + QR code.
+// Currency IDs: USDT=3, BTC=4, QDX=5, ETH=6, LTC=7
+
 import crypto from "crypto";
+
+// ── Interfaces ──────────────────────────────────────────────────────
 
 export interface BasqetPayinInitInput {
   secretKey: string;
-  publicKey?: string;
+  publicKey: string;
   reference: string;
   amount: number;
+  /** Fiat currency for initialization: "USD" or "NGN" */
   currency: string;
-  customer: {
-    name: string;
-    email: string;
-  };
+  customer: { name: string; email: string };
+  /** Currency ID for the crypto to pay with: USDT=3, BTC=4, QDX=5, ETH=6, LTC=7 */
+  currencyId?: number;
   metadata?: Record<string, any>;
 }
 
 export interface BasqetPayinInitResult {
   providerRef: string;
-  transactionId?: string;
-  paymentUrl?: string;
-  status?: string;
-  raw?: any;
+  transactionId: string;
+  paymentAddress: string;
+  paymentAmount: number;
+  qrCode?: string;
+  paymentCurrency?: string;
+  status: string;
 }
 
 export interface BasqetVerifyResult {
@@ -26,7 +43,6 @@ export interface BasqetVerifyResult {
   amountReceived: number;
   providerRef: string;
   status: string;
-  raw?: any;
 }
 
 export interface BasqetPayoutInput {
@@ -47,132 +63,68 @@ export interface BasqetPayoutResult {
   payoutId?: string;
   status: string;
   txHash?: string;
-  raw?: any;
 }
 
-const DEFAULT_BASE_URL = process.env.BASQET_API_BASE_URL || "https://api.basqet.com";
-const INIT_TRANSACTION_PATH = process.env.BASQET_INIT_TRANSACTION_PATH || "/payins/transactions/initialize";
-const INITIATE_TRANSACTION_PATH = process.env.BASQET_INITIATE_TRANSACTION_PATH || "/payins/transactions/initiate";
-const VERIFY_TRANSACTION_PATH = process.env.BASQET_VERIFY_TRANSACTION_PATH || "/payins/transactions";
-const INIT_PAYOUT_PATH = process.env.BASQET_INIT_PAYOUT_PATH || "/payouts";
-const VERIFY_PAYOUT_PATH = process.env.BASQET_VERIFY_PAYOUT_PATH || "/payouts";
+// ── Constants ───────────────────────────────────────────────────────
 
-function buildBasqetHeaders(secretKey: string, publicKey?: string) {
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${secretKey}`,
-  };
+const BASE_URL = "https://api.basqet.com/v1";
+const USDT_CURRENCY_ID = 3;
 
-  if (publicKey) {
-    headers["x-public-key"] = publicKey;
-    headers["x-api-key"] = publicKey;
-  }
+// ── HTTP helpers ────────────────────────────────────────────────────
 
-  return headers;
-}
-
-async function basqetRequest<T>(
-  secretKey: string,
-  publicKey: string | undefined,
+async function basqetFetch<T>(
+  authKey: string,
   path: string,
   options?: RequestInit,
 ): Promise<T> {
-  const url = `${DEFAULT_BASE_URL}${path}`;
+  const url = `${BASE_URL}${path}`;
+  console.log(`[BasqetClient] ${options?.method || "GET"} ${url}`);
+
   const response = await fetch(url, {
     ...options,
     headers: {
-      ...buildBasqetHeaders(secretKey, publicKey),
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authKey}`,
       ...(options?.headers || {}),
     },
   });
 
+  const text = await response.text();
   if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Basqet API error (${response.status}): ${errText}`);
+    console.error(`[BasqetClient] Error ${response.status}: ${text}`);
+    throw new Error(`Basqet API error (${response.status}): ${text}`);
   }
 
-  return response.json() as Promise<T>;
+  const json = JSON.parse(text);
+  if (json.status === "error" || json.status === "fail") {
+    console.error(`[BasqetClient] API returned error:`, json);
+    throw new Error(`Basqet API error: ${json.message || JSON.stringify(json)}`);
+  }
+
+  return json as T;
 }
 
-function tryLoadBasqetSdk(): any | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require("basqet-node");
-  } catch {
-    return null;
-  }
-}
-
-function readCandidate<T = any>(obj: any, paths: string[], fallback?: T): T | undefined {
-  for (const path of paths) {
-    const value = path.split(".").reduce<any>((acc, key) => (acc == null ? undefined : acc[key]), obj);
-    if (value !== undefined && value !== null && value !== "") {
-      return value as T;
-    }
-  }
-  return fallback;
-}
+// ── Pay-in: Initialize + Initiate ───────────────────────────────────
 
 export async function initializeBasqetPayin(input: BasqetPayinInitInput): Promise<BasqetPayinInitResult> {
-  const sdk = tryLoadBasqetSdk();
-
-  if (sdk) {
-    const Basqet = sdk.default || sdk;
-    const client = new Basqet(input.secretKey, input.publicKey || "");
-
-    const initialized = await client.initializeTransaction({
-      customer: input.customer,
-      amount: String(input.amount),
-      currency: input.currency,
-      meta: {
-        ...(input.metadata || {}),
-        reference: input.reference,
-      },
-    });
-
-    const initialPayload = initialized?.data || initialized;
-    const transactionId = readCandidate<string>(initialPayload, ["id", "transaction_id", "data.id", "data.transaction_id"]);
-
-    let initiated: any = initialPayload;
-    if (transactionId) {
-      try {
-        initiated = await client.initiateTransaction(transactionId, {
-          currency: input.currency,
-          ...(input.metadata?.currency_id ? { currency_id: input.metadata.currency_id } : {}),
-        });
-      } catch {
-        // Some Basqet setups return checkout URL at initialize stage and do not require initiate.
-      }
-    }
-
-    const payload = initiated?.data || initiated || initialPayload;
-
-    const providerRef =
-      readCandidate<string>(payload, ["reference", "id", "transaction_id", "data.reference", "data.id", "data.transaction_id"]) ||
-      input.reference;
-
-    const paymentUrl = readCandidate<string>(payload, ["checkout_url", "payment_url", "hosted_url", "data.checkout_url", "data.payment_url"]);
-    if (!paymentUrl) {
-      console.warn("[BasqetClient SDK] No checkout URL found in response. Keys:", Object.keys(payload || {}), "Raw:", JSON.stringify(payload).slice(0, 500));
-    }
-
-    return {
-      providerRef,
-      transactionId: readCandidate<string>(payload, ["id", "transaction_id", "data.id", "data.transaction_id"], transactionId),
-      paymentUrl,
-      status: readCandidate<string>(payload, ["status", "data.status"], "pending"),
-      raw: payload,
+  // Step 1: Initialize transaction (PUBLIC key)
+  const initResponse = await basqetFetch<{
+    status: string;
+    data: {
+      id: string;
+      reference: string;
+      status: string;
+      initialized_amount: number;
+      initialized_currency: string;
     };
-  }
-
-  // HTTP fallback when SDK is unavailable.
-  const initializePayload = await basqetRequest<any>(input.secretKey, input.publicKey, INIT_TRANSACTION_PATH, {
+  }>(input.publicKey, "/transaction", {
     method: "POST",
     body: JSON.stringify({
       customer: input.customer,
       amount: String(input.amount),
       currency: input.currency,
+      description: `BPI deposit ${input.reference}`,
       meta: {
         ...(input.metadata || {}),
         reference: input.reference,
@@ -180,99 +132,133 @@ export async function initializeBasqetPayin(input: BasqetPayinInitInput): Promis
     }),
   });
 
-  const initializedData = initializePayload?.data || initializePayload;
-  const transactionId = readCandidate<string>(initializedData, ["id", "transaction_id", "data.id", "data.transaction_id"]);
+  const transactionId = initResponse.data.id;
+  const reference = initResponse.data.reference;
 
-  let initiatedPayload: any = initializedData;
-  if (transactionId) {
-    initiatedPayload = await basqetRequest<any>(input.secretKey, input.publicKey, INITIATE_TRANSACTION_PATH, {
-      method: "POST",
-      body: JSON.stringify({
-        transactionId,
-        currency: input.currency,
-        ...(input.metadata?.currency_id ? { currency_id: input.metadata.currency_id } : {}),
-      }),
-    });
+  if (!transactionId) {
+    throw new Error("Basqet initialize returned no transaction ID");
   }
 
-  const data = initiatedPayload?.data || initiatedPayload || initializedData;
-  const providerRef =
-    readCandidate<string>(data, ["reference", "id", "transaction_id", "data.reference", "data.id", "data.transaction_id"]) ||
-    input.reference;
+  console.log(`[BasqetClient] Initialized transaction ${transactionId} (ref: ${reference})`);
 
-  const paymentUrl = readCandidate<string>(data, ["checkout_url", "payment_url", "hosted_url", "data.checkout_url", "data.payment_url"]);
-  if (!paymentUrl) {
-    console.warn("[BasqetClient HTTP] No checkout URL found in response. Keys:", Object.keys(data || {}), "Raw:", JSON.stringify(data).slice(0, 500));
+  // Step 2: Initiate payment with crypto currency (SECRET key)
+  const currencyId = input.currencyId || USDT_CURRENCY_ID;
+
+  const payResponse = await basqetFetch<{
+    status: string;
+    data: {
+      id: string;
+      reference: string;
+      payment_address: string;
+      payment_amount: number;
+      payment_currency: string;
+      qrCode?: string;
+      status: string;
+    };
+  }>(input.secretKey, `/transaction/${transactionId}/pay`, {
+    method: "POST",
+    body: JSON.stringify({ currency_id: currencyId }),
+  });
+
+  const payData = payResponse.data;
+
+  if (!payData.payment_address || !payData.payment_amount) {
+    console.error("[BasqetClient] Initiate response missing address/amount:", JSON.stringify(payData));
+    throw new Error("Basqet did not return a payment address or amount");
   }
+
+  console.log(`[BasqetClient] Payment: send ${payData.payment_amount} ${payData.payment_currency} to ${payData.payment_address}`);
 
   return {
-    providerRef,
-    transactionId,
-    paymentUrl,
-    status: readCandidate<string>(data, ["status", "data.status"], "pending"),
-    raw: data,
+    providerRef: payData.reference || reference,
+    transactionId: payData.id || transactionId,
+    paymentAddress: payData.payment_address,
+    paymentAmount: payData.payment_amount,
+    qrCode: payData.qrCode,
+    paymentCurrency: payData.payment_currency,
+    status: payData.status || "PENDING",
   };
 }
+
+// ── Pay-in: Verify ──────────────────────────────────────────────────
 
 export async function verifyBasqetPayin(
   secretKey: string,
-  publicKey: string | undefined,
-  reference: string,
+  publicKey: string,
+  transactionId: string,
 ): Promise<BasqetVerifyResult> {
-  const sdk = tryLoadBasqetSdk();
+  const response = await basqetFetch<{
+    status: string;
+    data: {
+      id?: string;
+      reference?: string;
+      status: string;
+      amount_paid?: number;
+      payment_amount?: number;
+    };
+  }>(publicKey, `/transaction/${encodeURIComponent(transactionId)}/status`, {
+    method: "GET",
+  });
 
-  let payload: any;
-  if (sdk) {
-    const Basqet = sdk.default || sdk;
-    const client = new Basqet(secretKey, publicKey || "");
-    payload = await client.verifyTransaction(reference);
-  } else {
-    payload = await basqetRequest<any>(secretKey, publicKey, `${VERIFY_TRANSACTION_PATH}/${encodeURIComponent(reference)}`, {
-      method: "GET",
-    });
-  }
-
-  const data = payload?.data || payload;
-  const statusRaw = String(readCandidate<string>(data, ["status", "data.status"], "pending") || "pending").toLowerCase();
-  const paid = ["successful", "success", "completed", "paid", "confirmed"].includes(statusRaw);
+  const data = response.data;
+  const statusRaw = (data.status || "PENDING").toUpperCase();
+  const paid = statusRaw === "SUCCESSFUL";
 
   return {
     paid,
-    amountReceived: Number(readCandidate<number | string>(data, ["amount", "paid_amount", "amount_paid", "data.amount", "data.paid_amount"], 0)) || 0,
-    providerRef:
-      readCandidate<string>(data, ["reference", "id", "transaction_id", "data.reference", "data.id", "data.transaction_id"]) ||
-      reference,
+    amountReceived: Number(data.amount_paid || data.payment_amount || 0),
+    providerRef: data.reference || data.id || transactionId,
     status: statusRaw,
-    raw: data,
   };
 }
+
+// ── Webhook signature validation ────────────────────────────────────
+// Basqet webhooks use HMAC SHA512 with the SECRET key.
+// Signature is in the `basqetSignature` header (camelCase).
 
 export function validateBasqetWebhookSignature(
   body: string,
   headers: Record<string, string>,
-  secret: string | undefined,
+  secret: string,
 ): boolean {
-  if (!secret) return true;
-
+  // Header name is basqetSignature per docs, but check lowercase variants for safety
   const signatureHeader =
+    headers["basqetsignature"] ||
+    headers["basqetSignature"] ||
     headers["x-basqet-signature"] ||
-    headers["basqet-signature"] ||
-    headers["x-quidax-signature"] ||
-    headers["quidax-signature"];
+    headers["basqet-signature"];
 
-  if (!signatureHeader) return false;
+  if (!signatureHeader) {
+    console.warn("[BasqetClient] No webhook signature header found");
+    return false;
+  }
 
-  const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
+  const expected = crypto.createHmac("sha512", secret).update(body).digest("hex");
 
   try {
-    return crypto.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expected));
+    return crypto.timingSafeEqual(
+      Buffer.from(signatureHeader, "hex"),
+      Buffer.from(expected, "hex"),
+    );
   } catch {
     return signatureHeader === expected;
   }
 }
 
+// ── Payout (withdrawal) ─────────────────────────────────────────────
+// Payout API docs not fully confirmed — using best-effort implementation.
+// These endpoints follow the pattern from the Basqet dashboard.
+
 export async function initiateBasqetUsdtPayout(input: BasqetPayoutInput): Promise<BasqetPayoutResult> {
-  const payload = await basqetRequest<any>(input.secretKey, input.publicKey, INIT_PAYOUT_PATH, {
+  const response = await basqetFetch<{
+    status: string;
+    data: {
+      id?: string;
+      reference?: string;
+      status?: string;
+      tx_hash?: string;
+    };
+  }>(input.secretKey, "/payout", {
     method: "POST",
     headers: {
       ...(input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : {}),
@@ -285,46 +271,47 @@ export async function initiateBasqetUsdtPayout(input: BasqetPayoutInput): Promis
         network: input.network || "TRC-20",
       },
       reference: input.reference,
-      ...(input.idempotencyKey ? { idempotency_key: input.idempotencyKey } : {}),
       meta: input.metadata || {},
     }),
   });
 
-  const data = payload?.data || payload;
-  const status = String(readCandidate<string>(data, ["status", "data.status"], "pending") || "pending").toLowerCase();
+  const data = response.data;
+  const status = (data.status || "pending").toLowerCase();
 
   return {
     accepted: ["accepted", "queued", "processing", "pending", "submitted", "completed", "success", "successful"].includes(status),
-    providerRef:
-      readCandidate<string>(data, ["reference", "id", "payout_id", "data.reference", "data.id", "data.payout_id"]) ||
-      input.reference,
-    payoutId: readCandidate<string>(data, ["payout_id", "id", "data.payout_id", "data.id"]),
+    providerRef: data.reference || data.id || input.reference,
+    payoutId: data.id,
     status,
-    txHash: readCandidate<string>(data, ["tx_hash", "transaction_hash", "data.tx_hash", "data.transaction_hash"]),
-    raw: data,
+    txHash: data.tx_hash,
   };
 }
 
 export async function verifyBasqetUsdtPayout(
   secretKey: string,
-  publicKey: string | undefined,
+  _publicKey: string | undefined,
   providerRef: string,
 ): Promise<BasqetPayoutResult> {
-  const payload = await basqetRequest<any>(secretKey, publicKey, `${VERIFY_PAYOUT_PATH}/${encodeURIComponent(providerRef)}`, {
+  const response = await basqetFetch<{
+    status: string;
+    data: {
+      id?: string;
+      reference?: string;
+      status?: string;
+      tx_hash?: string;
+    };
+  }>(secretKey, `/payout/${encodeURIComponent(providerRef)}`, {
     method: "GET",
   });
 
-  const data = payload?.data || payload;
-  const status = String(readCandidate<string>(data, ["status", "data.status"], "pending") || "pending").toLowerCase();
+  const data = response.data;
+  const status = (data.status || "pending").toLowerCase();
 
   return {
     accepted: ["accepted", "queued", "processing", "pending", "submitted", "completed", "success", "successful"].includes(status),
-    providerRef:
-      readCandidate<string>(data, ["reference", "id", "payout_id", "data.reference", "data.id", "data.payout_id"]) ||
-      providerRef,
-    payoutId: readCandidate<string>(data, ["payout_id", "id", "data.payout_id", "data.id"]),
+    providerRef: data.reference || data.id || providerRef,
+    payoutId: data.id,
     status,
-    txHash: readCandidate<string>(data, ["tx_hash", "transaction_hash", "data.tx_hash", "data.transaction_hash"]),
-    raw: data,
+    txHash: data.tx_hash,
   };
 }

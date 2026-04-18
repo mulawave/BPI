@@ -4,7 +4,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { getCryptoRate } from "@/lib/cryptoRates";
-import { initializeBasqetPayin, verifyBasqetPayin } from "./BasqetClient";
+import { initializeBasqetPayin, verifyBasqetPayin, type BasqetPayinInitResult } from "./BasqetClient";
 import {
   GatewayConfig,
   IPaymentGateway,
@@ -22,6 +22,7 @@ interface CryptoProviderResult {
   address?: string;
   amountCrypto?: number;
   expiresAt?: string;
+  qrCode?: string;
 }
 
 interface CryptoVerifyResult {
@@ -231,19 +232,24 @@ async function initBasqetPayin(
     metadata: Record<string, any>;
   }
 ): Promise<CryptoProviderResult> {
-  const result = await initializeBasqetPayin({
+  const result: BasqetPayinInitResult = await initializeBasqetPayin({
     secretKey,
     publicKey: apiKey,
     reference: params.reference,
     amount: params.amount,
     currency: params.currency,
     customer: params.customer,
+    currencyId: params.metadata?.currency_id,
     metadata: params.metadata,
   });
 
   return {
-    paymentUrl: result.paymentUrl,
     providerRef: result.providerRef,
+    address: result.paymentAddress,
+    amountCrypto: result.paymentAmount,
+    qrCode: result.qrCode,
+    // Basqet does NOT return a hosted checkout URL.
+    // Payment is made by sending crypto to the address.
   };
 }
 
@@ -332,7 +338,7 @@ export class CryptoGateway implements IPaymentGateway {
         if (!this.secretKey) throw new Error("Basqet secret key not configured");
         result = await initBasqetPayin(this.apiKey, this.secretKey, {
           amount: amountNgn,
-          currency: request.currency || "NGN",
+          currency: request.currency || "USD",
           reference,
           customer: {
             name: request.name || "BPI User",
@@ -346,9 +352,10 @@ export class CryptoGateway implements IPaymentGateway {
             cryptoNetwork: request.cryptoNetwork || "TRC20",
           },
         });
-        if (!result.paymentUrl) {
-          console.error("[CryptoGateway] Basqet returned no checkout URL", JSON.stringify(result));
-          throw new Error("Basqet payment initialization failed — no checkout URL returned. Please try again or use manual transfer.");
+        // Basqet returns address + amount, not a checkout URL
+        if (!result.address) {
+          console.error("[CryptoGateway] Basqet returned no payment address", JSON.stringify(result));
+          throw new Error("Basqet payment initialization failed — no payment address returned. Please try again or use manual transfer.");
         }
         break;
       }
@@ -387,6 +394,7 @@ export class CryptoGateway implements IPaymentGateway {
         rateSource: rate.source,
         address: result.address,
         expiresAt: result.expiresAt,
+        qrCode: result.qrCode,
       },
     };
   }

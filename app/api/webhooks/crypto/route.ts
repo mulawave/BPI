@@ -65,7 +65,8 @@ function detectProvider(headers: Record<string, string>): string {
   if (headers["x-cc-webhook-signature"]) return "coinbase_commerce";
   if (headers["x-nowpayments-sig"]) return "nowpayments";
   if (headers["binancepay-timestamp"]) return "binance_pay";
-  if (headers["x-basqet-signature"] || headers["basqet-signature"] || headers["x-quidax-signature"]) return "basqet";
+  // Basqet uses `basqetSignature` header (camelCase), which arrives lowercase in Node.js headers
+  if (headers["basqetsignature"] || headers["x-basqet-signature"] || headers["basqet-signature"]) return "basqet";
   return "unknown";
 }
 
@@ -190,22 +191,18 @@ async function handleBasqetWebhook(body: string, headers: Record<string, string>
   }
 
   const payload = JSON.parse(body);
-  const data = payload?.data || payload;
-  const meta = data?.meta || data?.metadata || {};
+  // Basqet webhook structure: { event: "payment.received", data: { transaction: { ... } } }
+  const event = payload?.event || "";
+  const transaction = payload?.data?.transaction || payload?.data || {};
+  const meta = transaction?.meta || {};
 
-  const rawStatus = String(
-    data?.status || payload?.status || payload?.event || payload?.type || "pending",
-  ).toLowerCase();
-  const paid = ["successful", "success", "completed", "paid", "confirmed"].includes(rawStatus);
+  const rawStatus = (transaction?.status || "").toUpperCase();
+  const paid = rawStatus === "SUCCESSFUL" && event === "payment.received";
 
-  const reference =
-    meta?.reference ||
-    data?.reference ||
-    data?.transaction_id ||
-    data?.id;
+  const reference = meta?.reference || transaction?.reference || transaction?.id;
 
-  const amountFiat = Number(data?.amount || data?.paid_amount || data?.amount_paid || 0);
-  const amountCrypto = Number(data?.amount_crypto || data?.crypto_amount || 0);
+  const amountFiat = Number(transaction?.amount_paid || transaction?.initialized_amount || 0);
+  const amountCrypto = Number(transaction?.payment_amount || 0);
 
   return {
     paid,
@@ -213,9 +210,9 @@ async function handleBasqetWebhook(body: string, headers: Record<string, string>
     userId: meta?.userId,
     amountFiat,
     amountCrypto,
-    cryptoCurrency: (data?.currency || meta?.cryptoCurrency || "USDT").toUpperCase(),
-    providerRef: data?.id || data?.transaction_id || reference,
-    status: rawStatus,
+    cryptoCurrency: (transaction?.payment_currency || meta?.cryptoCurrency || "USDT").toUpperCase(),
+    providerRef: transaction?.id || transaction?.reference || reference,
+    status: rawStatus.toLowerCase() || event,
   };
 }
 

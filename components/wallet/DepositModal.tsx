@@ -18,7 +18,7 @@ interface DepositModalProps {
 }
 
 type PaymentGateway = 'paystack' | 'flutterwave' | 'bank-transfer' | 'utility-token' | 'crypto' | 'mock';
-type Step = 'amount' | 'gateway' | 'summary' | 'bank-details' | 'crypto-details' | 'processing' | 'success' | 'error';
+type Step = 'amount' | 'gateway' | 'summary' | 'bank-details' | 'crypto-details' | 'crypto-awaiting' | 'processing' | 'success' | 'error';
 
 export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const [currentStep, setCurrentStep] = useState<Step>('amount');
@@ -71,9 +71,12 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
         // Redirect in same tab — user returns via callback → /payment/verify
         window.location.href = data.paymentUrl;
         return;
+      } else if (selectedGateway === 'crypto' && data.cryptoDetails?.address) {
+        // Basqet-style: no redirect URL, but we have a payment address + amount
+        setCurrentStep('crypto-awaiting');
       } else if (selectedGateway === 'crypto' && !data.paymentUrl) {
-        // Automated crypto should always redirect — if no URL, something went wrong
-        setError(data.message || 'Crypto payment gateway did not return a payment URL. Please try manual transfer instead.');
+        // Automated crypto but no URL and no address — something went wrong
+        setError(data.message || 'Crypto payment gateway did not return a payment address. Please try manual transfer instead.');
         setCurrentStep('error');
       } else {
         // Instant success (mock, utility-token, manual bank transfer)
@@ -701,7 +704,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                 </div>
               </div>
 
-              {/* Option 1: Automated Crypto Payment (Basqet / hosted provider) */}
+              {/* Option 1: Automated Crypto Payment (Basqet — generates tracked address) */}
               {hasAutomatedCrypto && (
                 <div className="p-6 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl border-2 border-emerald-300 dark:border-emerald-700">
                   <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
@@ -709,7 +712,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                     Automated Crypto Payment
                   </h3>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Pay instantly via our secure crypto payment gateway. You&apos;ll be redirected to complete the payment.
+                    Pay via our secure crypto gateway. A unique address will be generated for your payment — confirmation is automatic.
                   </p>
                   <Button
                     onClick={handleAutomatedCryptoPayment}
@@ -719,7 +722,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                     {depositMutation.isLoading ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                        Connecting...
+                        Generating payment address...
                       </>
                     ) : (
                       'Pay via Crypto Gateway'
@@ -952,6 +955,113 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                 </Button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Crypto Awaiting Payment — Basqet-generated address */}
+        {currentStep === 'crypto-awaiting' && successData && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="text-center mb-4">
+              <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Bitcoin className="w-10 h-10 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Send Crypto Payment</h2>
+              <p className="text-muted-foreground">
+                Send the exact amount to the address below. Your deposit will be confirmed automatically.
+              </p>
+            </div>
+
+            <div className="max-w-md mx-auto space-y-5">
+              {/* QR Code */}
+              {successData.cryptoDetails?.qrCode && (
+                <div className="flex justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={successData.cryptoDetails.qrCode}
+                    alt="Payment QR Code"
+                    className="w-48 h-48 rounded-xl border-2 border-gray-200 dark:border-gray-700"
+                  />
+                </div>
+              )}
+
+              {/* Payment Details Card */}
+              <div className="p-5 bg-gradient-to-br from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/20 rounded-xl border border-orange-200 dark:border-orange-800 space-y-4">
+                {/* Amount */}
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Amount to Send</p>
+                  <p className="text-2xl font-bold text-orange-600 font-mono">
+                    {successData.cryptoDetails?.amountCrypto != null
+                      ? `${Number(successData.cryptoDetails.amountCrypto).toFixed(6)} ${(successData.cryptoDetails?.cryptoCurrency || 'USDT').toUpperCase()}`
+                      : formatDirect(totalAmount)}
+                  </p>
+                </div>
+
+                {/* Address */}
+                {successData.cryptoDetails?.address && (
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Payment Address</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 text-sm font-mono break-all bg-white/60 dark:bg-black/20 px-3 py-2 rounded-lg border">
+                        {successData.cryptoDetails.address}
+                      </code>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          navigator.clipboard.writeText(successData.cryptoDetails.address);
+                        }}
+                        className="shrink-0"
+                      >
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Network */}
+                {successData.cryptoDetails?.cryptoNetwork && (
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Network</p>
+                    <p className="font-semibold">{successData.cryptoDetails.cryptoNetwork}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Warning */}
+              <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800">
+                <h4 className="font-bold text-sm mb-2 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                  Important
+                </h4>
+                <ul className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1">
+                  <li>• Send the <strong>exact amount</strong> shown above</li>
+                  <li>• Use only the <strong>{successData.cryptoDetails?.cryptoNetwork || 'correct'}</strong> network</li>
+                  <li>• Your wallet will be credited automatically once confirmed</li>
+                  <li>• Do not close this page until you have copied the address</li>
+                </ul>
+              </div>
+
+              {/* Status / Actions */}
+              <div className="flex gap-4">
+                <Button
+                  onClick={handleClose}
+                  className="flex-1 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
+                >
+                  I&apos;ve Sent the Payment
+                </Button>
+                <Button
+                  onClick={handleClose}
+                  variant="outline"
+                  className="flex-1 py-4"
+                >
+                  Close
+                </Button>
+              </div>
+
+              <p className="text-xs text-center text-muted-foreground">
+                Reference: {successData.reference}
+              </p>
+            </div>
           </div>
         )}
 

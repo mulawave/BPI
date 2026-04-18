@@ -11,22 +11,22 @@ type FetchType = typeof globalThis.fetch;
 
 describe("Basqet webhook signature validation", () => {
   const secret = "basqet-test-secret";
-  const body = JSON.stringify({ event: "transaction.success" });
+  const body = JSON.stringify({ event: "payment.received" });
 
-  it("accepts valid x-basqet-signature", () => {
-    const signature = crypto.createHmac("sha256", secret).update(body).digest("hex");
+  it("accepts valid basqetsignature (lowercase, as received by Node.js)", () => {
+    const signature = crypto.createHmac("sha512", secret).update(body).digest("hex");
+    const valid = validateBasqetWebhookSignature(body, { "basqetsignature": signature }, secret);
+    assert.strictEqual(valid, true);
+  });
+
+  it("accepts valid x-basqet-signature (fallback header)", () => {
+    const signature = crypto.createHmac("sha512", secret).update(body).digest("hex");
     const valid = validateBasqetWebhookSignature(body, { "x-basqet-signature": signature }, secret);
     assert.strictEqual(valid, true);
   });
 
-  it("accepts valid x-quidax-signature", () => {
-    const signature = crypto.createHmac("sha256", secret).update(body).digest("hex");
-    const valid = validateBasqetWebhookSignature(body, { "x-quidax-signature": signature }, secret);
-    assert.strictEqual(valid, true);
-  });
-
   it("rejects invalid signature", () => {
-    const valid = validateBasqetWebhookSignature(body, { "x-basqet-signature": "invalid" }, secret);
+    const valid = validateBasqetWebhookSignature(body, { "basqetsignature": "invalid" }, secret);
     assert.strictEqual(valid, false);
   });
 
@@ -52,7 +52,8 @@ describe("Basqet payout API response normalization", () => {
     globalThis.fetch = (async () => {
       return {
         ok: true,
-        json: async () => ({
+        text: async () => JSON.stringify({
+          status: "success",
           data: {
             id: "payout-123",
             reference: "WD-USDT-123",
@@ -82,7 +83,8 @@ describe("Basqet payout API response normalization", () => {
     globalThis.fetch = (async () => {
       return {
         ok: true,
-        json: async () => ({
+        text: async () => JSON.stringify({
+          status: "success",
           data: {
             id: "payout-999",
             reference: "WD-USDT-999",
