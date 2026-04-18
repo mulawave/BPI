@@ -10,6 +10,7 @@ import { Input } from "../ui/input";
 import BankTransferDetails from "../payment/BankTransferDetails";
 import CryptoTransferDetails from "../payment/CryptoTransferDetails";
 import { PaymentPurpose } from "@/server/services/payment";
+import { Zap } from "lucide-react";
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -45,6 +46,11 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const { data: bankDetails } = api.config.getPublicSettings.useQuery(undefined, {
     enabled: isOpen && selectedGateway === 'bank-transfer',
   });
+  const { data: cryptoProviderInfo } = api.payment.getCryptoDepositInfo.useQuery(undefined, {
+    enabled: isOpen && selectedGateway === 'crypto',
+  });
+  const hasAutomatedCrypto = !!cryptoProviderInfo?.apiProvider && cryptoProviderInfo.apiProvider !== 'manual';
+  const hasManualCrypto = !!cryptoProviderInfo?.available && !!cryptoProviderInfo?.depositAddress;
   const enabledByName = new Map(
     (gatewayConfigs ?? []).map((g) => [g.gatewayName, g.isActive] as const),
   );
@@ -181,6 +187,16 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
       paymentGateway: 'bank-transfer',
       reference: `DEP-BANK-${Date.now()}`,
       // No proofOfPayment → triggers automated Paystack flow in backend
+    });
+  };
+
+  // Automated crypto payment via configured provider (Basqet, Coinbase, etc.)
+  const handleAutomatedCryptoPayment = () => {
+    setCurrentStep('processing');
+    depositMutation.mutate({
+      amount: toNaira(numAmount),
+      paymentGateway: 'crypto',
+      reference: `DEP-CRYPTO-${Date.now()}`,
     });
   };
 
@@ -659,15 +675,21 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
               <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Bitcoin className="w-10 h-10 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-foreground mb-2">Crypto Transfer</h2>
-              <p className="text-muted-foreground">Send USDT to the address below</p>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Crypto Payment</h2>
+              <p className="text-muted-foreground">
+                {hasAutomatedCrypto && hasManualCrypto
+                  ? 'Choose automated or manual crypto transfer'
+                  : hasAutomatedCrypto
+                  ? 'Complete payment via our crypto payment provider'
+                  : 'Send USDT to the address below'}
+              </p>
             </div>
 
             <div className="max-w-md mx-auto space-y-6">
               {/* Amount Summary */}
               <div className="p-4 bg-gradient-to-br from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/20 rounded-xl border border-orange-200 dark:border-orange-800">
                 <div className="text-center">
-                  <p className="text-sm text-muted-foreground mb-1">Amount to Send</p>
+                  <p className="text-sm text-muted-foreground mb-1">Amount to Pay</p>
                   <p className="text-3xl font-bold text-orange-600">{formatDirect(totalAmount)}</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     ({formatDirect(numAmount)} + {formatDirect(vatAmount)} VAT)
@@ -675,39 +697,95 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                 </div>
               </div>
 
-              {/* Crypto Deposit Address */}
-              <CryptoTransferDetails className="space-y-3" />
-
-              {/* Instructions */}
-              <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800">
-                <h4 className="font-bold text-sm mb-2 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-yellow-600" />
-                  Important Instructions
-                </h4>
-                <ol className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1">
-                  <li>1. Send exactly <strong>{formatDirect(totalAmount)}</strong> worth of USDT</li>
-                  <li>2. Use only the <strong>TRC-20</strong> network</li>
-                  <li>3. Copy the transaction hash after sending</li>
-                  <li>4. Paste the hash below and submit for approval</li>
-                </ol>
-              </div>
-
-              {/* Transaction Hash Input */}
-              <div className="space-y-3">
-                <label className="block">
-                  <span className="text-sm font-medium mb-2 block">Transaction Hash *</span>
-                  <Input
-                    type="text"
-                    value={txHash}
-                    onChange={(e) => setTxHash(e.target.value)}
-                    placeholder="Paste your transaction hash here"
-                    className="font-mono text-sm"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Find this in your wallet&apos;s transaction history after sending
+              {/* Option 1: Automated Crypto Payment (Basqet / hosted provider) */}
+              {hasAutomatedCrypto && (
+                <div className="p-6 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl border-2 border-emerald-300 dark:border-emerald-700">
+                  <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
+                    <Zap className="w-5 h-5 text-emerald-600" />
+                    Automated Crypto Payment
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Pay instantly via our secure crypto payment gateway. You&apos;ll be redirected to complete the payment.
                   </p>
-                </label>
-              </div>
+                  <Button
+                    onClick={handleAutomatedCryptoPayment}
+                    disabled={depositMutation.isLoading}
+                    className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
+                  >
+                    {depositMutation.isLoading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                        Connecting...
+                      </>
+                    ) : (
+                      'Pay via Crypto Gateway'
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {/* Divider */}
+              {hasAutomatedCrypto && hasManualCrypto && (
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                  <span className="text-sm text-muted-foreground">or</span>
+                  <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                </div>
+              )}
+
+              {/* Option 2: Manual Crypto Transfer */}
+              {hasManualCrypto && (
+                <>
+                  <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl border-2 border-blue-300 dark:border-blue-700">
+                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                      <Bitcoin className="w-5 h-5 text-orange-500" />
+                      {hasAutomatedCrypto ? 'Manual Crypto Transfer' : 'Crypto Transfer'}
+                    </h3>
+                    <CryptoTransferDetails className="space-y-3" />
+                  </div>
+
+                  {/* Instructions */}
+                  <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800">
+                    <h4 className="font-bold text-sm mb-2 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                      Important Instructions
+                    </h4>
+                    <ol className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1">
+                      <li>1. Send exactly <strong>{formatDirect(totalAmount)}</strong> worth of USDT</li>
+                      <li>2. Use only the <strong>TRC-20</strong> network</li>
+                      <li>3. Copy the transaction hash after sending</li>
+                      <li>4. Paste the hash below and submit for approval</li>
+                    </ol>
+                  </div>
+
+                  {/* Transaction Hash Input */}
+                  <div className="space-y-3">
+                    <label className="block">
+                      <span className="text-sm font-medium mb-2 block">Transaction Hash *</span>
+                      <Input
+                        type="text"
+                        value={txHash}
+                        onChange={(e) => setTxHash(e.target.value)}
+                        placeholder="Paste your transaction hash here"
+                        className="font-mono text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Find this in your wallet&apos;s transaction history after sending
+                      </p>
+                    </label>
+                  </div>
+                </>
+              )}
+
+              {/* Fallback: Neither available */}
+              {!hasAutomatedCrypto && !hasManualCrypto && (
+                <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 flex items-center gap-3">
+                  <FiAlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                  <p className="text-sm text-red-700 dark:text-red-300">
+                    Crypto payments are not currently available. Please contact support.
+                  </p>
+                </div>
+              )}
 
               {error && (
                 <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2 text-red-700 dark:text-red-400">
@@ -725,21 +803,23 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                 >
                   Back
                 </Button>
-                <Button
-                  onClick={handleCryptoSubmit}
-                  disabled={!txHash.trim() || submittingCrypto}
-                  className="flex-1 py-6 bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 disabled:opacity-50"
-                  size="lg"
-                >
-                  {submittingCrypto ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                      Submitting...
-                    </>
-                  ) : (
-                    'Submit for Approval'
-                  )}
-                </Button>
+                {hasManualCrypto && (
+                  <Button
+                    onClick={handleCryptoSubmit}
+                    disabled={!txHash.trim() || submittingCrypto}
+                    className="flex-1 py-6 bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-700 hover:to-yellow-700 disabled:opacity-50"
+                    size="lg"
+                  >
+                    {submittingCrypto ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                        Submitting...
+                      </>
+                    ) : (
+                      'Submit Manual Transfer'
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           </div>

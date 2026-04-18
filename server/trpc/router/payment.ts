@@ -469,11 +469,12 @@ export const paymentRouter = createTRPCRouter({
         cryptoNetwork: true,
         tokenName: true,
         tokenSymbol: true,
+        apiProvider: true,
       },
     });
 
     if (!cryptoGateway || !cryptoGateway.isActive || !cryptoGateway.cryptoDepositAddress) {
-      return { available: false as const, depositAddress: null, network: null, tokenName: null, tokenSymbol: null };
+      return { available: false as const, depositAddress: null, network: null, tokenName: null, tokenSymbol: null, apiProvider: null };
     }
 
     return {
@@ -482,6 +483,7 @@ export const paymentRouter = createTRPCRouter({
       network: cryptoGateway.cryptoNetwork || "TRC-20",
       tokenName: cryptoGateway.tokenName || "USDT",
       tokenSymbol: cryptoGateway.tokenSymbol || "USDT",
+      apiProvider: cryptoGateway.apiProvider?.toLowerCase() || null,
     };
   }),
 
