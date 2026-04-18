@@ -71,6 +71,10 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
         // Redirect in same tab — user returns via callback → /payment/verify
         window.location.href = data.paymentUrl;
         return;
+      } else if (selectedGateway === 'crypto' && !data.paymentUrl) {
+        // Automated crypto should always redirect — if no URL, something went wrong
+        setError(data.message || 'Crypto payment gateway did not return a payment URL. Please try manual transfer instead.');
+        setCurrentStep('error');
       } else {
         // Instant success (mock, utility-token, manual bank transfer)
         setCurrentStep('success');

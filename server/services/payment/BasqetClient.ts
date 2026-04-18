@@ -152,10 +152,15 @@ export async function initializeBasqetPayin(input: BasqetPayinInitInput): Promis
       readCandidate<string>(payload, ["reference", "id", "transaction_id", "data.reference", "data.id", "data.transaction_id"]) ||
       input.reference;
 
+    const paymentUrl = readCandidate<string>(payload, ["checkout_url", "payment_url", "hosted_url", "data.checkout_url", "data.payment_url"]);
+    if (!paymentUrl) {
+      console.warn("[BasqetClient SDK] No checkout URL found in response. Keys:", Object.keys(payload || {}), "Raw:", JSON.stringify(payload).slice(0, 500));
+    }
+
     return {
       providerRef,
       transactionId: readCandidate<string>(payload, ["id", "transaction_id", "data.id", "data.transaction_id"], transactionId),
-      paymentUrl: readCandidate<string>(payload, ["checkout_url", "payment_url", "hosted_url", "data.checkout_url", "data.payment_url"]),
+      paymentUrl,
       status: readCandidate<string>(payload, ["status", "data.status"], "pending"),
       raw: payload,
     };
@@ -195,10 +200,15 @@ export async function initializeBasqetPayin(input: BasqetPayinInitInput): Promis
     readCandidate<string>(data, ["reference", "id", "transaction_id", "data.reference", "data.id", "data.transaction_id"]) ||
     input.reference;
 
+  const paymentUrl = readCandidate<string>(data, ["checkout_url", "payment_url", "hosted_url", "data.checkout_url", "data.payment_url"]);
+  if (!paymentUrl) {
+    console.warn("[BasqetClient HTTP] No checkout URL found in response. Keys:", Object.keys(data || {}), "Raw:", JSON.stringify(data).slice(0, 500));
+  }
+
   return {
     providerRef,
     transactionId,
-    paymentUrl: readCandidate<string>(data, ["checkout_url", "payment_url", "hosted_url", "data.checkout_url", "data.payment_url"]),
+    paymentUrl,
     status: readCandidate<string>(data, ["status", "data.status"], "pending"),
     raw: data,
   };

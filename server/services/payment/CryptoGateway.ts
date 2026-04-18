@@ -346,6 +346,10 @@ export class CryptoGateway implements IPaymentGateway {
             cryptoNetwork: request.cryptoNetwork || "TRC20",
           },
         });
+        if (!result.paymentUrl) {
+          console.error("[CryptoGateway] Basqet returned no checkout URL", JSON.stringify(result));
+          throw new Error("Basqet payment initialization failed — no checkout URL returned. Please try again or use manual transfer.");
+        }
         break;
       }
 

@@ -64,11 +64,17 @@ export const paymentRouter = createTRPCRouter({
         provider: g.provider,
         isActive: false,
         supportedMethods: [],
-        currency: "NGN",
+        currency: g.gatewayName === "crypto" ? "USD" : "NGN",
         displayOrder: g.displayOrder,
         updatedAt: now,
       })),
       skipDuplicates: true,
+    });
+
+    // Ensure crypto gateway currency is USD (fix legacy NGN rows)
+    await ctx.prisma.paymentGatewayConfig.updateMany({
+      where: { gatewayName: "crypto", currency: "NGN" },
+      data: { currency: "USD" },
     });
 
     const gateways = await ctx.prisma.paymentGatewayConfig.findMany({
