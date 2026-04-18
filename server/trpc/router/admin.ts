@@ -22,6 +22,7 @@ import { generateReceiptLink } from "@/server/services/receipt.service";
 import { sendWithdrawalApprovedToUser, sendWithdrawalRejectedToUser } from "@/lib/email";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { getNigerianRegion } from "@/lib/nigeria-regions";
+import { verifyBasqetUsdtPayout } from "@/server/services/payment/BasqetClient";
 
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.session?.user) {
@@ -2638,6 +2639,124 @@ export const adminRouter = createTRPCRouter({
       }
 
       return { success: true, txHash, amount, reference: txReference };
+    }),
+
+  // ============================================
+  // BASQET USDT WITHDRAWAL RECONCILIATION
+  // ============================================
+  reconcileBasqetUsdtWithdrawal: adminProcedure
+    .input(z.object({
+      withdrawalId: z.string(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const reviewerId = (ctx.session?.user as any)?.id;
+      const withdrawal = await prisma.transaction.findUnique({
+        where: { id: input.withdrawalId },
+      });
+
+      if (!withdrawal) throw new Error("Withdrawal not found");
+      if (withdrawal.transactionType !== "WITHDRAWAL_USDT") {
+        throw new Error("This endpoint is only for USDT withdrawals");
+      }
+
+      let meta: Record<string, any> = {};
+      try {
+        meta = withdrawal.metadata ? JSON.parse(withdrawal.metadata) : {};
+      } catch {
+        meta = {};
+      }
+
+      const basqetRef = meta?.basqet?.providerRef || meta?.providerReference || withdrawal.reference;
+      if (!basqetRef) {
+        throw new Error("No Basqet reference found on this withdrawal");
+      }
+
+      const cryptoConfig = await prisma.paymentGatewayConfig.findFirst({
+        where: { gatewayName: 'crypto', isActive: true },
+        select: { apiProvider: true, cryptoPublicKey: true, cryptoSecretKey: true, publicKey: true, secretKey: true },
+      });
+
+      if ((cryptoConfig?.apiProvider || '').toLowerCase() !== 'basqet') {
+        throw new Error("Crypto provider is not set to Basqet");
+      }
+
+      const secretKey = cryptoConfig?.cryptoSecretKey || cryptoConfig?.secretKey;
+      const publicKey = cryptoConfig?.cryptoPublicKey || cryptoConfig?.publicKey;
+      if (!secretKey) {
+        throw new Error("Basqet secret key is not configured");
+      }
+
+      const verification = await verifyBasqetUsdtPayout(secretKey, publicKey || undefined, basqetRef);
+      const normalized = (verification.status || 'pending').toLowerCase();
+      const completed = ['completed', 'success', 'successful', 'paid'].includes(normalized);
+      const failed = ['failed', 'rejected', 'cancelled', 'canceled'].includes(normalized);
+
+      meta.basqet = {
+        ...(meta.basqet || {}),
+        status: verification.status,
+        providerRef: verification.providerRef,
+        payoutId: verification.payoutId,
+        txHash: verification.txHash,
+        lastReconciledAt: new Date().toISOString(),
+        lastReconciledBy: reviewerId,
+      };
+      if (verification.txHash) {
+        meta.adminTxHash = verification.txHash;
+      }
+
+      const nextStatus = completed ? 'completed' : failed ? 'failed' : 'processing';
+      await prisma.transaction.update({
+        where: { id: withdrawal.id },
+        data: {
+          status: nextStatus,
+          metadata: JSON.stringify(meta),
+        },
+      });
+
+      await prisma.withdrawalHistory.updateMany({
+        where: {
+          userId: withdrawal.userId,
+          amount: Math.abs(withdrawal.amount),
+          status: { in: ['pending', 'processing'] },
+        },
+        data: { status: nextStatus },
+      });
+
+      if (completed) {
+        const receiptUrl = generateReceiptLink(withdrawal.id, 'withdrawal');
+        await notifyWithdrawalStatus(
+          withdrawal.userId,
+          'completed',
+          Math.abs(withdrawal.amount),
+          withdrawal.reference || basqetRef,
+          receiptUrl,
+        );
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: reviewerId || 'system',
+          action: 'WITHDRAWAL_USDT_BASQET_RECONCILE',
+          entity: 'Transaction',
+          entityId: withdrawal.id,
+          changes: JSON.stringify({
+            basqetRef,
+            verificationStatus: verification.status,
+            normalizedStatus: nextStatus,
+          }),
+          status: 'success',
+          createdAt: new Date(),
+        },
+      });
+
+      return {
+        success: true,
+        withdrawalId: withdrawal.id,
+        providerRef: verification.providerRef,
+        providerStatus: verification.status,
+        status: nextStatus,
+      };
     }),
 
   // Transaction Reversal - For correcting errors in completed transactions

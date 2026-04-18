@@ -1065,12 +1065,17 @@ export default function SettingsPage() {
                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                               API Provider
                             </label>
-                            <input
+                            <select
                               value={gatewayEdits[gateway.id]?.apiProvider ?? gateway.apiProvider ?? ""}
                               onChange={(e) => setGatewayEdit(gateway.id, "apiProvider", e.target.value)}
-                              placeholder="Enter API provider"
                               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-green-900/30 text-gray-900 dark:text-white"
-                            />
+                            >
+                              <option value="">Select provider</option>
+                              <option value="nowpayments">NowPayments</option>
+                              <option value="coinbase_commerce">Coinbase Commerce</option>
+                              <option value="binance_pay">Binance Pay</option>
+                              <option value="basqet">Basqet</option>
+                            </select>
                           </div>
 
                           <div>

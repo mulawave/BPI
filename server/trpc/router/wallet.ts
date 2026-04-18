@@ -8,6 +8,7 @@ import { initiateBankTransfer, initializeFlutterwavePayment, verifyFlutterwavePa
 import { initializePaystackPayment, verifyPaystackPayment } from "@/lib/paystack";
 import { sendWithdrawalRequestToAdmins } from "@/lib/email";
 import { recordRevenue } from "@/server/services/revenue.service";
+import { initiateBasqetUsdtPayout } from "@/server/services/payment/BasqetClient";
 
 // Default admin settings (will be overridden by DB settings)
 const DEFAULT_CASH_WITHDRAWAL_FEE = 100;
@@ -779,9 +780,33 @@ export const walletRouter = createTRPCRouter({
         }
       }
 
-      // USDT withdrawals always require admin approval
+      // Crypto provider mode for USDT withdrawals
+      const activeCryptoGateway = withdrawalType === 'usdt'
+        ? await prisma.paymentGatewayConfig.findFirst({
+            where: { gatewayName: 'crypto', isActive: true },
+            select: {
+              apiProvider: true,
+              publicKey: true,
+              secretKey: true,
+              cryptoPublicKey: true,
+              cryptoSecretKey: true,
+            },
+          })
+        : null;
+      const activeCryptoProvider = (activeCryptoGateway?.apiProvider || '').toLowerCase();
+      const basqetPublicKey = activeCryptoGateway?.cryptoPublicKey || activeCryptoGateway?.publicKey || undefined;
+      const basqetSecretKey = activeCryptoGateway?.cryptoSecretKey || activeCryptoGateway?.secretKey || undefined;
+      const basqetPayoutEnabled = process.env.BASQET_USDT_PAYOUT_ENABLED !== 'false';
+      const isBasqetUsdtAuto = withdrawalType === 'usdt'
+        && activeCryptoProvider === 'basqet'
+        && basqetPayoutEnabled
+        && !!basqetSecretKey;
+
+      // USDT defaults to manual approval unless Basqet auto payout is active
       const autoWithdrawalThreshold = await getAdminSetting('AUTO_WITHDRAWAL_THRESHOLD', DEFAULT_AUTO_WITHDRAWAL_THRESHOLD);
-      const requiresApproval = withdrawalType === 'usdt' ? true : amount >= autoWithdrawalThreshold;
+      const requiresApproval = withdrawalType === 'usdt'
+        ? !isBasqetUsdtAuto
+        : amount >= autoWithdrawalThreshold;
       const status = requiresApproval ? "pending" : "processing";
       
       console.log("⚙️  [WITHDRAWAL] Auto-approval threshold:", autoWithdrawalThreshold);
@@ -805,6 +830,9 @@ export const walletRouter = createTRPCRouter({
           usdtAddress,
           network: 'TRC-20',
           amountUSD: amount,
+          provider: isBasqetUsdtAuto ? 'basqet' : 'manual',
+          providerMode: isBasqetUsdtAuto ? 'auto' : 'manual',
+          providerReference: txReference,
         }) : undefined;
         const transaction = await prisma.transaction.create({
           data: {
@@ -881,9 +909,9 @@ export const walletRouter = createTRPCRouter({
           data: {
             id: randomUUID(),
             userId,
-            description: `${withdrawalType === 'cash' ? 'Cash' : 'BPT'} withdrawal - ${sourceWallet} wallet`,
+            description: `${withdrawalType === 'cash' ? 'Cash' : withdrawalType === 'usdt' ? 'USDT' : 'BPT'} withdrawal - ${sourceWallet} wallet`,
             amount,
-            currency: withdrawalType === 'cash' ? 'NGN' : 'BPT',
+            currency: withdrawalType === 'cash' ? 'NGN' : withdrawalType === 'usdt' ? 'USDT' : 'BPT',
             status,
             date: new Date()
           }
@@ -965,6 +993,84 @@ export const walletRouter = createTRPCRouter({
                   }
                 });
                 console.log("✅ [WITHDRAWAL] Transaction updated to completed");
+              } else if (withdrawalType === 'usdt' && isBasqetUsdtAuto) {
+                if (!basqetSecretKey || !usdtAddress) {
+                  throw new Error('Basqet USDT payout is not properly configured.');
+                }
+
+                const payoutIdempotencyKey = `usdt:${transaction.id}:${txReference}`;
+
+                console.log("🌐 [BASQET] Initiating automated USDT payout...");
+                const payout = await initiateBasqetUsdtPayout({
+                  secretKey: basqetSecretKey,
+                  publicKey: basqetPublicKey,
+                  reference: txReference,
+                  amount,
+                  currency: 'USDT',
+                  recipientAddress: usdtAddress,
+                  network: 'TRC-20',
+                  idempotencyKey: payoutIdempotencyKey,
+                  metadata: {
+                    userId,
+                    sourceWallet,
+                    withdrawalTransactionId: transaction.id,
+                    idempotencyKey: payoutIdempotencyKey,
+                  },
+                });
+
+                if (!payout.accepted) {
+                  throw new Error(`Basqet payout rejected with status: ${payout.status}`);
+                }
+
+                const isCompleted = ['completed', 'success', 'successful', 'paid'].includes((payout.status || '').toLowerCase());
+                let meta: Record<string, any> = {};
+                try {
+                  meta = transaction.metadata ? JSON.parse(transaction.metadata) : {};
+                } catch {
+                  meta = {};
+                }
+
+                meta.basqet = {
+                  status: payout.status,
+                  providerRef: payout.providerRef,
+                  payoutId: payout.payoutId,
+                  txHash: payout.txHash,
+                  idempotencyKey: payoutIdempotencyKey,
+                  updatedAt: new Date().toISOString(),
+                };
+                if (payout.txHash) {
+                  meta.adminTxHash = payout.txHash;
+                }
+
+                await prisma.transaction.update({
+                  where: { id: transaction.id },
+                  data: {
+                    status: isCompleted ? 'completed' : 'processing',
+                    metadata: JSON.stringify(meta),
+                  }
+                });
+
+                await prisma.withdrawalHistory.updateMany({
+                  where: {
+                    userId,
+                    amount,
+                    status: 'processing'
+                  },
+                  data: { status: isCompleted ? 'completed' : 'processing' }
+                });
+
+                if (isCompleted) {
+                  const receiptUrl = generateReceiptLink(transaction.id, 'withdrawal');
+                  await notifyWithdrawalStatus(userId, 'completed', amount, txReference, receiptUrl);
+                } else {
+                  await notifyWithdrawalStatus(userId, 'processing', amount, txReference);
+                }
+
+                console.log("✅ [BASQET] USDT payout accepted", {
+                  status: payout.status,
+                  providerRef: payout.providerRef,
+                  payoutId: payout.payoutId,
+                });
               } else {
                 // For BPT withdrawal, just mark as completed (manual crypto transfer needed)
                 console.log("🔄 [WITHDRAWAL] BPT withdrawal - marking as completed (manual crypto transfer)");
@@ -998,6 +1104,58 @@ export const walletRouter = createTRPCRouter({
             } catch (error) {
               console.error('\n❌ [WITHDRAWAL] Processing error:', error);
               console.error('Error details:', error instanceof Error ? error.message : 'Unknown error');
+
+              // Basqet USDT fallback: preserve deducted ledger and route to manual admin approval
+              if (withdrawalType === 'usdt' && isBasqetUsdtAuto) {
+                let meta: Record<string, any> = {};
+                try {
+                  meta = transaction.metadata ? JSON.parse(transaction.metadata) : {};
+                } catch {
+                  meta = {};
+                }
+
+                meta.basqet = {
+                  status: 'fallback_to_manual',
+                  fallbackAt: new Date().toISOString(),
+                  error: error instanceof Error ? error.message : 'Unknown Basqet payout error',
+                };
+                meta.provider = 'manual';
+                meta.providerMode = 'manual_fallback';
+
+                await prisma.transaction.update({
+                  where: { id: transaction.id },
+                  data: {
+                    status: 'pending',
+                    metadata: JSON.stringify(meta),
+                  }
+                });
+
+                await prisma.withdrawalHistory.updateMany({
+                  where: {
+                    userId,
+                    amount,
+                    status: 'processing'
+                  },
+                  data: { status: 'pending' }
+                });
+
+                await notifyWithdrawalStatus(userId, 'pending', amount, txReference);
+
+                try {
+                  await sendWithdrawalRequestToAdmins(
+                    user.name || user.email || 'User',
+                    user.email || '',
+                    amount,
+                    'usdt',
+                    txReference
+                  );
+                } catch (emailError) {
+                  console.error('❌ [EMAIL] Failed to send fallback admin email:', emailError);
+                }
+
+                console.log('↩️ [WITHDRAWAL] Basqet payout fallback activated, routed to manual approval');
+                return;
+              }
               
               console.log("🔄 [WITHDRAWAL] Initiating refund...");
               // Mark as failed and refund user

@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { webhookLimiter, applyRateLimit } from "@/lib/rateLimit";
 import { notifyDepositStatus } from "@/server/services/notification.service";
 import { generateReceiptLink } from "@/server/services/receipt.service";
+import { validateBasqetWebhookSignature } from "@/server/services/payment/BasqetClient";
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,6 +34,9 @@ export async function POST(request: NextRequest) {
         break;
       case "binance_pay":
         result = await handleBinancePayWebhook(body, headers);
+        break;
+      case "basqet":
+        result = await handleBasqetWebhook(body, headers);
         break;
       default:
         console.warn("[CryptoWebhook] Unknown provider, ignoring");
@@ -61,6 +65,7 @@ function detectProvider(headers: Record<string, string>): string {
   if (headers["x-cc-webhook-signature"]) return "coinbase_commerce";
   if (headers["x-nowpayments-sig"]) return "nowpayments";
   if (headers["binancepay-timestamp"]) return "binance_pay";
+  if (headers["x-basqet-signature"] || headers["basqet-signature"] || headers["x-quidax-signature"]) return "basqet";
   return "unknown";
 }
 
@@ -172,6 +177,48 @@ async function handleBinancePayWebhook(body: string, headers: Record<string, str
   };
 }
 
+// ── Basqet ─────────────────────────────────────────────────────────
+
+async function handleBasqetWebhook(body: string, headers: Record<string, string>): Promise<WebhookResult> {
+  if (!process.env.BASQET_WEBHOOK_SECRET) {
+    throw new Error("BASQET_WEBHOOK_SECRET is not configured");
+  }
+
+  const isValid = validateBasqetWebhookSignature(body, headers, process.env.BASQET_WEBHOOK_SECRET);
+  if (!isValid) {
+    throw new Error("Invalid Basqet webhook signature");
+  }
+
+  const payload = JSON.parse(body);
+  const data = payload?.data || payload;
+  const meta = data?.meta || data?.metadata || {};
+
+  const rawStatus = String(
+    data?.status || payload?.status || payload?.event || payload?.type || "pending",
+  ).toLowerCase();
+  const paid = ["successful", "success", "completed", "paid", "confirmed"].includes(rawStatus);
+
+  const reference =
+    meta?.reference ||
+    data?.reference ||
+    data?.transaction_id ||
+    data?.id;
+
+  const amountFiat = Number(data?.amount || data?.paid_amount || data?.amount_paid || 0);
+  const amountCrypto = Number(data?.amount_crypto || data?.crypto_amount || 0);
+
+  return {
+    paid,
+    reference,
+    userId: meta?.userId,
+    amountFiat,
+    amountCrypto,
+    cryptoCurrency: (data?.currency || meta?.cryptoCurrency || "USDT").toUpperCase(),
+    providerRef: data?.id || data?.transaction_id || reference,
+    status: rawStatus,
+  };
+}
+
 // ── Process confirmed payment ───────────────────────────────────────
 
 async function processConfirmedCryptoPayment(result: WebhookResult) {
@@ -191,7 +238,7 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
   if (!pendingPayment) {
     // Check if already processed
     const existing = await prisma.transaction.findFirst({
-      where: { reference, status: "completed" },
+      where: { reference, status: { in: ["approved", "completed"] } },
     });
     if (existing) {
       console.log(`[CryptoWebhook] Payment ${reference} already processed`);

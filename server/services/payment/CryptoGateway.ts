@@ -4,6 +4,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { getCryptoRate } from "@/lib/cryptoRates";
+import { initializeBasqetPayin, verifyBasqetPayin } from "./BasqetClient";
 import {
   GatewayConfig,
   IPaymentGateway,
@@ -219,6 +220,46 @@ async function verifyBinancePay(
   };
 }
 
+async function initBasqetPayin(
+  apiKey: string,
+  secretKey: string,
+  params: {
+    amount: number;
+    currency: string;
+    reference: string;
+    customer: { name: string; email: string };
+    metadata: Record<string, any>;
+  }
+): Promise<CryptoProviderResult> {
+  const result = await initializeBasqetPayin({
+    secretKey,
+    publicKey: apiKey,
+    reference: params.reference,
+    amount: params.amount,
+    currency: params.currency,
+    customer: params.customer,
+    metadata: params.metadata,
+  });
+
+  return {
+    paymentUrl: result.paymentUrl,
+    providerRef: result.providerRef,
+  };
+}
+
+async function verifyBasqetPayment(
+  apiKey: string,
+  secretKey: string,
+  reference: string
+): Promise<CryptoVerifyResult> {
+  const result = await verifyBasqetPayin(secretKey, apiKey, reference);
+  return {
+    paid: result.paid,
+    amountReceived: result.amountReceived,
+    providerRef: result.providerRef,
+  };
+}
+
 // ── Main CryptoGateway class ────────────────────────────────────────
 
 export class CryptoGateway implements IPaymentGateway {
@@ -287,6 +328,27 @@ export class CryptoGateway implements IPaymentGateway {
         break;
       }
 
+      case "basqet": {
+        if (!this.secretKey) throw new Error("Basqet secret key not configured");
+        result = await initBasqetPayin(this.apiKey, this.secretKey, {
+          amount: amountNgn,
+          currency: request.currency || "NGN",
+          reference,
+          customer: {
+            name: request.name || "BPI User",
+            email: request.email,
+          },
+          metadata: {
+            ...request.metadata,
+            userId: request.userId,
+            amountNgn,
+            cryptoCurrency,
+            cryptoNetwork: request.cryptoNetwork || "TRC20",
+          },
+        });
+        break;
+      }
+
       case "nowpayments":
       default: {
         result = await initNowPayments(this.apiKey, {
@@ -342,6 +404,12 @@ export class CryptoGateway implements IPaymentGateway {
       case "binance": {
         if (!this.secretKey) throw new Error("Binance Pay secret key not configured");
         result = await verifyBinancePay(this.apiKey, this.secretKey, reference);
+        break;
+      }
+
+      case "basqet": {
+        if (!this.secretKey) throw new Error("Basqet secret key not configured");
+        result = await verifyBasqetPayment(this.apiKey, this.secretKey, reference);
         break;
       }
 
