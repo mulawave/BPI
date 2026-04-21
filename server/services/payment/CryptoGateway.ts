@@ -337,20 +337,26 @@ export class CryptoGateway implements IPaymentGateway {
       case "basqet": {
         if (!this.secretKey) throw new Error("Basqet secret key not configured");
 
-        // Basqet accepts USD directly — use original USD amount to avoid double-conversion
+        // CRITICAL: Always initialize Basqet with currency "USDT" (not fiat "USD").
+        // When initialized_currency === payment_currency (both USDT), Basqet creates a
+        // direct crypto-to-crypto invoice at 1:1 parity with no fiat spread applied.
+        // Passing currency "USD" triggers Basqet's Quidax order-book fiat→USDT conversion
+        // which applies an 11%+ premium (e.g. $2.31 USD → 1.91 USDT instead of 2.31 USDT).
+        //
+        // metadata.originalAmount = user's USD total inclusive of VAT (set in wallet.ts).
+        // Since BPI accounts are USD-denominated, USD amount == USDT amount exactly.
         const originalCurrency = (request.metadata?.originalCurrency as string) || "";
         const originalAmount = request.metadata?.originalAmount as number | undefined;
-        const basqetCurrency = (originalCurrency === "USD" || originalCurrency === "EUR") ? originalCurrency : "USD";
-        // If user paid in USD, use their exact amount; otherwise fall back to NGN→crypto conversion
+
+        // Use the pre-computed USD total (with VAT) when available; otherwise fall back to
+        // the crypto amount computed locally via getCryptoRate (for non-USD accounts).
         const basqetAmount = (originalAmount && originalCurrency === "USD")
-          ? originalAmount
-          : (originalAmount && originalCurrency !== "NGN" && originalCurrency)
-            ? originalAmount  // Non-NGN foreign currency — pass as-is, Basqet handles conversion
-            : amountCrypto;   // NGN user — use calculated crypto amount as USD (USDT ≈ $1)
+          ? originalAmount   // USD total with VAT — equals exact USDT to charge (1 USDT = $1)
+          : amountCrypto;    // Fallback: locally computed crypto equivalent
 
         result = await initBasqetPayin(this.apiKey, this.secretKey, {
           amount: basqetAmount,
-          currency: basqetCurrency,
+          currency: "USDT",  // Always USDT — bypasses fiat-to-crypto spread entirely
           reference,
           customer: {
             name: request.name || "BPI User",
