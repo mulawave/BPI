@@ -204,6 +204,8 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
       amount: toNaira(numAmount),
       paymentGateway: 'crypto',
       reference: `DEP-CRYPTO-${Date.now()}`,
+      originalAmount: numAmount,
+      originalCurrency: selectedCurrency?.symbol || 'NGN',
     });
   };
 

@@ -37,6 +37,8 @@ export const walletRouter = createTRPCRouter({
       paymentGateway: z.enum(['paystack', 'flutterwave', 'bank-transfer', 'utility-token', 'crypto', 'mock']),
       reference: z.string().optional(),
       proofOfPayment: z.string().optional(), // Base64 image for bank transfer
+      originalAmount: z.number().positive().optional(), // Pre-conversion amount in user's selected currency
+      originalCurrency: z.string().optional(), // User's selected currency symbol (e.g. "USD")
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = (ctx.session?.user as any)?.id;
@@ -49,7 +51,7 @@ export const walletRouter = createTRPCRouter({
 
       if (!user?.email) throw new Error("User email not found");
 
-      const { amount, paymentGateway, reference, proofOfPayment } = input;
+      const { amount, paymentGateway, reference, proofOfPayment, originalAmount, originalCurrency } = input;
 
       if (paymentGateway === 'mock' && process.env.NODE_ENV === 'production') {
         throw new Error("Mock deposits are disabled in production. Please select a live gateway.");
@@ -373,7 +375,14 @@ export const walletRouter = createTRPCRouter({
           paymentMethod: "crypto",
           currency: "NGN",
           purpose: "DEPOSIT",
-          metadata: { callbackUrl, depositAmount: amount, vatAmount },
+          metadata: {
+            callbackUrl,
+            depositAmount: amount,
+            vatAmount,
+            // Pass original currency amount so Basqet can use USD directly
+            originalAmount: originalAmount ? originalAmount + (originalAmount * vatRate) : undefined,
+            originalCurrency: originalCurrency,
+          },
         });
 
         if (!result.success) {

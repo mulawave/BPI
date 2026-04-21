@@ -336,9 +336,21 @@ export class CryptoGateway implements IPaymentGateway {
 
       case "basqet": {
         if (!this.secretKey) throw new Error("Basqet secret key not configured");
+
+        // Basqet accepts USD directly — use original USD amount to avoid double-conversion
+        const originalCurrency = (request.metadata?.originalCurrency as string) || "";
+        const originalAmount = request.metadata?.originalAmount as number | undefined;
+        const basqetCurrency = (originalCurrency === "USD" || originalCurrency === "EUR") ? originalCurrency : "USD";
+        // If user paid in USD, use their exact amount; otherwise fall back to NGN→crypto conversion
+        const basqetAmount = (originalAmount && originalCurrency === "USD")
+          ? originalAmount
+          : (originalAmount && originalCurrency !== "NGN" && originalCurrency)
+            ? originalAmount  // Non-NGN foreign currency — pass as-is, Basqet handles conversion
+            : amountCrypto;   // NGN user — use calculated crypto amount as USD (USDT ≈ $1)
+
         result = await initBasqetPayin(this.apiKey, this.secretKey, {
-          amount: amountNgn,
-          currency: request.currency || "USD",
+          amount: basqetAmount,
+          currency: basqetCurrency,
           reference,
           customer: {
             name: request.name || "BPI User",
