@@ -773,7 +773,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                       Important Instructions
                     </h4>
                     <ol className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1">
-                      <li>1. Send exactly <strong>{formatDirect(totalAmount)}</strong> worth of USDT</li>
+                      <li>1. Send exactly <strong>{formatDirect(cryptoTotalAmount)}</strong> worth of USDT</li>
                       <li>2. Use only the <strong>TRC-20</strong> network</li>
                       <li>3. Copy the transaction hash after sending</li>
                       <li>4. Paste the hash below and submit for approval</li>
@@ -1013,7 +1013,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                   <p className="text-2xl font-bold text-orange-600 font-mono">
                     {successData.cryptoDetails?.amountCrypto != null
                       ? `${Number(successData.cryptoDetails.amountCrypto).toFixed(6)} ${(successData.cryptoDetails?.cryptoCurrency || 'USDT').toUpperCase()}`
-                      : formatDirect(totalAmount)}
+                      : formatDirect(cryptoTotalAmount)}
                   </p>
                 </div>
 
