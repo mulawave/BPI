@@ -348,7 +348,10 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
   const metadata = pendingPayment.metadata as Record<string, any> | null;
   const depositAmount = metadata?.depositAmount || amountFiat;
   const vatAmount = metadata?.vatAmount || 0;
+  // processingFeeAmount is stored in USD for revenue tracking
+  // processingFeeAmountNgn is the NGN equivalent for transaction records
   const processingFeeAmount = Number(metadata?.processingFeeAmount || 0);
+  const processingFeeAmountNgn = Number(metadata?.processingFeeAmountNgn || metadata?.processingFeeAmount || 0);
 
   // Atomically mark as processing
   const claimed = await prisma.pendingPayment.updateMany({
@@ -399,7 +402,7 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
         id: randomUUID(),
         userId,
         transactionType: "USDT_DEPOSIT_FEE",
-        amount: processingFeeAmount,
+        amount: processingFeeAmountNgn, // Store in NGN to match other transaction amounts
         description: `Processing fee on USDT deposit`,
         status: "completed",
         reference: `FEE-DEP-${reference}`,
@@ -409,7 +412,7 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
 
     await recordRevenue(prisma, {
       source: "DEPOSIT_FEE",
-      amount: processingFeeAmount,
+      amount: processingFeeAmount, // Revenue tracked in USD
       currency: "USD",
       sourceId: reference,
       userId,

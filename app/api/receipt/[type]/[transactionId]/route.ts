@@ -64,7 +64,22 @@ export async function GET(
       });
 
       const vatAmount = vatTransaction?.amount || (transaction.amount * 0.075);
-      const totalPaid = transaction.amount + vatAmount;
+
+      // Find associated processing fee transaction (for crypto/USDT deposits)
+      const feeTransaction = await prisma.transaction.findFirst({
+        where: {
+          userId,
+          transactionType: 'USDT_DEPOSIT_FEE',
+          reference: { startsWith: 'FEE-DEP' },
+          createdAt: {
+            gte: new Date(transaction.createdAt.getTime() - 5000),
+            lte: new Date(transaction.createdAt.getTime() + 5000)
+          }
+        }
+      });
+
+      const processingFee = feeTransaction?.amount || 0;
+      const totalPaid = transaction.amount + vatAmount + processingFee;
 
       receiptHTML = generateDepositReceiptHTML({
         transactionId: transaction.id,
@@ -73,6 +88,7 @@ export async function GET(
         userEmail,
         amount: transaction.amount,
         vatAmount,
+        processingFee: processingFee > 0 ? processingFee : undefined,
         totalPaid,
         reference: transaction.reference || '',
         paymentMethod: transaction.description.includes('mock') ? 'mock' : 'payment-gateway',

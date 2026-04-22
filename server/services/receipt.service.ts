@@ -7,6 +7,7 @@ export interface DepositReceiptData {
   userEmail: string;
   amount: number;
   vatAmount: number;
+  processingFee?: number;
   totalPaid: number;
   reference: string;
   paymentMethod: string;
@@ -323,6 +324,11 @@ export function generateDepositReceiptHTML(data: DepositReceiptData): string {
               <span class="breakdown-label">VAT (7.5%)</span>
               <span class="breakdown-value">${formatCurrency(data.vatAmount)}</span>
             </div>
+            ${data.processingFee && data.processingFee > 0 ? `
+            <div class="breakdown-row">
+              <span class="breakdown-label">Processing Fee</span>
+              <span class="breakdown-value">${formatCurrency(data.processingFee)}</span>
+            </div>` : ''}
             <div class="breakdown-row total-row">
               <span class="breakdown-label">Total Paid</span>
               <span class="breakdown-value">${formatCurrency(data.totalPaid)}</span>
