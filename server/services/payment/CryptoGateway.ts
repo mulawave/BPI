@@ -339,14 +339,10 @@ export class CryptoGateway implements IPaymentGateway {
       case "basqet": {
         if (!this.secretKey) throw new Error("Basqet secret key not configured");
 
-        // CRITICAL: Always initialize Basqet with currency "USDT" (not fiat "USD").
-        // When initialized_currency === payment_currency (both USDT), Basqet creates a
-        // direct crypto-to-crypto invoice at 1:1 parity with no fiat spread applied.
-        // Passing currency "USD" triggers Basqet's Quidax order-book fiat→USDT conversion
-        // which applies an 11%+ premium (e.g. $2.31 USD → 1.91 USDT instead of 2.31 USDT).
+        // CRITICAL: Initialize Basqet with a supported fiat base currency (e.g., "USD" or "NGN").
+        // Passing "USDT" as the base initialization currency will result in a 404 "Unsupported currency" error.
         //
         // metadata.originalAmount = user's USD total inclusive of VAT (set in wallet.ts).
-        // Since BPI accounts are USD-denominated, USD amount == USDT amount exactly.
         const originalCurrency = (request.metadata?.originalCurrency as string) || "";
         const originalAmount = request.metadata?.originalAmount as number | undefined;
 
@@ -358,7 +354,7 @@ export class CryptoGateway implements IPaymentGateway {
 
         result = await initBasqetPayin(this.apiKey, this.secretKey, {
           amount: basqetAmount,
-          currency: "USDT",  // Always USDT — bypasses fiat-to-crypto spread entirely
+          currency: "USD",  // Basqet API expects a fiat base currency (USD, NGN, etc)
           reference,
           customer: {
             name: request.name || "BPI User",
