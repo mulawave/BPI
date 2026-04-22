@@ -758,13 +758,6 @@ export default function SettingsPage() {
               isSaving={updateSettingMutation.isPending}
             />
 
-            {/* USD Deposit Settings */}
-            <UsdDepositSettingsCard
-              systemSettings={systemSettings}
-              onSave={handleSaveGeneralSetting}
-              isSaving={updateSettingMutation.isPending}
-            />
-
             {paymentGateways && paymentGateways.length > 0 ? (
               paymentGateways.map((gateway: any) => (
                 <div
@@ -1764,7 +1757,7 @@ function UsdWithdrawalSettingsCard({
         <div>
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">USD Withdrawal Settings</h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Processing fee and minimum threshold for USDT / USD withdrawals
+            Shared USD processing fee for USDT deposits and withdrawals, plus the withdrawal threshold
           </p>
         </div>
       </div>
@@ -1788,7 +1781,7 @@ function UsdWithdrawalSettingsCard({
             />
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Flat fee deducted on every USD withdrawal. Default: $2.00
+            Flat fee used for both USD deposits and USD withdrawals. Default: $2.00
           </p>
         </div>
 
@@ -1822,6 +1815,11 @@ function UsdWithdrawalSettingsCard({
           <span className="font-bold">${unlockThreshold.toFixed(2)}</span>{' '}
           (${min.toFixed(2)} min + ${fee.toFixed(2)} fee + $1.00 buffer) before the withdrawal button enables.
         </p>
+        <p className="mt-2 text-sm text-blue-800 dark:text-blue-300">
+          <strong>Deposit preview:</strong> A $100.00 USD crypto deposit is invoiced as{' '}
+          <span className="font-bold">${(100 + (100 * 0.075) + fee).toFixed(2)}</span>{' '}
+          ($100.00 base + $7.50 VAT + ${fee.toFixed(2)} shared fee).
+        </p>
       </div>
 
       <div className="mt-4 flex gap-3">
@@ -1835,89 +1833,6 @@ function UsdWithdrawalSettingsCard({
         >
           <HiSave className="w-4 h-4" />
           {isSaving ? 'Saving...' : 'Save USD Settings'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function UsdDepositSettingsCard({
-  systemSettings,
-  onSave,
-  isSaving,
-}: {
-  systemSettings: any;
-  onSave: (key: string, value: string, description?: string) => void;
-  isSaving: boolean;
-}) {
-  const currentFee = systemSettings?.['USD_DEPOSIT_FEE']?.value ?? '2';
-  const [feeValue, setFeeValue] = useState(currentFee);
-
-  useEffect(() => {
-    setFeeValue(systemSettings?.['USD_DEPOSIT_FEE']?.value ?? '2');
-  }, [systemSettings]);
-
-  const fee = parseFloat(feeValue) || 0;
-
-  // Live preview: example based on a $100 base deposit
-  const exampleBase = 100;
-  const vat = exampleBase * 0.075;
-  const total = exampleBase + vat + fee;
-
-  return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
-      <div className="flex items-center gap-3 mb-5">
-        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-          <HiCreditCard className="w-5 h-5 text-white" />
-        </div>
-        <div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">USD Deposit Settings</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Processing fee added to USDT / USD deposits (on top of VAT)
-          </p>
-        </div>
-      </div>
-
-      <div className="space-y-2 max-w-xs">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Processing Fee (USD)
-        </label>
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">$</span>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            value={feeValue}
-            onChange={(e) => setFeeValue(e.target.value)}
-            className="w-full pl-8 pr-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            placeholder="2.00"
-          />
-        </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          Flat fee added to every USDT deposit invoice. Default: $2.00
-        </p>
-      </div>
-
-      {/* Live preview */}
-      <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
-        <p className="text-sm text-blue-800 dark:text-blue-300">
-          <strong>Example (${exampleBase.toFixed(2)} deposit):</strong>{' '}
-          ${exampleBase.toFixed(2)} base + 7.5% VAT (${vat.toFixed(2)}) + ${fee.toFixed(2)} processing fee
-          {' = '}
-          <span className="font-bold">${total.toFixed(2)} USDT</span> invoiced to customer.
-          User wallet credited: ${exampleBase.toFixed(2)}.
-        </p>
-      </div>
-
-      <div className="mt-4 flex gap-3">
-        <button
-          onClick={() => onSave('USD_DEPOSIT_FEE', feeValue, 'USD deposit processing fee in dollars')}
-          disabled={isSaving}
-          className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg font-medium text-sm shadow-sm disabled:opacity-50 transition-all flex items-center gap-2"
-        >
-          <HiSave className="w-4 h-4" />
-          {isSaving ? 'Saving...' : 'Save Deposit Settings'}
         </button>
       </div>
     </div>

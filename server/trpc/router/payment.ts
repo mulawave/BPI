@@ -10,6 +10,8 @@ import {
 } from "../../services/payment";
 import { randomUUID } from "crypto";
 
+const DEFAULT_USD_WITHDRAWAL_FEE = 2;
+
 export const paymentRouter = createTRPCRouter({
   /**
    * Get payment gateway configuration from live DB.
@@ -479,8 +481,14 @@ export const paymentRouter = createTRPCRouter({
       },
     });
 
+    const feeSetting = await ctx.prisma.adminSettings.findUnique({
+      where: { settingKey: "USD_WITHDRAWAL_FEE" },
+      select: { settingValue: true },
+    });
+    const feeUsd = feeSetting ? parseFloat(feeSetting.settingValue) : DEFAULT_USD_WITHDRAWAL_FEE;
+
     if (!cryptoGateway || !cryptoGateway.isActive || !cryptoGateway.cryptoDepositAddress) {
-      return { available: false as const, depositAddress: null, network: null, tokenName: null, tokenSymbol: null, apiProvider: null };
+      return { available: false as const, depositAddress: null, network: null, tokenName: null, tokenSymbol: null, apiProvider: null, feeUsd };
     }
 
     return {
@@ -490,6 +498,7 @@ export const paymentRouter = createTRPCRouter({
       tokenName: cryptoGateway.tokenName || "USDT",
       tokenSymbol: cryptoGateway.tokenSymbol || "USDT",
       apiProvider: cryptoGateway.apiProvider?.toLowerCase() || null,
+      feeUsd,
     };
   }),
 

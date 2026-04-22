@@ -143,6 +143,11 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const numAmount = parseFloat(amount) || 0;
   const vatAmount = numAmount * VAT_RATE;
   const totalAmount = numAmount + vatAmount;
+  const sharedUsdProcessingFee = selectedCurrency?.symbol === 'USD'
+    ? Number(cryptoProviderInfo?.feeUsd || 0)
+    : 0;
+  const showCryptoProcessingFee = selectedGateway === 'crypto' && sharedUsdProcessingFee > 0;
+  const cryptoTotalAmount = totalAmount + (showCryptoProcessingFee ? sharedUsdProcessingFee : 0);
 
   const handleAmountNext = () => {
     if (numAmount < 1) {
@@ -274,7 +279,8 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
         message: data.message,
         depositedAmount: toNaira(numAmount),
         vatAmount: toNaira(vatAmount),
-        totalPaid: toNaira(totalAmount),
+        processingFeeAmount: toNaira(showCryptoProcessingFee ? sharedUsdProcessingFee : 0),
+        totalPaid: toNaira(cryptoTotalAmount),
       });
       setCurrentStep('success');
     },
@@ -305,7 +311,8 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
       metadata: {
         depositAmount: toNaira(numAmount),
         vatAmount: toNaira(vatAmount),
-        totalAmount: toNaira(totalAmount),
+        processingFeeAmount: showCryptoProcessingFee ? sharedUsdProcessingFee : 0,
+        totalAmount: toNaira(cryptoTotalAmount),
       },
     });
   };
@@ -699,9 +706,11 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
               <div className="p-4 bg-gradient-to-br from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/20 rounded-xl border border-orange-200 dark:border-orange-800">
                 <div className="text-center">
                   <p className="text-sm text-muted-foreground mb-1">Amount to Pay</p>
-                  <p className="text-3xl font-bold text-orange-600">{formatDirect(totalAmount)}</p>
+                  <p className="text-3xl font-bold text-orange-600">{formatDirect(showCryptoProcessingFee ? cryptoTotalAmount : totalAmount)}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    ({formatDirect(numAmount)} + {formatDirect(vatAmount)} VAT)
+                    {showCryptoProcessingFee
+                      ? `(${formatDirect(numAmount)} + ${formatDirect(vatAmount)} VAT + ${formatDirect(sharedUsdProcessingFee)} fee)`
+                      : `(${formatDirect(numAmount)} + ${formatDirect(vatAmount)} VAT)`}
                   </p>
                 </div>
               </div>
@@ -860,9 +869,15 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                     <span className="text-muted-foreground">VAT (7.5%)</span>
                     <span className="font-semibold text-orange-600">+{formatDirect(vatAmount)}</span>
                   </div>
+                  {showCryptoProcessingFee && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">USD Processing Fee</span>
+                      <span className="font-semibold text-blue-600 dark:text-blue-400">+{formatDirect(sharedUsdProcessingFee)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center pt-3 border-t border-green-200 dark:border-green-700">
                     <span className="font-bold text-lg">Total to Pay</span>
-                    <span className="font-bold text-2xl text-green-600">{formatDirect(totalAmount)}</span>
+                    <span className="font-bold text-2xl text-green-600">{formatDirect(showCryptoProcessingFee ? cryptoTotalAmount : totalAmount)}</span>
                   </div>
                 </div>
               </div>
@@ -1092,6 +1107,12 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                   <span className="text-muted-foreground">VAT Paid</span>
                   <span className="font-semibold">{formatAmount(successData.vatAmount)}</span>
                 </div>
+                {successData.processingFeeAmount ? (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Processing Fee</span>
+                    <span className="font-semibold text-blue-600 dark:text-blue-400">{formatAmount(successData.processingFeeAmount)}</span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between pt-3 border-t border-green-200 dark:border-green-700">
                   <span className="font-bold">Total Paid</span>
                   <span className="font-bold text-lg">{formatAmount(successData.totalPaid)}</span>

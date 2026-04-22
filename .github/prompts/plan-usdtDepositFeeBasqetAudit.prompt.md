@@ -1,14 +1,14 @@
-# Plan: USDT Deposit Fee + Basqet Confirmation Flow + Audit Trail (FINAL)
+# Plan: USDT Shared Processing Fee + Basqet Confirmation Flow + Audit Trail (FINAL)
 
 ## TL;DR
-- Add admin-configurable processing fee (`USD_DEPOSIT_FEE`) to USDT deposits. Fee is immediate revenue (Basqet set to "Customer Pays" so their settlement fee is absorbed by the user on top, not by BPI). No fee reconciliation needed.
+- Use the shared admin-configurable USD processing fee (`USD_WITHDRAWAL_FEE`) for USDT deposits as well. Fee is immediate revenue (Basqet set to "Customer Pays" so their settlement fee is absorbed by the user on top, not by BPI). No fee reconciliation needed.
 - Enforce correct Basqet blockchain-confirmation flow: NO wallet credit until `payment.received` webhook. Handle all 3 webhook events.
 - Capture full Basqet API request/response payloads in PendingPayment.metadata for audit trail.
 - Add poll-fallback status endpoint for frontend to check payment status when webhook is delayed.
 - Fix verify endpoint bug (reads `amount_paid` from verify response, but docs confirm only `data.status` is returned).
 
 Fee math (all amounts admin-configurable, NOT hardcoded):
-$2.00 deposit → $0.15 VAT (7.5%) → $2.00 processing fee (from USD_DEPOSIT_FEE setting) → Basqet invoice = $4.15 USDT
+$2.00 deposit → $0.15 VAT (7.5%) → $2.00 processing fee (from USD_WITHDRAWAL_FEE setting) → Basqet invoice = $4.15 USDT
 - $0.15 → VAT transaction (tax record only, NOT revenue)
 - $2.00 → USDT_DEPOSIT_FEE transaction (immediate revenue)
 - $2.00 → DEPOSIT transaction (credited to user wallet)
@@ -41,10 +41,10 @@ Same applies to USDT withdrawals: USD_WITHDRAWAL_FEE (already exists) → USDT_W
 
 ---
 
-## Phase 4 — wallet.ts: apply deposit processing fee (depends on Phase 1) ✅ COMPLETE
+## Phase 4 — wallet.ts: apply shared USD processing fee to deposits (depends on Phase 1) ✅ COMPLETE
 **`server/trpc/router/wallet.ts`** (crypto deposit section ~line 390)
-- Added `DEFAULT_USD_DEPOSIT_FEE = 2` constant (fallback only — real value from DB)
-- Inside `if (paymentGateway === 'crypto')` block: loads `processingFeeUsd = await getAdminSetting('USD_DEPOSIT_FEE', DEFAULT_USD_DEPOSIT_FEE)`
+- Reused `DEFAULT_USD_WITHDRAWAL_FEE = 2` as the shared fallback
+- Inside `if (paymentGateway === 'crypto')` block: loads `processingFeeUsd = await getAdminSetting('USD_WITHDRAWAL_FEE', DEFAULT_USD_WITHDRAWAL_FEE)`
 - Updated `originalAmount` in metadata to include processing fee: `originalAmount + (originalAmount * vatRate) + processingFeeUsd` — this is the total USDT Basqet invoices
 - Added `processingFeeAmount: processingFeeUsd` and `basqetAudit: result.metadata?.basqetAudit` to `PendingPayment.metadata`
 - `Transaction.amount` stays as base `amount` (user's wallet credit, unchanged)
@@ -89,13 +89,11 @@ Same applies to USDT withdrawals: USD_WITHDRAWAL_FEE (already exists) → USDT_W
 
 ---
 
-## Phase 9 — Admin settings UI: deposit fee card (no dependencies) ✅ COMPLETE
+## Phase 9 — Admin settings UI: shared USD fee card (no dependencies) ✅ COMPLETE
 **`app/admin/settings/page.tsx`**
-- Added `UsdDepositSettingsCard` component: mirrors `UsdWithdrawalSettingsCard` structure with blue/indigo gradient accent
-- Single field: `USD_DEPOSIT_FEE` with `$` prefix, step=0.01, default display $2.00
-- Live preview panel: "Example ($100.00 deposit): $100.00 base + 7.5% VAT ($7.50) + $X processing fee = $Y USDT invoiced. User wallet credited: $100.00"
-- "Save Deposit Settings" button → calls `onSave('USD_DEPOSIT_FEE', feeValue, description)` via `updateSystemSetting`
-- Rendered in the payments tab directly below `UsdWithdrawalSettingsCard`
+- Reused `UsdWithdrawalSettingsCard` as the shared USD fee control for both deposits and withdrawals
+- Updated copy to state the processing fee applies to both USD deposits and USD withdrawals
+- Added a deposit preview to the shared settings card instead of maintaining a second fee control
 
 ---
 
@@ -113,7 +111,7 @@ Same applies to USDT withdrawals: USD_WITHDRAWAL_FEE (already exists) → USDT_W
 
 ## Final Decisions
 - Processing fee = immediate revenue. Basqet set to "Customer Pays" → Basqet's own fee added on top by Basqet, not deducted from BPI's $2.00. Zero reconciliation step needed.
-- Fee amount is NOT hardcoded. Always loaded from `getAdminSetting('USD_DEPOSIT_FEE', DEFAULT_USD_DEPOSIT_FEE)`. Admin controls it from the settings panel.
+- Fee amount is NOT hardcoded. Always loaded from `getAdminSetting('USD_WITHDRAWAL_FEE', DEFAULT_USD_WITHDRAWAL_FEE)`. Admin controls it from the shared USD settings panel.
 - No wallet credit on `payment.pending` — only on `payment.received` (SUCCESSFUL) via webhook.
 - `basqetAudit` stored in PendingPayment.metadata JSON (no Prisma schema migration needed).
 - Verify endpoint bug fix included.

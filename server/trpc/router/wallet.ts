@@ -14,7 +14,6 @@ import { initiateBasqetUsdtPayout } from "@/server/services/payment/BasqetClient
 const DEFAULT_CASH_WITHDRAWAL_FEE = 100;
 const DEFAULT_BPT_WITHDRAWAL_FEE = 0;
 const DEFAULT_USD_WITHDRAWAL_FEE = 2;       // $2 USD processing fee for USDT withdrawals
-const DEFAULT_USD_DEPOSIT_FEE = 2;          // $2 USD processing fee for USDT deposits
 const DEFAULT_USD_MIN_WITHDRAWAL = 10;      // $10 USD minimum withdrawal threshold
 const DEFAULT_MAX_TRANSFER_AMOUNT = 500000;
 const DEFAULT_AUTO_WITHDRAWAL_THRESHOLD = 100000;
@@ -25,6 +24,15 @@ async function getAdminSetting(key: string, defaultValue: number): Promise<numbe
     where: { settingKey: key }
   });
   return setting ? parseFloat(setting.settingValue) : defaultValue;
+}
+
+async function convertUsdToNgn(usdAmount: number): Promise<number> {
+  const usdRate = await prisma.currencyManagement.findFirst({ where: { symbol: 'USD' } });
+  const ngnRate = await prisma.currencyManagement.findFirst({ where: { symbol: 'NGN' } });
+
+  return usdRate && ngnRate && usdRate.rate && ngnRate.rate
+    ? (usdAmount / (usdRate.rate || 1)) * (ngnRate.rate || 1)
+    : usdAmount * 1538;
 }
 
 export const walletRouter = createTRPCRouter({
@@ -358,8 +366,13 @@ export const walletRouter = createTRPCRouter({
           throw new Error("Crypto provider API key not configured. Please contact admin.");
         }
 
-        // Load processing fee from admin settings (never hardcoded)
-        const processingFeeUsd = await getAdminSetting('USD_DEPOSIT_FEE', DEFAULT_USD_DEPOSIT_FEE);
+        // USD crypto deposits share the same admin-managed fee as USD withdrawals.
+        const processingFeeUsd = await getAdminSetting('USD_WITHDRAWAL_FEE', DEFAULT_USD_WITHDRAWAL_FEE);
+        const processingFeeNgn = await convertUsdToNgn(processingFeeUsd);
+        const totalAmountWithFee = totalAmount + processingFeeNgn;
+        const totalAmountUsd = originalAmount && originalCurrency === 'USD'
+          ? originalAmount + (originalAmount * vatRate) + processingFeeUsd
+          : undefined;
 
         // Import and use the CryptoGateway via the service layer
         const { CryptoGateway } = await import("@/server/services/payment/CryptoGateway");
@@ -383,9 +396,8 @@ export const walletRouter = createTRPCRouter({
             callbackUrl,
             depositAmount: amount,
             vatAmount,
-            // Pass original currency amount so Basqet can use USD directly.
-            // Total = base + VAT + processing fee — this is what Basqet invoices.
-            originalAmount: originalAmount ? originalAmount + (originalAmount * vatRate) + processingFeeUsd : undefined,
+            // Pass the fee-inclusive USD total so the Basqet invoice matches the customer total.
+            originalAmount: totalAmountUsd,
             originalCurrency: originalCurrency,
           },
         });
@@ -412,7 +424,7 @@ export const walletRouter = createTRPCRouter({
             id: randomUUID(),
             userId,
             transactionType: "DEPOSIT",
-            amount: totalAmount,
+            amount: totalAmountWithFee,
             currency: "NGN",
             paymentMethod: "crypto",
             gatewayReference: result.reference || txReference,
@@ -421,6 +433,7 @@ export const walletRouter = createTRPCRouter({
               depositAmount: amount,
               vatAmount,
               processingFeeAmount: processingFeeUsd,
+              processingFeeAmountNgn: processingFeeNgn,
               purpose: 'DEPOSIT',
               provider: result.metadata?.provider,
               cryptoCurrency: result.metadata?.cryptoCurrency,
@@ -441,7 +454,8 @@ export const walletRouter = createTRPCRouter({
           message: result.message || "Crypto payment created. Complete the payment.",
           depositedAmount: amount,
           vatAmount,
-          totalPaid: totalAmount,
+          processingFeeAmount: processingFeeNgn,
+          totalPaid: totalAmountWithFee,
           cryptoDetails: result.metadata,
         };
       }
