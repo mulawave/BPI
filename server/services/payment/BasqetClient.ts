@@ -36,6 +36,12 @@ export interface BasqetPayinInitResult {
   qrCode?: string;
   paymentCurrency?: string;
   status: string;
+  auditLog: {
+    initBody: object;
+    initResponse: object;
+    payBody: object;
+    payResponse: object;
+  };
 }
 
 export interface BasqetVerifyResult {
@@ -63,6 +69,10 @@ export interface BasqetPayoutResult {
   payoutId?: string;
   status: string;
   txHash?: string;
+  auditLog?: {
+    requestBody: object;
+    response: object;
+  };
 }
 
 // ── Constants ───────────────────────────────────────────────────────
@@ -109,6 +119,17 @@ async function basqetFetch<T>(
 
 export async function initializeBasqetPayin(input: BasqetPayinInitInput): Promise<BasqetPayinInitResult> {
   // Step 1: Initialize transaction (PUBLIC key)
+  const initBody = {
+    customer: input.customer,
+    amount: String(input.amount),
+    currency: input.currency,
+    description: `BPI deposit ${input.reference}`,
+    meta: {
+      ...(input.metadata || {}),
+      reference: input.reference,
+    },
+  };
+
   const initResponse = await basqetFetch<{
     status: string;
     data: {
@@ -120,16 +141,7 @@ export async function initializeBasqetPayin(input: BasqetPayinInitInput): Promis
     };
   }>(input.publicKey, "/transaction", {
     method: "POST",
-    body: JSON.stringify({
-      customer: input.customer,
-      amount: String(input.amount),
-      currency: input.currency,
-      description: `BPI deposit ${input.reference}`,
-      meta: {
-        ...(input.metadata || {}),
-        reference: input.reference,
-      },
-    }),
+    body: JSON.stringify(initBody),
   });
 
   const transactionId = initResponse.data.id;
@@ -143,6 +155,7 @@ export async function initializeBasqetPayin(input: BasqetPayinInitInput): Promis
 
   // Step 2: Initiate payment with crypto currency (SECRET key)
   const currencyId = input.currencyId || USDT_CURRENCY_ID;
+  const payBody = { currency_id: currencyId };
 
   const payResponse = await basqetFetch<{
     status: string;
@@ -157,7 +170,7 @@ export async function initializeBasqetPayin(input: BasqetPayinInitInput): Promis
     };
   }>(input.secretKey, `/transaction/${transactionId}/pay`, {
     method: "POST",
-    body: JSON.stringify({ currency_id: currencyId }),
+    body: JSON.stringify(payBody),
   });
 
   const payData = payResponse.data;
@@ -177,6 +190,12 @@ export async function initializeBasqetPayin(input: BasqetPayinInitInput): Promis
     qrCode: payData.qrCode,
     paymentCurrency: payData.payment_currency,
     status: payData.status || "PENDING",
+    auditLog: {
+      initBody,
+      initResponse: initResponse as object,
+      payBody,
+      payResponse: payResponse as object,
+    },
   };
 }
 
@@ -187,14 +206,14 @@ export async function verifyBasqetPayin(
   publicKey: string,
   transactionId: string,
 ): Promise<BasqetVerifyResult> {
+  // Basqet verify endpoint only returns { data: { status } } per official docs.
+  // It does NOT return amount_paid or payment_amount — those fields do not exist here.
   const response = await basqetFetch<{
     status: string;
     data: {
       id?: string;
       reference?: string;
       status: string;
-      amount_paid?: number;
-      payment_amount?: number;
     };
   }>(publicKey, `/transaction/${encodeURIComponent(transactionId)}/status`, {
     method: "GET",
@@ -206,7 +225,7 @@ export async function verifyBasqetPayin(
 
   return {
     paid,
-    amountReceived: Number(data.amount_paid || data.payment_amount || 0),
+    amountReceived: 0, // verify endpoint does not return payment amounts
     providerRef: data.reference || data.id || transactionId,
     status: statusRaw,
   };
@@ -250,6 +269,17 @@ export function validateBasqetWebhookSignature(
 // These endpoints follow the pattern from the Basqet dashboard.
 
 export async function initiateBasqetUsdtPayout(input: BasqetPayoutInput): Promise<BasqetPayoutResult> {
+  const requestBody = {
+    amount: String(input.amount),
+    currency: input.currency,
+    destination: {
+      address: input.recipientAddress,
+      network: input.network || "TRC-20",
+    },
+    reference: input.reference,
+    meta: input.metadata || {},
+  };
+
   const response = await basqetFetch<{
     status: string;
     data: {
@@ -263,16 +293,7 @@ export async function initiateBasqetUsdtPayout(input: BasqetPayoutInput): Promis
     headers: {
       ...(input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : {}),
     },
-    body: JSON.stringify({
-      amount: String(input.amount),
-      currency: input.currency,
-      destination: {
-        address: input.recipientAddress,
-        network: input.network || "TRC-20",
-      },
-      reference: input.reference,
-      meta: input.metadata || {},
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   const data = response.data;
@@ -284,6 +305,10 @@ export async function initiateBasqetUsdtPayout(input: BasqetPayoutInput): Promis
     payoutId: data.id,
     status,
     txHash: data.tx_hash,
+    auditLog: {
+      requestBody,
+      response: response as object,
+    },
   };
 }
 

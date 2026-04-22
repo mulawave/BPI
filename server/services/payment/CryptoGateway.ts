@@ -23,6 +23,7 @@ interface CryptoProviderResult {
   amountCrypto?: number;
   expiresAt?: string;
   qrCode?: string;
+  auditLog?: object;
 }
 
 interface CryptoVerifyResult {
@@ -248,6 +249,7 @@ async function initBasqetPayin(
     address: result.paymentAddress,
     amountCrypto: result.paymentAmount,
     qrCode: result.qrCode,
+    auditLog: result.auditLog,
     // Basqet does NOT return a hosted checkout URL.
     // Payment is made by sending crypto to the address.
   };
@@ -413,6 +415,7 @@ export class CryptoGateway implements IPaymentGateway {
         address: result.address,
         expiresAt: result.expiresAt,
         qrCode: result.qrCode,
+        ...(result.auditLog ? { basqetAudit: result.auditLog } : {}),
       },
     };
   }

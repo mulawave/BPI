@@ -14,6 +14,7 @@ import { initiateBasqetUsdtPayout } from "@/server/services/payment/BasqetClient
 const DEFAULT_CASH_WITHDRAWAL_FEE = 100;
 const DEFAULT_BPT_WITHDRAWAL_FEE = 0;
 const DEFAULT_USD_WITHDRAWAL_FEE = 2;       // $2 USD processing fee for USDT withdrawals
+const DEFAULT_USD_DEPOSIT_FEE = 2;          // $2 USD processing fee for USDT deposits
 const DEFAULT_USD_MIN_WITHDRAWAL = 10;      // $10 USD minimum withdrawal threshold
 const DEFAULT_MAX_TRANSFER_AMOUNT = 500000;
 const DEFAULT_AUTO_WITHDRAWAL_THRESHOLD = 100000;
@@ -357,6 +358,9 @@ export const walletRouter = createTRPCRouter({
           throw new Error("Crypto provider API key not configured. Please contact admin.");
         }
 
+        // Load processing fee from admin settings (never hardcoded)
+        const processingFeeUsd = await getAdminSetting('USD_DEPOSIT_FEE', DEFAULT_USD_DEPOSIT_FEE);
+
         // Import and use the CryptoGateway via the service layer
         const { CryptoGateway } = await import("@/server/services/payment/CryptoGateway");
         const gateway = new CryptoGateway();
@@ -379,8 +383,9 @@ export const walletRouter = createTRPCRouter({
             callbackUrl,
             depositAmount: amount,
             vatAmount,
-            // Pass original currency amount so Basqet can use USD directly
-            originalAmount: originalAmount ? originalAmount + (originalAmount * vatRate) : undefined,
+            // Pass original currency amount so Basqet can use USD directly.
+            // Total = base + VAT + processing fee — this is what Basqet invoices.
+            originalAmount: originalAmount ? originalAmount + (originalAmount * vatRate) + processingFeeUsd : undefined,
             originalCurrency: originalCurrency,
           },
         });
@@ -415,11 +420,13 @@ export const walletRouter = createTRPCRouter({
             metadata: {
               depositAmount: amount,
               vatAmount,
+              processingFeeAmount: processingFeeUsd,
               purpose: 'DEPOSIT',
               provider: result.metadata?.provider,
               cryptoCurrency: result.metadata?.cryptoCurrency,
               amountCrypto: result.metadata?.amountCrypto,
               exchangeRate: result.metadata?.exchangeRate,
+              basqetAudit: result.metadata?.basqetAudit,
             },
             updatedAt: new Date(),
           },

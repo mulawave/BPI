@@ -13,7 +13,7 @@
     "build": "prisma generate && node --max-old-space-size=4096 ./node_modules/next/dist/bin/next build --no-lint",
     "build:unsafe": "prisma generate && prisma db push --skip-generate && node --max-old-space-size=4096 ./node_modules/next/dist/bin/next build --no-lint",
     "db:push": "prisma db push",
-    "type-check": "tsc --noEmit",
+    "type-check": "node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc --noEmit",
     "test:unit": "npx tsx --test tests/unit/*.test.ts",
     "test": "npm run lint && npm run type-check && npm run test:unit && npm run build",
     "start": "next start -p 3000",

@@ -1641,9 +1641,10 @@ export const adminRouter = createTRPCRouter({
             },
           });
         } else if (purpose === "TOPUP" || purpose === "DEPOSIT") {
-          // Extract deposit amount and VAT from metadata
+          // Extract deposit amount, VAT, and processing fee from metadata
           const depositAmount = metadata.depositAmount || payment.amount;
           const vatAmount = metadata.vatAmount || 0;
+          const processingFeeAmount = Number(metadata.processingFeeAmount || 0);
 
           // DUPLICATE PREVENTION: Check if this deposit was already processed
           const existingCompletedDeposit = await prisma.transaction.findFirst({
@@ -1693,6 +1694,31 @@ export const adminRouter = createTRPCRouter({
                 reference: `VAT-${paymentRef}`,
                 walletType: "main",
               },
+            });
+          }
+
+          // Create USDT_DEPOSIT_FEE transaction and record as platform revenue (crypto deposits only)
+          if (processingFeeAmount > 0) {
+            await prisma.transaction.create({
+              data: {
+                id: randomUUID(),
+                userId: payment.userId,
+                transactionType: "USDT_DEPOSIT_FEE",
+                amount: processingFeeAmount,
+                description: `Processing fee on USDT deposit`,
+                status: "completed",
+                reference: `FEE-DEP-${paymentRef}`,
+                walletType: "main",
+              },
+            });
+
+            await recordRevenue(prisma, {
+              source: "DEPOSIT_FEE",
+              amount: processingFeeAmount,
+              currency: "USD",
+              sourceId: paymentRef,
+              userId: payment.userId,
+              description: `USDT deposit processing fee (admin approved) — ref ${paymentRef}`,
             });
           }
 
@@ -7130,6 +7156,11 @@ export const adminRouter = createTRPCRouter({
         _sum: { amount: true },
       });
       const withdrawalFees = Math.abs(withdrawalFeesRaw._sum.amount || 0);
+      const depositFeesRaw = await prisma.transaction.aggregate({
+        where: { ...whereRange, status: "completed", transactionType: "USDT_DEPOSIT_FEE" },
+        _sum: { amount: true },
+      });
+      const depositFees = Math.abs(depositFeesRaw._sum.amount || 0);
       const membershipRevenueRaw = await prisma.transaction.aggregate({
         where: { ...whereRange, status: "completed", transactionType: { in: [
           "MEMBERSHIP_PAYMENT", "membership_payment",
@@ -7186,7 +7217,8 @@ export const adminRouter = createTRPCRouter({
           membershipRevenue,
           vat: vat._sum.amount || 0,
           withdrawalFees,
-          total: (deposits._sum.amount || 0) + membershipRevenue + (vat._sum.amount || 0) + withdrawalFees,
+          depositFees,
+          total: (deposits._sum.amount || 0) + membershipRevenue + (vat._sum.amount || 0) + withdrawalFees + depositFees,
         },
         outflows: {
           withdrawalsCash: Math.abs(withdrawalCash._sum.amount || 0),

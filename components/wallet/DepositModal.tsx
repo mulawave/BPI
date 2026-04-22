@@ -709,19 +709,23 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
               {/* Option 1: Automated Crypto Payment (Basqet — generates tracked address) */}
               {hasAutomatedCrypto && (
                 <div className="p-6 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl border-2 border-emerald-300 dark:border-emerald-700">
-                  <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-emerald-600" />
-                    Automated Crypto Payment
-                  </h3>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center border border-emerald-200 dark:border-emerald-800">
+                      <Zap className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <h3 className="font-bold text-lg text-foreground">
+                      Automated Crypto Payment
+                    </h3>
+                  </div>
                   <p className="text-sm text-muted-foreground mb-4">
                     Pay via our secure crypto gateway. A unique address will be generated for your payment — confirmation is automatic.
                   </p>
                   <Button
                     onClick={handleAutomatedCryptoPayment}
-                    disabled={depositMutation.isLoading}
+                    disabled={depositMutation.isPending}
                     className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
                   >
-                    {depositMutation.isLoading ? (
+                    {depositMutation.isPending ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin mr-2" />
                         Generating payment address...

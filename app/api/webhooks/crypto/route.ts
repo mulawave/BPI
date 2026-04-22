@@ -9,6 +9,7 @@ import { webhookLimiter, applyRateLimit } from "@/lib/rateLimit";
 import { notifyDepositStatus } from "@/server/services/notification.service";
 import { generateReceiptLink } from "@/server/services/receipt.service";
 import { validateBasqetWebhookSignature } from "@/server/services/payment/BasqetClient";
+import { recordRevenue } from "@/server/services/revenue.service";
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,6 +38,21 @@ export async function POST(request: NextRequest) {
         break;
       case "basqet":
         result = await handleBasqetWebhook(body, headers);
+        // Route Basqet-specific non-payment events before the generic paid-check
+        if (!result.paid && result.reference) {
+          if (result.status === "blockchain_awaiting") {
+            await processBasqetPending(result);
+            return NextResponse.json({ status: "acknowledged" }, { status: 200 });
+          }
+          if (result.status === "abandoned") {
+            await processBasqetAbandoned(result);
+            return NextResponse.json({ status: "acknowledged" }, { status: 200 });
+          }
+          if (result.status === "overpaid" || result.status === "underpaid") {
+            await processBasqetMismatch(result);
+            return NextResponse.json({ status: "acknowledged" }, { status: 200 });
+          }
+        }
         break;
       default:
         console.warn("[CryptoWebhook] Unknown provider, ignoring");
@@ -197,12 +213,34 @@ async function handleBasqetWebhook(body: string, headers: Record<string, string>
   const meta = transaction?.meta || {};
 
   const rawStatus = (transaction?.status || "").toUpperCase();
-  const paid = rawStatus === "SUCCESSFUL" && event === "payment.received";
-
   const reference = meta?.reference || transaction?.reference || transaction?.id;
 
   const amountFiat = Number(transaction?.amount_paid || transaction?.initialized_amount || 0);
   const amountCrypto = Number(transaction?.payment_amount || 0);
+
+  // Map Basqet events to internal statuses
+  let paid = false;
+  let internalStatus: string;
+
+  if (event === "payment.received" && rawStatus === "SUCCESSFUL") {
+    // Only event that confirms blockchain delivery — trigger wallet credit
+    paid = true;
+    internalStatus = "successful";
+  } else if (event === "payment.pending") {
+    // Blockchain detected the transaction — awaiting confirmations
+    internalStatus = "blockchain_awaiting";
+  } else if (event === "payment.abandoned") {
+    // Session expired; check for over/underpayment variants
+    if (rawStatus === "OVERPAID") {
+      internalStatus = "overpaid";
+    } else if (rawStatus === "UNDERPAID") {
+      internalStatus = "underpaid";
+    } else {
+      internalStatus = "abandoned";
+    }
+  } else {
+    internalStatus = rawStatus.toLowerCase() || event;
+  }
 
   return {
     paid,
@@ -212,8 +250,69 @@ async function handleBasqetWebhook(body: string, headers: Record<string, string>
     amountCrypto,
     cryptoCurrency: (transaction?.payment_currency || meta?.cryptoCurrency || "USDT").toUpperCase(),
     providerRef: transaction?.id || transaction?.reference || reference,
-    status: rawStatus.toLowerCase() || event,
+    status: internalStatus,
   };
+}
+
+// ── Basqet pending / abandoned / mismatch helpers ──────────────────────
+
+async function processBasqetPending(result: WebhookResult) {
+  if (!result.reference) return;
+  console.log(`[CryptoWebhook] Basqet payment.pending: blockchain detected for ${result.reference}`);
+
+  // Update PendingPayment status so the frontend poller and admin can see it
+  await prisma.pendingPayment.updateMany({
+    where: { gatewayReference: result.reference, status: { in: ["pending", "processing"] } },
+    data: { status: "blockchain_awaiting", reviewNotes: `Blockchain transaction detected at ${new Date().toISOString()}, awaiting confirmations.` },
+  });
+
+  // Notify user that their payment has been detected and is awaiting confirmations
+  const pendingPayment = await prisma.pendingPayment.findFirst({
+    where: { gatewayReference: result.reference },
+    select: { userId: true, amount: true },
+  });
+  if (pendingPayment) {
+    await notifyDepositStatus(pendingPayment.userId, "processing", pendingPayment.amount, result.reference);
+  }
+}
+
+async function processBasqetAbandoned(result: WebhookResult) {
+  if (!result.reference) return;
+  console.log(`[CryptoWebhook] Basqet payment.abandoned: session expired for ${result.reference}`);
+
+  const pendingPayment = await prisma.pendingPayment.findFirst({
+    where: { gatewayReference: result.reference, status: { notIn: ["abandoned", "completed"] } },
+    select: { id: true, userId: true, amount: true },
+  });
+
+  if (!pendingPayment) return;
+
+  await prisma.$transaction([
+    prisma.pendingPayment.update({
+      where: { id: pendingPayment.id },
+      data: { status: "abandoned", reviewNotes: `Payment session expired (Basqet abandoned) at ${new Date().toISOString()}` },
+    }),
+    prisma.transaction.updateMany({
+      where: { reference: result.reference, userId: pendingPayment.userId, status: "pending" },
+      data: { status: "failed", description: "Crypto deposit cancelled — payment session expired" },
+    }),
+  ]);
+
+  await notifyDepositStatus(pendingPayment.userId, "failed", pendingPayment.amount, result.reference);
+}
+
+async function processBasqetMismatch(result: WebhookResult) {
+  if (!result.reference) return;
+  console.warn(`[CryptoWebhook] Basqet payment mismatch (${result.status}): ${result.reference} — requires admin review`);
+
+  // Update PendingPayment to mismatch status for admin review. Do NOT credit the wallet.
+  await prisma.pendingPayment.updateMany({
+    where: { gatewayReference: result.reference, status: { notIn: ["completed", "abandoned"] } },
+    data: {
+      status: result.status, // "overpaid" or "underpaid"
+      reviewNotes: `Basqet payment ${result.status} — requires admin review. Webhook received ${new Date().toISOString()}`,
+    },
+  });
 }
 
 // ── Process confirmed payment ───────────────────────────────────────
@@ -249,6 +348,7 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
   const metadata = pendingPayment.metadata as Record<string, any> | null;
   const depositAmount = metadata?.depositAmount || amountFiat;
   const vatAmount = metadata?.vatAmount || 0;
+  const processingFeeAmount = Number(metadata?.processingFeeAmount || 0);
 
   // Atomically mark as processing
   const claimed = await prisma.pendingPayment.updateMany({
@@ -289,6 +389,31 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
         reference: `VAT-${reference}`,
         walletType: "main",
       },
+    });
+  }
+
+  // Create USDT_DEPOSIT_FEE transaction and record as platform revenue
+  if (processingFeeAmount > 0) {
+    await prisma.transaction.create({
+      data: {
+        id: randomUUID(),
+        userId,
+        transactionType: "USDT_DEPOSIT_FEE",
+        amount: processingFeeAmount,
+        description: `Processing fee on USDT deposit`,
+        status: "completed",
+        reference: `FEE-DEP-${reference}`,
+        walletType: "main",
+      },
+    });
+
+    await recordRevenue(prisma, {
+      source: "DEPOSIT_FEE",
+      amount: processingFeeAmount,
+      currency: "USD",
+      sourceId: reference,
+      userId,
+      description: `USDT deposit processing fee — ref ${reference}`,
     });
   }
 
