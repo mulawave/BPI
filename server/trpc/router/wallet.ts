@@ -396,7 +396,9 @@ export const walletRouter = createTRPCRouter({
             callbackUrl,
             depositAmount: amount,
             vatAmount,
-            // Pass the fee-inclusive USD total so the Basqet invoice matches the customer total.
+            // Prefer the explicit USD total when provided by the caller (no conversion).
+            // Keep `originalAmount` for backward compatibility.
+            originalTotalUsd: totalAmountUsd,
             originalAmount: totalAmountUsd,
             originalCurrency: originalCurrency,
           },
@@ -1068,6 +1070,10 @@ export const walletRouter = createTRPCRouter({
                   idempotencyKey: payoutIdempotencyKey,
                   updatedAt: new Date().toISOString(),
                 };
+                // Persist full Basqet payout audit log for debugging if available
+                if (payout.auditLog) {
+                  meta.basqetAudit = payout.auditLog;
+                }
                 if (payout.txHash) {
                   meta.adminTxHash = payout.txHash;
                 }

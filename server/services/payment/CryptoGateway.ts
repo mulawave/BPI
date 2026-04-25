@@ -342,15 +342,17 @@ export class CryptoGateway implements IPaymentGateway {
         // CRITICAL: Initialize Basqet with a supported fiat base currency (e.g., "USD" or "NGN").
         // Passing "USDT" as the base initialization currency will result in a 404 "Unsupported currency" error.
         //
-        // metadata.originalAmount = user's USD total inclusive of VAT (set in wallet.ts).
+        // Prefer explicit USD total from caller: `originalTotalUsd`.
+        // Fallback to `originalAmount` only if original currency is USD.
+        // If neither exists, fall back to local conversion (marked via conversionPerformed).
         const originalCurrency = (request.metadata?.originalCurrency as string) || "";
         const originalAmount = request.metadata?.originalAmount as number | undefined;
+        const originalTotalUsd = (request.metadata?.originalTotalUsd as number | undefined) ??
+          (originalAmount && originalCurrency === "USD" ? originalAmount : undefined);
 
-        // Use the pre-computed USD total (with VAT) when available; otherwise fall back to
-        // the crypto amount computed locally via getCryptoRate (for non-USD accounts).
-        const basqetAmount = (originalAmount && originalCurrency === "USD")
-          ? originalAmount   // USD total with VAT — equals exact USDT to charge (1 USDT = $1)
-          : amountCrypto;    // Fallback: locally computed crypto equivalent
+        let conversionPerformed = false;
+        const basqetAmount = (typeof originalTotalUsd === 'number') ? originalTotalUsd : amountCrypto;
+        if (typeof originalTotalUsd !== 'number') conversionPerformed = true;
 
         result = await initBasqetPayin(this.apiKey, this.secretKey, {
           amount: basqetAmount,
@@ -368,6 +370,29 @@ export class CryptoGateway implements IPaymentGateway {
             cryptoNetwork: request.cryptoNetwork || "TRC20",
           },
         });
+
+        // Enrich audit log with clear amounts and conversion metadata for debugging
+        try {
+          const enrichedAudit = {
+            ...(result.auditLog || {}),
+            amounts: {
+              depositAmountNgn: amountNgn,
+              vatAmountNgn: request.metadata?.vatAmount,
+              totalNgn: amountNgn + (request.metadata?.vatAmount || 0) + (request.metadata?.processingFeeAmountNgn || 0),
+              totalUsd: basqetAmount,
+              amountCrypto,
+              cryptoCurrency,
+            },
+            exchangeRate: rate?.rateNgn,
+            exchangeRateSource: rate?.source,
+            conversionPerformed,
+            originalTotalUsd: originalTotalUsd,
+          };
+          result.auditLog = enrichedAudit;
+        } catch (err) {
+          // Non-fatal: don't break the flow if enrichment fails
+          console.warn('[CryptoGateway] Failed to enrich Basqet auditLog', err);
+        }
         // Basqet returns address + amount, not a checkout URL
         if (!result.address) {
           console.error("[CryptoGateway] Basqet returned no payment address", JSON.stringify(result));
