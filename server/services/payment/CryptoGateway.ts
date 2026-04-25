@@ -415,6 +415,17 @@ export class CryptoGateway implements IPaymentGateway {
       }
     }
 
+    // Require provider-supplied crypto amount for address-based payments.
+    // No fallbacks: if the provider returns an address (on-chain transfer) it MUST also return the exact crypto amount.
+    let providerAmountCrypto: number | undefined = (result as any).amountCrypto;
+
+    if (result.address) {
+      if (typeof providerAmountCrypto !== "number") {
+        console.error("[CryptoGateway] Address-based provider response missing amountCrypto", JSON.stringify(result));
+        throw new Error("Provider did not return required crypto amount for address-based payment. Aborting to avoid incorrect payment instructions.");
+      }
+    }
+
     return {
       success: true,
       status: PaymentStatus.PENDING,
@@ -425,12 +436,13 @@ export class CryptoGateway implements IPaymentGateway {
       currency: request.currency || "NGN",
       message: result.paymentUrl
         ? "Crypto payment created. Complete payment on the provider page."
-        : `Send ${result.amountCrypto?.toFixed(6)} ${cryptoCurrency} to ${result.address}`,
+        : `Send ${providerAmountCrypto!.toFixed(6)} ${cryptoCurrency} to ${result.address}`,
       metadata: {
         provider: this.provider,
         cryptoCurrency,
         cryptoNetwork: request.cryptoNetwork || "TRC20",
-        amountCrypto,
+        // amountCrypto now reflects the provider-returned crypto amount when available
+        ...(typeof providerAmountCrypto === 'number' ? { amountCrypto: providerAmountCrypto } : {}),
         exchangeRate: rate.rateNgn,
         rateSource: rate.source,
         address: result.address,

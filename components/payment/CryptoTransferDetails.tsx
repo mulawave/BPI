@@ -137,17 +137,25 @@ export default function CryptoTransferDetails({
         showCopy={false}
       />
 
-      {amount != null && amount > 0 && (
-        <DetailRow
-          label={`Amount to Send (${currency})`}
-          value={`${amount.toLocaleString()} ${currency}`}
-          copied={copied}
-          onCopy={(v) => handleCopy(String(amount), "Amount")}
-          showCopy={showCopy}
-          emphasize
-          warning
-        />
-      )}
+      {/* Prefer provider-supplied crypto amount when available, else use prop amount */}
+      {(() => {
+        const providerAmount = (data as any)?.amountCrypto as number | undefined;
+        const displayAmount = typeof providerAmount === 'number' ? providerAmount : amount;
+        if (displayAmount != null && displayAmount > 0) {
+          return (
+            <DetailRow
+              label={`Amount to Send (${currency})`}
+              value={`${Number(displayAmount).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${currency}`}
+              copied={copied}
+              onCopy={(v) => handleCopy(String(displayAmount), "Amount")}
+              showCopy={showCopy}
+              emphasize
+              warning
+            />
+          );
+        }
+        return null;
+      })()}
     </div>
   );
 }

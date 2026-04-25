@@ -1013,7 +1013,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                   <p className="text-2xl font-bold text-orange-600 font-mono">
                     {successData.cryptoDetails?.amountCrypto != null
                       ? `${Number(successData.cryptoDetails.amountCrypto).toFixed(6)} ${(successData.cryptoDetails?.cryptoCurrency || 'USDT').toUpperCase()}`
-                      : formatDirect(cryptoTotalAmount)}
+                      : 'Provider did not return required crypto amount'}
                   </p>
                 </div>
 
@@ -1067,6 +1067,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                 <Button
                   onClick={handleClose}
                   className="flex-1 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
+                  disabled={successData.cryptoDetails?.amountCrypto == null}
                 >
                   I&apos;ve Sent the Payment
                 </Button>
@@ -1078,6 +1079,12 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                   Close
                 </Button>
               </div>
+
+              {successData.cryptoDetails?.amountCrypto == null && (
+                <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 text-sm text-red-700">
+                  Provider did not return the required crypto amount. Please contact support@beepagro.africa for assistance.
+                </div>
+              )}
 
               <p className="text-xs text-center text-muted-foreground">
                 Reference: {successData.reference}
