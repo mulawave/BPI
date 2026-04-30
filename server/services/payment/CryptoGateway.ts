@@ -5,6 +5,7 @@
 import { prisma } from "@/lib/prisma";
 import { getCryptoRate } from "@/lib/cryptoRates";
 import { initializeBasqetPayin, verifyBasqetPayin, type BasqetPayinInitResult } from "./BasqetClient";
+import { describeProviderAddress } from "./cryptoAddress";
 import {
   GatewayConfig,
   IPaymentGateway,
@@ -426,6 +427,9 @@ export class CryptoGateway implements IPaymentGateway {
       }
     }
 
+    const providerAddressDetails = result.address ? describeProviderAddress(result.address) : null;
+    const providerNetwork = providerAddressDetails?.displayNetwork || request.cryptoNetwork || "TRC20";
+
     return {
       success: true,
       status: PaymentStatus.PENDING,
@@ -440,7 +444,12 @@ export class CryptoGateway implements IPaymentGateway {
       metadata: {
         provider: this.provider,
         cryptoCurrency,
-        cryptoNetwork: request.cryptoNetwork || "TRC20",
+        cryptoNetwork: providerNetwork,
+        paymentFlow: result.address ? "provider-address" : "redirect",
+        addressSource: result.address ? "provider" : undefined,
+        addressFormat: providerAddressDetails?.kind,
+        providerNetworkExact: providerAddressDetails?.exactNetwork,
+        networkInstruction: providerAddressDetails?.networkInstruction,
         // amountCrypto now reflects the provider-returned crypto amount when available
         ...(typeof providerAmountCrypto === 'number' ? { amountCrypto: providerAmountCrypto } : {}),
         exchangeRate: rate.rateNgn,
@@ -448,7 +457,15 @@ export class CryptoGateway implements IPaymentGateway {
         address: result.address,
         expiresAt: result.expiresAt,
         qrCode: result.qrCode,
-        ...(result.auditLog ? { basqetAudit: result.auditLog } : {}),
+        ...(result.auditLog ? {
+          basqetAudit: {
+            ...result.auditLog,
+            providerAddress: result.address,
+            providerAddressFormat: providerAddressDetails?.kind,
+            providerNetworkDisplay: providerNetwork,
+            providerNetworkExact: providerAddressDetails?.exactNetwork,
+          },
+        } : {}),
       },
     };
   }

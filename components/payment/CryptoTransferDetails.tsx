@@ -107,12 +107,12 @@ export default function CryptoTransferDetails({
       <div className="flex items-center gap-2 mb-1">
         <Bitcoin className="w-5 h-5 text-orange-500" />
         <span className="text-sm font-semibold text-orange-600 dark:text-orange-400">
-          {data.tokenName} ({data.network})
+          Manual {data.tokenName} Transfer ({data.network})
         </span>
       </div>
 
       <DetailRow
-        label="Deposit Address"
+        label="Manual Deposit Address"
         value={data.depositAddress}
         copied={copied}
         onCopy={handleCopy}
@@ -137,10 +137,9 @@ export default function CryptoTransferDetails({
         showCopy={false}
       />
 
-      {/* Prefer provider-supplied crypto amount when available, else use prop amount */}
+      {/* Manual transfer screens pass the required amount explicitly */}
       {(() => {
-        const providerAmount = (data as any)?.amountCrypto as number | undefined;
-        const displayAmount = typeof providerAmount === 'number' ? providerAmount : amount;
+        const displayAmount = amount;
         if (displayAmount != null && displayAmount > 0) {
           return (
             <DetailRow

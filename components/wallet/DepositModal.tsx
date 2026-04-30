@@ -1007,6 +1007,12 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
 
               {/* Payment Details Card */}
               <div className="p-5 bg-gradient-to-br from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/20 rounded-xl border border-orange-200 dark:border-orange-800 space-y-4">
+                {successData.cryptoDetails?.addressSource === 'provider' && (
+                  <div className="rounded-lg border border-emerald-300/70 bg-emerald-50/80 px-3 py-2 text-sm font-medium text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200">
+                    Provider-generated payment address for this transaction only.
+                  </div>
+                )}
+
                 {/* Amount */}
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Amount to Send</p>
@@ -1020,7 +1026,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                 {/* Address */}
                 {successData.cryptoDetails?.address && (
                   <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Payment Address</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Provider Payment Address</p>
                     <div className="flex items-center gap-2">
                       <code className="flex-1 text-sm font-mono break-all bg-white/60 dark:bg-black/20 px-3 py-2 rounded-lg border">
                         {successData.cryptoDetails.address}
@@ -1042,8 +1048,14 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                 {/* Network */}
                 {successData.cryptoDetails?.cryptoNetwork && (
                   <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Network</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Network Guidance</p>
                     <p className="font-semibold">{successData.cryptoDetails.cryptoNetwork}</p>
+                  </div>
+                )}
+
+                {successData.cryptoDetails?.networkInstruction && (
+                  <div className="rounded-lg border border-orange-300/70 bg-orange-50/80 px-3 py-3 text-sm text-orange-900 dark:border-orange-800 dark:bg-orange-950/20 dark:text-orange-200">
+                    {successData.cryptoDetails.networkInstruction}
                   </div>
                 )}
               </div>
@@ -1056,7 +1068,10 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
                 </h4>
                 <ul className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1">
                   <li>• Send the <strong>exact amount</strong> shown above</li>
-                  <li>• Use only the <strong>{successData.cryptoDetails?.cryptoNetwork || 'correct'}</strong> network</li>
+                  <li>• Use only the <strong>{successData.cryptoDetails?.cryptoNetwork || 'provider-specified'}</strong> payment route for this address</li>
+                  {successData.cryptoDetails?.networkInstruction && (
+                    <li>• {successData.cryptoDetails.networkInstruction}</li>
+                  )}
                   <li>• Your wallet will be credited automatically once confirmed</li>
                   <li>• Do not close this page until you have copied the address</li>
                 </ul>

@@ -466,7 +466,8 @@ export const paymentRouter = createTRPCRouter({
     }),
 
   /**
-   * Get crypto deposit settings (USDT TRC-20 address, network) for users.
+   * Get manual crypto transfer settings.
+   * This admin-configured address/network is separate from provider-generated Basqet payment addresses.
    */
   getCryptoDepositInfo: protectedProcedure.query(async ({ ctx }) => {
     const cryptoGateway = await ctx.prisma.paymentGatewayConfig.findUnique({
@@ -493,6 +494,7 @@ export const paymentRouter = createTRPCRouter({
 
     return {
       available: true as const,
+      mode: "manual" as const,
       depositAddress: cryptoGateway.cryptoDepositAddress,
       network: cryptoGateway.cryptoNetwork || "TRC-20",
       tokenName: cryptoGateway.tokenName || "USDT",
