@@ -12,6 +12,7 @@
 // Currency IDs: USDT=3, BTC=4, QDX=5, ETH=6, LTC=7
 
 import crypto from "crypto";
+import { normalizeCryptoNetwork } from "./cryptoNetwork";
 
 // ── Interfaces ──────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@ export interface BasqetPayinInitResult {
   paymentAmount: number;
   qrCode?: string;
   paymentCurrency?: string;
+  paymentNetwork?: string;
   status: string;
   auditLog: {
     initBody: object;
@@ -189,6 +191,7 @@ export async function initializeBasqetPayin(input: BasqetPayinInitInput): Promis
     paymentAmount: payData.payment_amount,
     qrCode: payData.qrCode,
     paymentCurrency: payData.payment_currency,
+    paymentNetwork: normalizeCryptoNetwork(payData.payment_currency) ?? undefined,
     status: payData.status || "PENDING",
     auditLog: {
       initBody,

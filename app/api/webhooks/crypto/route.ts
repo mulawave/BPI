@@ -10,6 +10,11 @@ import { notifyDepositStatus } from "@/server/services/notification.service";
 import { generateReceiptLink } from "@/server/services/receipt.service";
 import { validateBasqetWebhookSignature } from "@/server/services/payment/BasqetClient";
 import { recordRevenue } from "@/server/services/revenue.service";
+import {
+  activateMembershipAfterExternalPayment,
+  upgradeMembershipAfterExternalPayment,
+} from "@/server/services/membershipPayments.service";
+import { getNigerianRegion } from "@/lib/nigeria-regions";
 
 export async function POST(request: NextRequest) {
   try {
@@ -98,6 +103,8 @@ interface WebhookResult {
   providerRef?: string;
   status: string;
 }
+
+const ACTIVE_CRYPTO_PAYMENT_STATUSES = ["pending", "processing", "blockchain_awaiting"] as const;
 
 // ── Coinbase Commerce ───────────────────────────────────────────────
 
@@ -327,7 +334,7 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
 
   // Find the pending payment
   const pendingPayment = await prisma.pendingPayment.findFirst({
-    where: { gatewayReference: reference, status: { in: ["pending", "processing"] } },
+    where: { gatewayReference: reference, status: { in: [...ACTIVE_CRYPTO_PAYMENT_STATUSES] } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -346,6 +353,132 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
 
   const userId = pendingPayment.userId;
   const metadata = pendingPayment.metadata as Record<string, any> | null;
+
+  const claimed = await prisma.pendingPayment.updateMany({
+    where: { id: pendingPayment.id, status: { in: [...ACTIVE_CRYPTO_PAYMENT_STATUSES] } },
+    data: {
+      status: "processing",
+      reviewNotes: `Crypto confirmation claimed at ${new Date().toISOString()}`,
+    },
+  });
+
+  if (claimed.count === 0) {
+    console.log(`[CryptoWebhook] Payment ${reference} already claimed`);
+    return;
+  }
+
+  if (pendingPayment.transactionType === "MEMBERSHIP") {
+    const packageId = metadata?.packageId;
+    if (!packageId) {
+      await prisma.pendingPayment.update({
+        where: { id: pendingPayment.id },
+        data: { status: "rejected", reviewNotes: "Missing packageId in membership crypto payment metadata" },
+      });
+      console.warn(`[CryptoWebhook] Missing packageId for membership payment ${reference}`);
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true, country: true, state: true },
+    });
+
+    await activateMembershipAfterExternalPayment({
+      prisma,
+      userId,
+      packageId,
+      selectedPalliative: metadata?.selectedPalliative,
+      paymentReference: reference,
+      paymentMethodLabel: "Crypto",
+      activatorName: user?.name || user?.email || "Member",
+    });
+
+    await prisma.transaction.updateMany({
+      where: { reference, userId, status: "pending" },
+      data: {
+        status: "completed",
+        description: `Membership payment via ${result.cryptoCurrency || "USDT"} (confirmed)`,
+      },
+    });
+
+    await prisma.pendingPayment.update({
+      where: { id: pendingPayment.id },
+      data: { status: "completed", reviewedAt: new Date(), reviewNotes: `Crypto webhook confirmed at ${new Date().toISOString()}` },
+    });
+
+    const membershipPackage = await prisma.membershipPackage.findUnique({ where: { id: packageId } });
+    if (membershipPackage) {
+      try {
+        await recordRevenue(prisma, {
+          source: "MEMBERSHIP_REGISTRATION",
+          amount: membershipPackage.price,
+          currency: "NGN",
+          sourceId: `MEMBERSHIP_REGISTRATION:${reference}`,
+          description: `Membership purchase: ${membershipPackage.name}`,
+          userId,
+          packageId,
+          programType: "MEMBERSHIP",
+          country: user?.country ?? undefined,
+          state: user?.state ?? undefined,
+          region: getNigerianRegion(user?.state),
+          metadata: {
+            totalPaid: pendingPayment.amount,
+            basePrice: membershipPackage.price,
+            vat: membershipPackage.vat,
+            paymentMethod: "CRYPTO",
+            selectedPalliative: metadata?.selectedPalliative ?? null,
+            cryptoCurrency: result.cryptoCurrency ?? null,
+            amountCrypto: result.amountCrypto ?? null,
+          },
+        });
+      } catch (error: any) {
+        if (error?.code !== "P2002") throw error;
+      }
+    }
+
+    console.log(`[CryptoWebhook] Successfully completed membership payment ${reference}`);
+    return;
+  }
+
+  if (pendingPayment.transactionType === "MEMBERSHIP_UPGRADE") {
+    const packageId = metadata?.packageId;
+    const currentPackageId = metadata?.currentPackageId;
+    if (!packageId || !currentPackageId) {
+      await prisma.pendingPayment.update({
+        where: { id: pendingPayment.id },
+        data: { status: "rejected", reviewNotes: "Missing packageId or currentPackageId in upgrade crypto payment metadata" },
+      });
+      console.warn(`[CryptoWebhook] Missing package metadata for upgrade payment ${reference}`);
+      return;
+    }
+
+    await upgradeMembershipAfterExternalPayment({
+      prisma,
+      userId,
+      packageId,
+      currentPackageId,
+      selectedPalliative: metadata?.selectedPalliative,
+      paymentReference: reference,
+      paymentMethodLabel: "Crypto",
+    });
+
+    await prisma.transaction.updateMany({
+      where: { reference, userId, status: "pending" },
+      data: {
+        status: "completed",
+        description: `Membership upgrade payment via ${result.cryptoCurrency || "USDT"} (confirmed)`,
+      },
+    });
+
+    await prisma.pendingPayment.update({
+      where: { id: pendingPayment.id },
+      data: { status: "completed", reviewedAt: new Date(), reviewNotes: `Crypto webhook confirmed at ${new Date().toISOString()}` },
+    });
+
+    console.log(`[CryptoWebhook] Successfully completed membership upgrade payment ${reference}`);
+    return;
+  }
+
   const depositAmount = metadata?.depositAmount || amountFiat;
   const vatAmount = metadata?.vatAmount || 0;
   // processingFeeAmount is stored in USD for revenue tracking
@@ -353,16 +486,10 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
   const processingFeeAmount = Number(metadata?.processingFeeAmount || 0);
   const processingFeeAmountNgn = Number(metadata?.processingFeeAmountNgn || metadata?.processingFeeAmount || 0);
 
-  // Atomically mark as processing
-  const claimed = await prisma.pendingPayment.updateMany({
-    where: { id: pendingPayment.id, status: { in: ["pending", "processing"] } },
-    data: { status: "approved", reviewNotes: `Crypto webhook confirmed at ${new Date().toISOString()}` },
+  const transaction = await prisma.transaction.findFirst({
+    where: { reference, userId, status: "pending", transactionType: "DEPOSIT" },
+    orderBy: { createdAt: "desc" },
   });
-
-  if (claimed.count === 0) {
-    console.log(`[CryptoWebhook] Payment ${reference} already claimed`);
-    return;
-  }
 
   // Credit wallet
   await prisma.user.update({
@@ -371,13 +498,23 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
   });
 
   // Update transaction to completed
-  await prisma.transaction.updateMany({
-    where: { reference, userId, status: "pending" },
-    data: {
-      status: "completed",
-      description: `Wallet deposit via ${result.cryptoCurrency || "crypto"} (confirmed)`,
-    },
-  });
+  if (transaction) {
+    await prisma.transaction.update({
+      where: { id: transaction.id },
+      data: {
+        status: "completed",
+        description: `Wallet deposit via ${result.cryptoCurrency || "crypto"} (confirmed)`,
+      },
+    });
+  } else {
+    await prisma.transaction.updateMany({
+      where: { reference, userId, status: "pending" },
+      data: {
+        status: "completed",
+        description: `Wallet deposit via ${result.cryptoCurrency || "crypto"} (confirmed)`,
+      },
+    });
+  }
 
   // Create VAT transaction
   if (vatAmount > 0) {
@@ -423,10 +560,14 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
   // Mark pending payment as completed
   await prisma.pendingPayment.update({
     where: { id: pendingPayment.id },
-    data: { status: "completed" },
+    data: {
+      status: "completed",
+      reviewedAt: new Date(),
+      reviewNotes: `Crypto webhook confirmed at ${new Date().toISOString()}`,
+    },
   });
 
-  const receiptLink = generateReceiptLink(pendingPayment.id, "deposit");
+  const receiptLink = transaction ? generateReceiptLink(transaction.id, "deposit") : undefined;
   await notifyDepositStatus(userId, "completed", depositAmount, reference, receiptLink);
 
   console.log(`[CryptoWebhook] Successfully credited ₦${depositAmount} to user ${userId} via ${result.cryptoCurrency}`);

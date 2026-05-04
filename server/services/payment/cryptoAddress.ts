@@ -1,3 +1,5 @@
+import { isNetworkCompatibleWithAddressKind, normalizeCryptoNetwork } from "./cryptoNetwork";
+
 export type CryptoAddressKind = "tron" | "evm" | "unknown";
 
 export interface ProviderAddressDetails {
@@ -5,6 +7,10 @@ export interface ProviderAddressDetails {
   displayNetwork: string;
   exactNetwork: boolean;
   networkInstruction?: string;
+}
+
+export interface DescribeProviderAddressOptions {
+  providerNetworkHint?: string | null;
 }
 
 export function detectCryptoAddressKind(address?: string | null): CryptoAddressKind {
@@ -22,8 +28,17 @@ export function detectCryptoAddressKind(address?: string | null): CryptoAddressK
   return "unknown";
 }
 
-export function describeProviderAddress(address?: string | null): ProviderAddressDetails {
+export function describeProviderAddress(
+  address?: string | null,
+  options: DescribeProviderAddressOptions = {},
+): ProviderAddressDetails {
   const kind = detectCryptoAddressKind(address);
+  const normalizedHint = normalizeCryptoNetwork(options.providerNetworkHint);
+  const compatibleHint = normalizedHint && isNetworkCompatibleWithAddressKind(normalizedHint, kind)
+    ? normalizedHint
+    : kind === "unknown"
+      ? normalizedHint
+      : null;
 
   switch (kind) {
     case "tron":
@@ -34,6 +49,16 @@ export function describeProviderAddress(address?: string | null): ProviderAddres
       };
 
     case "evm":
+      if (compatibleHint) {
+        return {
+          kind,
+          displayNetwork: compatibleHint,
+          exactNetwork: true,
+          networkInstruction:
+            `This is a provider-generated 0x address. Send only via the ${compatibleHint} network for this payment. Do not use the manual TRC20 address or TRC20-only instructions for this payment.`,
+        };
+      }
+
       return {
         kind,
         displayNetwork: "Provider-generated 0x address",
@@ -43,6 +68,15 @@ export function describeProviderAddress(address?: string | null): ProviderAddres
       };
 
     default:
+      if (compatibleHint) {
+        return {
+          kind,
+          displayNetwork: compatibleHint,
+          exactNetwork: true,
+          networkInstruction: `Use only the ${compatibleHint} network for this provider-generated address.`,
+        };
+      }
+
       return {
         kind,
         displayNetwork: "Provider-generated address",

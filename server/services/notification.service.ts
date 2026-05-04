@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
+import { sendEmail } from "@/lib/email";
 
 export type NotificationType = 
   | "MEMBERSHIP_ACTIVATED"
@@ -568,6 +569,51 @@ export async function notifyDepositStatus(
     message: config.message,
     actionUrl: receiptUrl || "/dashboard",
   });
+
+  if (status !== "completed" && status !== "failed") {
+    return;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, name: true },
+    });
+
+    if (!user?.email) {
+      return;
+    }
+
+    const safeName = user.name || "Member";
+    const subject = status === "completed"
+      ? "Your BPI deposit has been completed"
+      : "Your BPI deposit could not be completed";
+    const receiptLine = receiptUrl
+      ? `<p><strong>Receipt:</strong> <a href="${receiptUrl}">View receipt</a></p>`
+      : "";
+    const html = status === "completed"
+      ? `
+        <p>Hello ${safeName},</p>
+        <p>Your deposit of <strong>₦${amount.toLocaleString()}</strong> has been successfully credited to your wallet.</p>
+        <p><strong>Reference:</strong> ${reference}</p>
+        ${receiptLine}
+        <p>You can view the updated balance in your dashboard.</p>
+      `
+      : `
+        <p>Hello ${safeName},</p>
+        <p>Your deposit of <strong>₦${amount.toLocaleString()}</strong> could not be completed automatically.</p>
+        <p><strong>Reference:</strong> ${reference}</p>
+        <p>Please try again or contact support if funds were already sent.</p>
+      `;
+
+    await sendEmail({
+      to: user.email,
+      subject,
+      html,
+    });
+  } catch (error) {
+    console.error("Failed to send deposit status email:", error);
+  }
 }
 
 /**

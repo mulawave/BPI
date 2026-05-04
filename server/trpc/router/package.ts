@@ -5,6 +5,7 @@ import type { Prisma, MembershipPackage } from "@prisma/client";
 import { getReferralChain } from "@/server/services/referral.service";
 import { distributeBptReward } from "@/server/services/rewards.service";
 import { PaymentProcessor } from "@/server/services/payment";
+import { resolveCryptoPaymentNetworkDetails } from "@/server/services/payment/cryptoPaymentDetails";
 import { PaymentGateway, PaymentPurpose, PaymentStatus } from "@/server/services/payment/types";
 import { randomUUID } from "crypto";
 import { getPalliativeTier, isHighTierPackage, getWalletFieldName } from "@/lib/palliative";
@@ -101,7 +102,10 @@ export const packageRouter = createTRPCRouter({
     .input(z.object({
       packageId: z.string(),
       selectedPalliative: z.enum(["car", "house", "land", "business", "solar", "education"]).optional(),
-      gateway: z.enum(["wallet", "flutterwave", "paystack", "mock"]).default("wallet"),
+      gateway: z.enum(["wallet", "flutterwave", "paystack", "crypto", "mock"]).default("wallet"),
+      originalAmount: z.number().optional(),
+      originalCurrency: z.string().optional(),
+      originalTotalUsd: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = (ctx.session?.user as any)?.id;
@@ -216,11 +220,18 @@ export const packageRouter = createTRPCRouter({
         return { success: true, gateway: "mock", paymentUrl: null, reference: mockReference };
       }
 
-      // External gateway flow (Paystack or Flutterwave)
-      const gatewayEnum = input.gateway === "paystack" ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE;
+      // External gateway flow (Paystack, Flutterwave, or Crypto/Basqet)
+      const gatewayEnum = input.gateway === "paystack"
+        ? PaymentGateway.PAYSTACK
+        : input.gateway === "flutterwave"
+          ? PaymentGateway.FLUTTERWAVE
+          : PaymentGateway.CRYPTO;
 
       const baseUrl = (await resolveAppBaseUrl()).replace(/\/$/, "");
-      const callbackUrl = `${baseUrl}/api/webhooks/${input.gateway}/callback`;
+      const callbackUrl = input.gateway === "crypto"
+        ? `${baseUrl}/api/webhooks/crypto`
+        : `${baseUrl}/api/webhooks/${input.gateway}/callback`;
+      const paymentMethod = input.gateway === "crypto" ? "crypto" : input.gateway;
 
       const payment = await PaymentProcessor.processPayment({
         amount: totalCost,
@@ -229,15 +240,19 @@ export const packageRouter = createTRPCRouter({
         packageId: input.packageId,
         email: ctx.session?.user?.email || "",
         name: ctx.session?.user?.name || "",
-        paymentMethod: input.gateway,
+        paymentMethod,
         purpose: PaymentPurpose.MEMBERSHIP,
         gateway: gatewayEnum,
+        cryptoCurrency: input.gateway === "crypto" ? "USDT" : undefined,
         metadata: {
           packageId: input.packageId,
           purpose: PaymentPurpose.MEMBERSHIP,
           selectedPalliative: input.selectedPalliative,
           userId,
           callbackUrl,
+          originalAmount: input.originalAmount,
+          originalCurrency: input.originalCurrency,
+          originalTotalUsd: input.originalTotalUsd,
         },
       });
 
@@ -268,13 +283,25 @@ export const packageRouter = createTRPCRouter({
           transactionType: "MEMBERSHIP",
           amount: totalCost,
           currency: "NGN",
-          paymentMethod: input.gateway,
+          paymentMethod,
           gatewayReference: paymentRef,
           status: "pending",
           metadata: {
             packageId: input.packageId,
             selectedPalliative: input.selectedPalliative,
             purpose: PaymentPurpose.MEMBERSHIP,
+            provider: payment.metadata?.provider,
+            cryptoCurrency: payment.metadata?.cryptoCurrency,
+            cryptoNetwork: payment.metadata?.cryptoNetwork,
+            amountCrypto: payment.metadata?.amountCrypto,
+            address: payment.metadata?.address,
+            qrCode: payment.metadata?.qrCode,
+            paymentFlow: payment.metadata?.paymentFlow,
+            addressSource: payment.metadata?.addressSource,
+            addressFormat: payment.metadata?.addressFormat,
+            providerNetworkExact: payment.metadata?.providerNetworkExact,
+            networkInstruction: payment.metadata?.networkInstruction,
+            basqetAudit: payment.metadata?.basqetAudit,
           },
           updatedAt: new Date(),
         },
@@ -285,6 +312,7 @@ export const packageRouter = createTRPCRouter({
         gateway: input.gateway,
         paymentUrl: payment.paymentUrl,
         reference: paymentRef,
+        cryptoDetails: payment.metadata,
       };
     }),
 
@@ -2605,8 +2633,11 @@ export const packageRouter = createTRPCRouter({
       packageId: z.string(),
       currentPackageId: z.string(),
       selectedPalliative: z.enum(["car", "house", "land", "business", "solar", "education"]).optional(),
-      paymentMethod: z.enum(['wallet', 'paystack', 'flutterwave', 'mock']).default('wallet'),
-      frontendCalculatedCost: z.number().optional() // Frontend cost for validation
+      paymentMethod: z.enum(['wallet', 'paystack', 'flutterwave', 'crypto', 'mock']).default('wallet'),
+      frontendCalculatedCost: z.number().optional(),
+      originalAmount: z.number().optional(),
+      originalCurrency: z.string().optional(),
+      originalTotalUsd: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.session?.user) {
@@ -2835,12 +2866,19 @@ export const packageRouter = createTRPCRouter({
       // price is higher (checked above via upgradeCost > 0) and let downstream logic
       // handle distributions based on the actual differentials.
 
-      // External gateways: initialize payment and return URL without completing upgrade yet
-      if (paymentMethod === 'paystack' || paymentMethod === 'flutterwave') {
-        const gatewayEnum = paymentMethod === 'paystack' ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE;
+      // External gateways: initialize payment and return URL/details without completing upgrade yet
+      if (paymentMethod === 'paystack' || paymentMethod === 'flutterwave' || paymentMethod === 'crypto') {
+        const gatewayEnum = paymentMethod === 'paystack'
+          ? PaymentGateway.PAYSTACK
+          : paymentMethod === 'flutterwave'
+            ? PaymentGateway.FLUTTERWAVE
+            : PaymentGateway.CRYPTO;
 
         const baseUrl = (await resolveAppBaseUrl()).replace(/\/$/, "");
-        const callbackUrl = `${baseUrl}/api/webhooks/${paymentMethod}/callback`;
+        const callbackUrl = paymentMethod === 'crypto'
+          ? `${baseUrl}/api/webhooks/crypto`
+          : `${baseUrl}/api/webhooks/${paymentMethod}/callback`;
+        const resolvedPaymentMethod = paymentMethod === 'crypto' ? 'crypto' : paymentMethod;
 
         const payment = await PaymentProcessor.processPayment({
           amount: upgradeCost,
@@ -2849,9 +2887,10 @@ export const packageRouter = createTRPCRouter({
           packageId,
           email: ctx.session?.user?.email || "",
           name: ctx.session?.user?.name || "",
-          paymentMethod,
+          paymentMethod: resolvedPaymentMethod,
           purpose: PaymentPurpose.UPGRADE,
           gateway: gatewayEnum,
+          cryptoCurrency: paymentMethod === 'crypto' ? 'USDT' : undefined,
           metadata: {
             packageId,
             currentPackageId,
@@ -2861,6 +2900,9 @@ export const packageRouter = createTRPCRouter({
             upgradeCost,
             shouldDistribute,
             callbackUrl,
+            originalAmount: input.originalAmount,
+            originalCurrency: input.originalCurrency,
+            originalTotalUsd: input.originalTotalUsd,
           },
         });
 
@@ -2891,7 +2933,7 @@ export const packageRouter = createTRPCRouter({
             transactionType: "MEMBERSHIP_UPGRADE",
             amount: upgradeCost,
             currency: "NGN",
-            paymentMethod,
+            paymentMethod: resolvedPaymentMethod,
             gatewayReference: paymentRef,
             status: "pending",
             metadata: {
@@ -2900,6 +2942,18 @@ export const packageRouter = createTRPCRouter({
               selectedPalliative,
               purpose: PaymentPurpose.UPGRADE,
               shouldDistribute,
+              provider: payment.metadata?.provider,
+              cryptoCurrency: payment.metadata?.cryptoCurrency,
+              cryptoNetwork: payment.metadata?.cryptoNetwork,
+              amountCrypto: payment.metadata?.amountCrypto,
+              address: payment.metadata?.address,
+              qrCode: payment.metadata?.qrCode,
+              paymentFlow: payment.metadata?.paymentFlow,
+              addressSource: payment.metadata?.addressSource,
+              addressFormat: payment.metadata?.addressFormat,
+              providerNetworkExact: payment.metadata?.providerNetworkExact,
+              networkInstruction: payment.metadata?.networkInstruction,
+              basqetAudit: payment.metadata?.basqetAudit,
             },
             updatedAt: new Date(),
           },
@@ -2911,6 +2965,7 @@ export const packageRouter = createTRPCRouter({
           paymentUrl: payment.paymentUrl,
           reference: paymentRef,
           message: "Upgrade payment initialized. Complete payment to finalize upgrade.",
+          cryptoDetails: payment.metadata,
         };
       }
 
@@ -3390,6 +3445,58 @@ export const packageRouter = createTRPCRouter({
       );
 
       return { sent: true };
+    }),
+
+  getMembershipCryptoPayment: protectedProcedure
+    .input(z.object({ reference: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id;
+      if (!userId) throw new Error("UNAUTHORIZED");
+
+      const pendingPayment = await prisma.pendingPayment.findFirst({
+        where: {
+          userId,
+          gatewayReference: input.reference,
+          paymentMethod: "crypto",
+          transactionType: { in: ["MEMBERSHIP", "MEMBERSHIP_UPGRADE"] },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!pendingPayment) {
+        throw new Error("Crypto membership payment not found.");
+      }
+
+      const meta = (pendingPayment.metadata as Record<string, any> | null) || {};
+      const payResponseData = meta?.basqetAudit?.payResponse?.data || {};
+      const resolvedNetworkDetails = resolveCryptoPaymentNetworkDetails({
+        cryptoNetwork: meta.cryptoNetwork ?? null,
+        paymentCurrency: payResponseData.payment_currency ?? null,
+        address: meta.address || payResponseData.payment_address || null,
+        networkInstruction: meta.networkInstruction ?? null,
+        providerNetworkExact: meta.providerNetworkExact ?? null,
+      });
+
+      return {
+        reference: pendingPayment.gatewayReference,
+        status: pendingPayment.status,
+        transactionType: pendingPayment.transactionType,
+        amountNgn: pendingPayment.amount,
+        reviewNotes: pendingPayment.reviewNotes,
+        cryptoDetails: {
+          address: meta.address || payResponseData.payment_address || null,
+          amountCrypto: meta.amountCrypto ?? payResponseData.payment_amount ?? null,
+          cryptoCurrency: meta.cryptoCurrency || payResponseData.payment_currency || "USDT",
+          cryptoNetwork: resolvedNetworkDetails.cryptoNetwork,
+          qrCode: meta.qrCode || payResponseData.qrCode || null,
+          paymentFlow: meta.paymentFlow || null,
+          addressSource: meta.addressSource || null,
+          addressFormat: meta.addressFormat || resolvedNetworkDetails.addressFormat || null,
+          providerNetworkExact: resolvedNetworkDetails.providerNetworkExact,
+          networkInstruction: resolvedNetworkDetails.networkInstruction,
+          provider: meta.provider || null,
+        },
+      };
     }),
 
   // Verify and activate any external payment (MEMBERSHIP, UPGRADE, EMPOWERMENT)

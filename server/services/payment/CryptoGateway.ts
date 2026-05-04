@@ -5,7 +5,8 @@
 import { prisma } from "@/lib/prisma";
 import { getCryptoRate } from "@/lib/cryptoRates";
 import { initializeBasqetPayin, verifyBasqetPayin, type BasqetPayinInitResult } from "./BasqetClient";
-import { describeProviderAddress } from "./cryptoAddress";
+import { resolveCryptoPaymentNetworkDetails } from "./cryptoPaymentDetails";
+import { normalizeCryptoNetwork } from "./cryptoNetwork";
 import {
   GatewayConfig,
   IPaymentGateway,
@@ -24,6 +25,8 @@ interface CryptoProviderResult {
   amountCrypto?: number;
   expiresAt?: string;
   qrCode?: string;
+  paymentCurrency?: string;
+  paymentNetwork?: string;
   auditLog?: object;
 }
 
@@ -250,6 +253,8 @@ async function initBasqetPayin(
     address: result.paymentAddress,
     amountCrypto: result.paymentAmount,
     qrCode: result.qrCode,
+    paymentCurrency: result.paymentCurrency,
+    paymentNetwork: result.paymentNetwork,
     auditLog: result.auditLog,
     // Basqet does NOT return a hosted checkout URL.
     // Payment is made by sending crypto to the address.
@@ -261,7 +266,24 @@ async function verifyBasqetPayment(
   secretKey: string,
   reference: string
 ): Promise<CryptoVerifyResult> {
-  const result = await verifyBasqetPayin(secretKey, apiKey, reference);
+  const pendingPayment = await prisma.pendingPayment.findFirst({
+    where: {
+      gatewayReference: reference,
+      paymentMethod: "crypto",
+    },
+    orderBy: { createdAt: "desc" },
+    select: { metadata: true },
+  });
+
+  const metadata = (pendingPayment?.metadata as Record<string, any> | null) || {};
+  const basqetPayResponse = metadata?.basqetAudit?.payResponse?.data || {};
+  const basqetInitResponse = metadata?.basqetAudit?.initResponse?.data || {};
+  const providerTransactionId =
+    basqetPayResponse.id ||
+    basqetInitResponse.id ||
+    reference;
+
+  const result = await verifyBasqetPayin(secretKey, apiKey, providerTransactionId);
   return {
     paid: result.paid,
     amountReceived: result.amountReceived,
@@ -368,7 +390,7 @@ export class CryptoGateway implements IPaymentGateway {
             userId: request.userId,
             amountNgn,
             cryptoCurrency,
-            cryptoNetwork: request.cryptoNetwork || "TRC20",
+            ...(request.cryptoNetwork ? { cryptoNetwork: request.cryptoNetwork } : {}),
           },
         });
 
@@ -418,7 +440,7 @@ export class CryptoGateway implements IPaymentGateway {
 
     // Require provider-supplied crypto amount for address-based payments.
     // No fallbacks: if the provider returns an address (on-chain transfer) it MUST also return the exact crypto amount.
-    let providerAmountCrypto: number | undefined = (result as any).amountCrypto;
+    const providerAmountCrypto: number | undefined = (result as any).amountCrypto;
 
     if (result.address) {
       if (typeof providerAmountCrypto !== "number") {
@@ -427,8 +449,12 @@ export class CryptoGateway implements IPaymentGateway {
       }
     }
 
-    const providerAddressDetails = result.address ? describeProviderAddress(result.address) : null;
-    const providerNetwork = providerAddressDetails?.displayNetwork || request.cryptoNetwork || "TRC20";
+    const resolvedNetworkDetails = resolveCryptoPaymentNetworkDetails({
+      cryptoNetwork: result.address ? null : (normalizeCryptoNetwork(request.cryptoNetwork) || request.cryptoNetwork || null),
+      paymentCurrency: result.paymentCurrency || result.paymentNetwork || null,
+      address: result.address,
+    });
+    const providerNetwork = resolvedNetworkDetails.cryptoNetwork;
 
     return {
       success: true,
@@ -447,9 +473,9 @@ export class CryptoGateway implements IPaymentGateway {
         cryptoNetwork: providerNetwork,
         paymentFlow: result.address ? "provider-address" : "redirect",
         addressSource: result.address ? "provider" : undefined,
-        addressFormat: providerAddressDetails?.kind,
-        providerNetworkExact: providerAddressDetails?.exactNetwork,
-        networkInstruction: providerAddressDetails?.networkInstruction,
+        addressFormat: resolvedNetworkDetails.addressFormat ?? undefined,
+        providerNetworkExact: resolvedNetworkDetails.providerNetworkExact ?? undefined,
+        networkInstruction: resolvedNetworkDetails.networkInstruction ?? undefined,
         // amountCrypto now reflects the provider-returned crypto amount when available
         ...(typeof providerAmountCrypto === 'number' ? { amountCrypto: providerAmountCrypto } : {}),
         exchangeRate: rate.rateNgn,
@@ -461,9 +487,11 @@ export class CryptoGateway implements IPaymentGateway {
           basqetAudit: {
             ...result.auditLog,
             providerAddress: result.address,
-            providerAddressFormat: providerAddressDetails?.kind,
+            providerAddressFormat: resolvedNetworkDetails.addressFormat ?? undefined,
             providerNetworkDisplay: providerNetwork,
-            providerNetworkExact: providerAddressDetails?.exactNetwork,
+            providerNetworkExact: resolvedNetworkDetails.providerNetworkExact ?? undefined,
+            providerPaymentCurrency: result.paymentCurrency,
+            providerPaymentNetwork: result.paymentNetwork,
           },
         } : {}),
       },

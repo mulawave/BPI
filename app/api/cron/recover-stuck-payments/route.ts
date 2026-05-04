@@ -1,7 +1,7 @@
 /**
  * Cron endpoint: Recover Stuck Payments
  *
- * Finds PendingPayment records from Paystack/Flutterwave that are stuck in
+ * Finds PendingPayment records from automated gateways that are stuck in
  * "pending" or "processing" status, verifies them with the gateway, and
  * auto-completes them based on their transactionType.
  *
@@ -67,8 +67,17 @@ async function handleCron(req: NextRequest) {
     // Find stuck payments from automated gateways only
     const stuckPayments = await prisma.pendingPayment.findMany({
       where: {
-        status: { in: ["pending", "processing"] },
-        paymentMethod: { in: ["paystack", "flutterwave"] },
+        status: { in: ["pending", "processing", "blockchain_awaiting"] },
+        OR: [
+          { paymentMethod: { in: ["paystack", "flutterwave"] } },
+          {
+            paymentMethod: "crypto",
+            metadata: {
+              path: ["paymentFlow"],
+              equals: "provider-address",
+            },
+          },
+        ],
         gatewayReference: { not: null },
         createdAt: { gte: minCreatedAt, lte: maxCreatedAt },
       },
@@ -85,7 +94,11 @@ async function handleCron(req: NextRequest) {
 
     for (const payment of stuckPayments) {
       const ref = payment.gatewayReference!;
-      const gateway = payment.paymentMethod === "paystack" ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE;
+      const gateway = payment.paymentMethod === "paystack"
+        ? PaymentGateway.PAYSTACK
+        : payment.paymentMethod === "flutterwave"
+          ? PaymentGateway.FLUTTERWAVE
+          : PaymentGateway.CRYPTO;
 
       try {
         // Skip if another process already handled this (optimistic concurrency)
@@ -125,7 +138,7 @@ async function handleCron(req: NextRequest) {
 
         // Claim the payment atomically
         const claimed = await prisma.pendingPayment.updateMany({
-          where: { id: payment.id, status: { in: ["pending", "processing"] } },
+          where: { id: payment.id, status: { in: ["pending", "processing", "blockchain_awaiting"] } },
           data: { status: "processing", reviewNotes: `Recovery cron claimed at ${now.toISOString()}` },
         });
         if (claimed.count === 0) {

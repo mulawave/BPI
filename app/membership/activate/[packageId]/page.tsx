@@ -56,7 +56,7 @@ export default function ActivateMembershipPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
-  const { formatAmount, selectedCurrency, currencies, setSelectedCurrencyId } = useCurrency();
+  const { formatAmount, convertAmount, selectedCurrency, currencies, setSelectedCurrencyId } = useCurrency();
   const isCryptoAllowed = selectedCurrency?.symbol !== 'NGN';
   const selectedCurrencyId = selectedCurrency?.id || '';
   const packageId = params?.packageId as string;
@@ -107,6 +107,7 @@ export default function ActivateMembershipPage() {
         ? adjustedActivationCost
         : (selectedPackage.price + selectedPackage.vat) - (fromPackage.price + fromPackage.vat))
     : adjustedActivationCost;
+  const totalCostInSelectedCurrency = convertAmount(totalCost);
 
   // Fetch user details to check wallet balance
   const { data: userDetails } = api.user.getDetails.useQuery();
@@ -153,6 +154,12 @@ export default function ActivateMembershipPage() {
         window.location.href = data.paymentUrl;
         return;
       }
+      if (data.gateway === 'crypto' && data.reference) {
+        const palliativeQuery = selectedPalliative ? `&palliative=${encodeURIComponent(selectedPalliative)}` : '';
+        router.push(`/membership/payment/crypto?reference=${encodeURIComponent(data.reference)}&packageId=${selectedPackage?.id || ''}&amount=${totalCost}${isUpgrade ? `&upgrade=true&from=${fromPackageId}` : ''}${palliativeQuery}`);
+        setProcessing(false);
+        return;
+      }
       // Wallet payment: activation completed server-side
       setSuccess(true);
       setProcessing(false);
@@ -173,6 +180,12 @@ export default function ActivateMembershipPage() {
         // Redirect to payment gateway in same tab — user will be redirected back
         // to /payment/verify after completing payment via the callback handler
         window.location.href = data.paymentUrl;
+        return;
+      }
+      if (data.gateway === 'crypto' && data.reference) {
+        const palliativeQuery = selectedPalliative ? `&palliative=${encodeURIComponent(selectedPalliative)}` : '';
+        router.push(`/membership/payment/crypto?reference=${encodeURIComponent(data.reference)}&packageId=${selectedPackage?.id || ''}&amount=${totalCost}&upgrade=true&from=${fromPackageId || ''}${palliativeQuery}`);
+        setProcessing(false);
         return;
       }
       // Wallet payment: upgrade completed server-side
@@ -243,7 +256,7 @@ export default function ActivateMembershipPage() {
     {
       id: 'crypto',
       name: 'Cryptocurrency',
-      description: isCryptoAllowed ? 'Pay with Bitcoin, USDT, or other supported crypto' : 'Switch currency to USD to unlock crypto payments',
+      description: isCryptoAllowed ? 'Automated USDT payment via Basqet crypto gateway' : 'Switch currency to USD to unlock crypto payments',
       icon: Bitcoin,
       available: isCryptoAllowed && isEnabled('crypto', true),
       comingSoon: !isCryptoAllowed ? false : comingSoonFromDb('crypto', false)
@@ -302,10 +315,27 @@ export default function ActivateMembershipPage() {
         router.push(`/membership/payment/bank-transfer?packageId=${selectedPackage.id}&amount=${totalCost}${isUpgrade ? `&upgrade=true&from=${fromPackageId}` : ''}${palliativeQuery}`);
         setProcessing(false);
       } else if (selectedGateway === 'crypto') {
-        // Redirect to crypto payment page with payment details
-        const palliativeQuery = selectedPalliative ? `&palliative=${encodeURIComponent(selectedPalliative)}` : '';
-        router.push(`/membership/payment/crypto?packageId=${selectedPackage.id}&amount=${totalCost}${isUpgrade ? `&upgrade=true&from=${fromPackageId}` : ''}${palliativeQuery}`);
-        setProcessing(false);
+        if (isUpgrade && fromPackageId) {
+          await processUpgradeMutation.mutateAsync({
+            packageId: selectedPackage.id,
+            currentPackageId: fromPackageId,
+            paymentMethod: 'crypto',
+            frontendCalculatedCost: totalCost,
+            selectedPalliative: selectedPalliative || undefined,
+            originalAmount: totalCostInSelectedCurrency,
+            originalCurrency: selectedCurrency?.symbol,
+            originalTotalUsd: selectedCurrency?.symbol === 'USD' ? totalCostInSelectedCurrency : undefined,
+          });
+        } else {
+          await initiateMembershipPayment.mutateAsync({
+            packageId: selectedPackage.id,
+            gateway: 'crypto',
+            selectedPalliative: selectedPalliative || undefined,
+            originalAmount: totalCostInSelectedCurrency,
+            originalCurrency: selectedCurrency?.symbol,
+            originalTotalUsd: selectedCurrency?.symbol === 'USD' ? totalCostInSelectedCurrency : undefined,
+          });
+        }
       } else if (selectedGateway === 'flutterwave') {
         if (isUpgrade && fromPackageId) {
           await processUpgradeMutation.mutateAsync({
