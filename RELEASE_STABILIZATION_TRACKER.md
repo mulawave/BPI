@@ -146,7 +146,7 @@ Avoid parallelizing:
 | P1-2 | Remove unreachable/conflicting `TOPUP` handling | Critical | Yes | done | Unassigned | `server/trpc/router/admin.ts`, `server/services/payment/adminPaymentReview.ts`, `server/trpc/router/wallet.ts`, `server/trpc/router/package.ts`, `app/api/cron/recover-stuck-payments/route.ts`, `server/services/payment/paymentMetadata.ts` | Single deterministic path for deposit/top-up approval |
 | P1-3 | Introduce shared idempotent fulfillment guards | High | Yes | done | Unassigned | `server/services/payment/pendingPaymentFulfillment.ts`, `server/trpc/router/admin.ts`, `server/trpc/router/package.ts`, `app/api/webhooks/crypto/route.ts`, `app/api/webhooks/paystack/route.ts`, `app/api/webhooks/flutterwave/route.ts`, `app/api/cron/recover-stuck-payments/route.ts` | Duplicate admin/webhook/callback processing does not duplicate value delivery |
 | P1-4 | Make referral sync transactional or stage-and-swap | Critical | Yes | done | Unassigned | `server/trpc/router/admin.ts`, `server/services/referralSync.service.ts` | Failed referral rebuild cannot leave partial live state |
-| P1-5 | Normalize payment lifecycle metadata contracts | High | Yes | ready for verification | Unassigned | `server/services/payment/paymentMetadata.ts`, `server/trpc/router/package.ts`, `server/trpc/router/wallet.ts`, `server/trpc/router/store.ts`, `app/api/webhooks/paystack/route.ts`, `app/api/webhooks/flutterwave/route.ts` | Membership, upgrade, deposit, and store payment metadata resolve consistently across initiation and fulfillment |
+| P1-5 | Normalize payment lifecycle metadata contracts | High | Yes | done | Unassigned | `server/services/payment/paymentMetadata.ts`, `server/trpc/router/package.ts`, `server/trpc/router/wallet.ts`, `server/trpc/router/store.ts`, `app/api/webhooks/paystack/route.ts`, `app/api/webhooks/flutterwave/route.ts` | Membership, upgrade, deposit, and store payment metadata resolve consistently across initiation and fulfillment |
 
 ## Phase 2: Operational Durability
 
@@ -217,6 +217,14 @@ For each item marked `ready for verification`, record:
 - exact files changed: `server/services/referralSync.service.ts`, `server/trpc/router/admin.ts`, `tests/unit/referral-sync-atomicity.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
 - manual validation steps executed: confirmed `syncReferralData` now delegates to a shared stage-and-swap executor that prepares rebuilt referral rows before a single transactional delete-and-recreate swap
 - automated tests added or updated: added `tests/unit/referral-sync-atomicity.test.ts`; ran `npx tsx --test tests/unit/referral-sync-atomicity.test.ts`
+- result: `done`
+
+### P1-5 Verification - 2026-05-11
+
+- implementation PR or commit: existing payment metadata normalization verified in current `main` after `04d2eaba`
+- exact files changed: `tests/unit/payment-lifecycle-metadata-contracts.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed membership, membership upgrade, deposit, and store purchase initiation paths all emit canonical `fulfillmentType` metadata, while Paystack and Flutterwave webhook flows resolve the same contract directly from webhook metadata or from `PendingPayment` fallback metadata when needed
+- automated tests added or updated: added `tests/unit/payment-lifecycle-metadata-contracts.test.ts`; ran `npx tsx --test tests/unit/payment-lifecycle-metadata-contracts.test.ts tests/unit/deposit-topup-consistency.test.ts`
 - result: `done`
 
 ### P2-4 Verification - 2026-05-11
