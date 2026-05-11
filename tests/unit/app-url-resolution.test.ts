@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -16,6 +17,48 @@ async function importFreshAppUrlModule() {
 
 async function importFreshClientAppUrlModule() {
   return import(`${CLIENT_APP_URL_MODULE}?t=${Date.now()}-${Math.random()}`);
+}
+
+function runResolveAppBaseUrlInIsolatedProcess(envOverrides: Record<string, string | undefined>) {
+  const env = { ...ORIGINAL_ENV } as Record<string, string>;
+
+  for (const [key, value] of Object.entries(envOverrides)) {
+    if (value === undefined) {
+      delete env[key];
+    } else {
+      env[key] = value;
+    }
+  }
+
+  const output = execFileSync(
+    "npx",
+    [
+      "tsx",
+      "--eval",
+      [
+        'import { resolveAppBaseUrl } from "./lib/appUrl.ts";',
+        '(async () => {',
+        '  try {',
+        '    const value = await resolveAppBaseUrl();',
+        '    console.log(`RESULT:${value}`);',
+        '  } catch (error) {',
+        '    const message = error instanceof Error ? error.message : String(error);',
+        '    console.log(`ERROR:${message}`);',
+        '  }',
+        '})();',
+      ].join(" "),
+    ],
+    {
+      cwd: process.cwd(),
+      env,
+      encoding: "utf8",
+    },
+  );
+
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("RESULT:") || line.startsWith("ERROR:")) ?? "";
 }
 
 function resetEnv() {
@@ -78,34 +121,39 @@ describe("app URL environment resolution", () => {
   });
 
   it("uses configured canonical URL in production", async () => {
-    process.env.NODE_ENV = "production";
-    process.env.NEXT_PUBLIC_APP_URL = "https://prod.example.com";
-    delete process.env.NEXTAUTH_URL;
-    delete process.env.VERCEL_URL;
+    const result = runResolveAppBaseUrlInIsolatedProcess({
+      NODE_ENV: "production",
+      NEXT_PUBLIC_APP_URL: "https://prod.example.com",
+      NEXTAUTH_URL: undefined,
+      VERCEL_URL: undefined,
+      NEXT_PHASE: undefined,
+    });
 
-    const { resolveAppBaseUrl } = await importFreshAppUrlModule();
-    assert.strictEqual(await resolveAppBaseUrl(), "https://prod.example.com");
+    assert.strictEqual(result, "RESULT:https://prod.example.com");
   });
 
   it("throws in production when no canonical URL is configured", async () => {
-    process.env.NODE_ENV = "production";
-    delete process.env.NEXT_PUBLIC_APP_URL;
-    delete process.env.NEXTAUTH_URL;
-    delete process.env.VERCEL_URL;
+    const result = runResolveAppBaseUrlInIsolatedProcess({
+      NODE_ENV: "production",
+      NEXT_PUBLIC_APP_URL: undefined,
+      NEXTAUTH_URL: undefined,
+      VERCEL_URL: undefined,
+      NEXT_PHASE: undefined,
+    });
 
-    const { resolveAppBaseUrl } = await importFreshAppUrlModule();
-    await assert.rejects(resolveAppBaseUrl(), /APP_URL_CONFIG_ERROR/);
+    assert.match(result, /^ERROR:APP_URL_CONFIG_ERROR:/);
   });
 
   it("uses localhost fallback during build outside production", async () => {
-    process.env.NODE_ENV = "test";
-    process.env.NEXT_PHASE = "phase-production-build";
-    delete process.env.NEXT_PUBLIC_APP_URL;
-    delete process.env.NEXTAUTH_URL;
-    delete process.env.VERCEL_URL;
+    const result = runResolveAppBaseUrlInIsolatedProcess({
+      NODE_ENV: "test",
+      NEXT_PHASE: "phase-production-build",
+      NEXT_PUBLIC_APP_URL: undefined,
+      NEXTAUTH_URL: undefined,
+      VERCEL_URL: undefined,
+    });
 
-    const { resolveAppBaseUrl } = await importFreshAppUrlModule();
-    assert.strictEqual(await resolveAppBaseUrl(), "http://localhost:3000");
+    assert.strictEqual(result, "RESULT:http://localhost:3000");
   });
 });
 

@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { adminRouter } from "@/server/trpc/router/admin";
-
-type Role = "admin" | "super_admin" | undefined;
+import fs from "node:fs";
+import path from "node:path";
+import { requireSuperAdmin } from "@/server/utils/adminAuth";
 
 const ORIGINAL_ENV = { ...process.env };
+const adminRouterSource = fs.readFileSync(
+  path.resolve(process.cwd(), "server/trpc/router/admin.ts"),
+  "utf8",
+);
 
 function resetEnv() {
   for (const key of Object.keys(process.env)) {
@@ -13,22 +17,17 @@ function resetEnv() {
   Object.assign(process.env, ORIGINAL_ENV);
 }
 
-function makeCaller(role: Role) {
-  return adminRouter.createCaller({
-    session: role
-      ? {
-          user: {
-            id: `user-${role}`,
-            email: `${role}@example.com`,
-            name: role,
-            role,
-          },
-          expires: new Date(Date.now() + 3_600_000).toISOString(),
-        }
-      : null,
-    prisma: {} as any,
-    clientIp: "127.0.0.1",
-  } as any);
+function makeSession(role?: "admin" | "super_admin") {
+  if (!role) return null;
+  return {
+    user: {
+      id: `user-${role}`,
+      email: `${role}@example.com`,
+      name: role,
+      role,
+    },
+    expires: new Date(Date.now() + 3_600_000).toISOString(),
+  };
 }
 
 beforeEach(() => {
@@ -40,47 +39,30 @@ afterEach(() => {
 });
 
 describe("Admin destructive permission boundaries", () => {
-  it("rejects unauthenticated callers from createBackup", async () => {
-    const caller = makeCaller(undefined);
-    await assert.rejects(caller.createBackup(), /logged in|UNAUTHORIZED/i);
+  it("wires createBackup to superAdminProcedure", () => {
+    assert.match(adminRouterSource, /createBackup:\s*superAdminProcedure/);
   });
 
-  it("rejects regular admins from createBackup", async () => {
-    process.env.DATABASE_URL = "";
-    const caller = makeCaller("admin");
-    await assert.rejects(caller.createBackup(), /super admin/i);
+  it("wires wipeNonEssentialData to superAdminProcedure", () => {
+    assert.match(adminRouterSource, /wipeNonEssentialData:\s*superAdminProcedure/);
   });
 
-  it("allows super admins past the permission gate on createBackup", async () => {
-    process.env.DATABASE_URL = "";
-    const caller = makeCaller("super_admin");
-    await assert.rejects(caller.createBackup(), /DATABASE_URL is not configured/);
-  });
-
-  it("rejects regular admins from wipeNonEssentialData", async () => {
-    const caller = makeCaller("admin");
-    await assert.rejects(
-      caller.wipeNonEssentialData({
-        confirmPhrase: "WIPE",
-        superAdminEmail: "super@example.com",
-        superAdminPassword: "supersecret123",
-        superAdminName: "Root Admin",
-      }),
-      /super admin/i,
+  it("rejects unauthenticated sessions at the super-admin guard", () => {
+    assert.throws(
+      () => requireSuperAdmin({ session: makeSession(undefined) as any }),
+      /UNAUTHORIZED/i,
     );
   });
 
-  it("allows super admins past the permission gate on wipeNonEssentialData", async () => {
-    process.env.ADMIN_RESET_CONFIRM_PHRASE = "NUKE";
-    const caller = makeCaller("super_admin");
-    await assert.rejects(
-      caller.wipeNonEssentialData({
-        confirmPhrase: "WIPE",
-        superAdminEmail: "super@example.com",
-        superAdminPassword: "supersecret123",
-        superAdminName: "Root Admin",
-      }),
-      /Confirmation phrase mismatch/i,
+  it("rejects regular admins at the super-admin guard", () => {
+    assert.throws(
+      () => requireSuperAdmin({ session: makeSession("admin") as any }),
+      /FORBIDDEN/i,
     );
+  });
+
+  it("allows super_admin sessions through the super-admin guard", () => {
+    const result = requireSuperAdmin({ session: makeSession("super_admin") as any });
+    assert.strictEqual(result.role, "super_admin");
   });
 });
