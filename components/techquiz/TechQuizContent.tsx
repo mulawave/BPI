@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
+import Link from "next/link";
 import {
   BookOpen,
   Users,
@@ -431,6 +432,7 @@ export default function TechQuizContent() {
 
   const eligibilityQuery = api.techquiz.checkParentEligibility.useQuery();
   const childrenQuery = api.techquiz.myChildBeneficiaries.useQuery();
+  const cbtAvailabilityQuery = api.techquiz.getCbtPortalAvailability.useQuery();
   const eventsQuery = api.techquiz.adminListEvents.useQuery(
     { status: "PUBLISHED" },
     { enabled: tab === "events" || tab === "overview" }
@@ -443,6 +445,8 @@ export default function TechQuizContent() {
   const eligibility = eligibilityQuery.data;
   const children = childrenQuery.data ?? [];
   const events = eventsQuery.data?.events ?? [];
+  const cbtAvailability = cbtAvailabilityQuery.data;
+  const cbtPortalEnabled = cbtAvailability?.enabled ?? false;
   const loading = eligibilityQuery.isLoading || childrenQuery.isLoading;
 
   // Collect all applications from children
@@ -477,6 +481,16 @@ export default function TechQuizContent() {
             </p>
           </div>
           <div className="hidden sm:flex items-center gap-2">
+            {!cbtAvailabilityQuery.isLoading && (
+              <div className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold border ${
+                cbtPortalEnabled
+                  ? "bg-cyan-500/10 border-cyan-400/30 text-cyan-100"
+                  : "bg-amber-500/10 border-amber-400/30 text-amber-100"
+              }`}>
+                {cbtPortalEnabled ? <BadgeCheck size={13} className="text-cyan-300" /> : <Clock size={13} className="text-amber-300" />}
+                {cbtPortalEnabled ? "CBT Portal Live" : "CBT Portal Paused"}
+              </div>
+            )}
             {eligibility?.isEligible ? (
               <div className="flex items-center gap-1.5 bg-emerald-700/50 border border-emerald-500/40 rounded-xl px-3 py-1.5 text-xs font-semibold">
                 <CheckCircle2 size={13} className="text-emerald-400" /> Eligible to Apply
@@ -552,6 +566,63 @@ export default function TechQuizContent() {
             {/* ── OVERVIEW ── */}
             {tab === "overview" && (
               <div className="space-y-6">
+                {!cbtAvailabilityQuery.isLoading && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`relative overflow-hidden rounded-2xl border p-5 shadow-sm ${
+                      cbtPortalEnabled
+                        ? "border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-emerald-50 dark:border-cyan-900/60 dark:from-cyan-950/20 dark:via-slate-900 dark:to-emerald-950/20"
+                        : "border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 dark:border-amber-900/60 dark:from-amber-950/20 dark:via-slate-900 dark:to-orange-950/20"
+                    }`}
+                  >
+                    <div className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-3xl ${
+                      cbtPortalEnabled ? "bg-cyan-200/50 dark:bg-cyan-500/10" : "bg-amber-200/50 dark:bg-amber-500/10"
+                    }`} />
+                    <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex items-start gap-4">
+                        <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl ${
+                          cbtPortalEnabled
+                            ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                        }`}>
+                          {cbtPortalEnabled ? <BadgeCheck size={22} /> : <Clock size={22} />}
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">CBT access</p>
+                          <h3 className="mt-1 text-lg font-bold text-slate-900 dark:text-white">
+                            {cbtPortalEnabled ? "Verified CBT sessions are live" : "Verified CBT sessions are paused"}
+                          </h3>
+                          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                            {cbtAvailability?.message || "TechQuiz CBT availability updates will appear here."}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-start gap-2 lg:items-end">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                          cbtPortalEnabled
+                            ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                        }`}>
+                          {cbtPortalEnabled ? <BadgeCheck size={13} /> : <Clock size={13} />}
+                          {cbtPortalEnabled ? "Portal live" : "Portal unavailable"}
+                        </span>
+                        <Link
+                          href="/techquiz/cbt"
+                          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                            cbtPortalEnabled
+                              ? "bg-cyan-600 text-white hover:bg-cyan-700"
+                              : "bg-white text-amber-700 ring-1 ring-inset ring-amber-200 hover:bg-amber-50 dark:bg-slate-900/70 dark:text-amber-300 dark:ring-amber-800/60 dark:hover:bg-amber-950/20"
+                          }`}
+                        >
+                          {cbtPortalEnabled ? "Open CBT Portal" : "Review CBT Status"}
+                          <ArrowRight size={14} />
+                        </Link>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
                 {/* Stats row */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {[

@@ -164,18 +164,18 @@ Avoid parallelizing:
 | P3-1 | Remove demo/mock logic from dashboard | High | Yes | ready for verification | Unassigned | `components/DashboardContent.tsx`, `server/trpc/router/communityUpdates.ts` | Dashboard shows live-backed states only |
 | P3-2 | Complete or explicitly gate admin global search | Medium | No | ready for verification | Unassigned | `components/admin/GlobalSearch.tsx`, `app/admin/users/page.tsx`, `app/admin/payments/page.tsx`, `app/admin/packages/page.tsx` | Search behavior matches operator expectation |
 | P3-3 | Replace mock package analytics growth data | Medium | No | ready for verification | Unassigned | `components/admin/PackageAnalytics.tsx`, `server/trpc/router/admin.ts` | Analytics show real or intentionally hidden metrics |
-| P3-4 | Decide TechQuiz live status and complete or gate CBT flow | Medium | Yes if live | ready for verification | Unassigned | `components/techquiz/CBTPortalContent.tsx`, `server/trpc/router/techquiz.ts`, `app/admin/techquiz/settings/page.tsx` | CBT workflow is either fully integrated or unavailable in live |
+| P3-4 | Decide TechQuiz live status and complete or gate CBT flow | Medium | Yes if live | completed | Unassigned | `components/techquiz/CBTPortalContent.tsx`, `server/trpc/router/techquiz.ts`, `app/admin/techquiz/settings/page.tsx`, `components/techquiz/TechQuizContent.tsx` | CBT workflow is either fully integrated or unavailable in live |
 
 ## Phase 4: Regression Prevention
 
 | ID | Title | Severity | Blocker | Status | Owner | Primary Files | Validation |
 |---|---|---|---|---|---|---|---|
-| P4-1 | Add tests for destructive admin permission boundaries | High | Yes | not started | Unassigned | `tests/unit/**`, admin routers | Admin cannot invoke super-admin-only actions |
-| P4-2 | Add tests for payment approval idempotency | High | Yes | not started | Unassigned | `tests/unit/**`, admin payment flows | Duplicate approvals do not duplicate fulfillment |
-| P4-3 | Add tests for webhook/admin overlap | High | Yes | not started | Unassigned | `tests/unit/**`, webhook handlers | Concurrent confirmation paths remain safe |
-| P4-4 | Add newsletter durability and restart tests | High | Yes | not started | Unassigned | `tests/unit/**`, newsletter services | Newsletter jobs persist and resume correctly |
-| P4-5 | Add app URL/environment resolution tests | High | Yes | not started | Unassigned | `tests/unit/**`, `lib/appUrl.ts`, `lib/clientAppUrl.ts`, `lib/email.ts` | Environment-specific links are always correct |
-| P4-6 | Add dashboard live-data and non-demo-state tests | Medium | No | not started | Unassigned | `tests/unit/**`, dashboard-related modules | Dashboard does not regress to demo placeholders |
+| P4-1 | Add tests for destructive admin permission boundaries | High | Yes | ready for verification | Unassigned | `tests/unit/**`, admin routers | Admin cannot invoke super-admin-only actions |
+| P4-2 | Add tests for payment approval idempotency | High | Yes | ready for verification | Unassigned | `tests/unit/**`, admin payment flows | Duplicate approvals do not duplicate fulfillment |
+| P4-3 | Add tests for webhook/admin overlap | High | Yes | ready for verification | Unassigned | `tests/unit/**`, webhook handlers | Concurrent confirmation paths remain safe |
+| P4-4 | Add newsletter durability and restart tests | High | Yes | ready for verification | Unassigned | `tests/unit/**`, newsletter services | Newsletter jobs persist and resume correctly |
+| P4-5 | Add app URL/environment resolution tests | High | Yes | ready for verification | Unassigned | `tests/unit/**`, `lib/appUrl.ts`, `lib/clientAppUrl.ts`, `lib/email.ts` | Environment-specific links are always correct |
+| P4-6 | Add dashboard live-data and non-demo-state tests | Medium | No | ready for verification | Unassigned | `tests/unit/**`, dashboard-related modules | Dashboard does not regress to demo placeholders |
 
 ## Verification Checklist
 
@@ -194,6 +194,7 @@ Use this section to record non-code decisions that affect release readiness.
 | Date | Decision | Reason | Owner |
 |---|---|---|---|
 | 2026-05-04 | Tracker created from full codebase audit | Needed to convert findings into actionable stabilization work | Copilot |
+| 2026-05-11 | Temporarily removed `ENCRYPTION_KEY` startup hard-fail from production boot validation | Live production recovery required availability before a safer runtime enforcement strategy could be restored | Copilot |
 
 ## Recommended Working Order
 
