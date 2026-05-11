@@ -152,8 +152,8 @@ Avoid parallelizing:
 
 | ID | Title | Severity | Blocker | Status | Owner | Primary Files | Validation |
 |---|---|---|---|---|---|---|---|
-| P2-1 | Replace in-memory newsletter execution state with durable persistence | High | Yes | ready for verification | Unassigned | `prisma/schema.prisma`, `prisma/migrations/20260504000000_newsletter_campaign_scheduler_fields/migration.sql`, `server/trpc/router/admin.ts` | Newsletter jobs survive restart/redeploy and do not duplicate unexpectedly |
-| P2-2 | Remove duplicate newsletter job tracking model | High | Yes | ready for verification | Unassigned | `server/trpc/router/admin.ts` | Single source of truth for campaign state |
+| P2-1 | Replace in-memory newsletter execution state with durable persistence | High | Yes | done | Unassigned | `prisma/schema.prisma`, `prisma/migrations/20260504000000_newsletter_campaign_scheduler_fields/migration.sql`, `server/trpc/router/admin.ts` | Newsletter jobs survive restart/redeploy and do not duplicate unexpectedly |
+| P2-2 | Remove duplicate newsletter job tracking model | High | Yes | done | Unassigned | `server/trpc/router/admin.ts` | Single source of truth for campaign state |
 | P2-3 | Harden impersonation route with throttling and audit assurances | High | Yes | ready for verification | Unassigned | `app/api/auth/impersonate/route.ts`, `app/api/auth/impersonate/end/route.ts`, `server/trpc/router/admin.ts`, `server/auth.ts`, `lib/rateLimit.ts`, `lib/impersonationSession.ts`, `components/admin/ImpersonationBanner.tsx`, `components/admin/UserDetailsModal.tsx` | Repeated abuse attempts are throttled and session transitions remain valid |
 | P2-4 | Add startup environment validation for critical keys and URLs | High | Yes | done | Unassigned | `instrumentation.ts`, `lib/startupValidation.ts`, `lib/authSecret.ts`, `lib/appUrl.ts`, payment/webhook config surfaces | Missing auth/canonical URL fails fast; missing `ENCRYPTION_KEY` warns at startup and still fails on encryption use |
 
@@ -233,6 +233,22 @@ For each item marked `ready for verification`, record:
 - exact files changed: `lib/startupValidation.ts`, `tests/unit/startup-validation.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
 - manual validation steps executed: reviewed `instrumentation.ts` startup hook wiring and verified production validation behavior remains fail-fast for auth/canonical URL while surfacing missing `ENCRYPTION_KEY` at boot
 - automated tests added or updated: added `tests/unit/startup-validation.test.ts`; ran `npx tsx --test tests/unit/startup-validation.test.ts`; ran `npx tsx --test tests/unit/app-url-resolution.test.ts`
+- result: `done`
+
+### P2-1 Verification - 2026-05-11
+
+- implementation PR or commit: current working tree changes after `7538e8f1` (not yet committed)
+- exact files changed: `server/trpc/router/admin.ts`, `tests/unit/newsletter-durability.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed newsletter campaigns already persist execution state in `NewsletterCampaign`, restore running jobs at startup, de-duplicate resumed recipients via `sentRecipientIds`, and now return persisted progress details even when the in-memory job map is still cold after restart
+- automated tests added or updated: updated `tests/unit/newsletter-durability.test.ts`; ran `npx tsx --test tests/unit/newsletter-durability.test.ts`
+- result: `done`
+
+### P2-2 Verification - 2026-05-11
+
+- implementation PR or commit: existing single-store newsletter tracking verified in current working tree after the P2-1 durability update
+- exact files changed: `tests/unit/newsletter-durability.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed newsletter queue creation, listing, lookup, cancellation, deletion, resume-from-db, and progress fallback all use the single persisted `NewsletterCampaign` store, with `newsletterJobs` retained only as an in-memory execution cache for actively running sends
+- automated tests added or updated: updated `tests/unit/newsletter-durability.test.ts`; ran `npx tsx --test tests/unit/newsletter-durability.test.ts`
 - result: `done`
 
 ## Decision Log

@@ -271,6 +271,36 @@ function restoreNewsletterJobState(campaign: {
   };
 }
 
+function buildNewsletterProgressSnapshot(job: NewsletterJobState, sentSince = 0) {
+  const newSentEmails = sentSince > 0
+    ? job.sentEmails.filter((entry) => entry.sentAt > sentSince)
+    : job.sentEmails.slice(-50);
+  const newFailedEmails = sentSince > 0
+    ? job.failedEmails.filter((entry) => entry.failedAt > sentSince)
+    : job.failedEmails;
+  const newErrorLog = sentSince > 0
+    ? job.errorLog.filter((entry) => entry.timestamp > sentSince)
+    : job.errorLog.slice(-100);
+
+  return {
+    status: job.status,
+    jobId: job.jobId,
+    sent: job.sent,
+    failed: job.failed,
+    total: job.total,
+    currentBatch: job.currentBatch,
+    totalBatches: job.totalBatches,
+    lastError: job.lastError,
+    currentEmail: job.currentEmail,
+    sentEmails: newSentEmails,
+    failedEmails: newFailedEmails,
+    errorLog: newErrorLog,
+    failedRecipients: job.failedRecipients,
+    elapsedMs: Date.now() - job.startedAt,
+    canResume: (job.status === 'cancelled' || job.status === 'error') && job.sent < job.total,
+  };
+}
+
 async function getNewsletterCompanyInfo() {
   const companySettings = await prisma.adminSettings.findMany();
   return Object.fromEntries(
@@ -10076,52 +10106,33 @@ export const adminRouter = createTRPCRouter({
 
   getNewsletterProgress: adminProcedure
     .input(z.object({ jobId: z.string(), sentSince: z.number().optional() }))
-    .query(({ input }) => {
-      const job = newsletterJobs.get(input.jobId);
+    .query(async ({ input }) => {
+      let job = newsletterJobs.get(input.jobId);
       if (!job) {
-        return {
-          status: 'not_found' as const,
-          sent: 0, failed: 0, total: 0,
-          currentBatch: 0, totalBatches: 0,
-          lastError: null,
-          currentEmail: null,
-          sentEmails: [] as SentEmailEntry[],
-          failedEmails: [] as FailedEmailEntry[],
-          errorLog: [] as ErrorLogEntry[],
-          failedRecipients: [] as string[],
-          elapsedMs: 0,
-          canResume: false,
-        };
-      }
-      // Only return sent emails since the given timestamp (incremental updates)
-      const sentSince = input.sentSince || 0;
-      const newSentEmails = sentSince > 0
-        ? job.sentEmails.filter(e => e.sentAt > sentSince)
-        : job.sentEmails.slice(-50); // Initial load: last 50
-      const newFailedEmails = sentSince > 0
-        ? job.failedEmails.filter(e => e.failedAt > sentSince)
-        : job.failedEmails;
-      const newErrorLog = sentSince > 0
-        ? job.errorLog.filter(e => e.timestamp > sentSince)
-        : job.errorLog.slice(-100);
+        const campaign = await newsletterCampaignStore.findUnique({
+          where: { jobId: input.jobId },
+        }) as DurableNewsletterCampaign | null;
 
-      return {
-        status: job.status,
-        jobId: job.jobId,
-        sent: job.sent,
-        failed: job.failed,
-        total: job.total,
-        currentBatch: job.currentBatch,
-        totalBatches: job.totalBatches,
-        lastError: job.lastError,
-        currentEmail: job.currentEmail,
-        sentEmails: newSentEmails,
-        failedEmails: newFailedEmails,
-        errorLog: newErrorLog,
-        failedRecipients: job.failedRecipients,
-        elapsedMs: Date.now() - job.startedAt,
-        canResume: (job.status === 'cancelled' || job.status === 'error') && job.sent < job.total,
-      };
+        if (!campaign) {
+          return {
+            status: 'not_found' as const,
+            sent: 0, failed: 0, total: 0,
+            currentBatch: 0, totalBatches: 0,
+            lastError: null,
+            currentEmail: null,
+            sentEmails: [] as SentEmailEntry[],
+            failedEmails: [] as FailedEmailEntry[],
+            errorLog: [] as ErrorLogEntry[],
+            failedRecipients: [] as string[],
+            elapsedMs: 0,
+            canResume: false,
+          };
+        }
+
+        job = restoreNewsletterJobState(campaign);
+      }
+
+      return buildNewsletterProgressSnapshot(job, input.sentSince || 0);
     }),
 
   cancelNewsletter: adminProcedure

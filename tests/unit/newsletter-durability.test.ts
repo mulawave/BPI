@@ -8,6 +8,13 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+
+const adminRouterSource = fs.readFileSync(
+  path.resolve(process.cwd(), "server/trpc/router/admin.ts"),
+  "utf8",
+);
 
 type PersistedCampaign = {
   jobId: string;
@@ -81,6 +88,33 @@ function restoreNewsletterJobState(campaign: PersistedCampaign) {
     campaignConfig: buildNewsletterCampaignConfig(campaign),
     allRecipientIds,
     sentRecipientIds: new Set(sentRecipientIds as string[]),
+  };
+}
+
+function buildNewsletterProgressSnapshot(
+  job: ReturnType<typeof restoreNewsletterJobState>,
+  sentSince = 0,
+) {
+  const sentEmails = sentSince > 0
+    ? job.sentEmails.filter((entry: any) => entry.sentAt > sentSince)
+    : job.sentEmails.slice(-50);
+  const failedEmails = sentSince > 0
+    ? job.failedEmails.filter((entry: any) => entry.failedAt > sentSince)
+    : job.failedEmails;
+  const errorLog = sentSince > 0
+    ? job.errorLog.filter((entry: any) => entry.timestamp > sentSince)
+    : job.errorLog.slice(-100);
+
+  return {
+    status: job.status,
+    jobId: job.jobId,
+    sent: job.sent,
+    failed: job.failed,
+    total: job.total,
+    sentEmails,
+    failedEmails,
+    errorLog,
+    canResume: (job.status === "cancelled" || job.status === "error") && job.sent < job.total,
   };
 }
 
@@ -166,5 +200,105 @@ describe("Newsletter durability and restart guards", () => {
     const remaining = resolveRemainingRecipients(recipients, new Set(["user-1", "user-2"]));
 
     assert.deepStrictEqual(remaining, []);
+  });
+
+  it("serves persisted progress details when a restarted process has not restored the in-memory job yet", () => {
+    const restored = restoreNewsletterJobState({
+      jobId: "job-2",
+      status: "error",
+      sentCount: 3,
+      failedCount: 1,
+      totalRecipients: 5,
+      elapsedMs: 2500,
+      lastError: "SMTP timeout",
+      sentEmails: [
+        { email: "one@example.com", name: "One", sentAt: 100 },
+        { email: "two@example.com", name: "Two", sentAt: 200 },
+        { email: "three@example.com", name: "Three", sentAt: 300 },
+      ],
+      failedEmails: [{ email: "four@example.com", name: "Four", error: "SMTP timeout", failedAt: 350 }],
+      errorLog: [{ message: "SMTP timeout", email: "four@example.com", timestamp: 350, attempt: 2 }],
+      sentRecipientIds: ["user-1", "user-2", "user-3"],
+      allRecipientIds: ["user-1", "user-2", "user-3", "user-4", "user-5"],
+      filter: "all",
+      membershipPackage: null,
+      fromEmail: "ops@example.com",
+      replyToEmail: "reply@example.com",
+      subject: "Subject",
+      body: "Body",
+      attachments: [],
+      embeddedImages: [],
+      batchSize: 10,
+      delayBetweenMs: 250,
+      batchCooldownMs: 1000,
+      warmUp: false,
+      startedAt: new Date("2026-05-11T10:00:00.000Z"),
+    });
+
+    const snapshot = buildNewsletterProgressSnapshot(restored, 150);
+
+    assert.equal(snapshot.status, "error");
+    assert.equal(snapshot.sent, 3);
+    assert.equal(snapshot.failed, 1);
+    assert.deepStrictEqual(
+      snapshot.sentEmails,
+      [
+        { email: "two@example.com", name: "Two", sentAt: 200 },
+        { email: "three@example.com", name: "Three", sentAt: 300 },
+      ],
+    );
+    assert.deepStrictEqual(snapshot.failedEmails, [
+      { email: "four@example.com", name: "Four", error: "SMTP timeout", failedAt: 350 },
+    ]);
+    assert.deepStrictEqual(snapshot.errorLog, [
+      { message: "SMTP timeout", email: "four@example.com", timestamp: 350, attempt: 2 },
+    ]);
+    assert.equal(snapshot.canResume, true);
+  });
+
+  it("looks up persisted campaign state when getNewsletterProgress misses the in-memory map", () => {
+    assert.match(
+      adminRouterSource,
+      /const campaign = await newsletterCampaignStore\.findUnique\(\{\s*where: \{ jobId: input\.jobId \}/,
+    );
+    assert.match(
+      adminRouterSource,
+      /job = restoreNewsletterJobState\(campaign\);/,
+    );
+    assert.match(
+      adminRouterSource,
+      /return buildNewsletterProgressSnapshot\(job, input\.sentSince \|\| 0\);/,
+    );
+  });
+
+  it("uses NewsletterCampaign as the sole persisted newsletter job store across queue endpoints", () => {
+    assert.match(
+      adminRouterSource,
+      /const newsletterCampaignStore = prisma\.newsletterCampaign as any;/,
+    );
+    assert.match(
+      adminRouterSource,
+      /scheduleNewsletter: adminProcedure[\s\S]*?await newsletterCampaignStore\.create\(/,
+    );
+    assert.match(
+      adminRouterSource,
+      /getScheduledNewsletters: adminProcedure[\s\S]*?const campaigns = await newsletterCampaignStore\.findMany\(/,
+    );
+    assert.match(
+      adminRouterSource,
+      /getNewsletterJob: adminProcedure[\s\S]*?await newsletterCampaignStore\.findUnique\(\{ where: \{ jobId: input\.jobId \} \}\)/,
+    );
+    assert.match(
+      adminRouterSource,
+      /cancelScheduledNewsletter: adminProcedure[\s\S]*?await newsletterCampaignStore\.update\(/,
+    );
+    assert.match(
+      adminRouterSource,
+      /deleteNewsletterJob: adminProcedure[\s\S]*?await newsletterCampaignStore\.delete\(/,
+    );
+    assert.doesNotMatch(
+      adminRouterSource,
+      /prisma\.(newsletterJob|scheduledNewsletter|newsletterQueue)/,
+    );
   });
 });
