@@ -65,7 +65,6 @@ export function validateCriticalEnvironment() {
     issues.push("NEXTAUTH_SECRET or AUTH_SECRET is required");
   }
 
-  validateRequiredEnv("ENCRYPTION_KEY", issues);
   validateCanonicalUrl(getConfiguredBaseUrl(), issues);
 
   const nextAuthUrl = normalizeUrl(readEnv("NEXTAUTH_URL"));
