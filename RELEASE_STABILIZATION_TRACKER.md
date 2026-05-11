@@ -162,20 +162,20 @@ Avoid parallelizing:
 | ID | Title | Severity | Blocker | Status | Owner | Primary Files | Validation |
 |---|---|---|---|---|---|---|---|
 | P3-1 | Remove demo/mock logic from dashboard | High | Yes | ready for verification | Unassigned | `components/DashboardContent.tsx`, `server/trpc/router/communityUpdates.ts` | Dashboard shows live-backed states only |
-| P3-2 | Complete or explicitly gate admin global search | Medium | No | ready for verification | Unassigned | `components/admin/GlobalSearch.tsx`, `app/admin/users/page.tsx`, `app/admin/payments/page.tsx`, `app/admin/packages/page.tsx` | Search behavior matches operator expectation |
-| P3-3 | Replace mock package analytics growth data | Medium | No | ready for verification | Unassigned | `components/admin/PackageAnalytics.tsx`, `server/trpc/router/admin.ts` | Analytics show real or intentionally hidden metrics |
+| P3-2 | Complete or explicitly gate admin global search | Medium | No | done | Unassigned | `components/admin/GlobalSearch.tsx`, `app/admin/users/page.tsx`, `app/admin/payments/page.tsx`, `app/admin/packages/page.tsx` | Search behavior matches operator expectation |
+| P3-3 | Replace mock package analytics growth data | Medium | No | done | Unassigned | `components/admin/PackageAnalytics.tsx`, `server/trpc/router/admin.ts` | Analytics show real or intentionally hidden metrics |
 | P3-4 | Decide TechQuiz live status and complete or gate CBT flow | Medium | Yes if live | completed | Unassigned | `components/techquiz/CBTPortalContent.tsx`, `server/trpc/router/techquiz.ts`, `app/admin/techquiz/settings/page.tsx`, `components/techquiz/TechQuizContent.tsx` | CBT workflow is either fully integrated or unavailable in live |
 
 ## Phase 4: Regression Prevention
 
 | ID | Title | Severity | Blocker | Status | Owner | Primary Files | Validation |
 |---|---|---|---|---|---|---|---|
-| P4-1 | Add tests for destructive admin permission boundaries | High | Yes | ready for verification | Unassigned | `tests/unit/**`, admin routers | Admin cannot invoke super-admin-only actions |
-| P4-2 | Add tests for payment approval idempotency | High | Yes | ready for verification | Unassigned | `tests/unit/**`, admin payment flows | Duplicate approvals do not duplicate fulfillment |
-| P4-3 | Add tests for webhook/admin overlap | High | Yes | ready for verification | Unassigned | `tests/unit/**`, webhook handlers | Concurrent confirmation paths remain safe |
-| P4-4 | Add newsletter durability and restart tests | High | Yes | ready for verification | Unassigned | `tests/unit/**`, newsletter services | Newsletter jobs persist and resume correctly |
-| P4-5 | Add app URL/environment resolution tests | High | Yes | ready for verification | Unassigned | `tests/unit/**`, `lib/appUrl.ts`, `lib/clientAppUrl.ts`, `lib/email.ts` | Environment-specific links are always correct |
-| P4-6 | Add dashboard live-data and non-demo-state tests | Medium | No | ready for verification | Unassigned | `tests/unit/**`, dashboard-related modules | Dashboard does not regress to demo placeholders |
+| P4-1 | Add tests for destructive admin permission boundaries | High | Yes | done | Unassigned | `tests/unit/**`, admin routers | Admin cannot invoke super-admin-only actions |
+| P4-2 | Add tests for payment approval idempotency | High | Yes | done | Unassigned | `tests/unit/**`, admin payment flows | Duplicate approvals do not duplicate fulfillment |
+| P4-3 | Add tests for webhook/admin overlap | High | Yes | done | Unassigned | `tests/unit/**`, webhook handlers | Concurrent confirmation paths remain safe |
+| P4-4 | Add newsletter durability and restart tests | High | Yes | done | Unassigned | `tests/unit/**`, newsletter services | Newsletter jobs persist and resume correctly |
+| P4-5 | Add app URL/environment resolution tests | High | Yes | done | Unassigned | `tests/unit/**`, `lib/appUrl.ts`, `lib/clientAppUrl.ts`, `lib/email.ts` | Environment-specific links are always correct |
+| P4-6 | Add dashboard live-data and non-demo-state tests | Medium | No | done | Unassigned | `tests/unit/**`, dashboard-related modules | Dashboard does not regress to demo placeholders |
 
 ## Verification Checklist
 
@@ -257,6 +257,70 @@ For each item marked `ready for verification`, record:
 - exact files changed: `tests/unit/impersonation-route-hardening.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
 - manual validation steps executed: confirmed impersonation execution is guarded by global and per-token route throttles, token issuance is rate limited per admin, successful start/end transitions are audited, one-time token consumption is race-safe, impersonation session flags propagate through NextAuth, and the admin exit banner calls the restore route
 - automated tests added or updated: added `tests/unit/impersonation-route-hardening.test.ts`; ran `npx tsx --test tests/unit/impersonation-route-hardening.test.ts`
+- result: `done`
+
+### P3-2 Verification - 2026-05-11
+
+- implementation PR or commit: existing admin global search verified in current working tree with new regression coverage
+- exact files changed: `tests/unit/admin-search-package-analytics.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed the admin global search modal supports keyboard-open, debounced live search, grouped user/payment/package results, and deep-links selected results into the users, payments, and packages pages through the `search` query param
+- automated tests added or updated: added `tests/unit/admin-search-package-analytics.test.ts`; ran `npx tsx --test tests/unit/admin-search-package-analytics.test.ts tests/unit/admin-permission-boundaries.test.ts tests/unit/pending-payment-fulfillment.test.ts`
+- result: `done`
+
+### P3-3 Verification - 2026-05-11
+
+- implementation PR or commit: existing package analytics live metrics verified in current working tree with new regression coverage
+- exact files changed: `tests/unit/admin-search-package-analytics.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed package analytics now loads live subscriber counts, 30-day and previous-window activations, and derived growth rate from real membership activation data, while the UI intentionally shows fallback messaging when no baseline exists instead of mock growth data
+- automated tests added or updated: added `tests/unit/admin-search-package-analytics.test.ts`; ran `npx tsx --test tests/unit/admin-search-package-analytics.test.ts tests/unit/admin-permission-boundaries.test.ts tests/unit/pending-payment-fulfillment.test.ts`
+- result: `done`
+
+### P4-1 Verification - 2026-05-11
+
+- implementation PR or commit: existing destructive admin permission boundary tests verified in current `main`
+- exact files changed: `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed destructive admin operations remain wired through `superAdminProcedure`, so unauthenticated users and regular admins cannot invoke backup and wipe flows
+- automated tests added or updated: ran `npx tsx --test tests/unit/admin-permission-boundaries.test.ts`
+- result: `done`
+
+### P4-2 Verification - 2026-05-11
+
+- implementation PR or commit: existing payment idempotency tests verified in current `main`
+- exact files changed: `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed pending-payment claims and terminal review state allow one successful approval path only, while duplicate approval completion returns an already-processed outcome instead of duplicating fulfillment
+- automated tests added or updated: ran `npx tsx --test tests/unit/pending-payment-fulfillment.test.ts`
+- result: `done`
+
+### P4-3 Verification - 2026-05-11
+
+- implementation PR or commit: existing webhook/admin overlap tests verified in current `main`
+- exact files changed: `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed overlapping admin and webhook actors cannot both claim the same pending payment, and later paths correctly see completed or mismatched records as non-claimable
+- automated tests added or updated: ran `npx tsx --test tests/unit/pending-payment-fulfillment.test.ts`
+- result: `done`
+
+### P4-4 Verification - 2026-05-11
+
+- implementation PR or commit: newsletter durability coverage verified after `dca64f87`
+- exact files changed: `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed persisted newsletter campaigns restore sent-recipient state, resume only unsent recipients, preserve progress visibility after restart, and keep the `NewsletterCampaign` table as the single persisted execution store
+- automated tests added or updated: ran `npx tsx --test tests/unit/newsletter-durability.test.ts`
+- result: `done`
+
+### P4-5 Verification - 2026-05-11
+
+- implementation PR or commit: existing app URL and client URL resolution tests verified in current `main`
+- exact files changed: `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed canonical URL resolution prefers configured app URLs, normalizes NextAuth and Vercel fallbacks correctly, fails in production when required, and preserves correct client-side base URL behavior across browser and server contexts
+- automated tests added or updated: ran `npx tsx --test tests/unit/app-url-resolution.test.ts`
+- result: `done`
+
+### P4-6 Verification - 2026-05-11
+
+- implementation PR or commit: existing dashboard live-data guards verified in current `main`
+- exact files changed: `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed dashboard community badges, latest updates, and unread counters are driven by live Prisma-backed queries, while legacy mock cards remain hard-disabled instead of rendering demo placeholders
+- automated tests added or updated: ran `npx tsx --test tests/unit/dashboard-live-data.test.ts`
 - result: `done`
 
 ## Decision Log
