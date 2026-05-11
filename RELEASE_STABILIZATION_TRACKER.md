@@ -161,7 +161,7 @@ Avoid parallelizing:
 
 | ID | Title | Severity | Blocker | Status | Owner | Primary Files | Validation |
 |---|---|---|---|---|---|---|---|
-| P3-1 | Remove demo/mock logic from dashboard | High | Yes | ready for verification | Unassigned | `components/DashboardContent.tsx`, `server/trpc/router/communityUpdates.ts` | Dashboard shows live-backed states only |
+| P3-1 | Remove demo/mock logic from dashboard | High | Yes | done | Unassigned | `components/DashboardContent.tsx`, `server/trpc/router/communityUpdates.ts` | Dashboard shows live-backed states only |
 | P3-2 | Complete or explicitly gate admin global search | Medium | No | done | Unassigned | `components/admin/GlobalSearch.tsx`, `app/admin/users/page.tsx`, `app/admin/payments/page.tsx`, `app/admin/packages/page.tsx` | Search behavior matches operator expectation |
 | P3-3 | Replace mock package analytics growth data | Medium | No | done | Unassigned | `components/admin/PackageAnalytics.tsx`, `server/trpc/router/admin.ts` | Analytics show real or intentionally hidden metrics |
 | P3-4 | Decide TechQuiz live status and complete or gate CBT flow | Medium | Yes if live | completed | Unassigned | `components/techquiz/CBTPortalContent.tsx`, `server/trpc/router/techquiz.ts`, `app/admin/techquiz/settings/page.tsx`, `components/techquiz/TechQuizContent.tsx` | CBT workflow is either fully integrated or unavailable in live |
@@ -265,6 +265,14 @@ For each item marked `ready for verification`, record:
 - exact files changed: `tests/unit/admin-search-package-analytics.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
 - manual validation steps executed: confirmed the admin global search modal supports keyboard-open, debounced live search, grouped user/payment/package results, and deep-links selected results into the users, payments, and packages pages through the `search` query param
 - automated tests added or updated: added `tests/unit/admin-search-package-analytics.test.ts`; ran `npx tsx --test tests/unit/admin-search-package-analytics.test.ts tests/unit/admin-permission-boundaries.test.ts tests/unit/pending-payment-fulfillment.test.ts`
+- result: `done`
+
+### P3-1 Verification - 2026-05-11
+
+- implementation PR or commit: existing live-backed dashboard implementation verified in current `main` after `89a4120e`
+- exact files changed: `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed legacy dashboard mock countdown cards in `DashboardContent.tsx` are hard-disabled behind `false &&` guards, the remaining visible dashboard surfaces are driven by live tRPC queries, and `communityUpdates.ts` serves only active, non-expired Prisma-backed updates with persisted read-state tracking
+- automated tests added or updated: ran `npx tsx --test tests/unit/dashboard-live-data.test.ts`
 - result: `done`
 
 ### P3-3 Verification - 2026-05-11
