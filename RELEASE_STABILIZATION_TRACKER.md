@@ -88,7 +88,7 @@ Why this batch goes first:
 
 Recommended validation for Batch A:
 
-1. App startup fails when `ENCRYPTION_KEY` is missing.
+1. App startup fails for missing auth/canonical URL configuration and warns immediately when `ENCRYPTION_KEY` is missing.
 2. A regular admin cannot access destructive procedures.
 3. Mock gateway never renders in production-like configuration.
 4. Links in emails and redirects resolve from configured environment URLs only.
@@ -142,8 +142,8 @@ Avoid parallelizing:
 
 | ID | Title | Severity | Blocker | Status | Owner | Primary Files | Validation |
 |---|---|---|---|---|---|---|---|
-| P1-1 | Make admin payment approval atomic | Critical | Yes | ready for verification | Unassigned | `server/trpc/router/admin.ts`, `server/services/revenue.service.ts` | No partial wallet/order/membership updates on induced failure |
-| P1-2 | Remove unreachable/conflicting `TOPUP` handling | Critical | Yes | ready for verification | Unassigned | `server/trpc/router/admin.ts` | Single deterministic path for deposit/top-up approval |
+| P1-1 | Make admin payment approval atomic | Critical | Yes | done | Unassigned | `server/trpc/router/admin.ts`, `server/services/revenue.service.ts`, `server/services/payment/adminPaymentReview.ts` | No partial wallet/order/membership updates on induced failure |
+| P1-2 | Remove unreachable/conflicting `TOPUP` handling | Critical | Yes | done | Unassigned | `server/trpc/router/admin.ts`, `server/services/payment/adminPaymentReview.ts`, `server/trpc/router/wallet.ts`, `server/trpc/router/package.ts`, `app/api/cron/recover-stuck-payments/route.ts`, `server/services/payment/paymentMetadata.ts` | Single deterministic path for deposit/top-up approval |
 | P1-3 | Introduce shared idempotent fulfillment guards | High | Yes | ready for verification | Unassigned | `server/services/payment/pendingPaymentFulfillment.ts`, `server/trpc/router/admin.ts`, `server/trpc/router/package.ts`, `app/api/webhooks/crypto/route.ts`, `app/api/webhooks/paystack/route.ts`, `app/api/webhooks/flutterwave/route.ts`, `app/api/cron/recover-stuck-payments/route.ts` | Duplicate admin/webhook/callback processing does not duplicate value delivery |
 | P1-4 | Make referral sync transactional or stage-and-swap | Critical | Yes | ready for verification | Unassigned | `server/trpc/router/admin.ts` | Failed referral rebuild cannot leave partial live state |
 | P1-5 | Normalize payment lifecycle metadata contracts | High | Yes | ready for verification | Unassigned | `server/services/payment/paymentMetadata.ts`, `server/trpc/router/package.ts`, `server/trpc/router/wallet.ts`, `server/trpc/router/store.ts`, `app/api/webhooks/paystack/route.ts`, `app/api/webhooks/flutterwave/route.ts` | Membership, upgrade, deposit, and store payment metadata resolve consistently across initiation and fulfillment |
@@ -155,7 +155,7 @@ Avoid parallelizing:
 | P2-1 | Replace in-memory newsletter execution state with durable persistence | High | Yes | ready for verification | Unassigned | `prisma/schema.prisma`, `prisma/migrations/20260504000000_newsletter_campaign_scheduler_fields/migration.sql`, `server/trpc/router/admin.ts` | Newsletter jobs survive restart/redeploy and do not duplicate unexpectedly |
 | P2-2 | Remove duplicate newsletter job tracking model | High | Yes | ready for verification | Unassigned | `server/trpc/router/admin.ts` | Single source of truth for campaign state |
 | P2-3 | Harden impersonation route with throttling and audit assurances | High | Yes | ready for verification | Unassigned | `app/api/auth/impersonate/route.ts`, `app/api/auth/impersonate/end/route.ts`, `server/trpc/router/admin.ts`, `server/auth.ts`, `lib/rateLimit.ts`, `lib/impersonationSession.ts`, `components/admin/ImpersonationBanner.tsx`, `components/admin/UserDetailsModal.tsx` | Repeated abuse attempts are throttled and session transitions remain valid |
-| P2-4 | Add startup environment validation for critical keys and URLs | High | Yes | ready for verification | Unassigned | `instrumentation.ts`, `lib/startupValidation.ts`, `lib/authSecret.ts`, `lib/appUrl.ts`, payment/webhook config surfaces | Unsafe deploys fail fast instead of silently degrading |
+| P2-4 | Add startup environment validation for critical keys and URLs | High | Yes | done | Unassigned | `instrumentation.ts`, `lib/startupValidation.ts`, `lib/authSecret.ts`, `lib/appUrl.ts`, payment/webhook config surfaces | Missing auth/canonical URL fails fast; missing `ENCRYPTION_KEY` warns at startup and still fails on encryption use |
 
 ## Phase 3: Remove Incomplete Live Surfaces
 
@@ -187,6 +187,30 @@ For each item marked `ready for verification`, record:
 - automated tests added or updated
 - result: `done` or `reopened`
 
+### P1-1 Verification - 2026-05-11
+
+- implementation PR or commit: current working tree changes after `85d39cf1` (not yet committed)
+- exact files changed: `server/trpc/router/admin.ts`, `server/services/payment/adminPaymentReview.ts`, `tests/unit/admin-payment-atomicity.test.ts`
+- manual validation steps executed: verified both `reviewPayment` and `bulkReviewPayments` now route through the same transactional admin payment review executor so the bulk path no longer bypasses claim/finalize protections
+- automated tests added or updated: added `tests/unit/admin-payment-atomicity.test.ts`; ran `npx tsx --test tests/unit/admin-payment-atomicity.test.ts tests/unit/pending-payment-fulfillment.test.ts`
+- result: `done`
+
+### P1-2 Verification - 2026-05-11
+
+- implementation PR or commit: current working tree changes after `85d39cf1` (not yet committed)
+- exact files changed: `tests/unit/deposit-topup-consistency.test.ts`, `tests/unit/admin-payment-atomicity.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed wallet initiation writes new funding requests as `DEPOSIT`, while admin review, payment verification, and stuck-payment recovery all treat `TOPUP` only as a legacy alias that resolves into the same `DEPOSIT` transaction lookup path
+- automated tests added or updated: added `tests/unit/deposit-topup-consistency.test.ts`; updated `tests/unit/admin-payment-atomicity.test.ts`; ran `npx tsx --test tests/unit/deposit-topup-consistency.test.ts tests/unit/admin-payment-atomicity.test.ts tests/unit/pending-payment-fulfillment.test.ts`
+- result: `done`
+
+### P2-4 Verification - 2026-05-11
+
+- implementation PR or commit: current working tree changes after `85d39cf1` (not yet committed)
+- exact files changed: `lib/startupValidation.ts`, `tests/unit/startup-validation.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: reviewed `instrumentation.ts` startup hook wiring and verified production validation behavior remains fail-fast for auth/canonical URL while surfacing missing `ENCRYPTION_KEY` at boot
+- automated tests added or updated: added `tests/unit/startup-validation.test.ts`; ran `npx tsx --test tests/unit/startup-validation.test.ts`; ran `npx tsx --test tests/unit/app-url-resolution.test.ts`
+- result: `done`
+
 ## Decision Log
 
 Use this section to record non-code decisions that affect release readiness.
@@ -195,6 +219,7 @@ Use this section to record non-code decisions that affect release readiness.
 |---|---|---|---|
 | 2026-05-04 | Tracker created from full codebase audit | Needed to convert findings into actionable stabilization work | Copilot |
 | 2026-05-11 | Temporarily removed `ENCRYPTION_KEY` startup hard-fail from production boot validation | Live production recovery required availability before a safer runtime enforcement strategy could be restored | Copilot |
+| 2026-05-11 | Finalized startup validation policy to warn once for missing `ENCRYPTION_KEY` while keeping auth secret and canonical URL as hard startup blockers | Preserves production availability, makes missing encryption capability visible at boot, and keeps encryption operations fail-closed at runtime | Copilot |
 
 ## Recommended Working Order
 

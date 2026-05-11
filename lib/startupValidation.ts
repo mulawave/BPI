@@ -3,6 +3,7 @@ import { resolveAuthSecret } from "@/lib/authSecret";
 const LOCAL_DEV_BASE_URL = "http://localhost:3000";
 
 let validated = false;
+let warnedMissingEncryptionKey = false;
 
 function readEnv(name: string) {
   const value = process.env[name];
@@ -50,6 +51,17 @@ function validateRequiredEnv(name: string, issues: string[]) {
   }
 }
 
+function warnMissingEncryptionKey() {
+  if (warnedMissingEncryptionKey) {
+    return;
+  }
+
+  console.warn(
+    "[startupValidation] ENCRYPTION_KEY is not configured. Startup will continue, but encryption-dependent operations will fail until the key is restored."
+  );
+  warnedMissingEncryptionKey = true;
+}
+
 export function validateCriticalEnvironment() {
   if (validated) return;
 
@@ -63,6 +75,10 @@ export function validateCriticalEnvironment() {
 
   if (!resolveAuthSecret()) {
     issues.push("NEXTAUTH_SECRET or AUTH_SECRET is required");
+  }
+
+  if (!readEnv("ENCRYPTION_KEY")) {
+    warnMissingEncryptionKey();
   }
 
   validateCanonicalUrl(getConfiguredBaseUrl(), issues);
