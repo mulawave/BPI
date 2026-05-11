@@ -1,6 +1,7 @@
 // Main Payment Processor
 // Orchestrates payment processing across different gateways
 
+import { areMockPaymentsAllowed } from "@/lib/mockPayments";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 import {
@@ -64,7 +65,7 @@ export class PaymentProcessor {
       { id: PaymentGateway.UTILITY_TOKEN, enabled: utilityTokenEnabled },
     ];
 
-    if (process.env.NODE_ENV !== "production") {
+    if (areMockPaymentsAllowed()) {
       gateways.push({ id: PaymentGateway.MOCK_DEV, enabled: true });
     }
 
@@ -78,7 +79,7 @@ export class PaymentProcessor {
     // MOCK_DEV and WALLET use static config; Paystack/Flutterwave read from DB with env fallback.
 
     if (gateway === PaymentGateway.MOCK_DEV) {
-      if (process.env.NODE_ENV === "production") {
+      if (!areMockPaymentsAllowed()) {
         return { enabled: false, environment: "live" };
       }
       return {

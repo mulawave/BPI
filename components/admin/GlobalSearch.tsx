@@ -52,7 +52,7 @@ export default function GlobalSearch() {
     },
   ];
 
-  // Search results (mock for now - can be replaced with real search)
+  // Quick-action filtering for short queries; longer queries use live global search.
   const filteredActions = query
     ? quickActions.filter((action) =>
         action.name.toLowerCase().includes(query.toLowerCase()),

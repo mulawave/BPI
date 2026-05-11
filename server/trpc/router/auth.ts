@@ -3,6 +3,7 @@ import { hash, compare } from "bcryptjs";
 import { createTRPCRouter, publicProcedure, protectedProcedure, rateLimitedProcedure, passwordResetProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { randomUUID } from "crypto";
+import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { sendPasswordResetEmail, sendWelcomeEmail } from "@/lib/email";
 
 const registerSchema = z.object({
@@ -104,6 +105,8 @@ export const authRouter = createTRPCRouter({
         }
       }
 
+      const baseUrl = (await resolveAppBaseUrl()).replace(/\/$/, "");
+
       console.log(`[auth.register] Creating user email=${email}, ref_id="${ref_id}", resolvedReferrerId=${resolvedReferrerId ?? "NONE"}`);
 
       // Create user with invite code, and set sponsor/referredBy if a valid referrer was found
@@ -118,7 +121,7 @@ export const authRouter = createTRPCRouter({
           passwordHash,
           role: "user",
           inviteCode,
-          referralLink: `https://beepagro.com/register?ref=${inviteCode}`,
+          referralLink: `${baseUrl}/register?ref=${inviteCode}`,
           ...(resolvedReferrerId && {
             sponsorId: resolvedReferrerId,
             referredBy: resolvedReferrerId,

@@ -3,7 +3,7 @@
  * Centralized service for recording revenue from all sources
  */
 
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 
 export type RevenueSource =
   | "COMMUNITY_SUPPORT"
@@ -40,6 +40,8 @@ export interface RecordRevenueParams {
   tokenSymbol?: string;
   metadata?: Record<string, unknown>;
 }
+
+type TxClient = PrismaClient | Prisma.TransactionClient;
 
 const REVENUE_SPLIT_SETTING_KEYS = {
   companyPercent: "revenue_split_company_percent",
@@ -156,7 +158,7 @@ function fromCents(cents: number) {
  * Record revenue and allocate using 50/30/20 split
  */
 export async function recordRevenue(
-  prisma: PrismaClient,
+  prisma: TxClient,
   params: RecordRevenueParams
 ) {
   const {
@@ -184,8 +186,7 @@ export async function recordRevenue(
   }
 
   try {
-    // Use transaction for atomicity
-    return await prisma.$transaction(async (tx: any) => {
+    const writeRevenue = async (tx: any) => {
       const splitConfig = await getSplitConfig(tx);
       // Record revenue transaction (composite constraint on (source, sourceId) prevents duplicates)
       const revenueTransaction = await tx.revenueTransaction.create({
@@ -224,7 +225,13 @@ export async function recordRevenue(
     });
 
       return revenueTransaction;
-    });
+    };
+
+    if ('$transaction' in prisma && typeof (prisma as any).$transaction === 'function') {
+      return await (prisma as PrismaClient).$transaction(writeRevenue);
+    }
+
+    return await writeRevenue(prisma);
   } catch (error: any) {
     console.error("[REVENUE SERVICE] Error recording revenue:", {
       source,

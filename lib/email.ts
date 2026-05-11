@@ -250,6 +250,7 @@ export async function sendVerificationEmail(email: string, code: string) {
 }
 
 export async function sendWelcomeEmail(email: string, name: string) {
+  const dashboardUrl = `${(await resolveAppBaseUrl()).replace(/\/$/, "")}/dashboard`;
   const html = `
     <!DOCTYPE html>
     <html>
@@ -273,7 +274,7 @@ export async function sendWelcomeEmail(email: string, name: string) {
             <p>Welcome to the BeepAgro Palliative Initiative! We're excited to have you as part of our community.</p>
             <p>Get started by exploring your dashboard and connecting with other members:</p>
             <p style="text-align: center;">
-              <a href="https://beepagro.com/dashboard" class="button">Visit Dashboard</a>
+              <a href="${dashboardUrl}" class="button">Visit Dashboard</a>
             </p>
             <p>If you have any questions, our support team is here to help.</p>
             <p>Best regards,<br>The BPI Team</p>

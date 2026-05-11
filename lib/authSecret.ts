@@ -6,7 +6,7 @@ export function requireAuthSecret(): string {
   const secret = resolveAuthSecret();
 
   if (!secret) {
-    throw new Error("Missing auth secret. Set NEXTAUTH_SECRET.");
+    throw new Error("Missing auth secret. Set NEXTAUTH_SECRET or AUTH_SECRET.");
   }
 
   return secret;

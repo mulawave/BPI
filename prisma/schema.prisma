@@ -3909,12 +3909,15 @@ model NewsletterCampaign {
   jobId             String   @unique
   adminId           String
   status            String   @default("running") // running, completed, cancelled, error
+  scheduledFor      DateTime?
   subject           String
   body              String   @db.Text
   filter            String   @default("all")
   membershipPackage String?
   fromEmail         String?
   replyToEmail      String?
+  attachments       Json     @default("[]")
+  embeddedImages    Json     @default("[]")
 
   // Send rate config
   batchSize         Int      @default(10)
@@ -3945,5 +3948,6 @@ model NewsletterCampaign {
 
   @@index([adminId])
   @@index([status])
+  @@index([status, scheduledFor])
   @@index([createdAt])
 }

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { sendEmail } from "@/lib/email";
+import { PAYMENT_FULFILLMENT_TYPES } from "@/server/services/payment/paymentMetadata";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { randomUUID } from "crypto";
 
@@ -1262,6 +1263,8 @@ export const storeRouter = createTRPCRouter({
           gatewayReference,
           status: "pending",
           metadata: {
+            fulfillmentType: PAYMENT_FULFILLMENT_TYPES.STORE_PURCHASE,
+            purpose: PAYMENT_FULFILLMENT_TYPES.STORE_PURCHASE,
             orderId: order.id,
             productId: order.productId,
             quantity: order.quantity,

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -31,9 +32,11 @@ type PaymentsOutput = RouterOutputs["admin"]["getAllPayments"];
 type Payment = PaymentsOutput["payments"][number];
 
 export default function PaymentsPage() {
+  const searchParams = useSearchParams();
+  const urlSearch = searchParams.get("search") ?? "";
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(urlSearch);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
   const [methodFilter, setMethodFilter] = useState<string | undefined>(undefined);
@@ -64,6 +67,14 @@ export default function PaymentsPage() {
     search: search || undefined,
     paymentMethod: methodFilter,
   }, { enabled: activeTab === "pending" });
+
+  useEffect(() => {
+    setSearch(urlSearch);
+  }, [urlSearch]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, typeFilter, methodFilter, activeTab]);
 
   const bulkReview = api.admin.bulkReviewPayments.useMutation({
     onSuccess: (res) => {

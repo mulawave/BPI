@@ -5,6 +5,7 @@ import { FiX, FiCreditCard, FiCheck, FiAlertCircle } from "react-icons/fi";
 import { Wallet, CreditCard, DollarSign, CheckCircle, Loader2, AlertTriangle, Building2, Coins, Bitcoin } from "lucide-react";
 import { api } from "@/client/trpc";
 import { useCurrency } from "@/contexts/CurrencyContext";
+import { areMockPaymentsAllowed } from "@/lib/mockPayments";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import BankTransferDetails from "../payment/BankTransferDetails";
@@ -33,6 +34,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const [submittingCrypto, setSubmittingCrypto] = useState(false);
   
   const { formatAmount, selectedCurrency, convertToNGN: toNaira } = useCurrency();
+  const allowMockPayments = areMockPaymentsAllowed();
   const currencySign = selectedCurrency?.sign || '₦';
   const VAT_RATE = 0.075; // 7.5%
 
@@ -130,15 +132,18 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
       available: isCryptoAllowed && isEnabled('crypto', true),
       badge: !isCryptoAllowed ? 'NGN Only' : isEnabled('crypto', true) ? 'Active' : 'Coming Soon'
     },
-    {
+  ];
+
+  if (allowMockPayments) {
+    gateways.push({
       id: 'mock' as PaymentGateway,
       name: 'Mock Payment',
       description: 'Testing Only - Instant',
       icon: Wallet,
       available: isEnabled('mock', true),
       badge: isEnabled('mock', true) ? 'Active' : 'Coming Soon'
-    }
-  ];
+    });
+  }
 
   const numAmount = parseFloat(amount) || 0;
   const vatAmount = numAmount * VAT_RATE;

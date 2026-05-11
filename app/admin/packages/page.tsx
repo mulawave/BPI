@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { api } from "@/client/trpc";
 import {
@@ -46,7 +47,9 @@ type Package = {
 };
 
 export default function PackagesPage() {
-  const [search, setSearch] = useState("");
+  const searchParams = useSearchParams();
+  const urlSearch = searchParams.get("search") ?? "";
+  const [search, setSearch] = useState(urlSearch);
   const [activeFilter, setActiveFilter] = useState<boolean | undefined>(undefined);
   const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
@@ -66,6 +69,10 @@ export default function PackagesPage() {
     isActive: activeFilter,
     search: search || undefined,
   });
+
+  useEffect(() => {
+    setSearch(urlSearch);
+  }, [urlSearch]);
 
   const toggleStatusMutation = api.admin.togglePackageStatus.useMutation({
     onSuccess: (updated) => {

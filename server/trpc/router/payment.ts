@@ -1,6 +1,7 @@
 // Payment tRPC Router
 // User-facing payment operations
 
+import { areMockPaymentsAllowed } from "@/lib/mockPayments";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import {
@@ -19,6 +20,7 @@ export const paymentRouter = createTRPCRouter({
    */
   getPaymentGateways: protectedProcedure.query(async ({ ctx }) => {
     const now = new Date();
+    const allowMockPayments = areMockPaymentsAllowed();
     const defaultGateways = [
       {
         gatewayName: "paystack",
@@ -50,13 +52,16 @@ export const paymentRouter = createTRPCRouter({
         provider: "crypto",
         displayOrder: 50,
       },
-      {
+    ];
+
+    if (allowMockPayments) {
+      defaultGateways.push({
         gatewayName: "mock",
         displayName: "Mock",
         provider: "mock",
         displayOrder: 60,
-      },
-    ];
+      });
+    }
 
     await ctx.prisma.paymentGatewayConfig.createMany({
       data: defaultGateways.map((g) => ({
@@ -79,8 +84,12 @@ export const paymentRouter = createTRPCRouter({
       data: { currency: "USD" },
     });
 
+    const visibleGatewayNames = allowMockPayments
+      ? ["paystack", "flutterwave", "mock", "crypto"]
+      : ["paystack", "flutterwave", "crypto"];
+
     const gateways = await ctx.prisma.paymentGatewayConfig.findMany({
-      where: { gatewayName: { in: ["paystack", "flutterwave", "mock", "crypto"] } },
+      where: { gatewayName: { in: visibleGatewayNames } },
       orderBy: { displayOrder: "asc" },
       select: {
         id: true,
@@ -223,7 +232,13 @@ export const paymentRouter = createTRPCRouter({
               ? "flutterwave"
               : input.gateway === PaymentGateway.PAYSTACK
                 ? "paystack"
-                : "mock",
+                : input.gateway === PaymentGateway.BANK_TRANSFER
+                  ? "bank_transfer"
+                  : input.gateway === PaymentGateway.CRYPTO
+                    ? "crypto"
+                    : input.gateway === PaymentGateway.UTILITY_TOKEN
+                      ? "utility_token"
+                      : "mock",
         amount: input.amount,
         currency: input.currency,
         gateway: input.gateway,

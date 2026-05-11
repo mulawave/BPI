@@ -1,5 +1,8 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const { validateCriticalEnvironment } = await import('./lib/startupValidation');
+    validateCriticalEnvironment();
+
     const { prisma } = await import('./lib/prisma');
     
     // Ensure cleanup on exit during build

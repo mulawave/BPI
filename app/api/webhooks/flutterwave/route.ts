@@ -11,85 +11,39 @@ import { generateReceiptLink } from "@/server/services/receipt.service";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { getNigerianRegion } from "@/lib/nigeria-regions";
 import {
+  claimPendingPayment as claimPendingPaymentForFulfillment,
+  markPendingPaymentNeedsReview,
+  markPendingPaymentReviewed,
+} from "@/server/services/payment/pendingPaymentFulfillment";
+import { resolvePaymentFulfillmentType } from "@/server/services/payment/paymentMetadata";
+import {
   PaymentGatewayFactory,
   PaymentGateway,
 } from "../../../../server/services/payment";
 import { webhookLimiter, applyRateLimit } from "@/lib/rateLimit";
 
-type PendingPaymentClaim =
-  | { status: "claimed"; paymentId: string; userId: string }
-  | { status: "already_processed" | "in_progress" | "missing" };
-
-async function claimPendingPayment(txRef: string, purpose: string, expectedUserId?: string): Promise<PendingPaymentClaim> {
-  const pendingPayment = await prisma.pendingPayment.findFirst({
-    where: {
-      gatewayReference: txRef,
-      ...(expectedUserId ? { userId: expectedUserId } : {}),
-    },
-    orderBy: { createdAt: "desc" },
+async function claimPendingPayment(txRef: string, purpose: string, expectedUserId?: string) {
+  return claimPendingPaymentForFulfillment(prisma, {
+    reference: txRef,
+    expectedUserId,
+    purpose,
+    actor: "Flutterwave webhook",
+    claimableStatuses: ["pending"],
   });
-
-  if (!pendingPayment) {
-    const completedTransaction = await prisma.transaction.findFirst({
-      where: {
-        reference: txRef,
-        ...(expectedUserId ? { userId: expectedUserId } : {}),
-        status: "completed",
-      },
-    });
-
-    return completedTransaction ? { status: "already_processed" } : { status: "missing" };
-  }
-
-  if (pendingPayment.status === "approved" || pendingPayment.status === "completed") {
-    return { status: "already_processed" };
-  }
-
-  if (pendingPayment.status === "processing") {
-    return { status: "in_progress" };
-  }
-
-  const claimed = await prisma.pendingPayment.updateMany({
-    where: {
-      id: pendingPayment.id,
-      status: "pending",
-    },
-    data: {
-      status: "processing",
-      reviewNotes: `Flutterwave webhook claimed payment for ${purpose} processing at ${new Date().toISOString()}`,
-    },
-  });
-
-  if (claimed.count === 0) {
-    const refreshed = await prisma.pendingPayment.findUnique({ where: { id: pendingPayment.id } });
-    if (refreshed?.status === "approved" || refreshed?.status === "completed") {
-      return { status: "already_processed" };
-    }
-    return { status: "in_progress" };
-  }
-
-  return {
-    status: "claimed",
-    paymentId: pendingPayment.id,
-    userId: pendingPayment.userId,
-  };
 }
 
 async function markPaymentApproved(paymentId: string, note: string) {
-  await prisma.pendingPayment.update({
-    where: { id: paymentId },
-    data: {
-      status: "approved",
-      reviewedAt: new Date(),
-      reviewNotes: note,
-    },
+  await markPendingPaymentReviewed(prisma, {
+    paymentId,
+    status: "approved",
+    note,
   });
 }
 
 async function markPaymentNeedsReview(paymentId: string, note: string) {
-  await prisma.pendingPayment.updateMany({
-    where: { id: paymentId, status: "processing" },
-    data: { reviewNotes: note },
+  await markPendingPaymentNeedsReview(prisma, {
+    paymentId,
+    note,
   });
 }
 
@@ -186,6 +140,7 @@ export async function POST(req: NextRequest) {
       const flwRef = payload.data.flw_ref;
       const userId = payload.data.meta?.userId;
       const purpose = (payload.data.meta?.purpose || '').toUpperCase();
+      const fulfillmentType = resolvePaymentFulfillmentType(payload.data.meta?.fulfillmentType ?? purpose);
       const packageId = payload.data.meta?.packageId;
       const currentPackageId = payload.data.meta?.currentPackageId;
 
@@ -198,7 +153,7 @@ export async function POST(req: NextRequest) {
       });
 
       // AUTO-APPROVE: Handle different payment purposes
-      if (purpose === "MEMBERSHIP" && packageId && userId) {
+      if (fulfillmentType === "MEMBERSHIP" && packageId && userId) {
         console.log("📦 [FLUTTERWAVE-WEBHOOK] Processing MEMBERSHIP activation...");
 
         const claim = await claimPendingPayment(txRef, purpose, userId);
@@ -295,7 +250,7 @@ export async function POST(req: NextRequest) {
           console.error("❌ [FLUTTERWAVE-WEBHOOK] Membership activation failed:", error);
           throw error;
         }
-      } else if (purpose === "UPGRADE" && packageId && currentPackageId && userId) {
+      } else if (fulfillmentType === "MEMBERSHIP_UPGRADE" && packageId && currentPackageId && userId) {
         console.log("📦 [FLUTTERWAVE-WEBHOOK] Processing MEMBERSHIP upgrade...");
 
         const claim = await claimPendingPayment(txRef, purpose, userId);
@@ -388,7 +343,7 @@ export async function POST(req: NextRequest) {
           console.error("❌ [FLUTTERWAVE-WEBHOOK] Membership upgrade failed:", error);
           throw error;
         }
-      } else if (purpose === "EMPOWERMENT" && userId) {
+      } else if (fulfillmentType === "EMPOWERMENT" && userId) {
         console.log("📦 [FLUTTERWAVE-WEBHOOK] Processing EMPOWERMENT payment...");
 
         const claim = await claimPendingPayment(txRef, purpose, userId);
@@ -474,7 +429,7 @@ export async function POST(req: NextRequest) {
         });
 
         console.log("✅ [FLUTTERWAVE-WEBHOOK] Empowerment payment auto-approved");
-      } else if (purpose === "DEPOSIT" || purpose === "TOPUP" || purpose === "WALLET_DEPOSIT") {
+      } else if (fulfillmentType === "DEPOSIT" || purpose === "WALLET_DEPOSIT") {
         console.log("💰 [FLUTTERWAVE-WEBHOOK] Processing wallet deposit...");
 
         const claim = await claimPendingPayment(txRef, purpose);
@@ -547,7 +502,7 @@ export async function POST(req: NextRequest) {
         }
       } else {
         // Purpose unknown from metadata — attempt recovery from PendingPayment record
-        console.warn("⚠️  [FLUTTERWAVE-WEBHOOK] Unknown payment purpose from metadata:", purpose, "— attempting PendingPayment lookup");
+        console.warn("⚠️  [FLUTTERWAVE-WEBHOOK] Unknown payment purpose from metadata:", fulfillmentType || purpose, "— attempting PendingPayment lookup");
 
         const fallbackPending = await prisma.pendingPayment.findFirst({
           where: { gatewayReference: txRef, status: { in: ["pending", "processing"] } },
@@ -556,15 +511,15 @@ export async function POST(req: NextRequest) {
         });
 
         if (fallbackPending?.transactionType) {
-          const recoveredPurpose = fallbackPending.transactionType.toUpperCase();
           const recoveredUserId = fallbackPending.userId;
           const recoveredMeta = (fallbackPending.metadata as Record<string, any>) || {};
+          const recoveredPurpose = resolvePaymentFulfillmentType(recoveredMeta.fulfillmentType, fallbackPending.transactionType);
           const recoveredPackageId = recoveredMeta.packageId;
           const recoveredCurrentPackageId = recoveredMeta.currentPackageId;
 
           console.log("🔄 [FLUTTERWAVE-WEBHOOK] Recovered purpose from PendingPayment:", recoveredPurpose, "userId:", recoveredUserId);
 
-          if ((recoveredPurpose === "MEMBERSHIP" || recoveredPurpose === "MEMBERSHIP_PAYMENT") && recoveredPackageId && recoveredUserId) {
+          if (recoveredPurpose === "MEMBERSHIP" && recoveredPackageId && recoveredUserId) {
             const claim = await claimPendingPayment(txRef, "MEMBERSHIP", recoveredUserId);
             if (claim.status === "claimed") {
               if (await verifyPaymentAmount(claim.paymentId, amount, txRef, "MEMBERSHIP")) {
@@ -593,7 +548,7 @@ export async function POST(req: NextRequest) {
             } else {
               console.log("⚠️  [FLUTTERWAVE-WEBHOOK] Fallback claim status:", claim.status);
             }
-          } else if ((recoveredPurpose === "UPGRADE" || recoveredPurpose === "MEMBERSHIP_UPGRADE") && recoveredPackageId && recoveredCurrentPackageId && recoveredUserId) {
+          } else if (recoveredPurpose === "MEMBERSHIP_UPGRADE" && recoveredPackageId && recoveredCurrentPackageId && recoveredUserId) {
             const claim = await claimPendingPayment(txRef, "UPGRADE", recoveredUserId);
             if (claim.status === "claimed") {
               if (await verifyPaymentAmount(claim.paymentId, amount, txRef, "UPGRADE")) {
@@ -620,7 +575,7 @@ export async function POST(req: NextRequest) {
                 }
               }
             }
-          } else if ((recoveredPurpose === "DEPOSIT" || recoveredPurpose === "TOPUP" || recoveredPurpose === "WALLET_DEPOSIT") && recoveredUserId) {
+          } else if (recoveredPurpose === "DEPOSIT" && recoveredUserId) {
             // Fallback recovery for wallet deposits (handles legacy 'wallet_deposit' purpose mismatch)
             const claim = await claimPendingPayment(txRef, "DEPOSIT", recoveredUserId);
             if (claim.status === "claimed") {

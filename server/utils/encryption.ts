@@ -6,10 +6,21 @@
 import crypto from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-key-for-development-only-change-in-production';
+let cachedKey: Buffer | null = null;
 
-// Ensure key is 32 bytes
-const KEY = crypto.createHash('sha256').update(ENCRYPTION_KEY).digest();
+function getEncryptionKey(): Buffer {
+  if (cachedKey) {
+    return cachedKey;
+  }
+
+  const encryptionKey = process.env.ENCRYPTION_KEY?.trim();
+  if (!encryptionKey) {
+    throw new Error('ENCRYPTION_KEY is required for sensitive data encryption');
+  }
+
+  cachedKey = crypto.createHash('sha256').update(encryptionKey).digest();
+  return cachedKey;
+}
 
 /**
  * Encrypt text using AES-256-GCM
@@ -18,7 +29,7 @@ const KEY = crypto.createHash('sha256').update(ENCRYPTION_KEY).digest();
  */
 export function encrypt(text: string): string {
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ALGORITHM, KEY, iv);
+  const cipher = crypto.createCipheriv(ALGORITHM, getEncryptionKey(), iv);
   
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
@@ -45,7 +56,7 @@ export function decrypt(encryptedText: string): string {
   
   const decipher = crypto.createDecipheriv(
     ALGORITHM,
-    KEY,
+    getEncryptionKey(),
     Buffer.from(ivHex, 'hex')
   );
   

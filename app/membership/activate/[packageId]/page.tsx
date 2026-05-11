@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
+import { areMockPaymentsAllowed } from "@/lib/mockPayments";
 import {
   CreditCard,
   Wallet,
@@ -58,6 +59,7 @@ export default function ActivateMembershipPage() {
   const { theme, toggleTheme } = useTheme();
   const { formatAmount, convertAmount, selectedCurrency, currencies, setSelectedCurrencyId } = useCurrency();
   const isCryptoAllowed = selectedCurrency?.symbol !== 'NGN';
+  const allowMockPayments = areMockPaymentsAllowed();
   const selectedCurrencyId = selectedCurrency?.id || '';
   const packageId = params?.packageId as string;
   
@@ -261,15 +263,18 @@ export default function ActivateMembershipPage() {
       available: isCryptoAllowed && isEnabled('crypto', true),
       comingSoon: !isCryptoAllowed ? false : comingSoonFromDb('crypto', false)
     },
-    {
+  ];
+
+  if (allowMockPayments) {
+    paymentOptions.push({
       id: 'mock',
       name: 'Mock Payment',
       description: 'Testing only — instant activation',
       icon: FlaskConical,
       available: isEnabled('mock', false),
       comingSoon: comingSoonFromDb('mock', true)
-    },
-  ];
+    });
+  }
 
   const handlePayment = async () => {
     if (!selectedGateway || !selectedPackage) return;

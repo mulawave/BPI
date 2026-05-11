@@ -23,7 +23,7 @@ export default function PackageAnalytics({
   isOpen,
   onClose,
 }: PackageAnalyticsProps) {
-  const { data: pkg } = api.admin.getPackageById.useQuery(
+  const { data: pkg, isLoading, error } = api.admin.getPackageById.useQuery(
     { packageId },
     { enabled: isOpen && !!packageId }
   );
@@ -31,12 +31,15 @@ export default function PackageAnalytics({
   if (!isOpen) return null;
 
   const subscribers = (pkg as any)?.subscribers || [];
-  const activeCount = subscribers.length;
+  const activeCount = (pkg as any)?.activeSubscriptions || 0;
   const totalRevenue = (pkg as any)?.totalRevenue || 0;
   const avgRevenuePerUser = activeCount > 0 ? totalRevenue / activeCount : 0;
-
-  // Calculate subscriber growth trend (mock - in real scenario, query historical data)
-  const growthRate = 12.5; // Mock percentage
+  const growthWindowDays = (pkg as any)?.analytics?.growthWindowDays || 30;
+  const growthRate = (pkg as any)?.analytics?.subscriberGrowthRate;
+  const currentWindowActivations = (pkg as any)?.analytics?.currentWindowActivations || 0;
+  const previousWindowActivations = (pkg as any)?.analytics?.previousWindowActivations || 0;
+  const hasGrowthBaseline = typeof growthRate === "number";
+  const growthDirection = hasGrowthBaseline && growthRate >= 0 ? "+" : "";
 
   return (
     <>
@@ -77,6 +80,35 @@ export default function PackageAnalytics({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6">
+            {isLoading ? (
+              <div className="flex min-h-[320px] items-center justify-center">
+                <div className="flex flex-col items-center gap-4 text-center">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-200 border-t-emerald-500 dark:border-gray-700 dark:border-t-emerald-400" />
+                  <div>
+                    <p className="text-base font-semibold text-gray-900 dark:text-white">
+                      Loading package analytics
+                    </p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Pulling live subscriber and revenue data.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : error ? (
+              <div className="flex min-h-[320px] items-center justify-center">
+                <div className="max-w-md rounded-2xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-900/60 dark:bg-red-950/30">
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300">
+                    <MdClose size={24} />
+                  </div>
+                  <h3 className="text-lg font-semibold text-red-700 dark:text-red-300">
+                    Analytics unavailable
+                  </h3>
+                  <p className="mt-2 text-sm text-red-600/90 dark:text-red-200/90">
+                    {error.message || "Failed to load package analytics."}
+                  </p>
+                </div>
+              </div>
+            ) : (
             {/* Key Metrics */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               {/* Active Subscribers */}
@@ -95,7 +127,11 @@ export default function PackageAnalytics({
                 <div className="text-3xl font-bold">{activeCount.toLocaleString()}</div>
                 <div className="text-xs opacity-75 mt-1">
                   <MdTrendingUp className="inline mr-1" size={14} />
-                  +{growthRate}% this month
+                  {hasGrowthBaseline
+                    ? `${growthDirection}${growthRate.toFixed(1)}% vs previous ${growthWindowDays} days`
+                    : currentWindowActivations > 0
+                      ? `No prior ${growthWindowDays}-day baseline yet`
+                      : `No activation trend captured yet`}
                 </div>
               </motion.div>
 
@@ -115,7 +151,7 @@ export default function PackageAnalytics({
                 <div className="text-3xl font-bold">
                   ₦{(totalRevenue / 1000000).toFixed(2)}M
                 </div>
-                <div className="text-xs opacity-75 mt-1">From all activations</div>
+                <div className="text-xs opacity-75 mt-1">Estimated from active subscriptions</div>
               </motion.div>
 
               {/* Avg Revenue per User */}
@@ -163,6 +199,31 @@ export default function PackageAnalytics({
                   {pkg?.isActive ? "Available for purchase" : "Not available"}
                 </div>
               </motion.div>
+            </div>
+
+            <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">
+                  Current {growthWindowDays}-Day Activations
+                </p>
+                <p className="mt-2 text-3xl font-bold text-emerald-700 dark:text-emerald-300">
+                  {currentWindowActivations.toLocaleString()}
+                </p>
+                <p className="mt-2 text-sm text-emerald-700/80 dark:text-emerald-200/80">
+                  Members activated on this package during the current analytics window.
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/60">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400">
+                  Previous {growthWindowDays}-Day Window
+                </p>
+                <p className="mt-2 text-3xl font-bold text-slate-900 dark:text-white">
+                  {previousWindowActivations.toLocaleString()}
+                </p>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                  Used as the comparison baseline for trend reporting when enough live data exists.
+                </p>
+              </div>
             </div>
 
             {/* Pricing Breakdown */}
@@ -327,6 +388,7 @@ export default function PackageAnalytics({
                 })}
               </div>
             </div>
+            )}
           </div>
         </div>
       </motion.div>

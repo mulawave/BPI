@@ -78,6 +78,10 @@ export const authConfig: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = (user as any).role ?? "user";
+        (token as any).isImpersonation = (user as any).isImpersonation ?? (token as any).isImpersonation ?? false;
+        (token as any).impersonatedBy = (user as any).impersonatedBy ?? (token as any).impersonatedBy ?? null;
+        (token as any).impersonatedByEmail = (user as any).impersonatedByEmail ?? (token as any).impersonatedByEmail ?? null;
+        (token as any).impersonationSessionId = (user as any).impersonationSessionId ?? (token as any).impersonationSessionId ?? null;
         // Force DB fetch on first login
         (token as any)._dbFetchedAt = 0;
       }
@@ -122,6 +126,13 @@ export const authConfig: NextAuthOptions = {
         (token as any)._dbFetchedAt = now;
       }
 
+      if ((token as any).isImpersonation) {
+        (token as any).isImpersonation = true;
+        (token as any).impersonatedBy = (token as any).impersonatedBy ?? null;
+        (token as any).impersonatedByEmail = (token as any).impersonatedByEmail ?? null;
+        (token as any).impersonationSessionId = (token as any).impersonationSessionId ?? null;
+      }
+
       return token;
     },
     async session({ session, token }) {
@@ -131,6 +142,10 @@ export const authConfig: NextAuthOptions = {
         (session.user as any).role = token.role;
         (session.user as any).hasActiveMembership = (token as any).hasActiveMembership ?? false;
         (session.user as any).hasActiveEmpowerment = (token as any).hasActiveEmpowerment ?? false;
+        (session.user as any).isImpersonation = (token as any).isImpersonation ?? false;
+        (session.user as any).impersonatedBy = (token as any).impersonatedBy ?? null;
+        (session.user as any).impersonatedByEmail = (token as any).impersonatedByEmail ?? null;
+        (session.user as any).impersonationSessionId = (token as any).impersonationSessionId ?? null;
       }
       return session;
     }

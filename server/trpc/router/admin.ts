@@ -23,6 +23,11 @@ import { sendWithdrawalApprovedToUser, sendWithdrawalRejectedToUser } from "@/li
 import { recordRevenue } from "@/server/services/revenue.service";
 import { getNigerianRegion } from "@/lib/nigeria-regions";
 import { verifyBasqetUsdtPayout } from "@/server/services/payment/BasqetClient";
+import { impersonationCreationLimiter } from "@/lib/rateLimit";
+import {
+  claimPendingPayment,
+  markPendingPaymentReviewed,
+} from "@/server/services/payment/pendingPaymentFulfillment";
 
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.session?.user) {
@@ -102,13 +107,52 @@ interface NewsletterJobState {
     replyToEmail: string;
     subject: string;
     body: string;
+    attachments?: { filename: string; content: string }[];
+    embeddedImages?: { id: string; content: string; position: number }[];
     sendRate: { batchSize: number; delayBetweenEmailsMs: number; delayBetweenBatchesMs: number; warmUp: boolean };
   } | null;
   allRecipientIds: string[];
   sentRecipientIds: Set<string>;
 }
 
+interface DurableNewsletterCampaign {
+  id: string;
+  jobId: string;
+  adminId: string;
+  status: string;
+  scheduledFor: Date | null;
+  subject: string;
+  body: string;
+  filter: string;
+  membershipPackage: string | null;
+  fromEmail: string | null;
+  replyToEmail: string | null;
+  attachments: Prisma.JsonValue;
+  embeddedImages: Prisma.JsonValue;
+  batchSize: number;
+  delayBetweenMs: number;
+  batchCooldownMs: number;
+  warmUp: boolean;
+  totalRecipients: number;
+  sentCount: number;
+  failedCount: number;
+  elapsedMs: number;
+  lastError: string | null;
+  sentEmails: Prisma.JsonValue;
+  failedEmails: Prisma.JsonValue;
+  errorLog: Prisma.JsonValue;
+  sentRecipientIds: Prisma.JsonValue;
+  allRecipientIds: Prisma.JsonValue;
+  startedAt: Date;
+  completedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 const newsletterJobs = new Map<string, NewsletterJobState>();
+const newsletterCampaignStore = prisma.newsletterCampaign as any;
+let newsletterRestoreStarted = false;
+let newsletterSchedulerStarted = false;
 
 // Clean up completed jobs older than 1 hour
 setInterval(() => {
@@ -123,7 +167,7 @@ setInterval(() => {
 // Sync in-memory job state to database periodically
 async function syncJobToDb(job: NewsletterJobState) {
   try {
-    await prisma.newsletterCampaign.update({
+    await newsletterCampaignStore.update({
       where: { jobId: job.jobId },
       data: {
         status: job.status,
@@ -142,6 +186,301 @@ async function syncJobToDb(job: NewsletterJobState) {
     console.error(`[NEWSLETTER] Failed to sync job ${job.jobId} to DB:`, err);
   }
 }
+
+function buildNewsletterCampaignConfig(campaign: {
+  filter: string;
+  membershipPackage: string | null;
+  fromEmail: string | null;
+  replyToEmail: string | null;
+  subject: string;
+  body: string;
+  attachments?: unknown;
+  embeddedImages?: unknown;
+  batchSize: number;
+  delayBetweenMs: number;
+  batchCooldownMs: number;
+  warmUp: boolean;
+}) {
+  return {
+    filter: campaign.filter,
+    membershipPackage: campaign.membershipPackage || undefined,
+    fromEmail: campaign.fromEmail || 'noreply@beepagro.com',
+    replyToEmail: campaign.replyToEmail || 'support@beepagro.com',
+    subject: campaign.subject,
+    body: campaign.body,
+    attachments: Array.isArray(campaign.attachments) ? (campaign.attachments as { filename: string; content: string }[]) : [],
+    embeddedImages: Array.isArray(campaign.embeddedImages) ? (campaign.embeddedImages as { id: string; content: string; position: number }[]) : [],
+    sendRate: {
+      batchSize: campaign.batchSize,
+      delayBetweenEmailsMs: campaign.delayBetweenMs,
+      delayBetweenBatchesMs: campaign.batchCooldownMs,
+      warmUp: campaign.warmUp,
+    },
+  };
+}
+
+function restoreNewsletterJobState(campaign: {
+  jobId: string;
+  status: string;
+  sentCount: number;
+  failedCount: number;
+  totalRecipients: number;
+  elapsedMs: number;
+  lastError: string | null;
+  sentEmails: unknown;
+  failedEmails: unknown;
+  errorLog: unknown;
+  sentRecipientIds: unknown;
+  allRecipientIds: unknown;
+  filter: string;
+  membershipPackage: string | null;
+  fromEmail: string | null;
+  replyToEmail: string | null;
+  subject: string;
+  body: string;
+  attachments: unknown;
+  embeddedImages: unknown;
+  batchSize: number;
+  delayBetweenMs: number;
+  batchCooldownMs: number;
+  warmUp: boolean;
+  startedAt: Date;
+}): NewsletterJobState {
+  const sentEmails = Array.isArray(campaign.sentEmails) ? (campaign.sentEmails as SentEmailEntry[]) : [];
+  const failedEmails = Array.isArray(campaign.failedEmails) ? (campaign.failedEmails as FailedEmailEntry[]) : [];
+  const errorLog = Array.isArray(campaign.errorLog) ? (campaign.errorLog as ErrorLogEntry[]) : [];
+  const sentRecipientIds = Array.isArray(campaign.sentRecipientIds) ? (campaign.sentRecipientIds as string[]) : [];
+  const allRecipientIds = Array.isArray(campaign.allRecipientIds) ? (campaign.allRecipientIds as string[]) : [];
+
+  return {
+    jobId: campaign.jobId,
+    status: (campaign.status as NewsletterJobState['status']) || 'error',
+    sent: campaign.sentCount,
+    failed: campaign.failedCount,
+    total: campaign.totalRecipients,
+    currentBatch: 0,
+    totalBatches: 0,
+    startedAt: campaign.startedAt.getTime(),
+    lastError: campaign.lastError,
+    currentEmail: null,
+    sentEmails,
+    failedEmails,
+    errorLog,
+    failedRecipients: failedEmails.map((entry) => entry.email),
+    campaignConfig: buildNewsletterCampaignConfig(campaign),
+    allRecipientIds,
+    sentRecipientIds: new Set(sentRecipientIds),
+  };
+}
+
+async function getNewsletterCompanyInfo() {
+  const companySettings = await prisma.adminSettings.findMany();
+  return Object.fromEntries(
+    companySettings.map((setting: any) => [setting.settingKey, { value: setting.settingValue, description: setting.description }])
+  );
+}
+
+function getNewsletterRecipientWhere(filter: string, membershipPackage?: string | null) {
+  const where: any = {};
+
+  if (filter === 'activated') {
+    where.activated = true;
+  } else if (filter === 'non-activated') {
+    where.activated = false;
+  } else if (filter === 'membership' && membershipPackage) {
+    where.activeMembershipPackageId = membershipPackage;
+  }
+
+  return where;
+}
+
+async function getNewsletterRecipients(filter: string, membershipPackage?: string | null) {
+  const recipients = await prisma.user.findMany({
+    where: getNewsletterRecipientWhere(filter, membershipPackage),
+    select: { id: true, email: true, name: true },
+  });
+
+  return recipients.filter((recipient: any): recipient is typeof recipient & { email: string } => !!recipient.email);
+}
+
+async function launchNewsletterCampaign(
+  campaign: {
+    id: string;
+    jobId: string;
+    adminId: string;
+    status: string;
+    filter: string;
+    membershipPackage: string | null;
+    fromEmail: string | null;
+    replyToEmail: string | null;
+    subject: string;
+    body: string;
+    attachments: unknown;
+    embeddedImages: unknown;
+    batchSize: number;
+    delayBetweenMs: number;
+    batchCooldownMs: number;
+    warmUp: boolean;
+    totalRecipients: number;
+    sentCount: number;
+    failedCount: number;
+    elapsedMs: number;
+    lastError: string | null;
+    sentEmails: unknown;
+    failedEmails: unknown;
+    errorLog: unknown;
+    sentRecipientIds: unknown;
+    allRecipientIds: unknown;
+    startedAt: Date;
+  },
+  options?: { recipients?: { id: string; email: string; name: string | null }[] }
+) {
+  if (newsletterJobs.has(campaign.jobId)) {
+    return;
+  }
+
+  const companyInfo = await getNewsletterCompanyInfo();
+  const job = restoreNewsletterJobState(campaign);
+  const validRecipients = options?.recipients ?? (await getNewsletterRecipients(campaign.filter, campaign.membershipPackage));
+
+  if (!job.allRecipientIds.length) {
+    job.allRecipientIds = validRecipients.map((recipient) => recipient.id);
+  }
+
+  const remainingRecipients = validRecipients.filter((recipient) => !job.sentRecipientIds.has(recipient.id));
+
+  job.total = job.allRecipientIds.length;
+  newsletterJobs.set(job.jobId, job);
+
+  await newsletterCampaignStore.update({
+    where: { id: campaign.id },
+    data: {
+      status: 'running',
+      totalRecipients: job.total,
+      allRecipientIds: job.allRecipientIds as any,
+      scheduledFor: null,
+      lastError: null,
+    },
+  });
+
+  if (!remainingRecipients.length) {
+    job.status = 'completed';
+    await syncJobToDb(job);
+    return;
+  }
+
+  processNewsletterInBackground(job.jobId, {
+    validRecipients: remainingRecipients,
+    fromEmail: job.campaignConfig?.fromEmail || 'noreply@beepagro.com',
+    replyToEmail: job.campaignConfig?.replyToEmail || 'support@beepagro.com',
+    subject: job.campaignConfig?.subject || campaign.subject,
+    body: job.campaignConfig?.body || campaign.body,
+    attachments: job.campaignConfig?.attachments,
+    embeddedImages: job.campaignConfig?.embeddedImages,
+    companyInfo,
+    sendRate: job.campaignConfig?.sendRate || {
+      batchSize: campaign.batchSize,
+      delayBetweenEmailsMs: campaign.delayBetweenMs,
+      delayBetweenBatchesMs: campaign.batchCooldownMs,
+      warmUp: campaign.warmUp,
+    },
+    adminUserId: campaign.adminId,
+  }).catch(async (error) => {
+    const runningJob = newsletterJobs.get(job.jobId);
+    if (runningJob) {
+      runningJob.status = 'error';
+      runningJob.lastError = error instanceof Error ? error.message : 'Unknown newsletter execution error';
+      await syncJobToDb(runningJob);
+    }
+  });
+}
+
+async function restoreRunningNewsletterJobs() {
+  if (newsletterRestoreStarted) return;
+  newsletterRestoreStarted = true;
+
+  try {
+    const runningCampaigns = await newsletterCampaignStore.findMany({
+      where: { status: 'running' },
+      orderBy: { createdAt: 'asc' },
+    }) as DurableNewsletterCampaign[];
+
+    if (!runningCampaigns.length) return;
+
+    for (const campaign of runningCampaigns) {
+      const recipientIds = Array.isArray(campaign.allRecipientIds) ? (campaign.allRecipientIds as string[]) : [];
+      const recipients = recipientIds.length
+        ? await prisma.user.findMany({
+            where: { id: { in: recipientIds } },
+            select: { id: true, email: true, name: true },
+          })
+        : [];
+
+      await launchNewsletterCampaign(campaign as any, {
+        recipients: recipients.filter((recipient: any): recipient is typeof recipient & { email: string } => !!recipient.email),
+      });
+    }
+  } catch (error) {
+    console.error('[NEWSLETTER] Failed to restore running campaigns:', error);
+  }
+}
+
+async function processScheduledNewsletterCampaigns() {
+  if (newsletterSchedulerStarted) return;
+  newsletterSchedulerStarted = true;
+
+  const runScheduler = async () => {
+    try {
+      const now = new Date();
+      const dueCampaigns = await newsletterCampaignStore.findMany({
+        where: {
+          status: 'scheduled',
+          scheduledFor: { lte: now },
+        },
+        orderBy: { scheduledFor: 'asc' },
+      }) as DurableNewsletterCampaign[];
+
+      for (const campaign of dueCampaigns) {
+        const claimed = await newsletterCampaignStore.updateMany({
+          where: {
+            id: campaign.id,
+            status: 'scheduled',
+          },
+          data: {
+            status: 'running',
+            startedAt: now,
+            completedAt: null,
+            lastError: null,
+          },
+        });
+
+        if (claimed.count !== 1) {
+          continue;
+        }
+
+        const refreshed = await newsletterCampaignStore.findUnique({ where: { id: campaign.id } }) as DurableNewsletterCampaign | null;
+        if (!refreshed) {
+          continue;
+        }
+
+        const recipients = await getNewsletterRecipients(refreshed.filter, refreshed.membershipPackage);
+        await launchNewsletterCampaign(refreshed as any, { recipients });
+      }
+    } catch (error) {
+      console.error('[NEWSLETTER] Scheduled campaign processor failed:', error);
+    }
+  };
+
+  void runScheduler();
+  setInterval(() => {
+    void runScheduler();
+  }, 60 * 1000);
+}
+
+setTimeout(() => {
+  void restoreRunningNewsletterJobs();
+  void processScheduledNewsletterCampaigns();
+}, 0);
 
 async function processNewsletterInBackground(
   jobId: string,
@@ -252,10 +591,7 @@ async function processNewsletterInBackground(
 
       job.currentEmail = null;
 
-      // Sync to DB every 10 emails
-      if ((job.sent + job.failed) % 10 === 0) {
-        syncJobToDb(job);
-      }
+      await syncJobToDb(job);
 
       // Random jitter delay between emails (anti-spam)
       const jitter = sendRate.delayBetweenEmailsMs + Math.floor(Math.random() * 2000);
@@ -1033,13 +1369,7 @@ export const adminRouter = createTRPCRouter({
         throw new Error("Confirmation required to sync referral data");
       }
 
-      // Step 1: Count existing referral records
       const existingCount = await prisma.referral.count();
-
-      // Step 2: Truncate the Referral table
-      await prisma.referral.deleteMany({});
-
-      // Step 3: Get all users with sponsors
       const usersWithSponsors = await prisma.user.findMany({
         where: {
           sponsorId: {
@@ -1054,10 +1384,36 @@ export const adminRouter = createTRPCRouter({
         },
       });
 
-      // Step 4: Create referral records
+      const sponsorIds = Array.from(
+        new Set(
+          usersWithSponsors
+            .map((user) => user.sponsorId)
+            .filter((sponsorId): sponsorId is string => Boolean(sponsorId))
+        )
+      );
+
+      const validSponsors = sponsorIds.length
+        ? await prisma.user.findMany({
+            where: { id: { in: sponsorIds } },
+            select: { id: true },
+          })
+        : [];
+      const validSponsorIds = new Set(validSponsors.map((sponsor) => sponsor.id));
+
+      const rebuiltReferrals: Array<{
+        id: string;
+        referrerId: string;
+        referredId: string;
+        status: string;
+        rewardPaid: boolean;
+        createdAt: Date;
+        updatedAt: Date;
+      }> = [];
+      const seenPairs = new Set<string>();
       let created = 0;
       let skipped = 0;
       const errors: string[] = [];
+      const now = new Date();
 
       for (const user of usersWithSponsors) {
         if (!user.sponsorId) {
@@ -1065,61 +1421,64 @@ export const adminRouter = createTRPCRouter({
           continue;
         }
 
-        try {
-          // Verify sponsor exists
-          const sponsorExists = await prisma.user.findUnique({
-            where: { id: user.sponsorId },
-            select: { id: true },
-          });
-
-          if (!sponsorExists) {
-            errors.push(`User ${user.id} has invalid sponsorId: ${user.sponsorId}`);
-            skipped++;
-            continue;
-          }
-
-          // Create referral record
-          await prisma.referral.create({
-            data: {
-              id: randomUUID(),
-              referrerId: user.sponsorId,
-              referredId: user.id,
-              status: user.activated ? "active" : "pending",
-              rewardPaid: false,
-              createdAt: user.createdAt,
-              updatedAt: new Date(),
-            },
-          });
-
-          created++;
-        } catch (error: any) {
-          if (error.code === 'P2002') {
-            // Duplicate entry, skip
-            skipped++;
-          } else {
-            errors.push(`Failed to create referral for user ${user.id}: ${error.message}`);
-            skipped++;
-          }
+        if (user.sponsorId === user.id) {
+          errors.push(`User ${user.id} cannot sponsor themselves`);
+          skipped++;
+          continue;
         }
+
+        if (!validSponsorIds.has(user.sponsorId)) {
+          errors.push(`User ${user.id} has invalid sponsorId: ${user.sponsorId}`);
+          skipped++;
+          continue;
+        }
+
+        const pairKey = `${user.sponsorId}:${user.id}`;
+        if (seenPairs.has(pairKey)) {
+          errors.push(`Duplicate referral pair detected for user ${user.id} and sponsor ${user.sponsorId}`);
+          skipped++;
+          continue;
+        }
+
+        seenPairs.add(pairKey);
+        rebuiltReferrals.push({
+          id: randomUUID(),
+          referrerId: user.sponsorId,
+          referredId: user.id,
+          status: user.activated ? "active" : "pending",
+          rewardPaid: false,
+          createdAt: user.createdAt,
+          updatedAt: now,
+        });
+        created++;
       }
 
-      // Log the sync action
-      await prisma.auditLog.create({
-        data: {
-          id: randomUUID(),
-          userId: (ctx.session?.user as any)?.id || "system",
-          action: "SYNC_REFERRAL_DATA",
-          entity: "Referral",
-          entityId: "*",
-          changes: JSON.stringify({
-            existingCount,
-            created,
-            skipped,
-            errorCount: errors.length,
-          }),
-          status: "success",
-          createdAt: new Date(),
-        },
+      await prisma.$transaction(async (tx) => {
+        await tx.referral.deleteMany({});
+
+        if (rebuiltReferrals.length > 0) {
+          await tx.referral.createMany({
+            data: rebuiltReferrals,
+          });
+        }
+
+        await tx.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: (ctx.session?.user as any)?.id || "system",
+            action: "SYNC_REFERRAL_DATA",
+            entity: "Referral",
+            entityId: "*",
+            changes: JSON.stringify({
+              existingCount,
+              created,
+              skipped,
+              errorCount: errors.length,
+            }),
+            status: "success",
+            createdAt: now,
+          },
+        });
       });
 
       return {
@@ -1362,7 +1721,6 @@ export const adminRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       const { paymentId, action, notes } = input;
-      
       const payment = await prisma.pendingPayment.findUnique({
         where: { id: paymentId },
         include: { User: true },
@@ -1377,168 +1735,189 @@ export const adminRouter = createTRPCRouter({
 
       const reviewerId = (ctx.session?.user as any)?.id;
       const newStatus = action === "approve" ? "approved" : "rejected";
+      const reviewTime = new Date();
 
-      // If approved, apply the correct business logic based on transactionType.
-      if (action === "approve") {
-        const purpose = (payment.transactionType || "").toUpperCase();
-        const metadata = (payment.metadata ?? {}) as any;
-        const paymentRef = payment.gatewayReference || payment.id;
-        const isCrypto = (payment.paymentMethod || "").toLowerCase() === "crypto";
-        const paymentMethodLabel = isCrypto ? "Crypto Transfer" : "Bank Transfer";
-        const sourceKey = isCrypto ? "CRYPTO" : "BANK_TRANSFER";
+      const reviewResult = await prisma.$transaction(async (tx) => {
+        const claimResult = await claimPendingPayment(tx, {
+          pendingPaymentId: paymentId,
+          expectedUserId: payment.userId,
+          purpose: payment.transactionType || "ADMIN_REVIEW",
+          actor: "Admin review",
+          claimableStatuses: [payment.status],
+          claimedNote: notes,
+          reviewedBy: reviewerId,
+        });
 
-        const normalizePercent = (maybePercent: number, fallback: number) => {
-          if (!Number.isFinite(maybePercent)) return fallback;
-          if (maybePercent < 0) return fallback;
-          return maybePercent > 1 ? maybePercent / 100 : maybePercent;
-        };
+        if (claimResult.status !== "claimed") {
+          throw new Error("Payment is already being reviewed or has already been processed");
+        }
 
-        const computeProfitFiat = (params: {
-          profitMode: "PERCENT" | "FIXED" | "HYBRID";
-          profitPercent: number;
-          profitFixedAmountFiat: number;
-          baseFiat: number;
-        }) => {
-          const percent = normalizePercent(params.profitPercent, 0);
-          const fixed = Number(params.profitFixedAmountFiat ?? 0);
-          const base = Number(params.baseFiat ?? 0);
-
-          let profit = 0;
-          if (params.profitMode === "PERCENT") profit = base * percent;
-          else if (params.profitMode === "FIXED") profit = fixed;
-          else profit = base * percent + fixed;
-
-          return Math.min(Math.max(profit, 0), base);
-        };
-
-        if (purpose === "MEMBERSHIP") {
-          const pkgId = metadata.packageId as string | undefined;
-          if (!pkgId) throw new Error(`Missing packageId in payment metadata for MEMBERSHIP activation. Payment ID: ${payment.id}, User: ${payment.User?.email || payment.userId}. Please check the payment record and ensure packageId is present.`);
-
-          const membershipPackage = await prisma.membershipPackage.findUnique({ where: { id: pkgId } });
-          if (!membershipPackage) throw new Error(`Membership package not found: ${pkgId}`);
-
-          const membershipProfitFiat = computeProfitFiat({
-            profitMode: ((membershipPackage.profitMode ?? "PERCENT") as any) as "PERCENT" | "FIXED" | "HYBRID",
-            profitPercent: Number(membershipPackage.profitPercent ?? 1),
-            profitFixedAmountFiat: Number(membershipPackage.profitFixedAmountFiat ?? 0),
-            baseFiat: Number(membershipPackage.price ?? 0),
-          });
-
-          await activateMembershipAfterExternalPayment({
-            prisma,
-            userId: payment.userId,
-            packageId: pkgId,
-            selectedPalliative: metadata.selectedPalliative,
-            paymentReference: paymentRef,
-            paymentMethodLabel,
-            activatorName: payment.User?.name || payment.User?.email || "New Member",
-          });
-
-          // Record revenue for membership purchase
-          await recordRevenue(prisma, {
-            source: "MEMBERSHIP_REGISTRATION",
-            amount: membershipProfitFiat,
-            currency: "NGN",
-            sourceId: payment.id,
-            description: `Membership purchase: Package ${pkgId}`,
-            sourceKey,
-            userId: payment.userId,
-            packageId: pkgId,
-            programType: "MEMBERSHIP",
-            country: payment.User?.country ?? undefined,
-            state: payment.User?.state ?? undefined,
-            region: getNigerianRegion(payment.User?.state),
-            metadata: {
-              paymentRef,
-              paymentAmount: payment.amount,
-              basePrice: membershipPackage.price,
-              vat: membershipPackage.vat,
-              packageName: membershipPackage.name,
-              selectedPalliative: metadata.selectedPalliative ?? null,
-              paymentMethod: sourceKey,
-            },
-          });
-        } else if (purpose === "STORE_PURCHASE") {
-          const orderId = metadata.orderId as string | undefined;
-          if (!orderId) {
-            throw new Error(
-              `Missing orderId in payment metadata for STORE_PURCHASE. Payment ID: ${payment.id}, User: ${payment.User?.email || payment.userId}.`
-            );
-          }
-
-          const order = await prisma.order.findUnique({
-            where: { id: orderId },
-            include: {
-              product: { include: { pickupCenter: true } },
-              user: true,
-              pickupCenter: true,
-            },
-          });
-
-          if (!order) {
-            throw new Error(`Store order not found: ${orderId}`);
-          }
-
-          if (order.userId !== payment.userId) {
-            throw new Error(
-              `Order user mismatch for STORE_PURCHASE. Order ${order.id} belongs to ${order.userId} but payment is for ${payment.userId}.`
-            );
-          }
-
-          const generateClaimCode = async (): Promise<string> => {
-            let claimCode = "";
-            let exists = true;
-            while (exists) {
-              const rand = Math.floor(100000 + Math.random() * 900000);
-              claimCode = `BPI-${rand}-PC`;
-              const found = await prisma.order.findFirst({ where: { claimCode } });
-              exists = Boolean(found);
+        const emailJobs: Array<{ to: string; subject: string; html: string }> = [];
+        let depositNotification:
+          | {
+              status: "completed" | "failed";
+              amount: number;
+              reference: string;
+              receiptUrl?: string;
             }
-            return claimCode;
+          | null = null;
+
+        // If approved, apply the correct business logic based on transactionType.
+        if (action === "approve") {
+          const purpose = (payment.transactionType || "").toUpperCase();
+          const metadata = (payment.metadata ?? {}) as any;
+          const paymentRef = payment.gatewayReference || payment.id;
+          const isCrypto = (payment.paymentMethod || "").toLowerCase() === "crypto";
+          const paymentMethodLabel = isCrypto ? "Crypto Transfer" : "Bank Transfer";
+          const sourceKey = isCrypto ? "CRYPTO" : "BANK_TRANSFER";
+
+          const normalizePercent = (maybePercent: number, fallback: number) => {
+            if (!Number.isFinite(maybePercent)) return fallback;
+            if (maybePercent < 0) return fallback;
+            return maybePercent > 1 ? maybePercent / 100 : maybePercent;
           };
 
-          // If order is already moved forward, treat approval as idempotent.
-          if (order.status === "PENDING") {
-            const claimCode = await generateClaimCode();
-            const nowIso = new Date().toISOString();
+          const computeProfitFiat = (params: {
+            profitMode: "PERCENT" | "FIXED" | "HYBRID";
+            profitPercent: number;
+            profitFixedAmountFiat: number;
+            baseFiat: number;
+          }) => {
+            const percent = normalizePercent(params.profitPercent, 0);
+            const fixed = Number(params.profitFixedAmountFiat ?? 0);
+            const base = Number(params.baseFiat ?? 0);
 
-            const existingBreakdown = (order.paymentBreakdown ?? {}) as any;
-            const externalTokenExisting = existingBreakdown?.external_token ?? {};
+            let profit = 0;
+            if (params.profitMode === "PERCENT") profit = base * percent;
+            else if (params.profitMode === "FIXED") profit = fixed;
+            else profit = base * percent + fixed;
 
-            const txHash = payment.proofOfPayment || (metadata.txHash as string | undefined) || null;
+            return Math.min(Math.max(profit, 0), base);
+          };
 
-            const paymentBreakdown = {
-              ...existingBreakdown,
-              payment_mode: "EXTERNAL_TOKEN",
-              confirmed_at: nowIso,
-              external_token: {
-                ...externalTokenExisting,
-                gateway_reference: paymentRef,
-                tx_hash: txHash,
-                token_symbol: (metadata.tokenSymbol as string | undefined) ?? externalTokenExisting?.symbol ?? null,
-                expected_amount: (metadata.expectedTokenAmount as number | undefined) ?? externalTokenExisting?.expected_amount ?? null,
-                expected_fiat: (metadata.totalFiat as number | undefined) ?? externalTokenExisting?.expected_fiat ?? null,
-                deposit_address: (metadata.depositAddress as string | undefined) ?? externalTokenExisting?.deposit_address ?? null,
-              },
-            };
+          if (purpose === "MEMBERSHIP") {
+            const pkgId = metadata.packageId as string | undefined;
+            if (!pkgId) throw new Error(`Missing packageId in payment metadata for MEMBERSHIP activation. Payment ID: ${payment.id}, User: ${payment.User?.email || payment.userId}. Please check the payment record and ensure packageId is present.`);
 
-            const updatedOrder = await prisma.order.update({
-              where: { id: order.id },
-              data: {
-                status: "PROCESSING",
-                claimStatus: "CODE_ISSUED",
-                claimCode,
-                paymentBreakdown,
-              },
-              include: { product: true, user: true, pickupCenter: true },
+            const membershipPackage = await tx.membershipPackage.findUnique({ where: { id: pkgId } });
+            if (!membershipPackage) throw new Error(`Membership package not found: ${pkgId}`);
+
+            const membershipProfitFiat = computeProfitFiat({
+              profitMode: ((membershipPackage.profitMode ?? "PERCENT") as any) as "PERCENT" | "FIXED" | "HYBRID",
+              profitPercent: Number(membershipPackage.profitPercent ?? 1),
+              profitFixedAmountFiat: Number(membershipPackage.profitFixedAmountFiat ?? 0),
+              baseFiat: Number(membershipPackage.price ?? 0),
             });
 
-            try {
-              const { sendEmail } = await import("@/lib/email");
+            await activateMembershipAfterExternalPayment({
+              prisma: tx,
+              userId: payment.userId,
+              packageId: pkgId,
+              selectedPalliative: metadata.selectedPalliative,
+              paymentReference: paymentRef,
+              paymentMethodLabel,
+              activatorName: payment.User?.name || payment.User?.email || "New Member",
+            });
+
+            await recordRevenue(tx as any, {
+              source: "MEMBERSHIP_REGISTRATION",
+              amount: membershipProfitFiat,
+              currency: "NGN",
+              sourceId: payment.id,
+              description: `Membership purchase: Package ${pkgId}`,
+              sourceKey,
+              userId: payment.userId,
+              packageId: pkgId,
+              programType: "MEMBERSHIP",
+              country: payment.User?.country ?? undefined,
+              state: payment.User?.state ?? undefined,
+              region: getNigerianRegion(payment.User?.state),
+              metadata: {
+                paymentRef,
+                paymentAmount: payment.amount,
+                basePrice: membershipPackage.price,
+                vat: membershipPackage.vat,
+                packageName: membershipPackage.name,
+                selectedPalliative: metadata.selectedPalliative ?? null,
+                paymentMethod: sourceKey,
+              },
+            });
+          } else if (purpose === "STORE_PURCHASE") {
+            const orderId = metadata.orderId as string | undefined;
+            if (!orderId) {
+              throw new Error(
+                `Missing orderId in payment metadata for STORE_PURCHASE. Payment ID: ${payment.id}, User: ${payment.User?.email || payment.userId}.`
+              );
+            }
+
+            const order = await tx.order.findUnique({
+              where: { id: orderId },
+              include: {
+                product: { include: { pickupCenter: true } },
+                user: true,
+                pickupCenter: true,
+              },
+            });
+
+            if (!order) {
+              throw new Error(`Store order not found: ${orderId}`);
+            }
+
+            if (order.userId !== payment.userId) {
+              throw new Error(
+                `Order user mismatch for STORE_PURCHASE. Order ${order.id} belongs to ${order.userId} but payment is for ${payment.userId}.`
+              );
+            }
+
+            const generateClaimCode = async (): Promise<string> => {
+              let claimCode = "";
+              let exists = true;
+              while (exists) {
+                const rand = Math.floor(100000 + Math.random() * 900000);
+                claimCode = `BPI-${rand}-PC`;
+                const found = await tx.order.findFirst({ where: { claimCode } });
+                exists = Boolean(found);
+              }
+              return claimCode;
+            };
+
+            if (order.status === "PENDING") {
+              const claimCode = await generateClaimCode();
+              const nowIso = new Date().toISOString();
+
+              const existingBreakdown = (order.paymentBreakdown ?? {}) as any;
+              const externalTokenExisting = existingBreakdown?.external_token ?? {};
+
+              const txHash = payment.proofOfPayment || (metadata.txHash as string | undefined) || null;
+
+              const paymentBreakdown = {
+                ...existingBreakdown,
+                payment_mode: "EXTERNAL_TOKEN",
+                confirmed_at: nowIso,
+                external_token: {
+                  ...externalTokenExisting,
+                  gateway_reference: paymentRef,
+                  tx_hash: txHash,
+                  token_symbol: (metadata.tokenSymbol as string | undefined) ?? externalTokenExisting?.symbol ?? null,
+                  expected_amount: (metadata.expectedTokenAmount as number | undefined) ?? externalTokenExisting?.expected_amount ?? null,
+                  expected_fiat: (metadata.totalFiat as number | undefined) ?? externalTokenExisting?.expected_fiat ?? null,
+                  deposit_address: (metadata.depositAddress as string | undefined) ?? externalTokenExisting?.deposit_address ?? null,
+                },
+              };
+
+              const updatedOrder = await tx.order.update({
+                where: { id: order.id },
+                data: {
+                  status: "PROCESSING",
+                  claimStatus: "CODE_ISSUED",
+                  claimCode,
+                  paymentBreakdown,
+                },
+                include: { product: true, user: true, pickupCenter: true },
+              });
 
               if (updatedOrder.user?.email) {
-                await sendEmail({
+                emailJobs.push({
                   to: updatedOrder.user.email,
                   subject: "Your BPI pickup claim code",
                   html: `<p>Hello ${updatedOrder.user.name ?? ""},</p><p>Your order for <strong>${updatedOrder.product?.name ?? "your item"}</strong> is confirmed.</p><p><strong>Claim Code:</strong> ${claimCode}</p><p>Please present this code and a valid ID at the pickup center to receive your item.</p>`,
@@ -1547,341 +1926,323 @@ export const adminRouter = createTRPCRouter({
 
               const pickupEmail = updatedOrder.pickupCenter?.contactEmail;
               if (pickupEmail) {
-                await sendEmail({
+                emailJobs.push({
                   to: pickupEmail,
                   subject: "New pickup order assigned",
                   html: `<p>A new order has been assigned to your pickup center.</p><p>Product: ${updatedOrder.product?.name ?? "Item"}</p><p>Claim Code: ${claimCode}</p>`,
                 });
               }
-            } catch {
-              // Email failures should not block approval.
-            }
 
-            const profitFiat = Number((updatedOrder.pricingSnapshot as any)?.profit_fiat ?? 0);
-            const totalFiat = Number((updatedOrder.pricingSnapshot as any)?.total_fiat ?? payment.amount ?? 0);
-            const amountForPools = profitFiat > 0 ? profitFiat : totalFiat;
+              const profitFiat = Number((updatedOrder.pricingSnapshot as any)?.profit_fiat ?? 0);
+              const totalFiat = Number((updatedOrder.pricingSnapshot as any)?.total_fiat ?? payment.amount ?? 0);
+              const amountForPools = profitFiat > 0 ? profitFiat : totalFiat;
 
-            if (amountForPools > 0) {
-              try {
-                await recordRevenue(prisma, {
-                  source: "STORE_PURCHASE",
-                  amount: amountForPools,
-                  currency: "NGN",
-                  sourceId: updatedOrder.id,
-                  description: `Store purchase profit: ${updatedOrder.product?.name || "Product"}`,
-                  sourceKey: "EXTERNAL_TOKEN",
-                  userId: updatedOrder.userId,
-                  orderId: updatedOrder.id,
-                  productId: updatedOrder.productId,
-                  programType: "STORE",
-                  country: updatedOrder.user?.country ?? undefined,
-                  state: updatedOrder.user?.state ?? undefined,
-                  region: getNigerianRegion(updatedOrder.user?.state),
-                  tokenSymbol:
-                    (metadata.tokenSymbol as string | undefined) ??
-                    (updatedOrder.pricingSnapshot as any)?.token_symbol ??
-                    (updatedOrder.paymentBreakdown as any)?.external_token?.symbol ??
-                    undefined,
-                  metadata: {
-                    pendingPaymentId: payment.id,
-                    paymentRef,
-                    txHash,
-                    quantity: updatedOrder.quantity,
-                    profitFiat,
-                    totalFiat,
-                    pricingSnapshot: updatedOrder.pricingSnapshot ?? null,
-                    paymentBreakdown: updatedOrder.paymentBreakdown ?? null,
-                  },
-                });
-              } catch (err: any) {
-                // RevenueTransaction uses a composite idempotency key (source, sourceId); ignore duplicates.
-                const code = err?.code || err?.name;
-                if (code !== "P2002") throw err;
+              if (amountForPools > 0) {
+                try {
+                  await recordRevenue(tx as any, {
+                    source: "STORE_PURCHASE",
+                    amount: amountForPools,
+                    currency: "NGN",
+                    sourceId: updatedOrder.id,
+                    description: `Store purchase profit: ${updatedOrder.product?.name || "Product"}`,
+                    sourceKey: "EXTERNAL_TOKEN",
+                    userId: updatedOrder.userId,
+                    orderId: updatedOrder.id,
+                    productId: updatedOrder.productId,
+                    programType: "STORE",
+                    country: updatedOrder.user?.country ?? undefined,
+                    state: updatedOrder.user?.state ?? undefined,
+                    region: getNigerianRegion(updatedOrder.user?.state),
+                    tokenSymbol:
+                      (metadata.tokenSymbol as string | undefined) ??
+                      (updatedOrder.pricingSnapshot as any)?.token_symbol ??
+                      (updatedOrder.paymentBreakdown as any)?.external_token?.symbol ??
+                      undefined,
+                    metadata: {
+                      pendingPaymentId: payment.id,
+                      paymentRef,
+                      txHash,
+                      quantity: updatedOrder.quantity,
+                      profitFiat,
+                      totalFiat,
+                      pricingSnapshot: updatedOrder.pricingSnapshot ?? null,
+                      paymentBreakdown: updatedOrder.paymentBreakdown ?? null,
+                    },
+                  });
+                } catch (err: any) {
+                  const code = err?.code || err?.name;
+                  if (code !== "P2002") throw err;
+                }
               }
             }
-          }
-        } else if (purpose === "UPGRADE") {
-          const pkgId = metadata.packageId as string | undefined;
-          const fromId = metadata.fromPackageId as string | undefined;
-          if (!pkgId || !fromId) {
-            throw new Error(`Missing required metadata for UPGRADE payment. Payment ID: ${payment.id}, User: ${payment.User?.email || payment.userId}. Required: packageId${!pkgId ? ' (missing)' : ''}, fromPackageId${!fromId ? ' (missing)' : ''}. Please verify the upgrade payment record.`);
-          }
-
-          await upgradeMembershipAfterExternalPayment({
-            prisma,
-            userId: payment.userId,
-            packageId: pkgId,
-            currentPackageId: fromId,
-            selectedPalliative: metadata.selectedPalliative,
-            paymentReference: paymentRef,
-            paymentMethodLabel,
-          });
-
-          // Record revenue for membership upgrade  
-          await recordRevenue(prisma, {
-            source: "MEMBERSHIP_REGISTRATION",
-            amount: payment.amount,
-            currency: "NGN",
-            sourceId: payment.id,
-            description: `Membership upgrade: From ${fromId} to ${pkgId}`,
-            sourceKey,
-            userId: payment.userId,
-            packageId: pkgId,
-            programType: "MEMBERSHIP_UPGRADE",
-            country: payment.User?.country ?? undefined,
-            state: payment.User?.state ?? undefined,
-            region: getNigerianRegion(payment.User?.state),
-            metadata: {
-              paymentRef,
-              paymentAmount: payment.amount,
-              fromPackageId: fromId,
-              toPackageId: pkgId,
-              selectedPalliative: metadata.selectedPalliative ?? null,
-              paymentMethod: sourceKey,
-            },
-          });
-        } else if (purpose === "TOPUP" || purpose === "DEPOSIT") {
-          // Extract deposit amount, VAT, and processing fee from metadata
-          const depositAmount = metadata.depositAmount || payment.amount;
-          const vatAmount = metadata.vatAmount || 0;
-          const processingFeeAmount = Number(metadata.processingFeeAmount || 0);
-
-          // DUPLICATE PREVENTION: Check if this deposit was already processed
-          const existingCompletedDeposit = await prisma.transaction.findFirst({
-            where: {
-              reference: paymentRef,
-              userId: payment.userId,
-              status: "completed",
-              transactionType: "DEPOSIT"
+          } else if (purpose === "UPGRADE") {
+            const pkgId = metadata.packageId as string | undefined;
+            const fromId = metadata.fromPackageId as string | undefined;
+            if (!pkgId || !fromId) {
+              throw new Error(`Missing required metadata for UPGRADE payment. Payment ID: ${payment.id}, User: ${payment.User?.email || payment.userId}. Required: packageId${!pkgId ? ' (missing)' : ''}, fromPackageId${!fromId ? ' (missing)' : ''}. Please verify the upgrade payment record.`);
             }
-          });
 
-          if (existingCompletedDeposit) {
-            throw new Error(`Deposit with reference ${paymentRef} has already been processed`);
+            await upgradeMembershipAfterExternalPayment({
+              prisma: tx,
+              userId: payment.userId,
+              packageId: pkgId,
+              currentPackageId: fromId,
+              selectedPalliative: metadata.selectedPalliative,
+              paymentReference: paymentRef,
+              paymentMethodLabel,
+            });
+
+            await recordRevenue(tx as any, {
+              source: "MEMBERSHIP_REGISTRATION",
+              amount: payment.amount,
+              currency: "NGN",
+              sourceId: payment.id,
+              description: `Membership upgrade: From ${fromId} to ${pkgId}`,
+              sourceKey,
+              userId: payment.userId,
+              packageId: pkgId,
+              programType: "MEMBERSHIP_UPGRADE",
+              country: payment.User?.country ?? undefined,
+              state: payment.User?.state ?? undefined,
+              region: getNigerianRegion(payment.User?.state),
+              metadata: {
+                paymentRef,
+                paymentAmount: payment.amount,
+                fromPackageId: fromId,
+                toPackageId: pkgId,
+                selectedPalliative: metadata.selectedPalliative ?? null,
+                paymentMethod: sourceKey,
+              },
+            });
+          } else if (purpose === "TOPUP" || purpose === "DEPOSIT") {
+            const depositAmount = metadata.depositAmount || payment.amount;
+            const vatAmount = metadata.vatAmount || 0;
+            const processingFeeAmount = Number(metadata.processingFeeAmount || 0);
+
+            const existingCompletedDeposit = await tx.transaction.findFirst({
+              where: {
+                reference: paymentRef,
+                userId: payment.userId,
+                status: "completed",
+                transactionType: "DEPOSIT"
+              }
+            });
+
+            if (existingCompletedDeposit) {
+              throw new Error(`Deposit with reference ${paymentRef} has already been processed`);
+            }
+
+            await tx.user.update({
+              where: { id: payment.userId },
+              data: {
+                wallet: { increment: depositAmount },
+              },
+            });
+
+            await tx.transaction.updateMany({
+              where: {
+                reference: paymentRef,
+                userId: payment.userId,
+                status: "pending"
+              },
+              data: {
+                status: "completed",
+                description: `Wallet deposit approved by admin - ${payment.paymentMethod}`,
+              },
+            });
+
+            if (vatAmount > 0) {
+              await tx.transaction.create({
+                data: {
+                  id: randomUUID(),
+                  userId: payment.userId,
+                  transactionType: "VAT",
+                  amount: vatAmount,
+                  description: `VAT on wallet deposit (7.5%)`,
+                  status: "completed",
+                  reference: `VAT-${paymentRef}`,
+                  walletType: "main",
+                },
+              });
+            }
+
+            if (processingFeeAmount > 0) {
+              await tx.transaction.create({
+                data: {
+                  id: randomUUID(),
+                  userId: payment.userId,
+                  transactionType: "USDT_DEPOSIT_FEE",
+                  amount: processingFeeAmount,
+                  description: `Processing fee on USDT deposit`,
+                  status: "completed",
+                  reference: `FEE-DEP-${paymentRef}`,
+                  walletType: "main",
+                },
+              });
+
+              await recordRevenue(tx as any, {
+                source: "DEPOSIT_FEE",
+                amount: processingFeeAmount,
+                currency: "USD",
+                sourceId: paymentRef,
+                userId: payment.userId,
+                description: `USDT deposit processing fee (admin approved) — ref ${paymentRef}`,
+              });
+            }
+
+            const receiptUrl = generateReceiptLink(paymentRef, 'deposit');
+            depositNotification = {
+              status: 'completed',
+              amount: depositAmount,
+              reference: paymentRef,
+              receiptUrl,
+            };
+          } else if (purpose === "CSP_CONTRIBUTION") {
+            const cspRequestId = metadata.cspRequestId as string | undefined;
+            if (cspRequestId) {
+              const cspRequest = await tx.cspSupportRequest.findUnique({ where: { id: cspRequestId } });
+              if (cspRequest) {
+                const newRaised = cspRequest.raisedAmount + payment.amount;
+                const nextCspStatus = newRaised >= cspRequest.thresholdAmount ? "ready_for_release" : cspRequest.status;
+
+                await tx.cspSupportRequest.update({
+                  where: { id: cspRequestId },
+                  data: {
+                    raisedAmount: { increment: payment.amount },
+                    contributorsCount: { increment: 1 },
+                    status: nextCspStatus,
+                  },
+                });
+
+                await tx.cspContribution.create({
+                  data: {
+                    requestId: cspRequestId,
+                    contributorId: payment.userId,
+                    amount: payment.amount,
+                    walletType: "wallet",
+                  },
+                });
+
+                await tx.transaction.create({
+                  data: {
+                    id: randomUUID(),
+                    userId: payment.userId,
+                    transactionType: "CSP_CONTRIBUTION",
+                    amount: -payment.amount,
+                    description: `CSP crypto contribution to request ${cspRequestId} (admin verified)`,
+                    status: "completed",
+                    reference: paymentRef,
+                    walletType: "main",
+                  },
+                });
+              }
+            }
+          } else if (purpose === "STORE_PURCHASE") {
+            await tx.transaction.create({
+              data: {
+                id: randomUUID(),
+                userId: payment.userId,
+                transactionType: "STORE_PURCHASE",
+                amount: -payment.amount,
+                description: `Store purchase via crypto (admin verified)`,
+                status: "completed",
+                reference: paymentRef,
+                walletType: "main",
+              },
+            });
+          } else {
+            await tx.user.update({
+              where: { id: payment.userId },
+              data: {
+                wallet: { increment: payment.amount },
+              },
+            });
+
+            await tx.transaction.create({
+              data: {
+                id: randomUUID(),
+                userId: payment.userId,
+                transactionType: "DEPOSIT",
+                amount: payment.amount,
+                description: `Payment approved (admin verified) - ${payment.paymentMethod}`,
+                status: "completed",
+                reference: paymentRef,
+                walletType: "main",
+              },
+            });
           }
+        } else {
+          const paymentRef = payment.gatewayReference || payment.id;
 
-          // Credit user wallet with the deposit amount (not including VAT)
-          await prisma.user.update({
-            where: { id: payment.userId },
-            data: {
-              wallet: { increment: depositAmount },
-            },
-          });
-
-          // Update existing pending transaction to completed
-          await prisma.transaction.updateMany({
+          await tx.transaction.updateMany({
             where: {
               reference: paymentRef,
               userId: payment.userId,
               status: "pending"
             },
             data: {
-              status: "completed",
-              description: `Wallet deposit approved by admin - ${payment.paymentMethod}`,
+              status: "failed",
+              description: `Payment rejected by admin: ${notes || 'No reason provided'}`,
             },
           });
 
-          // Create VAT transaction for tax tracking
-          if (vatAmount > 0) {
-            await prisma.transaction.create({
-              data: {
-                id: randomUUID(),
-                userId: payment.userId,
-                transactionType: "VAT",
-                amount: vatAmount,
-                description: `VAT on wallet deposit (7.5%)`,
-                status: "completed",
-                reference: `VAT-${paymentRef}`,
-                walletType: "main",
-              },
-            });
-          }
-
-          // Create USDT_DEPOSIT_FEE transaction and record as platform revenue (crypto deposits only)
-          if (processingFeeAmount > 0) {
-            await prisma.transaction.create({
-              data: {
-                id: randomUUID(),
-                userId: payment.userId,
-                transactionType: "USDT_DEPOSIT_FEE",
-                amount: processingFeeAmount,
-                description: `Processing fee on USDT deposit`,
-                status: "completed",
-                reference: `FEE-DEP-${paymentRef}`,
-                walletType: "main",
-              },
-            });
-
-            await recordRevenue(prisma, {
-              source: "DEPOSIT_FEE",
-              amount: processingFeeAmount,
-              currency: "USD",
-              sourceId: paymentRef,
-              userId: payment.userId,
-              description: `USDT deposit processing fee (admin approved) — ref ${paymentRef}`,
-            });
-          }
-
-          // Generate receipt link
-          const receiptUrl = generateReceiptLink(paymentRef, 'deposit');
-
-          // Send success notification
-          await notifyDepositStatus(
-            payment.userId,
-            'completed',
-            depositAmount,
-            paymentRef,
-            receiptUrl
-          );
-        } else if (purpose === "TOPUP") {
-          await prisma.user.update({
-            where: { id: payment.userId },
-            data: {
-              wallet: { increment: payment.amount },
-            },
-          });
-
-          await prisma.transaction.create({
-            data: {
-              id: randomUUID(),
-              userId: payment.userId,
-              transactionType: "DEPOSIT",
-              amount: payment.amount,
-              description: `Wallet top-up (admin verified) - ${payment.paymentMethod}`,
-              status: "completed",
-              reference: paymentRef,
-              walletType: "main",
-            },
-          });
-        } else if (purpose === "CSP_CONTRIBUTION") {
-          // Crypto-funded CSP contribution: credit the holding wallet without wallet deduction
-          const cspRequestId = metadata.cspRequestId as string | undefined;
-          if (cspRequestId) {
-            const cspRequest = await prisma.cspSupportRequest.findUnique({ where: { id: cspRequestId } });
-            if (cspRequest) {
-              const newRaised = cspRequest.raisedAmount + payment.amount;
-              const newStatus = newRaised >= cspRequest.thresholdAmount ? "ready_for_release" : cspRequest.status;
-
-              await prisma.cspSupportRequest.update({
-                where: { id: cspRequestId },
-                data: {
-                  raisedAmount: { increment: payment.amount },
-                  contributorsCount: { increment: 1 },
-                  status: newStatus,
-                },
-              });
-
-              await prisma.cspContribution.create({
-                data: {
-                  requestId: cspRequestId,
-                  contributorId: payment.userId,
-                  amount: payment.amount,
-                  walletType: "wallet",
-                },
-              });
-
-              await prisma.transaction.create({
-                data: {
-                  id: randomUUID(),
-                  userId: payment.userId,
-                  transactionType: "CSP_CONTRIBUTION",
-                  amount: -payment.amount,
-                  description: `CSP crypto contribution to request ${cspRequestId} (admin verified)`,
-                  status: "completed",
-                  reference: paymentRef,
-                  walletType: "main",
-                },
-              });
-            }
-          }
-        } else if (purpose === "STORE_PURCHASE") {
-          // Crypto-funded store purchase - record the payment transaction
-          await prisma.transaction.create({
-            data: {
-              id: randomUUID(),
-              userId: payment.userId,
-              transactionType: "STORE_PURCHASE",
-              amount: -payment.amount,
-              description: `Store purchase via crypto (admin verified)`,
-              status: "completed",
-              reference: paymentRef,
-              walletType: "main",
-            },
-          });
-        } else {
-          // Backward-compatible fallback: treat as wallet credit.
-          await prisma.user.update({
-            where: { id: payment.userId },
-            data: {
-              wallet: { increment: payment.amount },
-            },
-          });
-
-          await prisma.transaction.create({
-            data: {
-              id: randomUUID(),
-              userId: payment.userId,
-              transactionType: "DEPOSIT",
-              amount: payment.amount,
-              description: `Payment approved (admin verified) - ${payment.paymentMethod}`,
-              status: "completed",
-              reference: paymentRef,
-              walletType: "main",
-            },
-          });
-        }
-      } else {
-        // Rejection - update transaction status to failed and notify user
-        const paymentRef = payment.gatewayReference || payment.id;
-        
-        await prisma.transaction.updateMany({
-          where: {
+          depositNotification = {
+            status: 'failed',
+            amount: payment.amount,
             reference: paymentRef,
-            userId: payment.userId,
-            status: "pending"
-          },
+          };
+        }
+
+        const updated = await markPendingPaymentReviewed(tx, {
+          paymentId,
+          status: newStatus,
+          reviewedBy: reviewerId,
+          reviewedAt: reviewTime,
+          note: notes,
+        });
+
+        if (!updated) {
+          throw new Error("Unable to finalize payment review state");
+        }
+
+        await tx.auditLog.create({
           data: {
-            status: "failed",
-            description: `Payment rejected by admin: ${notes || 'No reason provided'}`,
+            id: randomUUID(),
+            userId: reviewerId || "system",
+            action: `PAYMENT_${action.toUpperCase()}`,
+            entity: "PendingPayment",
+            entityId: paymentId,
+            changes: JSON.stringify({ action, amount: payment.amount, userId: payment.userId }),
+            status: "success",
+            createdAt: reviewTime,
           },
         });
 
-        // Send failure notification
+        return { updated, depositNotification, emailJobs };
+      });
+
+      if (reviewResult.emailJobs.length > 0) {
+        try {
+          const { sendEmail } = await import("@/lib/email");
+          for (const emailJob of reviewResult.emailJobs) {
+            await sendEmail(emailJob);
+          }
+        } catch {
+          // Email failures should not block approval after commit.
+        }
+      }
+
+      if (reviewResult.depositNotification) {
         await notifyDepositStatus(
           payment.userId,
-          'failed',
-          payment.amount,
-          paymentRef
+          reviewResult.depositNotification.status,
+          reviewResult.depositNotification.amount,
+          reviewResult.depositNotification.reference,
+          reviewResult.depositNotification.receiptUrl
         );
       }
 
-      // Update payment status
-      const updated = await prisma.pendingPayment.update({
-        where: { id: paymentId },
-        data: {
-          status: newStatus,
-          reviewedBy: reviewerId,
-          reviewedAt: new Date(),
-          reviewNotes: notes,
-          updatedAt: new Date(),
-        },
-      });
-
-      // Log the action
-      await prisma.auditLog.create({
-        data: {
-          id: randomUUID(),
-          userId: reviewerId || "system",
-          action: `PAYMENT_${action.toUpperCase()}`,
-          entity: "PendingPayment",
-          entityId: paymentId,
-          changes: JSON.stringify({ action, amount: payment.amount, userId: payment.userId }),
-          status: "success",
-          createdAt: new Date(),
-        },
-      });
-
-      return updated;
+      return reviewResult.updated;
     }),
 
   bulkReviewPayments: adminProcedure
@@ -3099,21 +3460,68 @@ export const adminRouter = createTRPCRouter({
 
       if (!pkg) throw new Error("Package not found");
 
-      // Get subscribers
-      const subscribers = await prisma.user.findMany({
-        where: { activeMembershipPackageId: input.packageId },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          membershipActivatedAt: true,
-          membershipExpiresAt: true,
-        },
-        take: 10,
-        orderBy: { membershipActivatedAt: "desc" },
-      });
+      const now = new Date();
+      const currentWindowStart = new Date(now);
+      currentWindowStart.setDate(currentWindowStart.getDate() - 30);
+      const previousWindowStart = new Date(currentWindowStart);
+      previousWindowStart.setDate(previousWindowStart.getDate() - 30);
 
-      return { ...pkg, subscribers };
+      const [
+        activeSubscriptions,
+        currentWindowActivations,
+        previousWindowActivations,
+        subscribers,
+      ] = await prisma.$transaction([
+        prisma.user.count({
+          where: { activeMembershipPackageId: input.packageId },
+        }),
+        prisma.user.count({
+          where: {
+            activeMembershipPackageId: input.packageId,
+            membershipActivatedAt: { gte: currentWindowStart },
+          },
+        }),
+        prisma.user.count({
+          where: {
+            activeMembershipPackageId: input.packageId,
+            membershipActivatedAt: {
+              gte: previousWindowStart,
+              lt: currentWindowStart,
+            },
+          },
+        }),
+        prisma.user.findMany({
+          where: { activeMembershipPackageId: input.packageId },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            membershipActivatedAt: true,
+            membershipExpiresAt: true,
+          },
+          take: 10,
+          orderBy: { membershipActivatedAt: "desc" },
+        }),
+      ]);
+
+      const totalRevenue = activeSubscriptions * (pkg.price + pkg.vat);
+      const subscriberGrowthRate =
+        previousWindowActivations > 0
+          ? ((currentWindowActivations - previousWindowActivations) / previousWindowActivations) * 100
+          : null;
+
+      return {
+        ...pkg,
+        subscribers,
+        activeSubscriptions,
+        totalRevenue,
+        analytics: {
+          growthWindowDays: 30,
+          currentWindowActivations,
+          previousWindowActivations,
+          subscriberGrowthRate,
+        },
+      };
     }),
 
   updatePackage: adminProcedure
@@ -4572,7 +4980,7 @@ export const adminRouter = createTRPCRouter({
     }),
 
   // Backup & Restore
-  createBackup: adminProcedure
+  createBackup: superAdminProcedure
     .mutation(async () => {
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const backupDir = path.join(process.cwd(), "public", "uploads", "backups");
@@ -4638,7 +5046,7 @@ export const adminRouter = createTRPCRouter({
       };
     }),
 
-  restoreDatabase: adminProcedure
+  restoreDatabase: superAdminProcedure
     .input(
       z.object({
         // Client uploads file content as string (SQL or JSON)
@@ -4818,7 +5226,7 @@ export const adminRouter = createTRPCRouter({
       return { deleted: true };
     }),
 
-  wipeNonEssentialData: adminProcedure
+  wipeNonEssentialData: superAdminProcedure
     .input(
       z.object({
         confirmPhrase: z.string().min(1, "Confirmation phrase is required"),
@@ -4976,7 +5384,7 @@ export const adminRouter = createTRPCRouter({
     }));
   }),
 
-  truncateTable: adminProcedure
+  truncateTable: superAdminProcedure
     .input(z.object({ tableName: z.string().min(1, "Table name is required") }))
     .mutation(async ({ input, ctx }) => {
       const now = new Date();
@@ -5183,7 +5591,7 @@ export const adminRouter = createTRPCRouter({
     return { wipeableTables, protectedTables, capturedAt };
   }),
 
-  wipeStoredTables: adminProcedure.mutation(async ({ ctx }) => {
+  wipeStoredTables: superAdminProcedure.mutation(async ({ ctx }) => {
     const now = new Date();
     const setting = await prisma.adminSettings.findUnique({
       where: { settingKey: "db_wipe_profile" },
@@ -5249,7 +5657,7 @@ export const adminRouter = createTRPCRouter({
     };
   }),
 
-  exportTableData: adminProcedure
+  exportTableData: superAdminProcedure
     .input(z.object({ tableName: z.string().min(1, "Table name is required") }))
     .query(async ({ input }) => {
       const exists = await prisma.$queryRaw<
@@ -5277,7 +5685,7 @@ export const adminRouter = createTRPCRouter({
       };
     }),
 
-  importTableData: adminProcedure
+  importTableData: superAdminProcedure
     .input(
       z.object({
         tableName: z.string().min(1, "Table name is required"),
@@ -9704,11 +10112,16 @@ export const adminRouter = createTRPCRouter({
     }),
 
   // Generate impersonation token for admin to login as user
-  createImpersonationToken: adminProcedure
+  createImpersonationToken: superAdminProcedure
     .input(z.object({ targetUserId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const adminId = ctx.session?.user?.id;
       if (!adminId) throw new Error("Admin not authenticated");
+
+      const rateLimit = impersonationCreationLimiter.check(adminId);
+      if (!rateLimit.success) {
+        throw new Error("Too many impersonation token requests. Please wait before creating another one.");
+      }
 
       // Verify target user exists
       const targetUser = await prisma.user.findUnique({
@@ -9727,31 +10140,45 @@ export const adminRouter = createTRPCRouter({
       const token = randomUUID();
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
-      await prisma.impersonationToken.create({
-        data: {
-          id: randomUUID(),
-          token,
-          adminId,
-          targetUserId: input.targetUserId,
-          expiresAt,
-          used: false,
-        },
-      });
-
-      // Log the impersonation attempt in admin audit log
-      await prisma.auditLog.create({
-        data: {
-          id: randomUUID(),
-          userId: adminId,
-          action: "ADMIN_IMPERSONATION",
-          entity: "User",
-          entityId: input.targetUserId,
-          status: "success",
-          metadata: {
-            targetUserEmail: targetUser.email,
-            targetUserName: targetUser.name,
+      await prisma.$transaction(async (tx) => {
+        await tx.impersonationToken.deleteMany({
+          where: {
+            adminId,
+            OR: [
+              { used: false },
+              { expiresAt: { lte: new Date() } },
+            ],
           },
-        },
+        });
+
+        const createdToken = await tx.impersonationToken.create({
+          data: {
+            id: randomUUID(),
+            token,
+            adminId,
+            targetUserId: input.targetUserId,
+            expiresAt,
+            used: false,
+          },
+          select: { id: true },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: adminId,
+            action: "ADMIN_IMPERSONATION_ISSUED",
+            entity: "ImpersonationToken",
+            entityId: createdToken.id,
+            status: "success",
+            metadata: {
+              targetUserId: input.targetUserId,
+              targetUserEmail: targetUser.email,
+              targetUserName: targetUser.name,
+              expiresAt: expiresAt.toISOString(),
+            },
+          },
+        });
       });
 
       return { token, expiresAt };
@@ -10107,18 +10534,7 @@ export const adminRouter = createTRPCRouter({
     }))
     .query(async ({ input }) => {
       const { filter, membershipPackage } = input;
-      
-      const where: any = {};
-
-      if (filter === 'activated') {
-        where.activated = true;
-      } else if (filter === 'non-activated') {
-        where.activated = false;
-      } else if (filter === 'membership' && membershipPackage) {
-        where.activeMembershipPackageId = membershipPackage;
-      }
-
-      const count = await prisma.user.count({ where });
+      const count = await prisma.user.count({ where: getNewsletterRecipientWhere(filter, membershipPackage) });
       
       return { count };
     }),
@@ -10207,22 +10623,7 @@ export const adminRouter = createTRPCRouter({
       console.log(`\n📧 [NEWSLETTER] Job ${jobId} created`);
       console.log('📋 [NEWSLETTER] Config:', { filter, membershipPackage, subject, sendRate });
       
-      // Get recipients
-      const where: any = {};
-      if (filter === 'activated') {
-        where.activated = true;
-      } else if (filter === 'non-activated') {
-        where.activated = false;
-      } else if (filter === 'membership' && membershipPackage) {
-        where.activeMembershipPackageId = membershipPackage;
-      }
-
-      const recipients = await prisma.user.findMany({
-        where,
-        select: { id: true, email: true, name: true }
-      });
-
-      const validRecipients = recipients.filter((r: any): r is typeof r & { email: string } => !!r.email);
+      const validRecipients = await getNewsletterRecipients(filter, membershipPackage);
       const total = validRecipients.length;
 
       if (total === 0) {
@@ -10262,6 +10663,8 @@ export const adminRouter = createTRPCRouter({
           replyToEmail: resolvedReplyTo,
           subject,
           body,
+          attachments,
+          embeddedImages,
           sendRate,
         },
         allRecipientIds: validRecipients.map(r => r.id),
@@ -10270,7 +10673,7 @@ export const adminRouter = createTRPCRouter({
 
       // Persist campaign to database
       try {
-        await prisma.newsletterCampaign.create({
+        await newsletterCampaignStore.create({
           data: {
             jobId,
             adminId: adminUserId,
@@ -10281,6 +10684,8 @@ export const adminRouter = createTRPCRouter({
             membershipPackage: membershipPackage || null,
             fromEmail: resolvedFromEmail,
             replyToEmail: resolvedReplyTo,
+            attachments: (attachments || []) as any,
+            embeddedImages: (embeddedImages || []) as any,
             batchSize: sendRate.batchSize,
             delayBetweenMs: sendRate.delayBetweenEmailsMs,
             batchCooldownMs: sendRate.delayBetweenBatchesMs,
@@ -10443,6 +10848,8 @@ export const adminRouter = createTRPCRouter({
         replyToEmail: config.replyToEmail,
         subject: config.subject,
         body: config.body,
+        attachments: config.attachments,
+        embeddedImages: config.embeddedImages,
         companyInfo,
         sendRate: config.sendRate,
         adminUserId,
@@ -10483,7 +10890,7 @@ export const adminRouter = createTRPCRouter({
         }
       }
       // Fall back to DB — find most recent non-completed campaign
-      const campaign = await prisma.newsletterCampaign.findFirst({
+      const campaign = await newsletterCampaignStore.findFirst({
         where: { status: { in: ['running', 'cancelled'] } },
         orderBy: { createdAt: 'desc' },
         select: {
@@ -10508,7 +10915,7 @@ export const adminRouter = createTRPCRouter({
       cursor: z.string().optional(),
     }))
     .query(async ({ input }) => {
-      const campaigns = await prisma.newsletterCampaign.findMany({
+      const campaigns = await newsletterCampaignStore.findMany({
         take: input.limit + 1,
         ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
         orderBy: { createdAt: 'desc' },
@@ -10537,19 +10944,21 @@ export const adminRouter = createTRPCRouter({
       }
 
       // Check if any in-memory jobs are still running (supplement DB data)
-      const enriched = campaigns.map(c => {
+      const enriched: DurableNewsletterCampaign[] = [];
+      for (const c of campaigns as DurableNewsletterCampaign[]) {
         const memJob = newsletterJobs.get(c.jobId);
         if (memJob && memJob.status === 'running') {
-          return {
+          enriched.push({
             ...c,
             status: 'running',
             sentCount: memJob.sent,
             failedCount: memJob.failed,
             elapsedMs: Date.now() - memJob.startedAt,
-          };
+          });
+          continue;
         }
-        return c;
-      });
+        enriched.push(c);
+      }
 
       return { campaigns: enriched, nextCursor };
     }),
@@ -10557,7 +10966,7 @@ export const adminRouter = createTRPCRouter({
   getNewsletterCampaignDetail: adminProcedure
     .input(z.object({ campaignId: z.string() }))
     .query(async ({ input }) => {
-      const campaign = await prisma.newsletterCampaign.findUnique({
+      const campaign = await newsletterCampaignStore.findUnique({
         where: { id: input.campaignId },
       });
       if (!campaign) throw new Error('Campaign not found');
@@ -10589,7 +10998,7 @@ export const adminRouter = createTRPCRouter({
   resumeNewsletterFromDb: adminProcedure
     .input(z.object({ campaignId: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      const campaign = await prisma.newsletterCampaign.findUnique({
+      const campaign = await newsletterCampaignStore.findUnique({
         where: { id: input.campaignId },
       });
       if (!campaign) throw new Error('Campaign not found');
@@ -10640,6 +11049,8 @@ export const adminRouter = createTRPCRouter({
           replyToEmail: campaign.replyToEmail || 'support@beepagro.com',
           subject: campaign.subject,
           body: campaign.body,
+          attachments: Array.isArray(campaign.attachments) ? (campaign.attachments as { filename: string; content: string }[]) : [],
+          embeddedImages: Array.isArray(campaign.embeddedImages) ? (campaign.embeddedImages as { id: string; content: string; position: number }[]) : [],
           sendRate: {
             batchSize: campaign.batchSize,
             delayBetweenEmailsMs: campaign.delayBetweenMs,
@@ -10652,7 +11063,7 @@ export const adminRouter = createTRPCRouter({
       });
 
       // Create new DB campaign row linked to old one
-      await prisma.newsletterCampaign.create({
+      await newsletterCampaignStore.create({
         data: {
           jobId: newJobId,
           adminId: adminUserId,
@@ -10663,6 +11074,8 @@ export const adminRouter = createTRPCRouter({
           membershipPackage: campaign.membershipPackage,
           fromEmail: campaign.fromEmail,
           replyToEmail: campaign.replyToEmail,
+          attachments: (Array.isArray(campaign.attachments) ? campaign.attachments : []) as Prisma.InputJsonValue,
+          embeddedImages: (Array.isArray(campaign.embeddedImages) ? campaign.embeddedImages : []) as Prisma.InputJsonValue,
           batchSize: campaign.batchSize,
           delayBetweenMs: campaign.delayBetweenMs,
           batchCooldownMs: campaign.batchCooldownMs,
@@ -10675,7 +11088,7 @@ export const adminRouter = createTRPCRouter({
       });
 
       // Mark old campaign as completed
-      await prisma.newsletterCampaign.update({
+      await newsletterCampaignStore.update({
         where: { id: campaign.id },
         data: { status: 'completed', completedAt: new Date() },
       });
@@ -10686,6 +11099,8 @@ export const adminRouter = createTRPCRouter({
         replyToEmail: campaign.replyToEmail || 'support@beepagro.com',
         subject: campaign.subject,
         body: campaign.body,
+        attachments: Array.isArray(campaign.attachments) ? (campaign.attachments as { filename: string; content: string }[]) : [],
+        embeddedImages: Array.isArray(campaign.embeddedImages) ? (campaign.embeddedImages as { id: string; content: string; position: number }[]) : [],
         companyInfo,
         sendRate: {
           batchSize: campaign.batchSize,
@@ -10739,64 +11154,144 @@ export const adminRouter = createTRPCRouter({
       }),
     }))
     .mutation(async ({ input, ctx }) => {
-      const { newsletterQueue } = await import('@/server/services/newsletter-queue.service');
-      
-      const job = await newsletterQueue.scheduleNewsletter({
-        scheduledFor: input.scheduledFor,
-        filter: input.filter,
-        membershipPackage: input.membershipPackage,
-        fromEmail: input.fromEmail,
-        replyToEmail: input.replyToEmail,
-        subject: input.subject,
-        body: input.body,
-        attachments: input.attachments,
-        embeddedImages: input.embeddedImages,
-        sendRate: input.sendRate,
-        createdBy: ctx.session?.user?.id || 'admin',
+      const jobId = randomUUID();
+
+      await newsletterCampaignStore.create({
+        data: {
+          jobId,
+          adminId: ctx.session?.user?.id || 'admin',
+          status: 'scheduled',
+          scheduledFor: input.scheduledFor,
+          subject: input.subject,
+          body: input.body,
+          filter: input.filter,
+          membershipPackage: input.membershipPackage || null,
+          fromEmail: input.fromEmail || null,
+          replyToEmail: input.replyToEmail || null,
+          attachments: (input.attachments || []) as any,
+          embeddedImages: (input.embeddedImages || []) as any,
+          batchSize: input.sendRate.emails,
+          delayBetweenMs: 0,
+          batchCooldownMs: input.sendRate.interval * 60 * 1000,
+          warmUp: false,
+          totalRecipients: 0,
+          allRecipientIds: [] as any,
+        },
       });
 
-      console.log(`✅ [ADMIN] Newsletter scheduled: ${job.id} for ${job.scheduledFor.toISOString()}`);
+      console.log(`✅ [ADMIN] Newsletter scheduled: ${jobId} for ${input.scheduledFor.toISOString()}`);
 
       return {
-        jobId: job.id,
-        scheduledFor: job.scheduledFor,
-        status: job.status,
-        message: `Newsletter scheduled successfully for ${job.scheduledFor.toLocaleString()}`
+        jobId,
+        scheduledFor: input.scheduledFor,
+        status: 'pending',
+        message: `Newsletter scheduled successfully for ${input.scheduledFor.toLocaleString()}`
       };
     }),
 
   // Get all scheduled newsletters
   getScheduledNewsletters: adminProcedure
     .query(async () => {
-      const { newsletterQueue } = await import('@/server/services/newsletter-queue.service');
-      return newsletterQueue.getQueue();
+      const campaigns = await newsletterCampaignStore.findMany({
+        where: { scheduledFor: { not: null } },
+        orderBy: { scheduledFor: 'asc' },
+      });
+
+      const scheduledJobs = [];
+      for (const campaign of campaigns as DurableNewsletterCampaign[]) {
+        scheduledJobs.push({
+          id: campaign.jobId,
+          scheduledFor: campaign.scheduledFor!,
+          filter: campaign.filter as 'all' | 'activated' | 'non-activated' | 'membership',
+          membershipPackage: campaign.membershipPackage || undefined,
+          fromEmail: campaign.fromEmail || undefined,
+          replyToEmail: campaign.replyToEmail || undefined,
+          subject: campaign.subject,
+          body: campaign.body,
+          attachments: (Array.isArray(campaign.attachments) ? campaign.attachments : []) as Array<{ filename: string; content: string }>,
+          embeddedImages: (Array.isArray(campaign.embeddedImages) ? campaign.embeddedImages : []) as Array<{ id: string; content: string; position: number }>,
+          sendRate: {
+            emails: campaign.batchSize,
+            interval: Math.max(1, Math.round(campaign.batchCooldownMs / 60000)),
+          },
+          status: campaign.status === 'scheduled' ? 'pending' : campaign.status === 'running' ? 'processing' : campaign.status,
+          createdBy: campaign.adminId,
+          createdAt: campaign.createdAt,
+          processedAt: campaign.completedAt || undefined,
+          error: campaign.lastError || undefined,
+          stats: {
+            total: campaign.totalRecipients,
+            sent: campaign.sentCount,
+            failed: campaign.failedCount,
+            duration: Math.round(campaign.elapsedMs / 60000),
+          },
+        });
+      }
+
+      return scheduledJobs;
     }),
 
   // Get newsletter job by ID
   getNewsletterJob: adminProcedure
     .input(z.object({ jobId: z.string() }))
     .query(async ({ input }) => {
-      const { newsletterQueue } = await import('@/server/services/newsletter-queue.service');
-      const job = newsletterQueue.getJob(input.jobId);
-      
-      if (!job) {
+      const campaign = await newsletterCampaignStore.findUnique({ where: { jobId: input.jobId } }) as DurableNewsletterCampaign | null;
+
+      if (!campaign || !campaign.scheduledFor) {
         throw new Error(`Newsletter job ${input.jobId} not found`);
       }
 
-      return job;
+      return {
+        id: campaign.jobId,
+        scheduledFor: campaign.scheduledFor,
+        filter: campaign.filter as 'all' | 'activated' | 'non-activated' | 'membership',
+        membershipPackage: campaign.membershipPackage || undefined,
+        fromEmail: campaign.fromEmail || undefined,
+        replyToEmail: campaign.replyToEmail || undefined,
+        subject: campaign.subject,
+        body: campaign.body,
+        attachments: (Array.isArray(campaign.attachments) ? campaign.attachments : []) as Array<{ filename: string; content: string }>,
+        embeddedImages: (Array.isArray(campaign.embeddedImages) ? campaign.embeddedImages : []) as Array<{ id: string; content: string; position: number }>,
+        sendRate: {
+          emails: campaign.batchSize,
+          interval: Math.max(1, Math.round(campaign.batchCooldownMs / 60000)),
+        },
+        status: campaign.status === 'scheduled' ? 'pending' : campaign.status === 'running' ? 'processing' : campaign.status,
+        createdBy: campaign.adminId,
+        createdAt: campaign.createdAt,
+        processedAt: campaign.completedAt || undefined,
+        error: campaign.lastError || undefined,
+        stats: {
+          total: campaign.totalRecipients,
+          sent: campaign.sentCount,
+          failed: campaign.failedCount,
+          duration: Math.round(campaign.elapsedMs / 60000),
+        },
+      };
     }),
 
   // Cancel a scheduled newsletter
   cancelScheduledNewsletter: adminProcedure
     .input(z.object({ jobId: z.string() }))
     .mutation(async ({ input }) => {
-      const { newsletterQueue } = await import('@/server/services/newsletter-queue.service');
-      
-      const success = newsletterQueue.cancelJob(input.jobId);
-      
-      if (!success) {
+      const campaign = await newsletterCampaignStore.findUnique({ where: { jobId: input.jobId } }) as DurableNewsletterCampaign | null;
+
+      if (!campaign || !campaign.scheduledFor) {
         throw new Error(`Failed to cancel newsletter job ${input.jobId}`);
       }
+
+      if (campaign.status === 'running') {
+        throw new Error('Cannot cancel newsletter that is currently processing');
+      }
+
+      if (campaign.status !== 'scheduled') {
+        throw new Error(`Failed to cancel newsletter job ${input.jobId}`);
+      }
+
+      await newsletterCampaignStore.update({
+        where: { id: campaign.id },
+        data: { status: 'cancelled' },
+      });
 
       console.log(`🚫 [ADMIN] Newsletter cancelled: ${input.jobId}`);
 
@@ -10810,13 +11305,17 @@ export const adminRouter = createTRPCRouter({
   deleteNewsletterJob: adminProcedure
     .input(z.object({ jobId: z.string() }))
     .mutation(async ({ input }) => {
-      const { newsletterQueue } = await import('@/server/services/newsletter-queue.service');
-      
-      const success = newsletterQueue.deleteJob(input.jobId);
-      
-      if (!success) {
+      const campaign = await newsletterCampaignStore.findUnique({ where: { jobId: input.jobId } }) as DurableNewsletterCampaign | null;
+
+      if (!campaign || !campaign.scheduledFor) {
         throw new Error(`Failed to delete newsletter job ${input.jobId}`);
       }
+
+      if (campaign.status === 'running' || campaign.status === 'scheduled') {
+        throw new Error('Cannot delete active or pending newsletter. Cancel it first.');
+      }
+
+      await newsletterCampaignStore.delete({ where: { id: campaign.id } });
 
       console.log(`🗑️ [ADMIN] Newsletter job deleted: ${input.jobId}`);
 
@@ -10829,8 +11328,33 @@ export const adminRouter = createTRPCRouter({
   // Get newsletter queue statistics
   getNewsletterQueueStats: adminProcedure
     .query(async () => {
-      const { newsletterQueue } = await import('@/server/services/newsletter-queue.service');
-      return newsletterQueue.getStats();
+      const campaigns = await newsletterCampaignStore.findMany({
+        where: { scheduledFor: { not: null } },
+        select: { status: true },
+      });
+
+      let pending = 0;
+      let processing = 0;
+      let completed = 0;
+      let failed = 0;
+      let cancelled = 0;
+
+      for (const campaign of campaigns as Array<Pick<DurableNewsletterCampaign, 'status'>>) {
+        if (campaign.status === 'scheduled') pending++;
+        else if (campaign.status === 'running') processing++;
+        else if (campaign.status === 'completed') completed++;
+        else if (campaign.status === 'cancelled') cancelled++;
+        else if (campaign.status === 'failed' || campaign.status === 'error') failed++;
+      }
+
+      return {
+        total: campaigns.length,
+        pending,
+        processing,
+        completed,
+        failed,
+        cancelled,
+      };
     }),
 
   // Send renewal reminders to members expiring soon

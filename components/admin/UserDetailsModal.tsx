@@ -245,24 +245,13 @@ export default function UserDetailsModal({
 
   const handleImpersonateUser = async () => {
     if (!userId) return;
-    
+
     setImpersonating(true);
     try {
-      // Generate impersonation token
       const result = await impersonateMutation.mutateAsync({ targetUserId: userId });
-      
-      // Open in a NEW browser window with separate session context
-      // Using specific window features to ensure it's a new context
       const impersonateUrl = `/api/auth/impersonate?token=${result.token}`;
-      const windowFeatures = 'width=1400,height=900,menubar=no,toolbar=no,location=yes,status=no';
-      const newWindow = window.open(impersonateUrl, 'BPI_Impersonation_' + Date.now(), windowFeatures);
-      
-      if (!newWindow) {
-        toast.error("Please allow popups to impersonate users");
-      } else {
-        toast.success(`Opening session as ${user?.email || 'user'}...`);
-        // Admin session remains intact in the original window
-      }
+      toast.success(`Switching into ${user?.email || 'user'}. Use the banner to return to your admin session.`);
+      window.location.assign(impersonateUrl);
     } catch (error: any) {
       toast.error(error.message || "Failed to impersonate user");
     } finally {
@@ -321,10 +310,10 @@ export default function UserDetailsModal({
                     onClick={handleImpersonateUser}
                     disabled={impersonating}
                     className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-lg transition-colors font-medium"
-                    title="Login as this user (opens in new tab)"
+                    title="Temporarily switch into this user's session"
                   >
                     <MdLogin size={20} />
-                    <span>{impersonating ? "Logging in..." : "Login as User"}</span>
+                    <span>{impersonating ? "Switching..." : "Switch to User"}</span>
                   </button>
                   <button
                     onClick={() => setShowAssignModal(true)}

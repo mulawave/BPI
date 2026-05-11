@@ -7,6 +7,9 @@ import { randomUUID } from "crypto";
 import { initiateBankTransfer, initializeFlutterwavePayment, verifyFlutterwavePayment } from "@/lib/flutterwave";
 import { initializePaystackPayment, verifyPaystackPayment } from "@/lib/paystack";
 import { sendWithdrawalRequestToAdmins } from "@/lib/email";
+import { resolveAppBaseUrl } from "@/lib/appUrl";
+import { assertMockPaymentsAllowed } from "@/lib/mockPayments";
+import { PAYMENT_FULFILLMENT_TYPES } from "@/server/services/payment/paymentMetadata";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { initiateBasqetUsdtPayout } from "@/server/services/payment/BasqetClient";
 
@@ -62,8 +65,8 @@ export const walletRouter = createTRPCRouter({
 
       const { amount, paymentGateway, reference, proofOfPayment, originalAmount, originalCurrency } = input;
 
-      if (paymentGateway === 'mock' && process.env.NODE_ENV === 'production') {
-        throw new Error("Mock deposits are disabled in production. Please select a live gateway.");
+      if (paymentGateway === 'mock') {
+        assertMockPaymentsAllowed("Mock deposits are not enabled in this environment. Please select a live gateway.");
       }
       const txReference = reference || `DEP-${Date.now()}`;
 
@@ -74,9 +77,7 @@ export const walletRouter = createTRPCRouter({
 
       const userName = [user.firstname, user.lastname].filter(Boolean).join(" ") || user.name || "User";
       
-      // Use NEXTAUTH_URL from env, fallback to production domain if not set
-      const baseUrl = process.env.NEXTAUTH_URL || 
-                     (process.env.NODE_ENV === 'production' ? 'https://beepagro.com' : 'http://localhost:3000');
+      const baseUrl = (await resolveAppBaseUrl()).replace(/\/$/, '');
       const callbackUrl = `${baseUrl}/dashboard?payment=success`;
 
       // Handle Paystack payments
@@ -100,6 +101,7 @@ export const walletRouter = createTRPCRouter({
             depositAmount: amount,
             vatAmount,
             purpose: 'DEPOSIT',
+            fulfillmentType: PAYMENT_FULFILLMENT_TYPES.DEPOSIT,
           },
         });
 
@@ -131,7 +133,8 @@ export const walletRouter = createTRPCRouter({
             metadata: {
               depositAmount: amount,
               vatAmount,
-              purpose: 'DEPOSIT'
+              purpose: 'DEPOSIT',
+              fulfillmentType: PAYMENT_FULFILLMENT_TYPES.DEPOSIT,
             },
             updatedAt: new Date(),
           },
@@ -174,13 +177,14 @@ export const walletRouter = createTRPCRouter({
           customizations: {
             title: 'BPI Wallet Deposit',
             description: 'Wallet top-up',
-            logo: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/img/logo.png`,
+            logo: `${baseUrl}/img/logo.png`,
           },
           meta: {
             userId,
             depositAmount: amount,
             vatAmount,
             purpose: 'DEPOSIT',
+            fulfillmentType: PAYMENT_FULFILLMENT_TYPES.DEPOSIT,
           },
         });
 
@@ -212,7 +216,8 @@ export const walletRouter = createTRPCRouter({
             metadata: {
               depositAmount: amount,
               vatAmount,
-              purpose: 'DEPOSIT'
+              purpose: 'DEPOSIT',
+              fulfillmentType: PAYMENT_FULFILLMENT_TYPES.DEPOSIT,
             },
             updatedAt: new Date(),
           },
@@ -263,7 +268,8 @@ export const walletRouter = createTRPCRouter({
               metadata: {
                 depositAmount: amount,
                 vatAmount,
-                purpose: 'DEPOSIT'
+                purpose: 'DEPOSIT',
+                fulfillmentType: PAYMENT_FULFILLMENT_TYPES.DEPOSIT,
               },
               updatedAt: new Date(),
             },
@@ -302,6 +308,7 @@ export const walletRouter = createTRPCRouter({
             vatAmount,
             purpose: 'DEPOSIT',
             gateway: 'bank_transfer',
+            fulfillmentType: PAYMENT_FULFILLMENT_TYPES.DEPOSIT,
           },
         });
 
@@ -333,6 +340,7 @@ export const walletRouter = createTRPCRouter({
               vatAmount,
               purpose: 'DEPOSIT',
               automated: true,
+              fulfillmentType: PAYMENT_FULFILLMENT_TYPES.DEPOSIT,
             },
             updatedAt: new Date(),
           },
@@ -396,6 +404,7 @@ export const walletRouter = createTRPCRouter({
             callbackUrl,
             depositAmount: amount,
             vatAmount,
+            fulfillmentType: PAYMENT_FULFILLMENT_TYPES.DEPOSIT,
             // Prefer the explicit USD total when provided by the caller (no conversion).
             // Keep `originalAmount` for backward compatibility.
             originalTotalUsd: totalAmountUsd,
@@ -437,6 +446,7 @@ export const walletRouter = createTRPCRouter({
               processingFeeAmount: processingFeeUsd,
               processingFeeAmountNgn: processingFeeNgn,
               purpose: 'DEPOSIT',
+              fulfillmentType: PAYMENT_FULFILLMENT_TYPES.DEPOSIT,
               provider: result.metadata?.provider,
               cryptoCurrency: result.metadata?.cryptoCurrency,
               cryptoNetwork: result.metadata?.cryptoNetwork,

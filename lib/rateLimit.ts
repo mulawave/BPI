@@ -107,6 +107,15 @@ export const webhookLimiter = createRateLimiter({ windowMs: 60_000, max: 60 });
 /** Admin-only seed/migration endpoints: 3 per minute */
 export const adminSeedLimiter = createRateLimiter({ windowMs: 60_000, max: 3 });
 
+/** Impersonation token execution: 8 attempts per 5 minutes per IP/token key */
+export const impersonationRouteLimiter = createRateLimiter({ windowMs: 5 * 60_000, max: 8 });
+
+/** Impersonation route global IP limit: 20 attempts per 5 minutes per IP */
+export const impersonationGlobalRouteLimiter = createRateLimiter({ windowMs: 5 * 60_000, max: 20 });
+
+/** Super-admin impersonation token creation: 5 tokens per 5 minutes per admin */
+export const impersonationCreationLimiter = createRateLimiter({ windowMs: 5 * 60_000, max: 5 });
+
 // ─── Helper to extract client IP from NextRequest ───────────────────────────
 
 export function getClientIp(req: Request): string {

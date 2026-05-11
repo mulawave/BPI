@@ -6,11 +6,17 @@ import { getReferralChain } from "@/server/services/referral.service";
 import { distributeBptReward } from "@/server/services/rewards.service";
 import { PaymentProcessor } from "@/server/services/payment";
 import { resolveCryptoPaymentNetworkDetails } from "@/server/services/payment/cryptoPaymentDetails";
+import { PAYMENT_FULFILLMENT_TYPES } from "@/server/services/payment/paymentMetadata";
 import { PaymentGateway, PaymentPurpose, PaymentStatus } from "@/server/services/payment/types";
 import { randomUUID } from "crypto";
+import { assertMockPaymentsAllowed } from "@/lib/mockPayments";
 import { getPalliativeTier, isHighTierPackage, getWalletFieldName } from "@/lib/palliative";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { getNigerianRegion } from "@/lib/nigeria-regions";
+import {
+  claimPendingPayment,
+  markPendingPaymentReviewed,
+} from "@/server/services/payment/pendingPaymentFulfillment";
 import { activateMembershipAfterExternalPayment, upgradeMembershipAfterExternalPayment } from "@/server/services/membershipPayments.service";
 import { resolveAppBaseUrl } from "@/lib/appUrl";
 import {
@@ -188,9 +194,7 @@ export const packageRouter = createTRPCRouter({
 
       // Mock gateway (testing only)
       if (input.gateway === "mock") {
-        if (process.env.NODE_ENV === "production") {
-          throw new Error("Mock payments are disabled in production.");
-        }
+        assertMockPaymentsAllowed("Mock payments are not enabled in this environment.");
 
         const mockReference = `MEM-MOCK-${Date.now()}`;
 
@@ -247,6 +251,7 @@ export const packageRouter = createTRPCRouter({
         metadata: {
           packageId: input.packageId,
           purpose: PaymentPurpose.MEMBERSHIP,
+          fulfillmentType: PAYMENT_FULFILLMENT_TYPES.MEMBERSHIP,
           selectedPalliative: input.selectedPalliative,
           userId,
           callbackUrl,
@@ -290,6 +295,7 @@ export const packageRouter = createTRPCRouter({
             packageId: input.packageId,
             selectedPalliative: input.selectedPalliative,
             purpose: PaymentPurpose.MEMBERSHIP,
+            fulfillmentType: PAYMENT_FULFILLMENT_TYPES.MEMBERSHIP,
             provider: payment.metadata?.provider,
             cryptoCurrency: payment.metadata?.cryptoCurrency,
             cryptoNetwork: payment.metadata?.cryptoNetwork,
@@ -480,9 +486,7 @@ export const packageRouter = createTRPCRouter({
       if (!ctx.session?.user) {
         throw new Error("UNAUTHORIZED");
       }
-      if (process.env.NODE_ENV === "production") {
-        throw new Error("Mock membership payments are disabled in production.");
-      }
+      assertMockPaymentsAllowed("Mock membership payments are not enabled in this environment.");
       const userId = (ctx.session.user as any).id;
       const { packageId, selectedPalliative, paymentMethod = 'mock' } = input;
 
@@ -1223,6 +1227,7 @@ export const packageRouter = createTRPCRouter({
             beneficiaryId,
             empowermentType,
             purpose: PaymentPurpose.EMPOWERMENT,
+            fulfillmentType: PAYMENT_FULFILLMENT_TYPES.EMPOWERMENT,
             sponsorId,
           },
         });
@@ -1264,6 +1269,7 @@ export const packageRouter = createTRPCRouter({
               vat: VAT,
               totalCost: TOTAL_COST,
               purpose: PaymentPurpose.EMPOWERMENT,
+              fulfillmentType: PAYMENT_FULFILLMENT_TYPES.EMPOWERMENT,
             },
             updatedAt: new Date(),
           },
@@ -2795,9 +2801,7 @@ export const packageRouter = createTRPCRouter({
 
       // Mock gateway (testing only) — no wallet deduction, instant upgrade
       if (paymentMethod === 'mock') {
-        if (process.env.NODE_ENV === 'production') {
-          throw new Error("Mock payments are disabled in production.");
-        }
+        assertMockPaymentsAllowed("Mock payments are not enabled in this environment.");
 
         await prisma.transaction.create({
           data: {
@@ -2895,6 +2899,7 @@ export const packageRouter = createTRPCRouter({
             packageId,
             currentPackageId,
             purpose: PaymentPurpose.UPGRADE,
+            fulfillmentType: PAYMENT_FULFILLMENT_TYPES.MEMBERSHIP_UPGRADE,
             userId,
             selectedPalliative,
             upgradeCost,
@@ -2941,6 +2946,7 @@ export const packageRouter = createTRPCRouter({
               currentPackageId,
               selectedPalliative,
               purpose: PaymentPurpose.UPGRADE,
+              fulfillmentType: PAYMENT_FULFILLMENT_TYPES.MEMBERSHIP_UPGRADE,
               shouldDistribute,
               provider: payment.metadata?.provider,
               cryptoCurrency: payment.metadata?.cryptoCurrency,
@@ -3542,6 +3548,39 @@ export const packageRouter = createTRPCRouter({
         throw new Error(verification.error || verification.message || "Payment verification failed. Please contact support.");
       }
 
+      const claim = await claimPendingPayment(prisma, {
+        pendingPaymentId: pending.id,
+        expectedUserId: userId,
+        purpose: pending.transactionType,
+        actor: `Payment verification page (${input.gateway})`,
+        claimableStatuses: ["pending"],
+      });
+
+      if (claim.status === "already_processed") {
+        return {
+          success: true,
+          message: "Payment already processed and activated.",
+          transactionType: pending.transactionType,
+          reference: input.reference,
+          alreadyProcessed: true,
+        };
+      }
+
+      if (claim.status === "in_progress") {
+        return {
+          success: true,
+          message: "Payment confirmation is already in progress. Refresh shortly.",
+          transactionType: pending.transactionType,
+          reference: input.reference,
+          alreadyProcessed: false,
+          processing: true,
+        };
+      }
+
+      if (claim.status === "missing") {
+        throw new Error("No payment record found for this reference.");
+      }
+
       const pendingMetadata = (pending.metadata as Record<string, any> | undefined) || {};
       const transactionType = pending.transactionType;
 
@@ -3574,14 +3613,10 @@ export const packageRouter = createTRPCRouter({
           activatorName: user?.name || user?.email || ctx.session?.user?.name || "Member",
         });
 
-        await prisma.pendingPayment.update({
-          where: { id: pending.id },
-          data: {
-            status: "completed",
-            reviewedAt: new Date(),
-            reviewNotes: `Auto-completed via payment verification page (${input.gateway})`,
-            updatedAt: new Date(),
-          },
+        await markPendingPaymentReviewed(prisma, {
+          paymentId: pending.id,
+          status: "completed",
+          note: `Auto-completed via payment verification page (${input.gateway})`,
         });
 
         await prisma.transaction.updateMany({
@@ -3654,14 +3689,10 @@ export const packageRouter = createTRPCRouter({
           paymentMethodLabel: input.gateway,
         });
 
-        await prisma.pendingPayment.update({
-          where: { id: pending.id },
-          data: {
-            status: "completed",
-            reviewedAt: new Date(),
-            reviewNotes: `Auto-completed via payment verification page (${input.gateway} upgrade)`,
-            updatedAt: new Date(),
-          },
+        await markPendingPaymentReviewed(prisma, {
+          paymentId: pending.id,
+          status: "completed",
+          note: `Auto-completed via payment verification page (${input.gateway} upgrade)`,
         });
 
         await prisma.transaction.updateMany({
@@ -3704,13 +3735,10 @@ export const packageRouter = createTRPCRouter({
 
       // ── EMPOWERMENT ─────────────────────────────────────────────
       if (transactionType === "EMPOWERMENT") {
-        await prisma.pendingPayment.update({
-          where: { id: pending.id },
-          data: {
-            status: "approved",
-            reviewedAt: new Date(),
-            reviewNotes: `Auto-approved via payment verification page (${input.gateway})`,
-          },
+        await markPendingPaymentReviewed(prisma, {
+          paymentId: pending.id,
+          status: "approved",
+          note: `Auto-approved via payment verification page (${input.gateway})`,
         });
 
         await prisma.transaction.updateMany({
@@ -3760,15 +3788,13 @@ export const packageRouter = createTRPCRouter({
               where: { id: transaction.id },
               data: { status: "completed" },
             }),
-            prisma.pendingPayment.update({
-              where: { id: pending.id },
-              data: {
-                status: "approved",
-                reviewedAt: new Date(),
-                reviewNotes: `Auto-approved via payment verification page (${input.gateway})`,
-              },
-            }),
           ]);
+
+          await markPendingPaymentReviewed(prisma, {
+            paymentId: pending.id,
+            status: "approved",
+            note: `Auto-approved via payment verification page (${input.gateway})`,
+          });
         }
 
         return {
@@ -3862,14 +3888,10 @@ export const packageRouter = createTRPCRouter({
           data: { status: "completed" },
         });
 
-        await prisma.pendingPayment.update({
-          where: { id: pending.id },
-          data: {
-            status: "completed",
-            reviewedAt: new Date(),
-            reviewNotes: `Auto-completed via payment verification page (${input.gateway} store purchase)`,
-            updatedAt: new Date(),
-          },
+        await markPendingPaymentReviewed(prisma, {
+          paymentId: pending.id,
+          status: "completed",
+          note: `Auto-completed via payment verification page (${input.gateway} store purchase)`,
         });
 
         return {

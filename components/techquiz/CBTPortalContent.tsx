@@ -141,6 +141,7 @@ export default function CBTPortalContent() {
     eventTitle: string;
   } | null>(null);
 
+  const availabilityQuery = api.techquiz.getCbtPortalAvailability.useQuery();
   const childrenQuery = api.techquiz.myChildBeneficiaries.useQuery();
   const childrenData = childrenQuery.data ?? [];
 
@@ -186,13 +187,18 @@ export default function CBTPortalContent() {
       .map((a) => ({ ...a, childName: c.childName }))
   );
 
-  if (childrenQuery.isLoading) {
+  if (childrenQuery.isLoading || availabilityQuery.isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
+
+  const cbtPortalEnabled = availabilityQuery.data?.enabled ?? false;
+  const availabilityMessage =
+    availabilityQuery.data?.message ||
+    "The TechQuiz CBT portal is not currently live. You will be notified when verified CBT access opens.";
 
   return (
     <div className="space-y-6">
@@ -203,15 +209,56 @@ export default function CBTPortalContent() {
           <p className="text-slate-500 dark:text-slate-400 mt-0.5 text-sm">Start or continue your child&apos;s Computer-Based Test sessions</p>
         </div>
         <button
-          onClick={() => childrenQuery.refetch()}
+          onClick={() => {
+            void availabilityQuery.refetch();
+            void childrenQuery.refetch();
+          }}
           className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
         >
           <RefreshCcw size={13} /> Refresh
         </button>
       </div>
 
+      {!cbtPortalEnabled && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-6 shadow-lg dark:border-amber-800/60 dark:from-amber-950/30 dark:via-slate-900 dark:to-orange-950/20"
+        >
+          <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-amber-200/40 blur-3xl dark:bg-amber-500/10" />
+          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex gap-4">
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">CBT Portal Not Yet Live</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  {availabilityMessage}
+                </p>
+                <div className="mt-4 rounded-xl border border-slate-200/80 bg-white/80 p-4 text-sm text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300">
+                  <p className="font-semibold text-slate-800 dark:text-slate-100">What this means right now</p>
+                  <ul className="mt-2 space-y-1.5 text-sm">
+                    <li>Verified CBT sessions cannot be started from this portal yet.</li>
+                    <li>Eligible children will remain visible in TechQuiz workflows, but assessment access is paused until activation.</li>
+                    <li>You do not need to submit any manual CBT score here while the portal is disabled.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-200/80 bg-white/80 px-4 py-3 text-sm text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300 lg:min-w-[240px]">
+              <p className="font-semibold text-slate-800 dark:text-slate-100">Portal status</p>
+              <p className="mt-1 text-amber-700 dark:text-amber-300">Unavailable</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                Once the verified CBT delivery flow is approved, this page will reopen session access automatically.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Active sessions */}
-      {cbtEligible.length > 0 ? (
+      {cbtPortalEnabled && cbtEligible.length > 0 ? (
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Active CBT Access</h2>
           {cbtEligible.map((item, i) => (
@@ -243,7 +290,7 @@ export default function CBTPortalContent() {
             </motion.div>
           ))}
         </div>
-      ) : (
+      ) : cbtPortalEnabled ? (
         <div className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 p-10 text-center">
           <div className="mx-auto w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center mb-4">
             <Clock className="w-7 h-7 text-slate-400" />
@@ -252,6 +299,34 @@ export default function CBTPortalContent() {
           <p className="text-sm text-slate-400 dark:text-slate-500">
             CBT access will appear here once your school confirms eligibility and the exam window opens.
           </p>
+        </div>
+      ) : null}
+
+      {!cbtPortalEnabled && cbtEligible.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Paused CBT Access</h2>
+          {cbtEligible.map((item, i) => (
+            <motion.div
+              key={`${item.applicationId}-${item.round}`}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
+              className="bg-white dark:bg-slate-800/50 rounded-2xl border border-amber-200 dark:border-amber-900/60 p-5 flex items-center gap-4"
+            >
+              <div className="w-11 h-11 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                <Monitor className="w-5 h-5 text-amber-700 dark:text-amber-300" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-slate-900 dark:text-white">{item.childName}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {item.eventTitle} · {roundLabels[item.round]}
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-xs font-semibold text-amber-700 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300">
+                Access Paused
+              </span>
+            </motion.div>
+          ))}
         </div>
       )}
 

@@ -207,7 +207,7 @@ export default function UpgradePage() {
           </Button>
 
           <p className="text-xs text-center text-muted-foreground mt-4">
-            Mock payment gateway - Upgrade will be processed immediately
+            You will be redirected to the configured payment flow before the upgrade completes
           </p>
         </Card>
       </main>

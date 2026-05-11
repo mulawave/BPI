@@ -1,6 +1,7 @@
 // Payment Gateway Factory
 // Creates appropriate gateway instance based on gateway type
 
+import { areMockPaymentsAllowed } from "@/lib/mockPayments";
 import {
   IPaymentGateway,
   GatewayConfig,
@@ -40,8 +41,8 @@ export class PaymentGatewayFactory {
 
     switch (gatewayType) {
       case PaymentGateway.MOCK_DEV:
-        if (process.env.NODE_ENV === "production") {
-          throw new Error("Mock payment gateway is not available in production");
+        if (!areMockPaymentsAllowed()) {
+          throw new Error("Mock payment gateway is not enabled in this environment");
         }
         gateway = new MockDevGateway();
         break;

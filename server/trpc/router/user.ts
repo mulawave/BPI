@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 import { randomUUID } from "crypto";
 import { hash } from "bcryptjs";
+import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { sendVerificationEmail, sendWelcomeEmail } from "@/lib/email";
 import { TRPCError } from "@trpc/server";
 
@@ -367,6 +368,8 @@ export const userRouter = createTRPCRouter({
         inviteCode = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
       }
 
+      const baseUrl = (await resolveAppBaseUrl()).replace(/\/$/, "");
+
       const newUser = await prisma.user.create({
         data: {
           id: randomUUID(),
@@ -378,7 +381,7 @@ export const userRouter = createTRPCRouter({
           passwordHash,
           role: "user",
           inviteCode,
-          referralLink: `https://beepagro.com/register?ref=${inviteCode}`,
+          referralLink: `${baseUrl}/register?ref=${inviteCode}`,
           sponsorId: caller.id,
           referredBy: caller.id,
         },

@@ -1,9 +1,33 @@
+import { getDevelopmentFallbackUrl } from "@/lib/startupValidation";
+
 const normalizeUrl = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return "";
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
   return `https://${trimmed}`;
 };
+
+export function getConfiguredEnvUrl() {
+  return normalizeUrl(
+    process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXTAUTH_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "")
+  );
+}
+
+function getFallbackUrl(envUrl: string) {
+  if (envUrl) {
+    return envUrl;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    return getDevelopmentFallbackUrl();
+  }
+
+  throw new Error(
+    "APP_URL_CONFIG_ERROR: App base URL is not configured. Set NEXT_PUBLIC_APP_URL, NEXTAUTH_URL, or VERCEL_URL. Production must not rely on admin setting app_base_url."
+  );
+}
 
 let cachedBaseUrl: string | null = null;
 let cachedAt = 0;
@@ -16,13 +40,17 @@ export async function resolveAppBaseUrl(): Promise<string> {
     return cachedBaseUrl;
   }
 
-  const envUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.NEXTAUTH_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+  const envUrl = getConfiguredEnvUrl();
+
+  if (process.env.NODE_ENV === "production") {
+    const fallback = getFallbackUrl(envUrl);
+    cachedBaseUrl = fallback;
+    cachedAt = now;
+    return fallback;
+  }
 
   if (isBuild) {
-    const fallback = envUrl || "https://beepagro.com";
+    const fallback = envUrl || getDevelopmentFallbackUrl();
     cachedBaseUrl = fallback;
     cachedAt = now;
     return fallback;
@@ -45,7 +73,7 @@ export async function resolveAppBaseUrl(): Promise<string> {
     console.error("[resolveAppBaseUrl] Failed to read admin setting:", error);
   }
 
-  const fallback = envUrl || "https://beepagro.com";
+  const fallback = getFallbackUrl(envUrl);
   cachedBaseUrl = fallback;
   cachedAt = now;
   return fallback;

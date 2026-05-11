@@ -115,6 +115,13 @@ const SETTINGS_META: SettingMeta[] = [
     type: "boolean",
     icon: <ToggleRight size={16} />,
   },
+  {
+    key: "techquiz_cbt_portal_enabled",
+    label: "CBT Portal Enabled",
+    description: "Allow parents and children to start verified CBT sessions from the live TechQuiz portal.",
+    type: "boolean",
+    icon: <ToggleRight size={16} />,
+  },
 ];
 
 // ─── Setting Row ─────────────────────────────────────────────────────────────

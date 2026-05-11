@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
 import {
@@ -68,9 +69,11 @@ type SscUser = {
 };
 
 export default function UsersPage() {
+  const searchParams = useSearchParams();
+  const urlSearch = searchParams.get("search") ?? "";
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(urlSearch);
   const [roleFilter, setRoleFilter] = useState<"user" | "admin" | "super_admin" | undefined>();
   const [activatedFilter, setActivatedFilter] = useState<boolean | undefined>();
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
@@ -104,6 +107,10 @@ export default function UsersPage() {
     staleTime: 30000,
     gcTime: 300000,
   });
+
+  useEffect(() => {
+    setSearch(urlSearch);
+  }, [urlSearch]);
 
   useEffect(() => {
     setPage(1);

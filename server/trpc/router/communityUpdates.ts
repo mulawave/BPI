@@ -107,4 +107,27 @@ export const communityUpdatesRouter = createTRPCRouter({
 
       return { success: true };
     }),
+
+  getUnreadCount: protectedProcedure
+    .query(async ({ ctx }) => {
+      const userId = (ctx.session?.user as any)?.id;
+      if (!userId) return 0;
+
+      const count = await prisma.communityUpdate.count({
+        where: {
+          isActive: true,
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gte: new Date() } },
+          ],
+          NOT: {
+            UpdateRead: {
+              some: { userId },
+            },
+          },
+        },
+      });
+
+      return count;
+    }),
 });

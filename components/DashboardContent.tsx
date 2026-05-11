@@ -189,6 +189,77 @@ function ProfileField({ label, value, fieldKey, isEditable, icon: Icon, onUpdate
   );
 }
 
+// Static BPI product offerings shown in the dashboard investment carousel.
+// These are real products — not mock/demo data. Update here when offerings change.
+const investmentDeals = [
+  {
+    id: 2,
+    title: 'ICT Skills for Teens',
+    description: 'A unique opportunity to embark on a digital skill journey from the ground up',
+    icon: Code,
+    color: '#A855F7',
+    category: 'Training & Skills',
+    price: 20000,
+    fullTitle: '21st Century ICT Skills for Teens (Ages 13-19)',
+    subtitle: 'Empowering Pan-African Teens to Excel in ICT and Digital Skills',
+    details: {
+      overview: 'This program allows teens to embark on a digital skill journey from the ground up. Participants gain access to various courses designed to introduce them to essential ICT skills and enhance their social media capabilities.',
+      ictOptions: [
+        'Introduction to Web Development: Learn the basics of HTML and CSS',
+        'Introduction to App Development: Dive into app creation fundamentals',
+        'Programming: Develop coding skills with Python and JavaScript'
+      ],
+      socialMediaOptions: [
+        'Video Editing: Create and edit engaging videos',
+        'Content Writing: Craft compelling written content',
+        'Graphics Design: Design visually appealing graphics'
+      ],
+      benefits: [
+        'Self-paced Learning: Start at the beginner stage and progress to an expert level in your chosen skill',
+        'Select Your Path: Choose one ICT skill and one social media upskill program to tailor your learning experience',
+        'Affordable Investment: A subscription fee opens the door to this comprehensive learning opportunity'
+      ]
+    },
+    paymentOptions: ['wallet', 'cashback']
+  },
+  {
+    id: 1,
+    title: 'BPI BSC & Masters',
+    description: 'Enroll with BPI Strategic Partner Universities Abroad for BSC and Masters Degree',
+    icon: GraduationCap,
+    color: '#2d7a4f',
+    category: 'Education',
+    status: 'application_pending',
+    fullTitle: 'BPI BSc & MSc, MBA, MCA, MA Online Program',
+    subtitle: 'Access to Higher Education Through Partner Universities',
+    details: {
+      overview: "As part of our commitment to education and skill development, BPI's third pillar focuses on providing access to higher education through our BPI BSc & MSc, MBA, MCA, and MA Online Programs. This initiative allows BPI members to pursue degree and certification courses from partner universities and institutions.",
+      keyFeatures: [
+        'BPI Membership Benefits: Use your BPI cashback to enroll in BSc, MSc, or certification programs',
+        "Accessible Education: Even without JAMB, African members with just 5 credits in O'Level (WAEC or equivalent) can start their academic journey"
+      ],
+      bscPrograms: [
+        'Computer Science & IT',
+        'Cybersecurity',
+        'Artificial Intelligence'
+      ],
+      masterPrograms: [
+        'Business Intelligence & Analytics',
+        'Entrepreneurship & Leadership',
+        'Computer Science & IT',
+        'Cybersecurity',
+        'Data Analytics',
+        'Information Technology Management'
+      ],
+      duration: {
+        bsc: '3 years',
+        masters: '2 years for MSc, MBA, MCA, and MA programs'
+      },
+      mission: 'This program is designed to help BPI members upskill, whether they are students or working professionals, enabling them to advance their careers and contribute to their communities.'
+    }
+  }
+];
+
 // Inner component — keeps ALL hooks unconditional (no early returns before hooks).
 // The outer DashboardContent wrapper handles the null-session guard so this
 // component can call every hook in a fixed, predictable order.
@@ -399,76 +470,6 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
   // Use formatAmount from context
   const formatAmount = formatAmountFromContext;
-
-  // Investment Deals Data
-  const investmentDeals = [
-    {
-      id: 2,
-      title: 'ICT Skills for Teens',
-      description: 'A unique opportunity to embark on a digital skill journey from the ground up',
-      icon: Code,
-      color: '#A855F7', // Purple
-      category: 'Training & Skills',
-      price: 20000,
-      fullTitle: '21st Century ICT Skills for Teens (Ages 13-19)',
-      subtitle: 'Empowering Pan-African Teens to Excel in ICT and Digital Skills',
-      details: {
-        overview: 'This program allows teens to embark on a digital skill journey from the ground up. Participants gain access to various courses designed to introduce them to essential ICT skills and enhance their social media capabilities.',
-        ictOptions: [
-          'Introduction to Web Development: Learn the basics of HTML and CSS',
-          'Introduction to App Development: Dive into app creation fundamentals',
-          'Programming: Develop coding skills with Python and JavaScript'
-        ],
-        socialMediaOptions: [
-          'Video Editing: Create and edit engaging videos',
-          'Content Writing: Craft compelling written content',
-          'Graphics Design: Design visually appealing graphics'
-        ],
-        benefits: [
-          'Self-paced Learning: Start at the beginner stage and progress to an expert level in your chosen skill',
-          'Select Your Path: Choose one ICT skill and one social media upskill program to tailor your learning experience',
-          'Affordable Investment: A subscription fee opens the door to this comprehensive learning opportunity'
-        ]
-      },
-      paymentOptions: ['wallet', 'cashback']
-    },
-    {
-      id: 1,
-      title: 'BPI BSC & Masters',
-      description: 'Enroll with BPI Strategic Partner Universities Abroad for BSC and Masters Degree',
-      icon: GraduationCap,
-      color: '#2d7a4f', // Green to align with brand
-      category: 'Education',
-      status: 'application_pending',
-      fullTitle: 'BPI BSc & MSc, MBA, MCA, MA Online Program',
-      subtitle: 'Access to Higher Education Through Partner Universities',
-      details: {
-        overview: "As part of our commitment to education and skill development, BPI's third pillar focuses on providing access to higher education through our BPI BSc & MSc, MBA, MCA, and MA Online Programs. This initiative allows BPI members to pursue degree and certification courses from partner universities and institutions.",
-        keyFeatures: [
-          'BPI Membership Benefits: Use your BPI cashback to enroll in BSc, MSc, or certification programs',
-          'Accessible Education: Even without JAMB, African members with just 5 credits in O\'Level (WAEC or equivalent) can start their academic journey'
-        ],
-        bscPrograms: [
-          'Computer Science & IT',
-          'Cybersecurity',
-          'Artificial Intelligence'
-        ],
-        masterPrograms: [
-          'Business Intelligence & Analytics',
-          'Entrepreneurship & Leadership',
-          'Computer Science & IT',
-          'Cybersecurity',
-          'Data Analytics',
-          'Information Technology Management'
-        ],
-        duration: {
-          bsc: '3 years',
-          masters: '2 years for MSc, MBA, MCA, and MA programs'
-        },
-        mission: 'This program is designed to help BPI members upskill, whether they are students or working professionals, enabling them to advance their careers and contribute to their communities.'
-      }
-    }
-  ];
 
   // Auto-advance carousel
   useEffect(() => {
@@ -829,8 +830,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
   // Community Updates queries
   const [isUpdatesModalOpen, setIsUpdatesModalOpen] = useState(false);
-  // const { data: unreadUpdatesCount } = api.communityUpdates.getUnreadCount.useQuery();
-  const unreadUpdatesCount = 0;
+  const { data: unreadUpdatesCount = 0 } = api.communityUpdates.getUnreadCount.useQuery();
   
   // Calculator modal state
   const [isCalculatorModalOpen, setIsCalculatorModalOpen] = useState(false);
@@ -1303,12 +1303,12 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
     };
   });
 
-  const funnelVisits = cs?.platform?.visits || cs?.platform?.traffic || (totalMembers ? totalMembers * 2 : 0);
+  const funnelVisits = cs?.platform?.visits || cs?.platform?.traffic || 0;
   const funnelSignups = communityStats?.platform.totalUsers || 0;
   const funnelVerified = cs?.platform?.verifiedUsers || cs?.platform?.kycVerified || communityStats?.platform.activeMembers || 0;
   const funnelActive = communityStats?.platform.activeMembers || 0;
   const funnelSteps = [
-    { label: 'Visits', value: funnelVisits || Math.max(funnelSignups * 2, 0), color: 'from-emerald-500 to-green-500' },
+    { label: 'Visits', value: funnelVisits, color: 'from-emerald-500 to-green-500' },
     { label: 'Signups', value: funnelSignups, color: 'from-blue-500 to-cyan-500' },
     { label: 'Verified', value: funnelVerified, color: 'from-indigo-500 to-purple-500' },
     { label: 'Active', value: funnelActive, color: 'from-orange-500 to-amber-500' },

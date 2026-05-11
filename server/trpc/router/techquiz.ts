@@ -58,6 +58,15 @@ async function loadNumericSetting(key: string, fallback: number): Promise<number
   return isFinite(v) ? v : fallback;
 }
 
+async function loadBooleanSetting(key: string, fallback: boolean): Promise<boolean> {
+  const row = await prisma.adminSettings.findUnique({ where: { settingKey: key } });
+  if (!row?.settingValue) return fallback;
+  const normalized = row.settingValue.trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
 /** Write a TechQuiz audit log entry */
 async function audit(params: {
   actorId?: string;
@@ -900,6 +909,17 @@ export const techquizRouter = createTRPCRouter({
     });
   }),
 
+  getCbtPortalAvailability: protectedProcedure.query(async ({ ctx }) => {
+    assertAuth(ctx.session);
+    const enabled = await loadBooleanSetting("techquiz_cbt_portal_enabled", false);
+    return {
+      enabled,
+      message: enabled
+        ? "CBT portal is available."
+        : "The TechQuiz CBT portal is not currently live. You will be notified when your child can begin a verified CBT session.",
+    };
+  }),
+
   // ══════════════════════════════════════════════════════════════════════════
   // SECTION 5 — APPLICATION PROCESSING & QUOTA ENGINE
   // ══════════════════════════════════════════════════════════════════════════
@@ -1363,6 +1383,11 @@ export const techquizRouter = createTRPCRouter({
       assertAuth(ctx.session);
       const parentId = ctx.session!.user!.id;
 
+      const cbtPortalEnabled = await loadBooleanSetting("techquiz_cbt_portal_enabled", false);
+      if (!cbtPortalEnabled) {
+        throw new Error("The TechQuiz CBT portal is not currently available. Please try again later.");
+      }
+
       const app = await prisma.techQuizApplication.findUnique({
         where: { id: input.applicationId },
         include: { event: { include: { round1Schedules: true, round2Schedules: true } } },
@@ -1433,6 +1458,12 @@ export const techquizRouter = createTRPCRouter({
     .mutation(async ({ input, ctx }) => {
       assertAuth(ctx.session);
       const parentId = ctx.session!.user!.id;
+
+      const cbtPortalEnabled = await loadBooleanSetting("techquiz_cbt_portal_enabled", false);
+      if (!cbtPortalEnabled) {
+        throw new Error("The TechQuiz CBT portal is not currently available. Submitted scores are disabled until the portal goes live.");
+      }
+
       const app = await prisma.techQuizApplication.findUnique({ where: { id: input.applicationId } });
       if (!app || app.parentUserId !== parentId) throw new Error("Access denied");
 
@@ -2620,6 +2651,7 @@ export const techquizRouter = createTRPCRouter({
       techquiz_sponsor_visibility_enabled: "false",
       techquiz_certificate_generation_enabled: "false",
       techquiz_blog_auto_publish_enabled: "false",
+      techquiz_cbt_portal_enabled: "false",
       techquiz_required_membership_tier: "REGULAR",
     };
     const keys = Object.keys(defaults);
@@ -2677,6 +2709,7 @@ export const techquizRouter = createTRPCRouter({
       { key: "techquiz_sponsor_visibility_enabled", value: "false" },
       { key: "techquiz_certificate_generation_enabled", value: "false" },
       { key: "techquiz_blog_auto_publish_enabled", value: "false" },
+      { key: "techquiz_cbt_portal_enabled", value: "false" },
       { key: "techquiz_required_membership_tier", value: "REGULAR" },
     ];
     let created = 0;

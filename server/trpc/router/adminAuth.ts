@@ -86,6 +86,9 @@ export const adminAuthRouter = createTRPCRouter({
   getDashboardStats: protectedProcedure.query(async ({ ctx }) => {
     requireAdmin(ctx);
 
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
     const [
       totalUsers,
       activeMembers,
@@ -100,14 +103,15 @@ export const adminAuthRouter = createTRPCRouter({
         where: { activated: true },
       }),
       
-      // Pending payments count (will be 0 until model is migrated)
-      Promise.resolve(0),
+      ctx.prisma.pendingPayment.count({
+        where: { status: "pending" },
+      }),
       
       // Transactions today
       ctx.prisma.transaction.count({
         where: {
           createdAt: {
-            gte: new Date(new Date().setHours(0, 0, 0, 0)),
+            gte: startOfToday,
           },
         },
       }),
@@ -117,7 +121,7 @@ export const adminAuthRouter = createTRPCRouter({
     const todayRevenue = await ctx.prisma.transaction.aggregate({
       where: {
         createdAt: {
-          gte: new Date(new Date().setHours(0, 0, 0, 0)),
+          gte: startOfToday,
         },
         status: "completed",
         transactionType: {

@@ -20,6 +20,11 @@ import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { PaymentProcessor } from "@/server/services/payment/PaymentProcessor";
 import { PaymentGateway, PaymentStatus } from "@/server/services/payment/types";
+import {
+  claimPendingPayment,
+  markPendingPaymentNeedsReview,
+  markPendingPaymentReviewed,
+} from "@/server/services/payment/pendingPaymentFulfillment";
 import { notifyDepositStatus } from "@/server/services/notification.service";
 import { generateReceiptLink } from "@/server/services/receipt.service";
 import { recordRevenue } from "@/server/services/revenue.service";
@@ -136,12 +141,16 @@ async function handleCron(req: NextRequest) {
           continue;
         }
 
-        // Claim the payment atomically
-        const claimed = await prisma.pendingPayment.updateMany({
-          where: { id: payment.id, status: { in: ["pending", "processing", "blockchain_awaiting"] } },
-          data: { status: "processing", reviewNotes: `Recovery cron claimed at ${now.toISOString()}` },
+        const claim = await claimPendingPayment(prisma, {
+          pendingPaymentId: payment.id,
+          expectedUserId: payment.userId,
+          purpose: payment.transactionType,
+          actor: "Recovery cron",
+          claimableStatuses: ["pending", "processing", "blockchain_awaiting"],
+          claimedNote: `Recovery cron claimed at ${now.toISOString()}`,
         });
-        if (claimed.count === 0) {
+
+        if (claim.status !== "claimed") {
           results.push({ reference: ref, type: payment.transactionType, status: "claim_race_lost" });
           continue;
         }
@@ -408,22 +417,16 @@ async function handleCron(req: NextRequest) {
 }
 
 async function markRecoveryApproved(paymentId: string, type: string) {
-  await prisma.pendingPayment.update({
-    where: { id: paymentId },
-    data: {
-      status: "approved",
-      reviewedAt: new Date(),
-      reviewNotes: `Auto-recovered by cron (${type})`,
-    },
+  await markPendingPaymentReviewed(prisma, {
+    paymentId,
+    status: "approved",
+    note: `Auto-recovered by cron (${type})`,
   });
 }
 
 async function markRecoveryFailed(paymentId: string, reason: string) {
-  await prisma.pendingPayment.updateMany({
-    where: { id: paymentId, status: "processing" },
-    data: {
-      status: "pending",
-      reviewNotes: `Recovery cron could not complete: ${reason}. Will retry.`,
-    },
+  await markPendingPaymentNeedsReview(prisma, {
+    paymentId,
+    note: `Recovery cron could not complete: ${reason}. Manual review required before retry.`,
   });
 }

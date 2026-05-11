@@ -9,6 +9,10 @@ import { webhookLimiter, applyRateLimit } from "@/lib/rateLimit";
 import { notifyDepositStatus } from "@/server/services/notification.service";
 import { generateReceiptLink } from "@/server/services/receipt.service";
 import { validateBasqetWebhookSignature } from "@/server/services/payment/BasqetClient";
+import {
+  claimPendingPayment,
+  markPendingPaymentReviewed,
+} from "@/server/services/payment/pendingPaymentFulfillment";
 import { recordRevenue } from "@/server/services/revenue.service";
 import {
   activateMembershipAfterExternalPayment,
@@ -332,47 +336,40 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
     return;
   }
 
-  // Find the pending payment
-  const pendingPayment = await prisma.pendingPayment.findFirst({
-    where: { gatewayReference: reference, status: { in: [...ACTIVE_CRYPTO_PAYMENT_STATUSES] } },
-    orderBy: { createdAt: "desc" },
+  const claim = await claimPendingPayment(prisma, {
+    reference,
+    expectedUserId: webhookUserId,
+    purpose: "CRYPTO_CONFIRMATION",
+    actor: "Crypto webhook",
+    claimableStatuses: ["pending", "blockchain_awaiting"],
   });
 
-  if (!pendingPayment) {
-    // Check if already processed
-    const existing = await prisma.transaction.findFirst({
-      where: { reference, status: { in: ["approved", "completed"] } },
-    });
-    if (existing) {
+  if (claim.status !== "claimed") {
+    if (claim.status === "already_processed") {
       console.log(`[CryptoWebhook] Payment ${reference} already processed`);
       return;
     }
+
+    if (claim.status === "in_progress") {
+      console.log(`[CryptoWebhook] Payment ${reference} already claimed`);
+      return;
+    }
+
     console.warn(`[CryptoWebhook] No pending payment found for reference: ${reference}`);
     return;
   }
 
-  const userId = pendingPayment.userId;
+  const pendingPayment = claim.pendingPayment;
+  const userId = claim.userId;
   const metadata = pendingPayment.metadata as Record<string, any> | null;
-
-  const claimed = await prisma.pendingPayment.updateMany({
-    where: { id: pendingPayment.id, status: { in: [...ACTIVE_CRYPTO_PAYMENT_STATUSES] } },
-    data: {
-      status: "processing",
-      reviewNotes: `Crypto confirmation claimed at ${new Date().toISOString()}`,
-    },
-  });
-
-  if (claimed.count === 0) {
-    console.log(`[CryptoWebhook] Payment ${reference} already claimed`);
-    return;
-  }
 
   if (pendingPayment.transactionType === "MEMBERSHIP") {
     const packageId = metadata?.packageId;
     if (!packageId) {
-      await prisma.pendingPayment.update({
-        where: { id: pendingPayment.id },
-        data: { status: "rejected", reviewNotes: "Missing packageId in membership crypto payment metadata" },
+      await markPendingPaymentReviewed(prisma, {
+        paymentId: pendingPayment.id,
+        status: "rejected",
+        note: "Missing packageId in membership crypto payment metadata",
       });
       console.warn(`[CryptoWebhook] Missing packageId for membership payment ${reference}`);
       return;
@@ -401,9 +398,10 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
       },
     });
 
-    await prisma.pendingPayment.update({
-      where: { id: pendingPayment.id },
-      data: { status: "completed", reviewedAt: new Date(), reviewNotes: `Crypto webhook confirmed at ${new Date().toISOString()}` },
+    await markPendingPaymentReviewed(prisma, {
+      paymentId: pendingPayment.id,
+      status: "completed",
+      note: `Crypto webhook confirmed at ${new Date().toISOString()}`,
     });
 
     const membershipPackage = await prisma.membershipPackage.findUnique({ where: { id: packageId } });
@@ -444,9 +442,10 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
     const packageId = metadata?.packageId;
     const currentPackageId = metadata?.currentPackageId;
     if (!packageId || !currentPackageId) {
-      await prisma.pendingPayment.update({
-        where: { id: pendingPayment.id },
-        data: { status: "rejected", reviewNotes: "Missing packageId or currentPackageId in upgrade crypto payment metadata" },
+      await markPendingPaymentReviewed(prisma, {
+        paymentId: pendingPayment.id,
+        status: "rejected",
+        note: "Missing packageId or currentPackageId in upgrade crypto payment metadata",
       });
       console.warn(`[CryptoWebhook] Missing package metadata for upgrade payment ${reference}`);
       return;
@@ -470,9 +469,10 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
       },
     });
 
-    await prisma.pendingPayment.update({
-      where: { id: pendingPayment.id },
-      data: { status: "completed", reviewedAt: new Date(), reviewNotes: `Crypto webhook confirmed at ${new Date().toISOString()}` },
+    await markPendingPaymentReviewed(prisma, {
+      paymentId: pendingPayment.id,
+      status: "completed",
+      note: `Crypto webhook confirmed at ${new Date().toISOString()}`,
     });
 
     console.log(`[CryptoWebhook] Successfully completed membership upgrade payment ${reference}`);
@@ -558,13 +558,10 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
   }
 
   // Mark pending payment as completed
-  await prisma.pendingPayment.update({
-    where: { id: pendingPayment.id },
-    data: {
-      status: "completed",
-      reviewedAt: new Date(),
-      reviewNotes: `Crypto webhook confirmed at ${new Date().toISOString()}`,
-    },
+  await markPendingPaymentReviewed(prisma, {
+    paymentId: pendingPayment.id,
+    status: "completed",
+    note: `Crypto webhook confirmed at ${new Date().toISOString()}`,
   });
 
   const receiptLink = transaction ? generateReceiptLink(transaction.id, "deposit") : undefined;

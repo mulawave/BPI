@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { randomUUID } from "crypto";
+import { resolveAppBaseUrl } from "@/lib/appUrl";
 
 export const referralRouter = createTRPCRouter({
   getMyReferrals: protectedProcedure.query(async ({ ctx }) => {
@@ -161,8 +162,9 @@ export const referralRouter = createTRPCRouter({
         });
       }
       
+      const baseUrl = (await resolveAppBaseUrl()).replace(/\/$/, "");
       // Save the invite code and referral link to user
-      const referralLink = `https://beepagro.com/register?ref=${inviteCode}`;
+      const referralLink = `${baseUrl}/register?ref=${inviteCode}`;
       
       await ctx.prisma.user.update({
         where: { id: userId },
@@ -179,7 +181,8 @@ export const referralRouter = createTRPCRouter({
     }
     
     // Generate referral link from invite code
-    const referralLink = `https://beepagro.com/register?ref=${inviteCode}`;
+    const baseUrl = (await resolveAppBaseUrl()).replace(/\/$/, "");
+    const referralLink = `${baseUrl}/register?ref=${inviteCode}`;
     
     return {
       referralLink,
