@@ -154,7 +154,7 @@ Avoid parallelizing:
 |---|---|---|---|---|---|---|---|
 | P2-1 | Replace in-memory newsletter execution state with durable persistence | High | Yes | done | Unassigned | `prisma/schema.prisma`, `prisma/migrations/20260504000000_newsletter_campaign_scheduler_fields/migration.sql`, `server/trpc/router/admin.ts` | Newsletter jobs survive restart/redeploy and do not duplicate unexpectedly |
 | P2-2 | Remove duplicate newsletter job tracking model | High | Yes | done | Unassigned | `server/trpc/router/admin.ts` | Single source of truth for campaign state |
-| P2-3 | Harden impersonation route with throttling and audit assurances | High | Yes | ready for verification | Unassigned | `app/api/auth/impersonate/route.ts`, `app/api/auth/impersonate/end/route.ts`, `server/trpc/router/admin.ts`, `server/auth.ts`, `lib/rateLimit.ts`, `lib/impersonationSession.ts`, `components/admin/ImpersonationBanner.tsx`, `components/admin/UserDetailsModal.tsx` | Repeated abuse attempts are throttled and session transitions remain valid |
+| P2-3 | Harden impersonation route with throttling and audit assurances | High | Yes | done | Unassigned | `app/api/auth/impersonate/route.ts`, `app/api/auth/impersonate/end/route.ts`, `server/trpc/router/admin.ts`, `server/auth.ts`, `lib/rateLimit.ts`, `lib/impersonationSession.ts`, `components/admin/ImpersonationBanner.tsx`, `components/admin/UserDetailsModal.tsx` | Repeated abuse attempts are throttled and session transitions remain valid |
 | P2-4 | Add startup environment validation for critical keys and URLs | High | Yes | done | Unassigned | `instrumentation.ts`, `lib/startupValidation.ts`, `lib/authSecret.ts`, `lib/appUrl.ts`, payment/webhook config surfaces | Missing auth/canonical URL fails fast; missing `ENCRYPTION_KEY` warns at startup and still fails on encryption use |
 
 ## Phase 3: Remove Incomplete Live Surfaces
@@ -249,6 +249,14 @@ For each item marked `ready for verification`, record:
 - exact files changed: `tests/unit/newsletter-durability.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
 - manual validation steps executed: confirmed newsletter queue creation, listing, lookup, cancellation, deletion, resume-from-db, and progress fallback all use the single persisted `NewsletterCampaign` store, with `newsletterJobs` retained only as an in-memory execution cache for actively running sends
 - automated tests added or updated: updated `tests/unit/newsletter-durability.test.ts`; ran `npx tsx --test tests/unit/newsletter-durability.test.ts`
+- result: `done`
+
+### P2-3 Verification - 2026-05-11
+
+- implementation PR or commit: existing impersonation hardening verified in current working tree after `dca64f87`
+- exact files changed: `tests/unit/impersonation-route-hardening.test.ts`, `RELEASE_STABILIZATION_TRACKER.md`
+- manual validation steps executed: confirmed impersonation execution is guarded by global and per-token route throttles, token issuance is rate limited per admin, successful start/end transitions are audited, one-time token consumption is race-safe, impersonation session flags propagate through NextAuth, and the admin exit banner calls the restore route
+- automated tests added or updated: added `tests/unit/impersonation-route-hardening.test.ts`; ran `npx tsx --test tests/unit/impersonation-route-hardening.test.ts`
 - result: `done`
 
 ## Decision Log
