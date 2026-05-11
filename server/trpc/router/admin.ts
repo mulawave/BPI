@@ -25,6 +25,7 @@ import { getNigerianRegion } from "@/lib/nigeria-regions";
 import { verifyBasqetUsdtPayout } from "@/server/services/payment/BasqetClient";
 import { impersonationCreationLimiter } from "@/lib/rateLimit";
 import { executeAdminPaymentReview } from "@/server/services/payment/adminPaymentReview";
+import { executeReferralSync } from "@/server/services/referralSync.service";
 
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.session?.user) {
@@ -1397,94 +1398,13 @@ export const adminRouter = createTRPCRouter({
         : [];
       const validSponsorIds = new Set(validSponsors.map((sponsor) => sponsor.id));
 
-      const rebuiltReferrals: Array<{
-        id: string;
-        referrerId: string;
-        referredId: string;
-        status: string;
-        rewardPaid: boolean;
-        createdAt: Date;
-        updatedAt: Date;
-      }> = [];
-      const seenPairs = new Set<string>();
-      let created = 0;
-      let skipped = 0;
-      const errors: string[] = [];
-      const now = new Date();
-
-      for (const user of usersWithSponsors) {
-        if (!user.sponsorId) {
-          skipped++;
-          continue;
-        }
-
-        if (user.sponsorId === user.id) {
-          errors.push(`User ${user.id} cannot sponsor themselves`);
-          skipped++;
-          continue;
-        }
-
-        if (!validSponsorIds.has(user.sponsorId)) {
-          errors.push(`User ${user.id} has invalid sponsorId: ${user.sponsorId}`);
-          skipped++;
-          continue;
-        }
-
-        const pairKey = `${user.sponsorId}:${user.id}`;
-        if (seenPairs.has(pairKey)) {
-          errors.push(`Duplicate referral pair detected for user ${user.id} and sponsor ${user.sponsorId}`);
-          skipped++;
-          continue;
-        }
-
-        seenPairs.add(pairKey);
-        rebuiltReferrals.push({
-          id: randomUUID(),
-          referrerId: user.sponsorId,
-          referredId: user.id,
-          status: user.activated ? "active" : "pending",
-          rewardPaid: false,
-          createdAt: user.createdAt,
-          updatedAt: now,
-        });
-        created++;
-      }
-
-      await prisma.$transaction(async (tx) => {
-        await tx.referral.deleteMany({});
-
-        if (rebuiltReferrals.length > 0) {
-          await tx.referral.createMany({
-            data: rebuiltReferrals,
-          });
-        }
-
-        await tx.auditLog.create({
-          data: {
-            id: randomUUID(),
-            userId: (ctx.session?.user as any)?.id || "system",
-            action: "SYNC_REFERRAL_DATA",
-            entity: "Referral",
-            entityId: "*",
-            changes: JSON.stringify({
-              existingCount,
-              created,
-              skipped,
-              errorCount: errors.length,
-            }),
-            status: "success",
-            createdAt: now,
-          },
-        });
-      });
-
-      return {
+      return executeReferralSync({
+        prisma,
         existingCount,
-        created,
-        skipped,
-        errorCount: errors.length,
-        errors: errors.slice(0, 10), // Return first 10 errors
-      };
+        usersWithSponsors,
+        validSponsorIds,
+        actorId: (ctx.session?.user as any)?.id || "system",
+      });
     }),
 
   bulkEmailUsers: adminProcedure
