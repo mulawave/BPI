@@ -75,6 +75,33 @@ async function verifyPaymentAmount(paymentId: string, receivedAmountNgn: number,
   return false;
 }
 
+async function getFlutterwaveRuntimeConfig() {
+  const [gatewayConfig, legacySecretSetting] = await Promise.all([
+    prisma.paymentGatewayConfig.findUnique({
+      where: { gatewayName: "flutterwave" },
+      select: { isActive: true, publicKey: true, secretKey: true },
+    }),
+    prisma.adminSettings.findUnique({
+      where: { settingKey: "flutterwave_secret_key" },
+      select: { settingValue: true },
+    }),
+  ]);
+
+  const publicKey = gatewayConfig?.publicKey || process.env.FLUTTERWAVE_PUBLIC_KEY || "";
+  const secretKey =
+    gatewayConfig?.secretKey ||
+    legacySecretSetting?.settingValue ||
+    process.env.FLUTTERWAVE_SECRET_KEY ||
+    "";
+
+  return {
+    enabled: gatewayConfig?.isActive ?? true,
+    publicKey,
+    secretKey,
+    webhookSecret: process.env.FLUTTERWAVE_WEBHOOK_SECRET || "",
+  };
+}
+
 export async function POST(req: NextRequest) {
   // Rate limit: 60 requests per minute per IP
   const blocked = applyRateLimit(req, webhookLimiter);
@@ -86,7 +113,8 @@ export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
     const signature = req.headers.get("verif-hash");
-    const webhookSecret = process.env.FLUTTERWAVE_WEBHOOK_SECRET;
+    const runtimeConfig = await getFlutterwaveRuntimeConfig();
+    const webhookSecret = runtimeConfig.webhookSecret;
 
     if (!webhookSecret) {
       console.error("❌ Flutterwave webhook secret is not configured");
@@ -104,10 +132,10 @@ export async function POST(req: NextRequest) {
 
     // Get Flutterwave gateway instance
     const config = {
-      enabled: true,
+      enabled: runtimeConfig.enabled,
       environment: (process.env.FLUTTERWAVE_ENV as "test" | "live") || "test",
-      publicKey: process.env.FLUTTERWAVE_PUBLIC_KEY,
-      secretKey: process.env.FLUTTERWAVE_SECRET_KEY,
+      publicKey: runtimeConfig.publicKey,
+      secretKey: runtimeConfig.secretKey,
       webhookSecret,
     };
 

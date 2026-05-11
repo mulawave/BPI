@@ -67,6 +67,15 @@ async function verifyPaymentAmount(paymentId: string, receivedAmountNgn: number,
   return false;
 }
 
+async function getPaystackSecretKey() {
+  const dbConfig = await prisma.paymentGatewayConfig.findUnique({
+    where: { gatewayName: "paystack" },
+    select: { secretKey: true },
+  });
+
+  return dbConfig?.secretKey || process.env.PAYSTACK_SECRET_KEY || "";
+}
+
 /**
  * Paystack Webhook Handler
  * Auto-approves all successful Paystack payments (only bank transfers require admin approval)
@@ -82,7 +91,7 @@ export async function POST(req: NextRequest) {
     const signature = req.headers.get('x-paystack-signature');
 
     // Verify webhook signature
-    const secret = process.env.PAYSTACK_SECRET_KEY;
+    const secret = await getPaystackSecretKey();
     if (!secret) {
       console.error('❌ [PAYSTACK-WEBHOOK] Paystack secret is not configured');
       return NextResponse.json({ error: 'Webhook is not configured' }, { status: 503 });

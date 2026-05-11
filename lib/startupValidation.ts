@@ -68,12 +68,6 @@ export function validateCriticalEnvironment() {
   validateRequiredEnv("ENCRYPTION_KEY", issues);
   validateCanonicalUrl(getConfiguredBaseUrl(), issues);
 
-  validateRequiredEnv("PAYSTACK_SECRET_KEY", issues);
-  validateRequiredEnv("FLUTTERWAVE_PUBLIC_KEY", issues);
-  validateRequiredEnv("FLUTTERWAVE_SECRET_KEY", issues);
-  validateRequiredEnv("FLUTTERWAVE_ENCRYPTION_KEY", issues);
-  validateRequiredEnv("FLUTTERWAVE_WEBHOOK_SECRET", issues);
-
   const nextAuthUrl = normalizeUrl(readEnv("NEXTAUTH_URL"));
   const publicAppUrl = normalizeUrl(readEnv("NEXT_PUBLIC_APP_URL"));
   if (nextAuthUrl && publicAppUrl) {

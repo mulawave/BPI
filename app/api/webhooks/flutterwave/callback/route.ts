@@ -3,10 +3,34 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import {
   PaymentGatewayFactory,
   PaymentGateway,
 } from "../../../../../server/services/payment";
+
+async function getFlutterwaveCallbackConfig() {
+  const [gatewayConfig, legacySecretSetting] = await Promise.all([
+    prisma.paymentGatewayConfig.findUnique({
+      where: { gatewayName: "flutterwave" },
+      select: { isActive: true, publicKey: true, secretKey: true },
+    }),
+    prisma.adminSettings.findUnique({
+      where: { settingKey: "flutterwave_secret_key" },
+      select: { settingValue: true },
+    }),
+  ]);
+
+  return {
+    enabled: gatewayConfig?.isActive ?? true,
+    publicKey: gatewayConfig?.publicKey || process.env.FLUTTERWAVE_PUBLIC_KEY || "",
+    secretKey:
+      gatewayConfig?.secretKey ||
+      legacySecretSetting?.settingValue ||
+      process.env.FLUTTERWAVE_SECRET_KEY ||
+      "",
+  };
+}
 
 export async function GET(req: NextRequest) {
   console.log("🔄 Flutterwave callback received");
@@ -25,12 +49,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const runtimeConfig = await getFlutterwaveCallbackConfig();
+
     // Get Flutterwave gateway instance
     const config = {
-      enabled: true,
+      enabled: runtimeConfig.enabled,
       environment: (process.env.FLUTTERWAVE_ENV as "test" | "live") || "test",
-      publicKey: process.env.FLUTTERWAVE_PUBLIC_KEY,
-      secretKey: process.env.FLUTTERWAVE_SECRET_KEY,
+      publicKey: runtimeConfig.publicKey,
+      secretKey: runtimeConfig.secretKey,
     };
 
     const gateway = await PaymentGatewayFactory.getGateway(

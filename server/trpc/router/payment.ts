@@ -163,11 +163,11 @@ export const paymentRouter = createTRPCRouter({
 
     const byName = Object.fromEntries(configs.map((c) => [c.gatewayName, c]));
 
-    const flutterwaveEnv = {
-      publicKey: !!process.env.FLUTTERWAVE_PUBLIC_KEY,
-      secretKey: !!process.env.FLUTTERWAVE_SECRET_KEY,
-      encryptionKey: !!process.env.FLUTTERWAVE_ENCRYPTION_KEY,
-    };
+    const paystackConfigured = !!(byName.paystack?.secretKey || process.env.PAYSTACK_SECRET_KEY);
+    const flutterwaveConfigured = !!(
+      (byName.flutterwave?.publicKey || process.env.FLUTTERWAVE_PUBLIC_KEY) &&
+      (byName.flutterwave?.secretKey || process.env.FLUTTERWAVE_SECRET_KEY)
+    );
 
     const statuses = [
       {
@@ -180,23 +180,22 @@ export const paymentRouter = createTRPCRouter({
       {
         gateway: "paystack" as const,
         isActive: byName.paystack?.isActive ?? false,
-        hasKeys: !!byName.paystack?.secretKey,
-        envConfigured: !!byName.paystack?.secretKey,
+        hasKeys: paystackConfigured,
+        envConfigured: paystackConfigured,
         issues: [] as string[],
       },
       {
         gateway: "flutterwave" as const,
         isActive: byName.flutterwave?.isActive ?? false,
-        hasKeys: !!byName.flutterwave?.secretKey && !!byName.flutterwave?.publicKey,
-        envConfigured: flutterwaveEnv.publicKey && flutterwaveEnv.secretKey,
+        hasKeys: flutterwaveConfigured,
+        envConfigured: flutterwaveConfigured,
         issues: [] as string[],
       },
     ];
 
     statuses.forEach((s) => {
       if (!s.isActive) s.issues.push("Gateway is inactive in DB config");
-      if (!s.hasKeys) s.issues.push("Missing gateway keys in DB config");
-      if (!s.envConfigured) s.issues.push("Missing required environment keys");
+      if (!s.hasKeys) s.issues.push("Missing gateway keys in admin config or environment fallback");
     });
 
     return statuses;
