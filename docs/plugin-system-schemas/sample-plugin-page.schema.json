@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schemaVersion": "1.0",
+  "title": "CRM Sync Admin Page",
+  "blocks": [
+    {
+      "type": "hero",
+      "title": "CRM Sync",
+      "description": "Configure outbound CRM synchronization and inspect readiness before activation."
+    },
+    {
+      "type": "stat-grid",
+      "items": [
+        {
+          "label": "Sync Status",
+          "value": "Config Required"
+        },
+        {
+          "label": "Capabilities",
+          "value": "5"
+        },
+        {
+          "label": "Dependencies",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "type": "alert",
+      "variant": "warning",
+      "title": "Configuration incomplete",
+      "message": "Add the required API key reference before this plugin can move beyond config review."
+    },
+    {
+      "type": "info-panel",
+      "title": "Declared integration scope",
+      "items": [
+        {
+          "label": "Outbound HTTP",
+          "value": "Enabled"
+        },
+        {
+          "label": "Webhook declarations",
+          "value": "0"
+        },
+        {
+          "label": "Runtime execution",
+          "value": "Disabled in phase one"
+        }
+      ]
+    },
+    {
+      "type": "config-form",
+      "settingsSchemaRef": "schemas/settings.schema.json"
+    },
+    {
+      "type": "external-link-card",
+      "title": "Support",
+      "description": "Open the plugin author support portal for integration guidance.",
+      "label": "Open Support",
+      "href": "https://example.com/support"
+    }
+  ]
+}

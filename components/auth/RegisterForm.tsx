@@ -32,13 +32,11 @@ export default function RegisterForm({ refId = "1" }: { refId?: string }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const policyLinks = useMemo(() => {
-    const termsPage = footerPages?.find((p: any) => p.category === "terms");
-    const privacyPage = footerPages?.find((p: any) => p.category === "policy" || p.category === "privacy");
     const cookiesPage = footerPages?.find((p: any) => p.category === "cookies");
 
     return {
-      terms: termsPage ? `/pages/${termsPage.slug}` : "/pages/terms-of-service",
-      privacy: privacyPage ? `/pages/${privacyPage.slug}` : "/pages/privacy-policy",
+      terms: "/terms",
+      privacy: "/privacy",
       cookies: cookiesPage ? `/pages/${cookiesPage.slug}` : "/pages/cookie-policy",
     };
   }, [footerPages]);

@@ -9,7 +9,7 @@ import { resolveAppBaseUrl } from "@/lib/appUrl";
 
 export const metadata = {
   title: "BPI - BeepAgro Palliative Initiative",
-  description: "BeepAgro Palliative Initiative - Empowering Agricultural Communities",
+  description: "Building africa's Future, One Community at a time",
   icons: {
     icon: "/img/logo.png",
     shortcut: "/img/logo.png",

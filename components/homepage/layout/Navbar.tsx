@@ -24,13 +24,13 @@ export const Navbar = () => {
   }, [pathname]);
 
   const programsDropdown = [
-    { name: 'Community Support', href: '/community-support' },
-    { name: 'Early Retirement', href: '/early-retirement' },
-    { name: 'Child Education', href: '/child-education' },
+    { name: 'Community Support', href: '/csp' },
+    { name: 'Early Retirement', href: '/membership' },
+    { name: 'Child Education', href: '/techquiz' },
     { name: 'International Elite Club', href: '/elite-club' },
     { name: 'TechQuiz Competition', href: '/techquiz' },
-    { name: 'YouTube Monetization', href: '/youtube-monetization' },
-    { name: 'MYNGUL', href: '/myngul' },
+    { name: 'YouTube Monetization', href: '/coming-soon' },
+    { name: 'MYNGUL', href: 'https://myngul.com/pages/beepagro' },
   ];
 
   const navLinks = [
@@ -39,17 +39,25 @@ export const Navbar = () => {
     { name: 'Programs', href: '/#programs', hasDropdown: true, dropdownItems: programsDropdown },
     { name: 'Blog & News', href: '/blog' },
     { name: 'International Elite Club', desktopName: 'International Elite Club', href: '/elite-club' },
-    { name: 'BPI Shop', href: '/shop' },
-    { name: 'Contact', href: '/contact' },
+    { name: 'BPI Shop', href: '/store' },
+    { name: 'Contact', href: '/help' },
   ];
 
+  // These public pages must keep dark/black header text for readability.
+  const forceLightNavRoutes = new Set([
+    '/about',
+    '/terms',
+    '/privacy',
+    '/tokenomics',
+    '/coming-soon',
+  ]);
+
   const isDarkHero = (
-    pathname === '/about' ||
     pathname === '/elite-club' ||
     pathname === '/myngul' ||
     pathname === '/techquiz' ||
     pathname === '/youtube-monetization'
-  ) && !isScrolled;
+  ) && !isScrolled && !forceLightNavRoutes.has(pathname);
 
   const navTextColor = isDarkHero ? 'text-white/90 hover:text-white' : 'text-bpi-charcoal/80 hover:text-bpi-green';
   const logoTextColor = isDarkHero ? 'text-white' : 'text-bpi-charcoal';

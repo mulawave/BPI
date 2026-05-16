@@ -14,7 +14,7 @@ import { AppHeader } from "@/components/layout/AppHeader";
 import { AppNav } from "@/components/layout/AppNav";
 
 interface BlogContentProps {
-  session: Session;
+  session?: Session;
   embedded?: boolean;
 }
 

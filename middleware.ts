@@ -43,6 +43,8 @@ export async function middleware(req: NextRequest) {
     "/about",
     "/blog",
     "/coming-soon",
+    "/terms",
+    "/privacy",
     "/help",
     "/store",
     "/checkout",

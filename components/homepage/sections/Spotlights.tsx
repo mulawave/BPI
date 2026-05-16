@@ -24,7 +24,7 @@ export const Spotlights = () => {
                   BPI believes Africa&apos;s future depends on what we build for children and youth today. This initiative helps create pathways for education, practical learning, vocational advancement, and future-ready empowerment.
                 </p>
               </div>
-              <Link href="/child-education" className="self-start text-bpi-green font-bold flex items-center gap-2 group-hover:gap-3 transition-all text-lg">
+              <Link href="/techquiz" className="self-start text-bpi-green font-bold flex items-center gap-2 group-hover:gap-3 transition-all text-lg">
                 Support Education &amp; Skills <ArrowRight className="w-5 h-5" />
               </Link>
             </motion.div>
@@ -72,7 +72,7 @@ export const Spotlights = () => {
               <p className="text-lg text-bpi-charcoal/70 mb-10 leading-relaxed font-light">
                 BPI YouTube Monetization is designed to help creators, businesses, and communities understand how to build visibility, create valuable content, grow audience engagement, and position for monetization.
               </p>
-              <Link href="/youtube-monetization" className="bg-red-50 text-red-600 hover:bg-red-100 px-8 py-4 rounded-full font-bold transition-colors inline-flex items-center gap-2 group text-lg border border-red-100">
+              <Link href="/coming-soon" className="bg-red-50 text-red-600 hover:bg-red-100 px-8 py-4 rounded-full font-bold transition-colors inline-flex items-center gap-2 group text-lg border border-red-100">
                 Explore Creator Growth <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Link>
             </motion.div>
@@ -92,7 +92,7 @@ export const Spotlights = () => {
               <p className="text-bpi-charcoal/70 mb-10 leading-relaxed font-light text-lg">
                 A Pan-African digital platform created to give Africans greater visibility, connection, ownership, and monetization opportunity in the social media space.
               </p>
-              <Link href="/myngul" className="bg-[#6FA15A] hover:bg-bpi-green text-white px-8 py-4 rounded-full font-bold transition-colors inline-flex items-center gap-2 shadow-md group/btn text-lg">
+              <Link href="https://myngul.com/pages/beepagro" className="bg-[#6FA15A] hover:bg-bpi-green text-white px-8 py-4 rounded-full font-bold transition-colors inline-flex items-center gap-2 shadow-md group/btn text-lg">
                 Discover MYNGUL <ArrowRight className="w-5 h-5 group-hover/btn:translate-x-1 transition-transform" />
               </Link>
             </motion.div>

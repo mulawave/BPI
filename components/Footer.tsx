@@ -17,13 +17,11 @@ export default function Footer({ onModalOpen }: FooterProps) {
   const { data: companyInfo } = api.config.getPublicSettings.useQuery(undefined, { refetchOnWindowFocus: false });
 
   const footerLinks = useMemo<{ label: string; href: string }[]>(() => {
-    const termsPage = footerPages?.find((p: any) => p.category === "terms");
-    const privacyPage = footerPages?.find((p: any) => p.category === "policy" || p.category === "privacy");
     const cookiesPage = footerPages?.find((p: any) => p.category === "cookies");
 
     return [
-      { label: "Terms of Service", href: termsPage ? `/pages/${termsPage.slug}` : "/pages/terms-of-service" },
-      { label: "Privacy Policy", href: privacyPage ? `/pages/${privacyPage.slug}` : "/pages/privacy-policy" },
+      { label: "Terms of Service", href: "/terms" },
+      { label: "Privacy Policy", href: "/privacy" },
       { label: "Cookie Policy", href: cookiesPage ? `/pages/${cookiesPage.slug}` : "/pages/cookie-policy" },
     ];
   }, [footerPages]);

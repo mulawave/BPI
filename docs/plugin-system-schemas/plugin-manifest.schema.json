@@ -1,0 +1,331 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bpi.local/schemas/plugin-manifest.schema.json",
+  "title": "BPI Plugin Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schemaVersion",
+    "pluginId",
+    "slug",
+    "name",
+    "version",
+    "description",
+    "category",
+    "author",
+    "compatibility",
+    "capabilities",
+    "checksums"
+  ],
+  "properties": {
+    "$schemaVersion": {
+      "const": "1.0"
+    },
+    "pluginId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "integration",
+        "reporting",
+        "admin-tools",
+        "automation",
+        "content",
+        "analytics"
+      ]
+    },
+    "author": {
+      "$ref": "#/$defs/contactParty"
+    },
+    "support": {
+      "$ref": "#/$defs/contactParty"
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minAppVersion",
+        "maxAppVersion",
+        "pluginSdkVersion"
+      ],
+      "properties": {
+        "minAppVersion": {
+          "type": "string"
+        },
+        "maxAppVersion": {
+          "type": "string"
+        },
+        "pluginSdkVersion": {
+          "type": "string"
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "register-admin-nav-item",
+          "register-admin-page",
+          "register-admin-settings-section",
+          "read-users-summary",
+          "read-referrals-summary",
+          "read-payments-summary",
+          "read-analytics-summary",
+          "read-plugin-settings",
+          "write-plugin-settings",
+          "access-third-party-api",
+          "declare-webhook-endpoint",
+          "declare-background-job",
+          "emit-plugin-health",
+          "write-plugin-audit-log"
+        ]
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "adminNav": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "label",
+            "icon",
+            "placement"
+          ],
+          "properties": {
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "icon": {
+              "type": "string",
+              "enum": [
+                "plug",
+                "workflow",
+                "settings",
+                "shield",
+                "bar-chart",
+                "database",
+                "globe",
+                "file-text"
+              ]
+            },
+            "placement": {
+              "type": "string",
+              "enum": [
+                "plugins",
+                "integrations",
+                "analytics",
+                "settings"
+              ]
+            }
+          }
+        },
+        "adminPage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "schemaPath"
+          ],
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "schemaPath": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._/-]+\\.json$"
+            }
+          }
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaPath"
+      ],
+      "properties": {
+        "schemaPath": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._/-]+\\.json$"
+        },
+        "requiredSecrets": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          }
+        }
+      }
+    },
+    "integrations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "outboundHttp": {
+          "type": "boolean"
+        },
+        "webhooks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "key",
+              "direction",
+              "pathOrUrl"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "inbound",
+                  "outbound"
+                ]
+              },
+              "pathOrUrl": {
+                "type": "string"
+              },
+              "signatureMode": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "config-only",
+            "config-and-connectivity"
+          ]
+        }
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "pluginId",
+          "versionRange"
+        ],
+        "properties": {
+          "pluginId": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+          },
+          "versionRange": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "checksums": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifestSha256",
+        "archiveSha256"
+      ],
+      "properties": {
+        "manifestSha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "archiveSha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "keyId",
+        "signaturePath"
+      ],
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": [
+            "ed25519"
+          ]
+        },
+        "keyId": {
+          "type": "string"
+        },
+        "signaturePath": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._/-]+\\.json$"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "contactParty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "website": {
+          "type": "string",
+          "format": "uri"
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        }
+      }
+    }
+  }
+}

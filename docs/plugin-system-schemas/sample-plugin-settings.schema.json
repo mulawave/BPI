@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CRM Sync Settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "baseUrl",
+    "apiKeyRef",
+    "syncIntervalMinutes",
+    "syncReferrals"
+  ],
+  "properties": {
+    "baseUrl": {
+      "type": "string",
+      "title": "CRM Base URL",
+      "format": "uri",
+      "description": "Base URL for the CRM API endpoint."
+    },
+    "apiKeyRef": {
+      "type": "string",
+      "title": "API Key Reference",
+      "description": "Reference key for the stored secret, not the raw secret value.",
+      "x-secret": true
+    },
+    "syncIntervalMinutes": {
+      "type": "integer",
+      "title": "Sync Interval",
+      "minimum": 5,
+      "maximum": 1440,
+      "default": 60,
+      "description": "Proposed interval for future job execution phases."
+    },
+    "syncReferrals": {
+      "type": "boolean",
+      "title": "Sync Referral Summaries",
+      "default": true
+    },
+    "syncPaymentsSummary": {
+      "type": "boolean",
+      "title": "Sync Payment Summaries",
+      "default": false
+    },
+    "notes": {
+      "type": "string",
+      "title": "Admin Notes",
+      "maxLength": 500
+    }
+  }
+}

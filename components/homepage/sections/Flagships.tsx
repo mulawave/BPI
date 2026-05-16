@@ -71,7 +71,7 @@ export const Flagships = () => {
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link 
-              href="/community-support"
+              href="/csp"
               className="bg-transparent border border-white/30 hover:bg-white/10 text-white px-10 py-4 md:py-5 rounded-full font-bold text-lg transition-all inline-flex items-center justify-center w-full sm:w-auto"
             >
               Learn More
@@ -119,7 +119,7 @@ export const Flagships = () => {
                 ))}
               </div>
 
-              <Link href="/early-retirement" className="bg-bpi-charcoal hover:bg-black text-white px-10 py-5 rounded-full font-bold text-lg transition-all shadow-lg inline-flex items-center justify-center gap-2 w-full sm:w-auto group">
+              <Link href="/membership" className="bg-bpi-charcoal hover:bg-black text-white px-10 py-5 rounded-full font-bold text-lg transition-all shadow-lg inline-flex items-center justify-center gap-2 w-full sm:w-auto group">
                 Explore Early Retirement
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Link>

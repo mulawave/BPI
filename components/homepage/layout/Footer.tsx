@@ -39,13 +39,13 @@ export const Footer = () => {
           <div>
             <h4 className="font-bold text-lg mb-6 text-bpi-gold">Programs</h4>
             <ul className="space-y-4 text-white/70 text-base font-light">
-              <li><Link href="/community-support" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">Community Support</Link></li>
-              <li><Link href="/early-retirement" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">Early Retirement</Link></li>
-              <li><Link href="/child-education" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">Child Education</Link></li>
+              <li><Link href="/csp" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">Community Support</Link></li>
+              <li><Link href="/membership" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">Early Retirement</Link></li>
+              <li><Link href="/techquiz" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">Child Education</Link></li>
               <li><Link href="/elite-club" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">International Elite Club</Link></li>
               <li><Link href="/techquiz" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">BPI TechQuiz</Link></li>
-              <li><Link href="/youtube-monetization" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">YouTube Monetization</Link></li>
-              <li><Link href="/myngul" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">MYNGUL</Link></li>
+              <li><Link href="/coming-soon" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">YouTube Monetization</Link></li>
+              <li><a href="https://myngul.com/pages/beepagro" target="_blank" rel="noopener noreferrer" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">MYNGUL</a></li>
             </ul>
           </div>
 
@@ -53,9 +53,9 @@ export const Footer = () => {
             <h4 className="font-bold text-lg mb-6 text-bpi-gold">Company</h4>
             <ul className="space-y-4 text-white/70 text-base font-light mb-10">
               <li><Link href="/about" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">About Us</Link></li>
-              <li><Link href="/shop" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">BPI Shop</Link></li>
+              <li><Link href="/store" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">BPI Shop</Link></li>
               <li><Link href="/blog" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">Blog &amp; News</Link></li>
-              <li><Link href="/contact" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">Contact</Link></li>
+              <li><Link href="/help" className="inline-block py-1 md:py-0 hover:text-bpi-green transition-colors">Contact</Link></li>
             </ul>
 
             <h4 className="font-bold text-lg mb-6 text-bpi-gold">Account &amp; Legal</h4>

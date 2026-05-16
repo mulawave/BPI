@@ -1,9 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { SectionHeading } from '@/components/homepage/ui/SectionHeading';
-import { ArrowRight, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ShoppingBag } from 'lucide-react';
+import { api } from '@/client/trpc';
+import { format } from 'date-fns';
 
 const partners = [
   { name: "UND", url: "https://i.ibb.co/F4J5WgBC/UNDLOGO.jpg", link: "https://ibb.co/fdtkS4CL" },
@@ -17,34 +20,23 @@ const partners = [
   { name: "GATC", url: "https://i.ibb.co/fYDSCjGS/GATCLOGI.jpg" }
 ];
 
-const recentArticles = [
-  {
-    id: "expanding-bpi-network",
-    title: "Expanding the BPI Community Support Network Across West Africa",
-    category: "Ecosystem Update",
-    date: "Oct 24, 2025",
-    desc: "Discover how our latest initiatives are bringing structured assistance and solidarity to more communities, ensuring no one faces life's challenges alone.",
-    img: "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
-  },
-  {
-    id: "future-digital-ownership",
-    title: "The Future of Digital Ownership: Why MYNGUL Matters",
-    category: "Digital Growth",
-    date: "Oct 18, 2025",
-    desc: "An in-depth look at how African creators can move from mere participation to true digital ownership and monetization.",
-    img: "https://images.unsplash.com/photo-1573164713714-d95e436ab8d6?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
-  },
-  {
-    id: "empowering-next-generation",
-    title: "Empowering the Next Generation Through STEM",
-    category: "Education",
-    date: "Oct 12, 2025",
-    desc: "Highlights from the recent BPI TechQuiz Competition and the brilliant young minds shaping Africa's technological future.",
-    img: "https://images.unsplash.com/photo-1531482615713-2afd69097998?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
-  }
-];
-
 export const Media = () => {
+  const [activeSlide, setActiveSlide] = useState(0);
+  const latestPostsQuery = api.blog.getLatestPosts.useQuery({ limit: 5 });
+  const recentArticles = latestPostsQuery.data?.posts ?? [];
+
+  useEffect(() => {
+    setActiveSlide(0);
+  }, [recentArticles.length]);
+
+  useEffect(() => {
+    if (recentArticles.length <= 1) return;
+    const timer = setInterval(() => {
+      setActiveSlide((current) => (current + 1) % recentArticles.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [recentArticles.length]);
+
   return (
     <>
       {/* Blog & News */}
@@ -55,46 +47,96 @@ export const Media = () => {
             subtitle="Stay updated with BPI announcements, impact stories, ecosystem updates, educational insights, digital monetization guidance, and Pan-African opportunity news."
           />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mt-12">
-            {recentArticles.map((item, idx) => (
-              <motion.div 
-                key={item.id}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: idx * 0.1 }}
-                className="h-full"
-              >
-                <Link 
-                  href={`/blog/${item.id}`}
-                  className="group block h-full bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-premium hover:-translate-y-1 transition-all flex flex-col"
-                >
-                  <div className="aspect-[16/10] overflow-hidden bg-gray-100 flex-shrink-0">
-                    <img 
-                      src={item.img} 
-                      alt={item.title} 
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
+          <div className="mt-12">
+            {latestPostsQuery.isLoading ? (
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-10 text-center text-bpi-charcoal/70">
+                Loading latest updates...
+              </div>
+            ) : recentArticles.length ? (
+              <div className="space-y-5">
+                <div className="relative overflow-hidden rounded-2xl">
+                  <motion.div
+                    className="flex"
+                    animate={{ x: `-${activeSlide * 100}%` }}
+                    transition={{ duration: 0.6, ease: "easeInOut" }}
+                  >
+                    {recentArticles.map((item) => (
+                      <div key={item.id} className="w-full flex-shrink-0">
+                        <Link
+                          href={`/blog/${item.slug}`}
+                          className="group block h-full bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-premium transition-all"
+                        >
+                          <div className="grid grid-cols-1 lg:grid-cols-2">
+                            <div className="aspect-[16/10] lg:aspect-auto lg:h-full overflow-hidden bg-gray-100">
+                              <img
+                                src={item.image || item.imageUrl || "/img/blog-placeholder.jpg"}
+                                alt={item.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                              />
+                            </div>
+                            <div className="p-6 lg:p-10 flex flex-col justify-center">
+                              <div className="flex items-center gap-3 text-xs text-bpi-charcoal/60 mb-4 font-medium uppercase tracking-wider">
+                                <span className="text-bpi-green">{item.category?.name || "BPI Update"}</span>
+                                <span>•</span>
+                                <span>{format(new Date(item.publishedAt || item.createdAt), "MMM dd, yyyy")}</span>
+                              </div>
+                              <h3 className="text-2xl lg:text-3xl font-bold text-bpi-charcoal mb-4 group-hover:text-bpi-green transition-colors tracking-tight">
+                                {item.title}
+                              </h3>
+                              <p className="text-bpi-charcoal/70 text-base leading-relaxed mb-6 line-clamp-3">
+                                {item.excerpt || "Read the latest updates from BPI and the wider ecosystem."}
+                              </p>
+                              <div className="inline-flex items-center gap-2 font-bold text-bpi-charcoal group-hover:text-bpi-green transition-colors text-sm">
+                                Read Article <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                              </div>
+                            </div>
+                          </div>
+                        </Link>
+                      </div>
+                    ))}
+                  </motion.div>
+
+                  {recentArticles.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setActiveSlide((current) => (current - 1 + recentArticles.length) % recentArticles.length)}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 text-bpi-charcoal shadow-md hover:bg-white"
+                        aria-label="Previous article"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveSlide((current) => (current + 1) % recentArticles.length)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 text-bpi-charcoal shadow-md hover:bg-white"
+                        aria-label="Next article"
+                      >
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {recentArticles.length > 1 && (
+                  <div className="flex items-center justify-center gap-2">
+                    {recentArticles.map((item, index) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setActiveSlide(index)}
+                        className={`h-2.5 rounded-full transition-all ${index === activeSlide ? "w-8 bg-bpi-green" : "w-2.5 bg-bpi-charcoal/25"}`}
+                        aria-label={`Go to slide ${index + 1}`}
+                      />
+                    ))}
                   </div>
-                  <div className="p-6 flex flex-col flex-grow">
-                    <div className="flex items-center gap-3 text-xs text-bpi-charcoal/60 mb-3 font-medium uppercase tracking-wider">
-                      <span className="text-bpi-green">{item.category}</span>
-                      <span>•</span>
-                      <span>{item.date}</span>
-                    </div>
-                    <h3 className="text-xl font-bold text-bpi-charcoal mb-3 group-hover:text-bpi-green transition-colors tracking-tight">
-                      {item.title}
-                    </h3>
-                    <p className="text-bpi-charcoal/70 line-clamp-2 text-sm leading-relaxed mb-4 flex-grow">
-                      {item.desc}
-                    </p>
-                    <div className="mt-auto inline-flex items-center gap-2 font-bold text-bpi-charcoal group-hover:text-bpi-green transition-colors text-sm">
-                      Read Article <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </div>
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-10 text-center text-bpi-charcoal/70">
+                No blog updates are available yet.
+              </div>
+            )}
           </div>
           <div className="text-center mt-12">
             <Link href="/blog" className="inline-flex items-center gap-2 font-bold text-bpi-charcoal hover:text-bpi-green transition-colors group">
@@ -157,7 +199,7 @@ export const Media = () => {
             transition={{ delay: 0.4 }}
             className="mt-16"
           >
-            <Link href="/contact" className="inline-flex items-center gap-2 px-8 py-4 bg-white border border-gray-200 hover:border-bpi-green hover:text-bpi-green text-bpi-charcoal rounded-full font-bold transition-all shadow-sm group">
+            <Link href="/help" className="inline-flex items-center gap-2 px-8 py-4 bg-white border border-gray-200 hover:border-bpi-green hover:text-bpi-green text-bpi-charcoal rounded-full font-bold transition-all shadow-sm group">
               Partner With BPI <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </Link>
           </motion.div>
@@ -191,14 +233,14 @@ export const Media = () => {
                 </div>
                 <h4 className="font-bold text-bpi-charcoal mb-2 tracking-tight">{item.name}</h4>
                 <p className="text-bpi-gold font-bold mb-6">{item.price}</p>
-                <Link href="/shop" className="block w-full py-3 rounded-xl border-2 border-gray-200 text-sm font-bold hover:bg-bpi-green hover:text-white hover:border-bpi-green transition-all">
+                <Link href="/store" className="block w-full py-3 rounded-xl border-2 border-gray-200 text-sm font-bold hover:bg-bpi-green hover:text-white hover:border-bpi-green transition-all">
                   View Details
                 </Link>
               </motion.div>
             ))}
           </div>
           <div className="text-center mt-12">
-            <Link href="/shop" className="bg-bpi-charcoal hover:bg-black text-white px-8 py-4 rounded-full font-bold transition-all shadow-md hover:shadow-premium hover:-translate-y-1 inline-flex items-center gap-2 group">
+            <Link href="/store" className="bg-bpi-charcoal hover:bg-black text-white px-8 py-4 rounded-full font-bold transition-all shadow-md hover:shadow-premium hover:-translate-y-1 inline-flex items-center gap-2 group">
               Visit the Shop <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </Link>
           </div>
