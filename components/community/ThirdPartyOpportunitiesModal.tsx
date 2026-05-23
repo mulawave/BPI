@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { FiX, FiExternalLink, FiCopy, FiCheck, FiAlertCircle } from "react-icons/fi";
+import { FiX, FiAlertCircle } from "react-icons/fi";
 import { 
-  Share2, Target, TrendingUp, Users, Link as LinkIcon, 
-  CheckCircle2, AlertCircle, Bell, ExternalLink 
+  Share2, Target, TrendingUp, Users, Link as LinkIcon,
+  CheckCircle2, AlertCircle, Bell
 } from "lucide-react";
 import { api } from "@/client/trpc";
 import { Button } from "@/components/ui/button";
@@ -13,24 +13,17 @@ import toast from "react-hot-toast";
 interface ThirdPartyOpportunitiesModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenMatrixModal?: () => void;
 }
 
 type TabType = 'available' | 'my-links' | 'reminders';
 
 export default function ThirdPartyOpportunitiesModal({ 
   isOpen, 
-  onClose 
+  onClose,
+  onOpenMatrixModal,
 }: ThirdPartyOpportunitiesModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('available');
-  const [submittingPlatformId, setSubmittingPlatformId] = useState<string | null>(null);
-  const [newLinks, setNewLinks] = useState<Record<string, string>>({});
-  const [copiedLink, setCopiedLink] = useState<string | null>(null);
-
-  const utils = api.useUtils();
-
-  // API Queries
-  const { data: availablePlatforms, isLoading: loadingAvailable } = 
-    api.thirdPartyPlatforms.getAvailablePlatforms.useQuery();
   
   const { data: myPlatforms, isLoading: loadingMyPlatforms } = 
     api.thirdPartyPlatforms.getMyPlatformsWithStats.useQuery();
@@ -38,60 +31,9 @@ export default function ThirdPartyOpportunitiesModal({
   const { data: summary } = 
     api.thirdPartyPlatforms.getSummary.useQuery();
 
-  // Submit link mutation
-  const submitLink = api.thirdPartyPlatforms.submitReferralLink.useMutation({
-    onSuccess: async (data) => {
-      toast.success(data.message);
-      setNewLinks({});
-      setSubmittingPlatformId(null);
-      // Refetch data
-      await utils.thirdPartyPlatforms.getAvailablePlatforms.invalidate();
-      await utils.thirdPartyPlatforms.getMyPlatformsWithStats.invalidate();
-      await utils.thirdPartyPlatforms.getSummary.invalidate();
-    },
-    onError: (error) => {
-      toast.error(`Error: ${error.message}`);
-      setSubmittingPlatformId(null);
-    },
-  });
-
-  // Mark registration mutation
-  const markRegistration = api.thirdPartyPlatforms.markRegistration.useMutation({
-    onSuccess: async () => {
-      await utils.thirdPartyPlatforms.getMyPlatformsWithStats.invalidate();
-    },
-  });
-
-  const handleCopyLink = async (link: string, platformId: string) => {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopiedLink(platformId);
-      setTimeout(() => setCopiedLink(null), 2000);
-      toast.success("Link copied");
-    } catch (err) {
-      console.error('Failed to copy:', err);
-      toast.error("Failed to copy link");
-    }
-  };
-
-  const handleSubmitLink = (platformId: string) => {
-    const link = newLinks[platformId];
-    if (!link || !link.trim()) {
-      toast.error('Please enter a valid referral link');
-      return;
-    }
-
-    setSubmittingPlatformId(platformId);
-    submitLink.mutate({
-      platformId,
-      referralLink: link.trim(),
-    });
-  };
-
-  const handleOpenSponsorLink = (platformId: string, link: string) => {
-    // Mark registration when user clicks sponsor's link
-    markRegistration.mutate({ platformId });
-    window.open(link, '_blank');
+  const openMatrixConsole = () => {
+    onClose();
+    onOpenMatrixModal?.();
   };
 
   if (!isOpen) return null;
@@ -189,128 +131,37 @@ export default function ThirdPartyOpportunitiesModal({
           {/* TAB 1: COMPLETE REGISTRATION */}
           {activeTab === 'available' && (
             <div className="space-y-6 animate-fadeIn">
-              {loadingAvailable ? (
-                <div className="text-center py-12">
-                  <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto" />
-                  <p className="text-muted-foreground mt-4">Loading platforms...</p>
-                </div>
-              ) : availablePlatforms && availablePlatforms.length > 0 ? (
-                <>
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-1">
-                          How It Works
-                        </h3>
-                        <ol className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-decimal list-inside">
-                          <li>Click the referral link below</li>
-                          <li>Register on the platform using their link</li>
-                          <li>Get your own referral link from that platform</li>
-                          <li>Come back and submit your link here</li>
-                          <li>Your direct downlines will see YOUR link and register</li>
-                        </ol>
-                      </div>
-                    </div>
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-1">
+                      Opportunities And Matrix Are Separate
+                    </h3>
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      Referral links and submission actions now live only in the Third-Party Matrix modal.
+                      Use this modal for progress overview, and use Matrix Console for link operations.
+                    </p>
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {availablePlatforms.map((platform: any) => (
-                      <div
-                        key={platform.id}
-                        className="border border-bpi-border dark:border-bpi-dark-accent rounded-xl p-5 bg-white dark:bg-bpi-dark-card hover:shadow-lg transition-shadow"
-                      >
-                        <div className="flex items-start gap-4 mb-4">
-                          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center text-white text-xl font-bold">
-                            {platform.icon || platform.name.charAt(0)}
-                          </div>
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-foreground text-lg">{platform.name}</h3>
-                            <p className="text-sm text-muted-foreground">{platform.description}</p>
-                            {platform.category && (
-                              <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs rounded-full">
-                                {platform.category}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 mb-3">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Users className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                            <span className="text-xs font-medium text-purple-700 dark:text-purple-300">
-                              Referral Link from: {platform.linkOwner}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={platform.referralLink}
-                              readOnly
-                              className="flex-1 px-3 py-2 bg-white dark:bg-bpi-dark-accent border border-purple-200 dark:border-purple-800 rounded text-sm"
-                            />
-                            <button
-                              onClick={() => handleCopyLink(platform.referralLink, platform.id)}
-                              className="p-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors"
-                              title="Copy link"
-                            >
-                              {copiedLink === platform.id ? (
-                                <FiCheck className="w-4 h-4" />
-                              ) : (
-                                <FiCopy className="w-4 h-4" />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => handleOpenSponsorLink(platform.id, platform.referralLink)}
-                              className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-                              title="Open link"
-                            >
-                              <FiExternalLink className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="border-t border-bpi-border dark:border-bpi-dark-accent pt-3">
-                          <label className="block text-xs font-medium text-foreground mb-2">
-                            Your Referral Link (after registration)
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="url"
-                              placeholder="https://platform.com/ref?id=yourlink"
-                              value={newLinks[platform.id] || ''}
-                              onChange={(e) => setNewLinks({ ...newLinks, [platform.id]: e.target.value })}
-                              className="flex-1 px-3 py-2 border border-input rounded-lg bg-background text-foreground text-sm focus:border-bpi-primary focus:outline-none"
-                              disabled={submittingPlatformId === platform.id}
-                            />
-                            <Button
-                              onClick={() => handleSubmitLink(platform.id)}
-                              disabled={!newLinks[platform.id] || submittingPlatformId === platform.id}
-                              className="bg-bpi-primary hover:bg-bpi-primary/90 px-4"
-                            >
-                              {submittingPlatformId === platform.id ? (
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                'Submit'
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-12">
-                  <CheckCircle2 className="w-16 h-16 text-green-600 mx-auto mb-4" />
-                  <h3 className="text-xl font-semibold text-foreground mb-2">
-                    All Done!
-                  </h3>
-                  <p className="text-muted-foreground">
-                    You've completed all available platforms. Check "My Links & Stats" to track your team's progress.
-                  </p>
                 </div>
-              )}
+              </div>
+
+              <div className="rounded-xl border border-bpi-border dark:border-bpi-dark-accent p-5 bg-white dark:bg-bpi-dark-card">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <h3 className="font-semibold text-foreground text-lg">Pending Registrations</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {summary?.pendingPlatforms ?? 0} platform{(summary?.pendingPlatforms ?? 0) === 1 ? '' : 's'} pending.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={openMatrixConsole}
+                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                  >
+                    Open Matrix Console
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -342,26 +193,8 @@ export default function ThirdPartyOpportunitiesModal({
                         <CheckCircle2 className="w-6 h-6 text-green-600" />
                       </div>
 
-                      <div className="bg-gray-50 dark:bg-bpi-dark-accent rounded-lg p-3 mb-4">
-                        <div className="text-xs text-muted-foreground mb-1">Your Referral Link</div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={item.referralLink}
-                            readOnly
-                            className="flex-1 px-3 py-2 bg-white dark:bg-bpi-dark-card border border-input rounded text-sm"
-                          />
-                          <button
-                            onClick={() => handleCopyLink(item.referralLink, item.platform.id)}
-                            className="p-2 bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
-                          >
-                            {copiedLink === item.platform.id ? (
-                              <FiCheck className="w-4 h-4" />
-                            ) : (
-                              <FiCopy className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
+                      <div className="bg-gray-50 dark:bg-bpi-dark-accent rounded-lg p-3 mb-4 text-xs text-muted-foreground">
+                        Link actions are available only in Matrix Console.
                       </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
@@ -415,10 +248,10 @@ export default function ThirdPartyOpportunitiesModal({
                     No Links Yet
                   </h3>
                   <p className="text-muted-foreground mb-4">
-                    Start by completing platform registrations in the "Complete Registration" tab.
+                    Open Matrix Console to register and submit links, then return here to monitor progress.
                   </p>
-                  <Button onClick={() => setActiveTab('available')} className="bg-bpi-primary hover:bg-bpi-primary/90">
-                    Get Started
+                  <Button onClick={openMatrixConsole} className="bg-bpi-primary hover:bg-bpi-primary/90">
+                    Open Matrix Console
                   </Button>
                 </div>
               )}

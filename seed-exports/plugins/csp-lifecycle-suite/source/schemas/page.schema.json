@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "1.0",
+  "title": "CSP Lifecycle Management",
+  "blocks": [
+    {
+      "type": "hero",
+      "title": "CSP Lifecycle Management",
+      "subtitle": "Manage broadcast requests, track visibility decisions, and monitor real-time CSP communication."
+    },
+    {
+      "type": "stat-grid",
+      "items": [
+        {
+          "label": "Active Broadcasts",
+          "value": 0
+        },
+        {
+          "label": "Total Contributors",
+          "value": 0
+        },
+        {
+          "label": "Funds Raised",
+          "value": "$0"
+        },
+        {
+          "label": "Hidden Broadcasts",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "type": "alert",
+      "tone": "info",
+      "title": "CSP Plugin Ready",
+      "message": "Broadcast visibility guard, visibility diagnostics panel, and lifecycle communication suite are all active."
+    },
+    {
+      "type": "info-panel",
+      "title": "Features Enabled",
+      "body": "✅ Broadcast Visibility Guard: Prevents stale data with 15-second cache refresh\n✅ Visibility Diagnostics: Admin audit panel shows why broadcasts are hidden\n✅ Lifecycle Communication: Users receive emails and see real communication history\n✅ Cache Invalidation: Mutations immediately sync user feeds"
+    },
+    {
+      "type": "section",
+      "title": "Broadcast Management",
+      "items": [
+        {
+          "label": "Active Requests",
+          "description": "Pending admin approval"
+        },
+        {
+          "label": "Broadcasting",
+          "description": "Currently live and collecting funds"
+        },
+        {
+          "label": "Ready for Processing",
+          "description": "Funded and waiting for payout"
+        },
+        {
+          "label": "Completed",
+          "description": "Closed broadcasts with full history"
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "title": "Diagnostics & Auditing",
+      "items": [
+        {
+          "label": "Visibility Diagnostics",
+          "description": "Hidden broadcast breakdown with reasons (inactive, not_broadcasting, missing_expiry, expired)"
+        },
+        {
+          "label": "Audit Trail",
+          "description": "Complete history of visibility decisions and mutations"
+        },
+        {
+          "label": "Communication Feed",
+          "description": "Real-time notification and request timeline for tracking lifecycle"
+        }
+      ]
+    },
+    {
+      "type": "external-link-card",
+      "label": "View CSP Documentation",
+      "href": "https://bpi.local/support/plugins/csp"
+    }
+  ]
+}

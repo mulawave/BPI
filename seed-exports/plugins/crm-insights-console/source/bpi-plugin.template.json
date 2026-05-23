@@ -1,0 +1,71 @@
+{
+  "$schemaVersion": "1.0",
+  "pluginId": "com.bpi.crm-insights-console",
+  "slug": "crm-insights-console",
+  "name": "CRM Insights Console",
+  "version": "1.0.0",
+  "description": "Host-rendered CRM insights surfaces for pipeline health, sync monitoring, and lead-quality review.",
+  "category": "analytics",
+  "author": {
+    "name": "BPI Platform Team",
+    "website": "https://bpi.local/plugins/crm-insights",
+    "email": "plugins@bpi.local"
+  },
+  "support": {
+    "url": "https://bpi.local/support/plugins/crm-insights",
+    "email": "plugins-support@bpi.local"
+  },
+  "compatibility": {
+    "minAppVersion": "1.0.0",
+    "maxAppVersion": "1.9.99",
+    "pluginSdkVersion": "1.0.0"
+  },
+  "capabilities": [
+    "register-admin-nav-item",
+    "register-admin-page",
+    "register-admin-settings-section",
+    "read-analytics-summary",
+    "write-plugin-settings",
+    "declare-webhook-endpoint",
+    "declare-background-job",
+    "emit-plugin-health",
+    "write-plugin-audit-log"
+  ],
+  "ui": {
+    "adminNav": {
+      "label": "CRM Insights",
+      "icon": "bar-chart",
+      "placement": "analytics"
+    },
+    "adminPage": {
+      "title": "CRM Insights Console",
+      "schemaPath": "schemas/page.schema.json"
+    }
+  },
+  "settings": {
+    "schemaPath": "schemas/settings.schema.json"
+  },
+  "integrations": {
+    "outboundHttp": true,
+    "webhooks": [
+      {
+        "key": "crm-insights-events",
+        "direction": "inbound",
+        "pathOrUrl": "/api/plugins/crm-insights/webhooks/events",
+        "signatureMode": "hmac-sha256"
+      }
+    ]
+  },
+  "health": {
+    "type": "config-and-connectivity"
+  },
+  "checksums": {
+    "manifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "archiveSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "sample-crm-insights-key",
+    "signaturePath": "metadata/signature.json"
+  }
+}

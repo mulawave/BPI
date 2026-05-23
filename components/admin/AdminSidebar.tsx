@@ -23,6 +23,7 @@ import {
   Globe,
   BookOpen,
   ExternalLink,
+  GitBranch,
   Share2,
   Award,
   Palette,
@@ -225,6 +226,12 @@ const navigation = [
     href: "/admin/third-party", 
     icon: ExternalLink,
     description: "External opportunities"
+  },
+  {
+    name: "Third-Party Matrix",
+    href: "/admin/third-party-matrix",
+    icon: GitBranch,
+    description: "Matrix controls & sponsor tree"
   },
   { 
     name: "Promotional Materials", 

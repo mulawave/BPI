@@ -31,6 +31,8 @@ import { digitalFarmRouter } from "./digitalFarm";
 import { currencyRouter } from "./currency";
 import { youtubeRouter } from "./youtube";
 import { thirdPartyPlatformsRouter } from "./thirdPartyPlatforms";
+import { thirdPartyMatrixRouter } from "./thirdPartyMatrix";
+import { thirdPartyMatrixAdminRouter } from "./thirdPartyMatrixAdmin";
 import { taxesRouter } from "./taxes";
 import { palliativeRouter } from "./palliative";
 import { walletRouter } from "./wallet";
@@ -86,6 +88,8 @@ export const appRouter = createTRPCRouter({
   currency: currencyRouter,
   youtube: youtubeRouter,
   thirdPartyPlatforms: thirdPartyPlatformsRouter,
+  thirdPartyMatrix: thirdPartyMatrixRouter,
+  thirdPartyMatrixAdmin: thirdPartyMatrixAdminRouter,
   taxes: taxesRouter,
   palliative: palliativeRouter,
   wallet: walletRouter,

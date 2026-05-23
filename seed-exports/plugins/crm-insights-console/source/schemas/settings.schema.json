@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CRM Insights Settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "workspaceId",
+    "syncWindowDays",
+    "apiBaseUrl"
+  ],
+  "properties": {
+    "workspaceId": {
+      "type": "string",
+      "title": "Workspace ID",
+      "description": "Primary CRM workspace identifier used for host-managed sync jobs."
+    },
+    "syncWindowDays": {
+      "type": "integer",
+      "title": "Sync Window Days",
+      "minimum": 1,
+      "maximum": 30,
+      "default": 14
+    },
+    "enableLeadScoring": {
+      "type": "boolean",
+      "title": "Enable Lead Scoring",
+      "default": true
+    },
+    "apiBaseUrl": {
+      "type": "string",
+      "title": "CRM API Base URL",
+      "default": "https://api.crm-insights.example.com"
+    },
+    "apiTokenRef": {
+      "type": "string",
+      "title": "API Token Secret Reference",
+      "description": "Optional reference only. Use secret://CRM_INSIGHTS_API_TOKEN when needed.",
+      "x-secret": true
+    },
+    "webhookSecretRef": {
+      "type": "string",
+      "title": "Webhook Signing Secret Reference",
+      "description": "Optional reference only. Use secret://CRM_INSIGHTS_WEBHOOK_SECRET when needed.",
+      "x-secret": true
+    }
+  }
+}

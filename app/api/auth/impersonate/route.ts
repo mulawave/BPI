@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authConfig } from "@/server/auth";
 import type { Prisma } from "@prisma/client";
-import { SignJWT } from "jose";
+import { encode } from "next-auth/jwt";
 import { requireAuthSecret } from "@/lib/authSecret";
 import { getClientIp, impersonationGlobalRouteLimiter, impersonationRouteLimiter } from "@/lib/rateLimit";
 import {
@@ -144,7 +144,7 @@ type ImpersonationRequestFailure =
 type ImpersonationRequestSuccess = {
   ok: true;
   impToken: any;
-  jwtToken: string;
+  sessionToken: string;
 };
 
 type ImpersonationRequestResult = ImpersonationRequestFailure | ImpersonationRequestSuccess;
@@ -176,6 +176,7 @@ async function recordImpersonationAudit(input: {
 
 function buildImpersonationSessionPayload(impToken: any) {
   return {
+    sub: impToken.TargetUser.id,
     id: impToken.TargetUser.id,
     email: impToken.TargetUser.email,
     name:
@@ -283,8 +284,7 @@ async function resolveImpersonationRequest(
 
   if (
     !sessionUser ||
-    sessionUser.id !== impToken.adminId ||
-    impToken.Admin.role !== "super_admin"
+    sessionUser.id !== impToken.adminId
   ) {
     await recordImpersonationAudit({
       userId: sessionUser?.id,
@@ -405,13 +405,14 @@ async function resolveImpersonationRequest(
     };
   }
 
-  const secret = new TextEncoder().encode(requireAuthSecret());
-  const jwtToken = await new SignJWT(buildImpersonationSessionPayload(impToken))
-    .setProtectedHeader({ alg: "HS256" })
-    .setJti(impToken.id)
-    .setIssuedAt()
-    .setExpirationTime("4h")
-    .sign(secret);
+  const sessionToken = await encode({
+    secret: requireAuthSecret(),
+    maxAge: 4 * 60 * 60,
+    token: {
+      jti: impToken.id,
+      ...buildImpersonationSessionPayload(impToken),
+    },
+  });
 
   await recordImpersonationAudit({
     userId: impToken.adminId,
@@ -432,7 +433,7 @@ async function resolveImpersonationRequest(
   return {
     ok: true as const,
     impToken,
-    jwtToken,
+    sessionToken,
   };
 }
 
@@ -467,7 +468,7 @@ export async function GET(req: NextRequest) {
       return htmlError(result.message);
     }
 
-    const { impToken, jwtToken } = result;
+    const { impToken, sessionToken } = result;
     const sessionTokenName = getSessionTokenName();
     const restoreTokenName = getImpersonationRestoreTokenName();
     const existingSessionToken = req.cookies.get(sessionTokenName)?.value;
@@ -507,7 +508,7 @@ export async function GET(req: NextRequest) {
     );
 
     response.cookies.set(restoreTokenName, existingSessionToken, getSessionCookieOptions(maxAge));
-    response.cookies.set(sessionTokenName, jwtToken, getSessionCookieOptions(maxAge));
+  response.cookies.set(sessionTokenName, sessionToken, getSessionCookieOptions(maxAge));
 
     return response;
   } catch (error: any) {

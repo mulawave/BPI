@@ -1,0 +1,10 @@
+{
+  "pluginId": "com.bpi.revenue-anomaly-watch",
+  "slug": "revenue-anomaly-watch",
+  "version": "1.0.0",
+  "artifactPath": "/Users/user/Documents/brands/BPI v3/active/bpi_main/seed-exports/plugins/revenue-anomaly-watch/dist/revenue-anomaly-watch-1.0.0.zip",
+  "archiveSha256": "a9e0c6b4f0194e698cb8f5a98c14a3d8fd60c569c2eb93815aa1ec5910a335e6",
+  "extractedManifestSha256": "2959056b22e37ed7a870fffc22c4cf4d3fbea7e2b521998f675306f1a8d420e0",
+  "sourceContractDigest": "1b8a6c29434cf96a5ba8382f3d9a7f34820d7cbd0ae9407f3181f56a0149966d",
+  "builtAt": "2026-05-19T02:33:52.188Z"
+}

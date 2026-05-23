@@ -1,0 +1,59 @@
+{
+  "$schemaVersion": "1.0",
+  "pluginId": "com.bpi.revenue-anomaly-watch",
+  "slug": "revenue-anomaly-watch",
+  "name": "Revenue Anomaly Watch",
+  "version": "1.0.0",
+  "description": "Host-rendered anomaly watch surfaces for payout and settlement trend monitoring.",
+  "category": "analytics",
+  "author": {
+    "name": "BPI Platform Team",
+    "website": "https://bpi.local/plugins/revenue-anomaly-watch",
+    "email": "plugins@bpi.local"
+  },
+  "support": {
+    "url": "https://bpi.local/support/plugins/revenue-anomaly-watch",
+    "email": "plugins-support@bpi.local"
+  },
+  "compatibility": {
+    "minAppVersion": "1.0.0",
+    "maxAppVersion": "1.9.99",
+    "pluginSdkVersion": "1.0.0"
+  },
+  "capabilities": [
+    "register-admin-nav-item",
+    "register-admin-page",
+    "register-admin-settings-section",
+    "read-analytics-summary",
+    "read-plugin-settings",
+    "write-plugin-settings",
+    "emit-plugin-health",
+    "write-plugin-audit-log"
+  ],
+  "ui": {
+    "adminNav": {
+      "label": "Revenue Watch",
+      "icon": "bar-chart",
+      "placement": "analytics"
+    },
+    "adminPage": {
+      "title": "Revenue Anomaly Watch",
+      "schemaPath": "schemas/page.schema.json"
+    }
+  },
+  "settings": {
+    "schemaPath": "schemas/settings.schema.json"
+  },
+  "health": {
+    "type": "config-only"
+  },
+  "checksums": {
+    "manifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "archiveSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "sample-revenue-watch-key",
+    "signaturePath": "metadata/signature.json"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CSP Lifecycle Suite Settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["enableLifecycleEmails", "cacheRefreshInterval"],
+  "properties": {
+    "enableLifecycleEmails": {
+      "type": "boolean",
+      "title": "Enable Lifecycle Email Delivery",
+      "description": "Send styled HTML emails for CSP milestone events (request submitted, broadcast complete, etc.). If disabled, in-app notifications continue to work.",
+      "default": true
+    },
+    "cacheRefreshInterval": {
+      "type": "integer",
+      "title": "Cache Refresh Interval (seconds)",
+      "description": "How often user dashboard CSP feeds refresh to check for stale data. Recommended: 15-60 seconds.",
+      "minimum": 5,
+      "maximum": 300,
+      "default": 15
+    },
+    "enableVisibilityDiagnostics": {
+      "type": "boolean",
+      "title": "Enable Admin Visibility Diagnostics",
+      "description": "Allow admins to view hidden broadcast audit trail with reason classifications and auto-refresh on mutations.",
+      "default": true
+    },
+    "diagnosticsSampleLimit": {
+      "type": "integer",
+      "title": "Hidden Broadcasts Sample Size",
+      "description": "Maximum number of hidden broadcasts to display in admin diagnostics table.",
+      "minimum": 5,
+      "maximum": 500,
+      "default": 50
+    },
+    "smtpFromAddress": {
+      "type": "string",
+      "title": "Email From Address",
+      "description": "Sender address for lifecycle emails. Must be configured in admin settings.",
+      "default": "noreply@bpi.local",
+      "pattern": "^[^@]+@[^@]+$"
+    },
+    "enableAuditLogging": {
+      "type": "boolean",
+      "title": "Enable Audit Logging",
+      "description": "Log all CSP lifecycle events and admin mutations to audit trail for compliance.",
+      "default": true
+    },
+    "notificationRetentionDays": {
+      "type": "integer",
+      "title": "Notification Retention (days)",
+      "description": "How long to retain CSP lifecycle notifications in user dashboard history.",
+      "minimum": 7,
+      "maximum": 730,
+      "default": 90
+    }
+  }
+}

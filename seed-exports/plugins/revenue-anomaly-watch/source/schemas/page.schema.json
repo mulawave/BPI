@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "1.0",
+  "title": "Revenue Anomaly Watch",
+  "blocks": [
+    {
+      "type": "hero",
+      "title": "Revenue Anomaly Watch",
+      "subtitle": "Track payout and settlement drift with host-rendered anomaly indicators."
+    },
+    {
+      "type": "stat-grid",
+      "items": [
+        { "label": "Anomalies (24h)", "value": 2 },
+        { "label": "Largest Drift", "value": "6.3%" },
+        { "label": "Settlements Reviewed", "value": 148 }
+      ]
+    },
+    {
+      "type": "alert",
+      "tone": "warning",
+      "title": "Variance spike detected",
+      "message": "Settlement pool variance crossed configured threshold in one region."
+    },
+    {
+      "type": "table",
+      "columns": [
+        { "key": "channel", "label": "Channel" },
+        { "key": "drift", "label": "Drift" },
+        { "key": "status", "label": "Status" }
+      ],
+      "rows": [
+        { "channel": "Bank Transfer", "drift": "6.3%", "status": "Investigate" },
+        { "channel": "Card", "drift": "1.4%", "status": "Healthy" },
+        { "channel": "USDT", "drift": "0.9%", "status": "Healthy" }
+      ]
+    },
+    {
+      "type": "external-link-card",
+      "label": "Open Revenue Watch runbook",
+      "href": "https://bpi.local/support/plugins/revenue-anomaly-watch"
+    }
+  ]
+}

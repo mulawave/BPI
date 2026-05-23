@@ -1,0 +1,10 @@
+{
+  "pluginId": "com.bpi.csp-lifecycle-suite",
+  "slug": "csp-lifecycle-suite",
+  "version": "1.0.0",
+  "artifactPath": "/Users/user/Documents/brands/BPI v3/active/bpi_main/seed-exports/plugins/csp-lifecycle-suite/dist/csp-lifecycle-suite-1.0.0.zip",
+  "archiveSha256": "443f9715ada2e5390dbe800a05bb139c2c79a50485cfb87e55faa9f9efc2a232",
+  "extractedManifestSha256": "7f37001505d13ce64b2f342573260adff93511bb758f570618abdcfad210e050",
+  "sourceContractDigest": "0ff968dcc606129bb8aae2eacbd9b676eb216188854f8ccda65ed9371db4b505",
+  "builtAt": "2026-05-20T14:57:24.787Z"
+}

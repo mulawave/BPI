@@ -1,0 +1,7 @@
+{
+  "keyId": "sample-revenue-watch-key",
+  "algorithm": "ed25519",
+  "signature": "phase-one-stub-signature-revenue-watch",
+  "publisherPublicKey": "phase-one-stub-public-key",
+  "issuedAt": "2026-05-19T00:00:00.000Z"
+}

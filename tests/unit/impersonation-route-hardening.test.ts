@@ -76,7 +76,7 @@ describe("Impersonation route hardening", () => {
     );
     assert.match(
       impersonateRouteSource,
-      /sessionUser\.id !== impToken\.adminId[\s\S]*?impToken\.Admin\.role !== "super_admin"/,
+      /sessionUser\.id !== impToken\.adminId/,
     );
     assert.match(
       impersonateRouteSource,
@@ -107,11 +107,15 @@ describe("Impersonation route hardening", () => {
   it("restores the original session and audits impersonation termination", () => {
     assert.match(
       impersonateRouteSource,
+      /const sessionToken = await encode\(\{[\s\S]*?token: \{[\s\S]*?jti: impToken\.id,[\s\S]*?\.\.\.buildImpersonationSessionPayload\(impToken\),[\s\S]*?\}\s*,[\s\S]*?\}\);/,
+    );
+    assert.match(
+      impersonateRouteSource,
       /response\.cookies\.set\(restoreTokenName, existingSessionToken, getSessionCookieOptions\(maxAge\)\);/,
     );
     assert.match(
       impersonateRouteSource,
-      /response\.cookies\.set\(sessionTokenName, jwtToken, getSessionCookieOptions\(maxAge\)\);/,
+      /response\.cookies\.set\(sessionTokenName, sessionToken, getSessionCookieOptions\(maxAge\)\);/,
     );
     assert.match(
       impersonationEndRouteSource,

@@ -1,0 +1,118 @@
+{
+  "$schemaVersion": "1.0",
+  "title": "BPI Plugin Capability Catalog",
+  "capabilities": [
+    {
+      "id": "register-admin-nav-item",
+      "riskLevel": "LOW",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "stored-and-previewed-only",
+      "summary": "Register one admin navigation entry under host-managed plugin areas."
+    },
+    {
+      "id": "register-admin-page",
+      "riskLevel": "MEDIUM",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "stored-and-previewed-only",
+      "summary": "Register one host-rendered declarative admin page."
+    },
+    {
+      "id": "register-admin-settings-section",
+      "riskLevel": "MEDIUM",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "active",
+      "summary": "Register one host-rendered plugin settings section."
+    },
+    {
+      "id": "read-users-summary",
+      "riskLevel": "MEDIUM",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "metadata-only",
+      "summary": "Read host-prepared user summary aggregates."
+    },
+    {
+      "id": "read-referrals-summary",
+      "riskLevel": "LOW",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "metadata-only",
+      "summary": "Read host-prepared referral summary aggregates."
+    },
+    {
+      "id": "read-payments-summary",
+      "riskLevel": "HIGH",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "metadata-only",
+      "summary": "Read host-prepared payment summary aggregates."
+    },
+    {
+      "id": "read-analytics-summary",
+      "riskLevel": "LOW",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "metadata-only",
+      "summary": "Read host-prepared analytics summary aggregates."
+    },
+    {
+      "id": "read-plugin-settings",
+      "riskLevel": "LOW",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "active",
+      "summary": "Read plugin-owned settings within host controls."
+    },
+    {
+      "id": "write-plugin-settings",
+      "riskLevel": "MEDIUM",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "active",
+      "summary": "Write plugin-owned settings within host controls."
+    },
+    {
+      "id": "access-third-party-api",
+      "riskLevel": "HIGH",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "metadata-only",
+      "summary": "Declare third-party API integration metadata."
+    },
+    {
+      "id": "declare-webhook-endpoint",
+      "riskLevel": "MEDIUM",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "metadata-only",
+      "summary": "Declare inbound/outbound webhook metadata."
+    },
+    {
+      "id": "declare-background-job",
+      "riskLevel": "MEDIUM",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "metadata-only",
+      "summary": "Declare job metadata without runtime execution."
+    },
+    {
+      "id": "emit-plugin-health",
+      "riskLevel": "LOW",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "active-for-readiness",
+      "summary": "Declare configuration and readiness health metadata."
+    },
+    {
+      "id": "write-plugin-audit-log",
+      "riskLevel": "LOW",
+      "approvalRequired": true,
+      "auditRequired": true,
+      "phaseOneBehavior": "active-for-install-config-events",
+      "summary": "Declare plugin-scoped audit metadata for lifecycle events."
+    }
+  ]
+}

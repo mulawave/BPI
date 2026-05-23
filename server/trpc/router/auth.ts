@@ -5,6 +5,7 @@ import { TRPCError } from "@trpc/server";
 import { randomUUID } from "crypto";
 import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { sendPasswordResetEmail, sendWelcomeEmail } from "@/lib/email";
+import { placeUserInThirdPartyMatrix } from "@/server/services/thirdPartyMatrix.service";
 
 const registerSchema = z.object({
   firstname: z.string().min(2, "First name must be at least 2 characters"),
@@ -141,6 +142,18 @@ export const authRouter = createTRPCRouter({
           // Don't fail registration if referral record creation fails
         }
       }
+      // Place new user in sponsor's third-party matrix (non-blocking)
+      if (resolvedReferrerId) {
+        placeUserInThirdPartyMatrix({
+          prisma: ctx.prisma,
+          userId: user.id,
+          sponsorId: resolvedReferrerId,
+          sourceFlow: "register",
+        }).catch((err) => {
+          console.error("[auth.register] Third-party matrix placement failed:", err);
+        });
+      }
+
       // Send welcome email (non-blocking — registration succeeds even if email fails)
       if (user.email) {
         try {

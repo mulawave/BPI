@@ -1,0 +1,7 @@
+{
+  "algorithm": "ed25519",
+  "keyId": "csp-lifecycle-suite-key-v1",
+  "signature": "placeholder_signature_ed25519_base64_encoded_signature_here",
+  "signedAt": "2026-05-19T00:00:00Z",
+  "note": "This signature is a placeholder. In production, this would be signed with the real CSP Lifecycle Suite plugin key."
+}

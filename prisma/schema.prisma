@@ -1559,6 +1559,8 @@ model ThirdPartyPlatform {
   description            String?
   registrationUrl        String?
   adminDefaultLink       String?
+  defaultAdminUserId     String?
+  DefaultAdminUser       User?                    @relation("ThirdPartyPlatform_defaultAdminOwner", fields: [defaultAdminUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   category               String?
   logo                   String?
   isActive               Boolean                  @default(true)
@@ -1569,6 +1571,7 @@ model ThirdPartyPlatform {
   UserThirdPartyLink     UserThirdPartyLink[]
 
   @@index([isActive, displayOrder])
+  @@index([defaultAdminUserId])
 }
 
 model ThirdPartyRegistration {
@@ -1611,6 +1614,97 @@ model ThirdPartyExecutiveOverpass {
   @@index([expiresAt])
   @@index([grantedAt])
   @@index([revokedAt])
+}
+
+model ThirdPartyMatrixNode {
+  id          String   @id
+  sponsorId   String
+  sequence    Int
+  leftUserId   String?
+  rightUserId  String?
+  leftWeight   Int      @default(0)
+  rightWeight  Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+
+  sponsor   User  @relation("ThirdPartyMatrixNode_sponsor", fields: [sponsorId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  leftUser  User? @relation("ThirdPartyMatrixNode_leftUser", fields: [leftUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  rightUser User? @relation("ThirdPartyMatrixNode_rightUser", fields: [rightUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  placements ThirdPartyMatrixPlacement[]
+  auditRows  ThirdPartyMatrixPlacementAudit[]
+
+  @@unique([sponsorId, sequence])
+  @@index([isActive])
+  @@index([leftUserId])
+  @@index([rightUserId])
+  @@index([sponsorId, isActive, sequence])
+}
+
+model ThirdPartyMatrixPlacement {
+  id         String   @id
+  userId     String   @unique
+  sponsorId  String
+  nodeId     String
+  leg        String
+  sourceFlow String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime
+
+  user    User                @relation("ThirdPartyMatrixPlacement_user", fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sponsor User                @relation("ThirdPartyMatrixPlacement_sponsor", fields: [sponsorId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  node    ThirdPartyMatrixNode @relation(fields: [nodeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([createdAt])
+  @@index([leg])
+  @@index([nodeId])
+  @@index([sponsorId, createdAt])
+}
+
+model ThirdPartyMatrixPlacementAudit {
+  id             String   @id
+  userId         String
+  sponsorId      String
+  nodeId         String
+  leg            String
+  decisionBranch String
+  sourceFlow     String
+  createdAt      DateTime @default(now())
+
+  user    User                @relation("ThirdPartyMatrixPlacementAudit_user", fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sponsor User                @relation("ThirdPartyMatrixPlacementAudit_sponsor", fields: [sponsorId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  node    ThirdPartyMatrixNode @relation(fields: [nodeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([createdAt])
+  @@index([decisionBranch])
+  @@index([sponsorId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model ThirdPartyMatrixSponsorState {
+  id               String   @id
+  sponsorId        String   @unique
+  nextPreferredLeg String   @default("LEFT")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+
+  sponsor User @relation("ThirdPartyMatrixSponsorState_sponsor", fields: [sponsorId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([nextPreferredLeg])
+}
+
+model ThirdPartyMatrixSettings {
+  id                    String   @id @default("default")
+  isEnabled             Boolean  @default(true)
+  allowAutoPlacement    Boolean  @default(true)
+  allowAdminMaintenance Boolean  @default(true)
+  maxPlacementRetries   Int      @default(3)
+  alertImbalanceThreshold Int     @default(4)
+  registrationUrl       String?
+  adminDefaultLink      String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime
 }
 
 model TicketCategory {
@@ -1896,9 +1990,18 @@ model User {
   WalletBalance                                                        WalletBalance[]
   ThirdPartyRegistration_ThirdPartyRegistration_referredByUserIdToUser ThirdPartyRegistration[]     @relation("ThirdPartyRegistration_referredByUserIdToUser")
   ThirdPartyRegistration_ThirdPartyRegistration_userIdToUser           ThirdPartyRegistration[]     @relation("ThirdPartyRegistration_userIdToUser")
+  ThirdPartyPlatformsDefaultOwner                                      ThirdPartyPlatform[]         @relation("ThirdPartyPlatform_defaultAdminOwner")
   ThirdPartyExecutiveOverpassAsUser                                    ThirdPartyExecutiveOverpass? @relation("ThirdPartyExecutiveOverpass_user")
   ThirdPartyExecutiveOverpassGranted                                   ThirdPartyExecutiveOverpass[] @relation("ThirdPartyExecutiveOverpass_grantedBy")
   ThirdPartyExecutiveOverpassRevoked                                   ThirdPartyExecutiveOverpass[] @relation("ThirdPartyExecutiveOverpass_revokedBy")
+  ThirdPartyMatrixNodeAsSponsor                                        ThirdPartyMatrixNode[]       @relation("ThirdPartyMatrixNode_sponsor")
+  ThirdPartyMatrixNodeAsLeftUser                                       ThirdPartyMatrixNode[]       @relation("ThirdPartyMatrixNode_leftUser")
+  ThirdPartyMatrixNodeAsRightUser                                      ThirdPartyMatrixNode[]       @relation("ThirdPartyMatrixNode_rightUser")
+  ThirdPartyMatrixPlacementAsUser                                      ThirdPartyMatrixPlacement[]  @relation("ThirdPartyMatrixPlacement_user")
+  ThirdPartyMatrixPlacementAsSponsor                                   ThirdPartyMatrixPlacement[]  @relation("ThirdPartyMatrixPlacement_sponsor")
+  ThirdPartyMatrixPlacementAuditAsUser                                 ThirdPartyMatrixPlacementAudit[] @relation("ThirdPartyMatrixPlacementAudit_user")
+  ThirdPartyMatrixPlacementAuditAsSponsor                              ThirdPartyMatrixPlacementAudit[] @relation("ThirdPartyMatrixPlacementAudit_sponsor")
+  ThirdPartyMatrixSponsorStateAsSponsor                                ThirdPartyMatrixSponsorState? @relation("ThirdPartyMatrixSponsorState_sponsor")
   TokenTransaction                                                     TokenTransaction[]
   TrainingCourse                                                       TrainingCourse[]
   TrainingProgress                                                     TrainingProgress[]

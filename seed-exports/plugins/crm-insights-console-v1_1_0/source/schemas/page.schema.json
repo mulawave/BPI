@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1.0",
+  "title": "CRM Insights Console",
+  "blocks": [
+    {
+      "type": "hero",
+      "title": "CRM Insights Console v1.1.0",
+      "subtitle": "Upgrade preview with expanded routing and trend visibility."
+    },
+    {
+      "type": "stat-grid",
+      "items": [
+        { "label": "Connected Workspaces", "value": 2 },
+        { "label": "Lead Routing Accuracy", "value": "97.4%" },
+        { "label": "Nightly Sync Success", "value": "99.6%" }
+      ]
+    },
+    {
+      "type": "info-panel",
+      "title": "Update Notes",
+      "body": "v1.1.0 introduces additional diagnostics and trend blocks while preserving declarative execution boundaries."
+    },
+    {
+      "type": "table",
+      "columns": [
+        { "key": "metric", "label": "Metric" },
+        { "key": "value", "label": "Value" },
+        { "key": "status", "label": "Status" }
+      ],
+      "rows": [
+        { "metric": "Lead routing drift", "value": "1.8%", "status": "Healthy" },
+        { "metric": "Missed SLA callbacks", "value": "2", "status": "Watch" },
+        { "metric": "Webhook retries", "value": "7", "status": "Healthy" }
+      ]
+    },
+    {
+      "type": "external-link-card",
+      "label": "Open CRM Insights support runbook",
+      "href": "https://bpi.local/support/plugins/crm-insights"
+    }
+  ]
+}

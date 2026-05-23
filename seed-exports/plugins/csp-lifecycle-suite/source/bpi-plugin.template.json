@@ -1,0 +1,83 @@
+{
+  "$schemaVersion": "1.0",
+  "pluginId": "com.bpi.csp-lifecycle-suite",
+  "slug": "csp-lifecycle-suite",
+  "name": "CSP Lifecycle Suite",
+  "version": "1.0.0",
+  "description": "Complete CSP (Community Support Program) lifecycle management with broadcast visibility auditing, real-time communication feeds, and lifecycle email notifications for users and admins.",
+  "category": "analytics",
+  "author": {
+    "name": "BPI Platform Team",
+    "website": "https://bpi.local/plugins/csp",
+    "email": "plugins@bpi.local"
+  },
+  "support": {
+    "url": "https://bpi.local/support/plugins/csp",
+    "email": "plugins-support@bpi.local"
+  },
+  "compatibility": {
+    "minAppVersion": "1.0.0",
+    "maxAppVersion": "1.9.99",
+    "pluginSdkVersion": "1.0.0"
+  },
+  "capabilities": [
+    "register-admin-page",
+    "read-analytics-summary",
+    "write-plugin-settings",
+    "emit-plugin-health",
+    "write-plugin-audit-log"
+  ],
+  "ui": {
+    "adminPage": {
+      "title": "CSP Lifecycle Management",
+      "schemaPath": "schemas/page.schema.json"
+    }
+  },
+  "settings": {
+    "schemaPath": "schemas/settings.schema.json"
+  },
+  "features": {
+    "broadcastVisibilityGuard": {
+      "enabled": true,
+      "description": "Prevents stale broadcast data in user feeds with 15-second cache refresh and automatic cache invalidation on admin mutations."
+    },
+    "visibilityDiagnostics": {
+      "enabled": true,
+      "description": "Admin dashboard showing hidden broadcast audit with reason classifications: inactive, not_broadcasting, missing_expiry, expired."
+    },
+    "lifecycleCommunication": {
+      "enabled": true,
+      "description": "Lifecycle email notifications for CSP milestones: request submitted, broadcast live, broadcast complete, contribution processed."
+    },
+    "communicationFeed": {
+      "enabled": true,
+      "description": "Real-time CSP communication feed in user dashboard showing request timeline and notification history."
+    }
+  },
+  "integrations": {
+    "outboundHttp": true,
+    "emailDelivery": {
+      "enabled": true,
+      "templates": [
+        "csp-request-received",
+        "csp-broadcast-live",
+        "csp-broadcast-extended",
+        "csp-broadcast-complete",
+        "csp-contribution-processed",
+        "csp-request-rejected"
+      ]
+    }
+  },
+  "health": {
+    "type": "config-and-connectivity"
+  },
+  "checksums": {
+    "manifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "archiveSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "csp-lifecycle-suite-key-v1",
+    "signaturePath": "metadata/signature.json"
+  }
+}

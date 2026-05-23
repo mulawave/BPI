@@ -4,7 +4,7 @@ import { signOut } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect, useCallback, useTransition, useRef, ReactNode } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/client/trpc";
@@ -23,7 +23,7 @@ import {
   Lock, Coins, BadgeDollarSign, EyeOff, RefreshCw,
   Clock, Package, CircleDollarSign, AlertTriangle,
   Megaphone, Sparkles, TrendingUpIcon, Leaf, Sun as SolarIcon,
-  GraduationCap, Download, ChevronRight, Code, Building2, ChevronLeft, Pause, Loader2, MessageCircle, Trophy, CheckCircle2
+  GraduationCap, Download, ChevronRight, Code, Building2, ChevronLeft, Pause, Loader2, MessageCircle, Trophy, CheckCircle2, GitBranch
 } from "lucide-react";
 import { AiOutlineRobot } from "react-icons/ai";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -46,6 +46,7 @@ import DigitalFarmModal from "./community/DigitalFarmModal";
 import SubmitChannelModal from "./community/SubmitChannelModal";
 import BrowseChannelsModal from "./community/BrowseChannelsModal";
 import ThirdPartyOpportunitiesModal from "./community/ThirdPartyOpportunitiesModal";
+import ThirdPartyMatrixModal from "./community/ThirdPartyMatrixModal";
 import ReferralDetailsModal from "./ReferralDetailsModal";
 import TaxesModal from "./TaxesModal";
 import { Share2 } from "lucide-react";
@@ -266,6 +267,7 @@ const investmentDeals = [
 function DashboardContentInner({ session, customContent }: DashboardContentProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isBlogNavPending, startBlogNav] = useTransition();
   const [navLoadingHref, setNavLoadingHref] = useState<string | null>(null);
   // Escape-hatch: if initial data has been loading for more than 10 s we stop
@@ -861,6 +863,20 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   
   // Third-Party Opportunities modal state
   const [isThirdPartyModalOpen, setIsThirdPartyModalOpen] = useState(false);
+  const [isThirdPartyMatrixModalOpen, setIsThirdPartyMatrixModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("open") !== "third-party-matrix") {
+      return;
+    }
+
+    setIsThirdPartyMatrixModalOpen(true);
+
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("open");
+    const nextQuery = nextParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [searchParams, router, pathname]);
 
   // Palliative activation modal state
   const [isPalliativeActivationModalOpen, setIsPalliativeActivationModalOpen] = useState(false);
@@ -4296,6 +4312,15 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                     </Button>
                   )}
 
+                  <Button
+                    onClick={() => setIsThirdPartyMatrixModalOpen(true)}
+                    variant="outline"
+                    className="w-full border-emerald-300/70 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-700/70 dark:text-emerald-300 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200"
+                  >
+                    <GitBranch className="w-4 h-4 mr-2" />
+                    Open Matrix Console
+                  </Button>
+
                   <hr className="border-gray-200 dark:border-bpi-dark-accent my-4" />
                   <div className="relative w-full aspect-square overflow-hidden rounded-xl">
                     <Image
@@ -4309,9 +4334,19 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                   </div>
                 </>
               ) : (
-                <div className="text-center py-4 bg-gray-50 dark:bg-bpi-dark-accent/30 rounded-lg border border-gray-200 dark:border-bpi-dark-accent">
-                  <p className="text-sm text-muted-foreground mb-1">No platforms available</p>
-                  <p className="text-xs text-muted-foreground">Check back later for team growth opportunities</p>
+                <div className="space-y-3">
+                  <div className="text-center py-4 bg-gray-50 dark:bg-bpi-dark-accent/30 rounded-lg border border-gray-200 dark:border-bpi-dark-accent">
+                    <p className="text-sm text-muted-foreground mb-1">No platforms available</p>
+                    <p className="text-xs text-muted-foreground">Check back later for team growth opportunities</p>
+                  </div>
+                  <Button
+                    onClick={() => setIsThirdPartyMatrixModalOpen(true)}
+                    variant="outline"
+                    className="w-full border-emerald-300/70 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-700/70 dark:text-emerald-300 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200"
+                  >
+                    <GitBranch className="w-4 h-4 mr-2" />
+                    Open Matrix Console
+                  </Button>
                 </div>
               )}
             </Card>
@@ -4557,6 +4592,12 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
       <ThirdPartyOpportunitiesModal
         isOpen={isThirdPartyModalOpen}
         onClose={() => setIsThirdPartyModalOpen(false)}
+        onOpenMatrixModal={() => setIsThirdPartyMatrixModalOpen(true)}
+      />
+
+      <ThirdPartyMatrixModal
+        isOpen={isThirdPartyMatrixModalOpen}
+        onClose={() => setIsThirdPartyMatrixModalOpen(false)}
       />
       
       {/* Palliative Activation Modal */}

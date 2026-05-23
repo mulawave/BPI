@@ -36,6 +36,7 @@ export default function UserEditModal({
     role: "user" | "admin" | "super_admin";
     activated: boolean;
     verified: boolean;
+    emailVerified: boolean;
     wallet: number;
     spendable: number;
   }>({
@@ -44,6 +45,7 @@ export default function UserEditModal({
     role: (user?.role as "user" | "admin" | "super_admin") || "user",
     activated: user?.activated || false,
     verified: user?.verified || false,
+    emailVerified: !!user?.emailVerified,
     wallet: user?.wallet || 0,
     spendable: user?.spendable || 0,
   });
@@ -66,6 +68,7 @@ export default function UserEditModal({
       role: (user.role as "user" | "admin" | "super_admin") || "user",
       activated: user.activated,
       verified: user.verified,
+      emailVerified: !!user.emailVerified,
       wallet: user.wallet,
       spendable: user.spendable,
     });
@@ -209,6 +212,20 @@ export default function UserEditModal({
                             />
                             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                               Verified
+                            </span>
+                          </label>
+
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formData.emailVerified}
+                              onChange={(e) =>
+                                setFormData({ ...formData, emailVerified: e.target.checked })
+                              }
+                              className="w-5 h-5 text-green-600 rounded focus:ring-green-500"
+                            />
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                              Email Verified
                             </span>
                           </label>
                         </div>

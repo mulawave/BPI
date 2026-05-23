@@ -1,0 +1,7 @@
+{
+  "keyId": "sample-crm-insights-key",
+  "algorithm": "ed25519",
+  "signature": "phase-one-stub-signature",
+  "publisherPublicKey": "phase-one-stub-public-key",
+  "issuedAt": "2026-05-18T00:00:00.000Z"
+}

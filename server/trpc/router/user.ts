@@ -7,6 +7,7 @@ import { hash } from "bcryptjs";
 import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { sendVerificationEmail, sendWelcomeEmail } from "@/lib/email";
 import { TRPCError } from "@trpc/server";
+import { placeUserInThirdPartyMatrix } from "@/server/services/thirdPartyMatrix.service";
 
 // Store verification codes temporarily (in production, use Redis or database)
 const verificationCodes = new Map<string, { code: string; expiresAt: Date }>();
@@ -397,6 +398,16 @@ export const userRouter = createTRPCRouter({
         // Non-fatal — don't block beneficiary creation
         console.error("[user.createBeneficiary] Referral record failed:", err);
       }
+
+      // Place beneficiary in caller's third-party matrix (non-blocking)
+      placeUserInThirdPartyMatrix({
+        prisma,
+        userId: newUser.id,
+        sponsorId: caller.id,
+        sourceFlow: "beneficiary",
+      }).catch((err) => {
+        console.error("[user.createBeneficiary] Third-party matrix placement failed:", err);
+      });
 
       // Welcome email (non-fatal)
       if (newUser.email) {

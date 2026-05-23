@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "1.0",
+  "title": "CRM Insights Console",
+  "blocks": [
+    {
+      "type": "hero",
+      "title": "CRM Insights Console",
+      "subtitle": "Monitor sync health, funnel pressure, and routing quality from one host-rendered workspace."
+    },
+    {
+      "type": "stat-grid",
+      "items": [
+        {
+          "label": "Connected Workspaces",
+          "value": 1
+        },
+        {
+          "label": "Nightly Sync Success",
+          "value": "99.2%"
+        },
+        {
+          "label": "Open Lead Alerts",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "type": "alert",
+      "tone": "success",
+      "title": "Sample plugin ready",
+      "message": "Required secrets are resolved and the host-rendered preview is available."
+    },
+    {
+      "type": "info-panel",
+      "title": "Operational Note",
+      "body": "This phase-one plugin declares metadata for host execution. Jobs, webhooks, and connectivity are represented as managed records instead of executable code."
+    },
+    {
+      "type": "config-form",
+      "fields": [
+        {
+          "key": "workspaceId",
+          "label": "Workspace ID",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "syncWindowDays",
+          "label": "Sync Window Days",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "key": "apiTokenRef",
+          "label": "API Token Secret Ref",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "columns": [
+        {
+          "key": "metric",
+          "label": "Metric"
+        },
+        {
+          "key": "value",
+          "label": "Value"
+        },
+        {
+          "key": "status",
+          "label": "Status"
+        }
+      ],
+      "rows": [
+        {
+          "metric": "Lead scoring freshness",
+          "value": "12 min",
+          "status": "Healthy"
+        },
+        {
+          "metric": "Webhook latency p95",
+          "value": "420 ms",
+          "status": "Healthy"
+        },
+        {
+          "metric": "Rejected payloads",
+          "value": "3",
+          "status": "Investigate"
+        }
+      ]
+    },
+    {
+      "type": "external-link-card",
+      "label": "Open CRM Insights support runbook",
+      "href": "https://bpi.local/support/plugins/crm-insights"
+    }
+  ]
+}

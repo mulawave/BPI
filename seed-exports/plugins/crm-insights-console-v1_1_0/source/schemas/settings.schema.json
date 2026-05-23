@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CRM Insights Settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "workspaceId",
+    "syncWindowDays",
+    "apiBaseUrl"
+  ],
+  "properties": {
+    "workspaceId": {
+      "type": "string",
+      "title": "Workspace ID"
+    },
+    "syncWindowDays": {
+      "type": "integer",
+      "title": "Sync Window Days",
+      "minimum": 1,
+      "maximum": 60,
+      "default": 21
+    },
+    "enableLeadScoring": {
+      "type": "boolean",
+      "title": "Enable Lead Scoring",
+      "default": true
+    },
+    "showRoutingDiagnostics": {
+      "type": "boolean",
+      "title": "Show Routing Diagnostics",
+      "default": true
+    },
+    "apiBaseUrl": {
+      "type": "string",
+      "title": "CRM API Base URL",
+      "default": "https://api.crm-insights.example.com"
+    },
+    "apiTokenRef": {
+      "type": "string",
+      "title": "API Token Secret Reference",
+      "description": "Optional reference only. Use secret://CRM_INSIGHTS_API_TOKEN when needed.",
+      "x-secret": true
+    }
+  }
+}

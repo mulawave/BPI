@@ -1,0 +1,10 @@
+{
+  "pluginId": "com.bpi.crm-insights-console",
+  "slug": "crm-insights-console",
+  "version": "1.0.0",
+  "artifactPath": "/Users/user/Documents/brands/BPI v3/active/bpi_main/seed-exports/plugins/crm-insights-console/dist/crm-insights-console-1.0.0.zip",
+  "archiveSha256": "87169be6abf0de498bee94f69aec2037c5c3fe356d7766fe7b081b82a48fc030",
+  "extractedManifestSha256": "b74dab9d5ae9e77eb811fad7c6bc5657de46a2aea6fcafc0abe6a8139c9a5f17",
+  "sourceContractDigest": "4747cc7ef0b6f284f8b05a6d968db064cc89f222022f358670cc3eb166e1dc8a",
+  "builtAt": "2026-05-19T01:40:36.921Z"
+}

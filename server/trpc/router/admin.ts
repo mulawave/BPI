@@ -813,6 +813,7 @@ export const adminRouter = createTRPCRouter({
             id: true,
             name: true,
             email: true,
+            emailVerified: true,
             username: true,
             role: true,
             activated: true,
@@ -1270,6 +1271,7 @@ export const adminRouter = createTRPCRouter({
           role: z.enum(["user", "admin", "super_admin"]).optional(),
           activated: z.boolean().optional(),
           verified: z.boolean().optional(),
+          emailVerified: z.boolean().optional(),
           wallet: z.number().optional(),
           spendable: z.number().optional(),
         }),
@@ -1277,10 +1279,15 @@ export const adminRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       const { userId, data } = input;
+
+      const updateData: any = { ...data };
+      if (typeof data.emailVerified === "boolean") {
+        updateData.emailVerified = data.emailVerified ? new Date() : null;
+      }
       
       const updated = await prisma.user.update({
         where: { id: userId },
-        data,
+        data: updateData,
       });
 
       // Log the action
@@ -1291,7 +1298,7 @@ export const adminRouter = createTRPCRouter({
           action: "UPDATE_USER",
           entity: "User",
           entityId: userId,
-          changes: JSON.stringify(data),
+          changes: JSON.stringify(updateData),
           status: "success",
           createdAt: new Date(),
         },
@@ -9494,7 +9501,7 @@ export const adminRouter = createTRPCRouter({
     }),
 
   // Generate impersonation token for admin to login as user
-  createImpersonationToken: superAdminProcedure
+  createImpersonationToken: adminProcedure
     .input(z.object({ targetUserId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const adminId = ctx.session?.user?.id;
