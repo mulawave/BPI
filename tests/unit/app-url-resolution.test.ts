@@ -20,7 +20,9 @@ async function importFreshClientAppUrlModule() {
 }
 
 function runResolveAppBaseUrlInIsolatedProcess(envOverrides: Record<string, string | undefined>) {
-  const env = { ...ORIGINAL_ENV } as Record<string, string>;
+  const env = Object.assign({}, ORIGINAL_ENV, {
+    NODE_ENV: ORIGINAL_ENV.NODE_ENV ?? "test",
+  }) as NodeJS.ProcessEnv;
 
   for (const [key, value] of Object.entries(envOverrides)) {
     if (value === undefined) {
@@ -196,7 +198,7 @@ describe("client app URL resolution", () => {
   });
 
   it("falls back to localhost on the server outside production", async () => {
-    process.env.NODE_ENV = "development";
+    (process.env as any).NODE_ENV = "development";
     delete process.env.NEXT_PUBLIC_APP_URL;
     delete (globalThis as any).window;
     delete (globalThis as any).document;
@@ -206,7 +208,7 @@ describe("client app URL resolution", () => {
   });
 
   it("returns empty string in production when no client base URL is available", async () => {
-    process.env.NODE_ENV = "production";
+    (process.env as any).NODE_ENV = "production";
     delete process.env.NEXT_PUBLIC_APP_URL;
     delete (globalThis as any).window;
     delete (globalThis as any).document;

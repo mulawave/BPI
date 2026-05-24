@@ -144,6 +144,48 @@ async function reconcilePluginOperationalState(prismaLike: any, pluginRegistryId
 }
 
 export const adminPluginsRouter = createTRPCRouter({
+  getPluginOperationalReadiness: adminProcedure
+    .input(
+      z.object({
+        pluginRegistryId: z.string().optional(),
+        pluginSlug: z.string().optional(),
+        pluginId: z.string().optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      assertPluginLifecycleAccess({ user: (ctx.session?.user as any) ?? null, action: "inspect" });
+
+      const registry = await resolvePluginRegistry(ctx.prisma as any, {
+        pluginRegistryId: input.pluginRegistryId,
+        pluginSlug: input.pluginSlug,
+        pluginId: input.pluginId,
+      });
+
+      if (!registry) {
+        throw new Error("Plugin not found");
+      }
+
+      const operationalState = await reconcilePluginOperationalState(ctx.prisma as any, registry.id);
+
+      const [health, events] = await Promise.all([
+        (ctx.prisma as any).pluginHealthStatus.findFirst({
+          where: { pluginRegistryId: registry.id },
+          orderBy: { updatedAt: "desc" },
+        }),
+        listPluginInstallEvents({
+          pluginRegistryId: registry.id,
+          page: 1,
+          perPage: 50,
+        }),
+      ]);
+
+      return {
+        readiness: operationalState?.readiness ?? ((health?.detailsJson as any)?.readiness ?? null),
+        health,
+        events: events.events ?? [],
+      };
+    }),
+
   listPlugins: adminProcedure
     .input(
       z

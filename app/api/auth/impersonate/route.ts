@@ -541,7 +541,7 @@ export async function POST(req: NextRequest) {
       return jsonError(result.message, status);
     }
 
-    const { impToken, jwtToken: impersonationToken } = result;
+    const { impToken, sessionToken: impersonationToken } = result;
 
     return NextResponse.json({
       success: true,

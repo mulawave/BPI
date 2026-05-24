@@ -14,7 +14,6 @@ import {
   Search,
   Star,
   UploadCloud,
-  ImageDown,
   Tag,
   Layers,
   FileText,
@@ -62,7 +61,6 @@ export default function AdminBlogPage() {
     content: "",
     excerpt: "",
     tags: "",
-    imageUrl: "",
     image: "",
     status: "PUBLISHED" as "PUBLISHED" | "DRAFT" | "ARCHIVED",
     featured: false,
@@ -118,14 +116,6 @@ export default function AdminBlogPage() {
     onError: (err) => toast.error(err.message),
   });
 
-  const internalizeImage = api.adminBlog.internalizeImage.useMutation({
-    onSuccess: () => {
-      toast.success("Image internalized");
-      posts.refetch();
-    },
-    onError: (err) => toast.error(err.message),
-  });
-
   const uploadImage = api.adminBlog.uploadImage.useMutation({
     onSuccess: (res) => {
       setForm((f) => ({ ...f, image: res.image }));
@@ -166,7 +156,6 @@ export default function AdminBlogPage() {
       content: "",
       excerpt: "",
       tags: "",
-      imageUrl: "",
       image: "",
       status: "PUBLISHED",
       featured: false,
@@ -185,7 +174,6 @@ export default function AdminBlogPage() {
       content: post.content || "",
       excerpt: post.excerpt || "",
       tags: post.tags || "",
-      imageUrl: post.imageUrl || "",
       image: post.image || "",
       status: post.status as any,
       featured: post.featured,
@@ -415,10 +403,10 @@ export default function AdminBlogPage() {
             icon: <UploadCloud className="w-5 h-5 text-blue-600" />,
             items: [
               "<strong>Upload images</strong> - Click upload button, select file (JPG, PNG, GIF)",
-              "<strong>Auto-internalization</strong> - Images stored securely on BPI servers",
+              "<strong>Internal storage only</strong> - Images are stored securely on BPI servers",
               "<strong>Progress tracking</strong> - See upload percentage in real-time",
               "<strong>Image optimization</strong> - Automatic compression for faster loading",
-              "Supports <strong>external URLs</strong> - Paste image URL as alternative"
+              "External image URLs are blocked in admin to keep media governance consistent"
             ]
           },
           {
@@ -665,8 +653,6 @@ export default function AdminBlogPage() {
                       <div className="h-12 w-16 overflow-hidden rounded-lg bg-gradient-to-br from-emerald-500/30 to-emerald-700/20">
                         {post.image ? (
                           <img src={post.image} alt={post.title} className="h-full w-full object-cover" />
-                        ) : post.imageUrl ? (
-                          <img src={post.imageUrl} alt={post.title} className="h-full w-full object-cover" />
                         ) : null}
                       </div>
                       <div>
@@ -690,15 +676,6 @@ export default function AdminBlogPage() {
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
                       <button onClick={() => openEdit(post.id)} className="rounded-lg border border-border px-2 py-1 text-xs font-medium text-foreground hover:border-emerald-500">Edit</button>
-                      {post.imageUrl && !post.imageInternalized && (
-                        <button
-                          onClick={() => internalizeImage.mutate({ postId: post.id })}
-                          className="inline-flex items-center gap-1 rounded-lg border border-emerald-500 px-2 py-1 text-xs font-semibold text-emerald-600 hover:bg-emerald-50"
-                        >
-                          {internalizeImage.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageDown className="h-3 w-3" />}
-                          Internalize
-                        </button>
-                      )}
                       <button
                         onClick={() => deletePost.mutate({ id: post.id })}
                         className="rounded-lg border border-red-500 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
@@ -840,18 +817,6 @@ export default function AdminBlogPage() {
                     className="mt-1 w-full rounded-lg border border-border bg-background/60 px-3 py-2 text-sm text-foreground"
                     rows={6}
                   />
-                </div>
-                <div className="col-span-1">
-                  <label className="text-xs text-muted-foreground">External Image URL (bpichain)</label>
-                  <div className="mt-1 flex items-center gap-2">
-                    <UploadCloud className="h-4 w-4 text-muted-foreground" />
-                    <input
-                      value={form.imageUrl}
-                      onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
-                      className="w-full rounded-lg border border-border bg-background/60 px-3 py-2 text-sm text-foreground"
-                      placeholder="https://bpichain.africa/blog/..."
-                    />
-                  </div>
                 </div>
                 <div className="col-span-1">
                   <label className="text-xs text-muted-foreground">Internal Image (uploaded path)</label>

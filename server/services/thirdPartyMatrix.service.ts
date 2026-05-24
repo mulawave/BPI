@@ -341,8 +341,8 @@ export async function reconcileThirdPartyMatrixPlacementsForSubmittedLinks(param
   let errors = 0;
 
   for (const userId of missingUserIds) {
+    const user = usersWithSponsorsById.get(userId);
     try {
-      const user = usersWithSponsorsById.get(userId);
       if (!user?.sponsorId) {
         skipped += 1;
         continue;
@@ -372,8 +372,8 @@ export async function reconcileThirdPartyMatrixPlacementsForSubmittedLinks(param
     } catch (error) {
       errors += 1;
       console.error("[thirdPartyMatrix.reconcile] placement backfill failed", {
-        userId: user.id,
-        sponsorId: user.sponsorId,
+        userId: user?.id ?? userId,
+        sponsorId: user?.sponsorId ?? null,
         error,
       });
     }

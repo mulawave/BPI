@@ -67,7 +67,7 @@ export default function PluginDetailPage({ slug }: DetailPageProps) {
   const plugin = detailQuery.data as any;
   const versions = (plugin?.versions ?? []) as PluginVersion[];
 
-  const readinessQuery = api.admin.getPluginOperationalReadiness.useQuery(
+  const readinessQuery = api.adminPlugins.getPluginOperationalReadiness.useQuery(
     {
       pluginRegistryId: plugin?.id ?? "",
     },

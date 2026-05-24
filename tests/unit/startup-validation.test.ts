@@ -23,7 +23,7 @@ function resetEnv() {
 
 beforeEach(() => {
   resetEnv();
-  process.env.NODE_ENV = "production";
+  (process.env as any).NODE_ENV = "production";
   delete process.env.NEXTAUTH_SECRET;
   delete process.env.AUTH_SECRET;
   delete process.env.NEXT_PUBLIC_APP_URL;

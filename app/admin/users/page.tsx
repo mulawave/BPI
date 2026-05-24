@@ -132,6 +132,33 @@ export default function UsersPage() {
     { refetchOnWindowFocus: false }
   );
 
+  const membershipResetOverview = api.admin.getMembershipResetOverview.useQuery(
+    { windowDays: 14, limit: 25 },
+    { refetchOnWindowFocus: false }
+  );
+
+  const resetMembershipPlanMutation = api.admin.resetMembershipPlan.useMutation({
+    onSuccess: () => {
+      toast.success("Membership reset completed");
+      membershipResetOverview.refetch();
+      refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const autoResetExpiredMembershipsMutation = api.admin.autoResetExpiredMemberships.useMutation({
+    onSuccess: (result) => {
+      if (result.dryRun) {
+        toast.success(`Dry run complete: ${result.matched} user(s) would be reset`);
+      } else {
+        toast.success(`Auto reset complete: ${result.reset} user(s) reset`);
+      }
+      membershipResetOverview.refetch();
+      refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
   const generateSscMutation = api.admin.generateSscForActiveMembers.useMutation({
     onSuccess: (res) => {
       toast.success(`Generated ${res.generated} SSC codes`);
@@ -701,6 +728,121 @@ export default function UsersPage() {
             {isFetchingSsc && (
               <div className="mt-3 text-xs text-muted-foreground">Refreshing SSC stats...</div>
             )}
+          </div>
+        </motion.div>
+
+        {/* Membership expiry tracking and reset panel */}
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.09 }}
+          className="mt-4 premium-stat-card relative overflow-hidden rounded-2xl border border-border bg-card/80 p-6 shadow-xl shadow-black/5 backdrop-blur-sm dark:shadow-black/20"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                <MdCardMembership className="text-rose-500" size={18} /> Membership reset governance
+              </p>
+              <h3 className="text-xl font-bold text-foreground">
+                {membershipResetOverview.data?.summary?.dueResetCount ?? 0} expired membership{(membershipResetOverview.data?.summary?.dueResetCount ?? 0) === 1 ? "" : "s"}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Track expiring plans and trigger manual or automated reset actions.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => membershipResetOverview.refetch()}
+                disabled={membershipResetOverview.isFetching}
+                className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted/60 disabled:opacity-60"
+              >
+                <MdRefresh size={16} className={membershipResetOverview.isFetching ? "animate-spin" : ""} />
+                Refresh
+              </button>
+              <button
+                onClick={() => autoResetExpiredMembershipsMutation.mutate({ dryRun: true, limit: 200 })}
+                disabled={autoResetExpiredMembershipsMutation.isPending}
+                className="inline-flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300"
+              >
+                {autoResetExpiredMembershipsMutation.isPending ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" /> : <MdInfo size={16} />}
+                Dry run auto reset
+              </button>
+              <button
+                onClick={() => autoResetExpiredMembershipsMutation.mutate({ dryRun: false, limit: 200 })}
+                disabled={autoResetExpiredMembershipsMutation.isPending}
+                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-rose-600 to-orange-600 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-rose-500/20 hover:from-rose-700 hover:to-orange-700 disabled:opacity-60"
+              >
+                {autoResetExpiredMembershipsMutation.isPending ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <MdSync size={16} />}
+                Execute auto reset
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <div className="rounded-xl bg-muted/60 px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Expired</p>
+              <p className="text-lg font-semibold text-foreground">{membershipResetOverview.data?.summary?.expiredCount ?? 0}</p>
+            </div>
+            <div className="rounded-xl bg-muted/60 px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Expiring soon (14d)</p>
+              <p className="text-lg font-semibold text-foreground">{membershipResetOverview.data?.summary?.expiringSoonCount ?? 0}</p>
+            </div>
+            <div className="rounded-xl bg-muted/60 px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">No expiry date</p>
+              <p className="text-lg font-semibold text-foreground">{membershipResetOverview.data?.summary?.noExpiryCount ?? 0}</p>
+            </div>
+            <div className="rounded-xl bg-muted/60 px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Due reset</p>
+              <p className="text-lg font-semibold text-foreground">{membershipResetOverview.data?.summary?.dueResetCount ?? 0}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 overflow-x-auto rounded-xl border border-border">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 text-left">User</th>
+                  <th className="px-4 py-3 text-left">Package</th>
+                  <th className="px-4 py-3 text-left">Expired</th>
+                  <th className="px-4 py-3 text-left">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border text-sm">
+                {membershipResetOverview.data?.dueResetUsers?.length ? (
+                  membershipResetOverview.data.dueResetUsers.map((user: any) => (
+                    <tr key={user.id} className="hover:bg-muted/40 transition">
+                      <td className="px-4 py-3 text-foreground">
+                        <p className="font-semibold">{user.name || "Unnamed user"}</p>
+                        <p className="text-xs text-muted-foreground">{user.email || "No email"}</p>
+                      </td>
+                      <td className="px-4 py-3 text-foreground">{user.packageName || "Unknown"}</td>
+                      <td className="px-4 py-3 text-foreground">
+                        {user.membershipExpiresAt ? formatDate(user.membershipExpiresAt) : "-"}
+                        {typeof user.daysExpired === "number" && (
+                          <span className="ml-2 text-xs font-semibold text-rose-600 dark:text-rose-400">{user.daysExpired}d ago</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => resetMembershipPlanMutation.mutate({ userId: user.id })}
+                          disabled={resetMembershipPlanMutation.isPending}
+                          className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60 dark:border-rose-900/60 dark:bg-rose-900/20 dark:text-rose-300"
+                        >
+                          {resetMembershipPlanMutation.isPending ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-rose-500 border-t-transparent" /> : <MdCancel size={14} />}
+                          Reset membership
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">
+                      {membershipResetOverview.isFetching ? "Loading reset candidates..." : "No expired memberships found for reset."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </motion.div>
 

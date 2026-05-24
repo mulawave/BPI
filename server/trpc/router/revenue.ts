@@ -3359,7 +3359,7 @@ export const revenueRouter = createTRPCRouter({
       let totalAllocated = 0;
       for (const row of allocations) {
         const sum = Number(row._sum.amount || 0);
-        const count = row._count;
+        const count = Number(row._count?.id || 0);
         allocByType[row.destinationType] = { sum, count };
         totalAllocated += sum;
       }
@@ -3409,7 +3409,7 @@ export const revenueRouter = createTRPCRouter({
         if (!statusByType[type]) statusByType[type] = {};
         statusByType[type][row.status] = {
           sum: Number(row._sum.amount || 0),
-          count: row._count,
+          count: Number(row._count?.id || 0),
         };
       }
 

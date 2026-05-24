@@ -717,6 +717,16 @@ export const storeRouter = createTRPCRouter({
         })
     )
     .mutation(async ({ ctx, input }) => {
+      const normalizedTokenPaymentLimits = Object.fromEntries(
+        Object.entries(input.tokenPaymentLimits ?? {}).map(([symbol, limit]) => [
+          symbol,
+          clampNumber(Number(limit ?? 0), 0, 1),
+        ])
+      );
+      const tokensWithLimit = Object.entries(normalizedTokenPaymentLimits)
+        .filter(([, limit]) => Number(limit) > 0)
+        .map(([symbol]) => symbol);
+
       const data: any = {
         name: input.name,
         description: input.description,
@@ -727,8 +737,10 @@ export const storeRouter = createTRPCRouter({
         basePriceFiat: input.basePriceFiat,
         tokenUnitSymbol: input.pricingMode === "TOKEN_UNIT" ? (input.tokenUnitSymbol ?? undefined) : null,
         tokenUnitAmount: input.pricingMode === "TOKEN_UNIT" ? (input.tokenUnitAmount ?? undefined) : null,
-        acceptedTokens: input.acceptedTokens,
-        tokenPaymentLimits: input.tokenPaymentLimits,
+        acceptedTokens: tokensWithLimit.length > 0
+          ? (input.acceptedTokens.length > 0 ? input.acceptedTokens.filter((symbol) => tokensWithLimit.includes(symbol)) : tokensWithLimit)
+          : [],
+        tokenPaymentLimits: tokensWithLimit.length > 0 ? normalizedTokenPaymentLimits : {},
         rewardConfigId: input.rewardConfigId,
         inventoryType: input.inventoryType,
         status: input.status,
@@ -743,7 +755,9 @@ export const storeRouter = createTRPCRouter({
       if (input.profitMode) data.profitMode = input.profitMode;
       if (input.profitPercent !== undefined) data.profitPercent = normalizePercent(input.profitPercent, 1);
       if (input.profitFixedAmountFiat !== undefined) data.profitFixedAmountFiat = input.profitFixedAmountFiat;
-      if (input.minTokenPercent !== undefined) {
+      if (tokensWithLimit.length === 0) {
+        data.minTokenPercent = null;
+      } else if (input.minTokenPercent !== undefined) {
         data.minTokenPercent = input.minTokenPercent === null ? null : normalizePercent(input.minTokenPercent, 0);
       }
 
@@ -996,23 +1010,35 @@ export const storeRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Product is not available for checkout" });
       }
 
-      const symbol = input.tokenSymbol ?? product.acceptedTokens?.[0];
-      if (!symbol) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "No accepted token configured" });
+      const tokenLimitMap = (product.tokenPaymentLimits as Record<string, number>) || {};
+      const tokenEnabledSymbols = Object.entries(tokenLimitMap)
+        .filter(([, limit]) => Number(limit) > 0)
+        .map(([symbol]) => symbol);
+
+      const defaultSymbol = tokenEnabledSymbols.includes("BPT")
+        ? "BPT"
+        : tokenEnabledSymbols[0] ?? null;
+      const symbol = tokenEnabledSymbols.length > 0
+        ? (input.tokenSymbol ?? defaultSymbol)
+        : null;
+
+      if (symbol && (tokenLimitMap[symbol] ?? 0) <= 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `Token ${symbol} is not enabled for this product` });
       }
 
-      if (symbol !== "BPT") {
+      if (symbol && symbol !== "BPT") {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Only BPT token payments are supported at this time.",
         });
       }
 
-      const tokenLimitMap = (product.tokenPaymentLimits as Record<string, number>) || {};
-      const tokenLimit = tokenLimitMap[symbol] ?? 0;
+      const tokenLimit = symbol ? (tokenLimitMap[symbol] ?? 0) : 0;
 
-      const tokenRate = await (ctx.prisma as any).tokenRate.findFirst({ where: { symbol }, orderBy: { effectiveAt: "desc" } });
-      if (!tokenRate) {
+      const tokenRate = tokenLimit > 0 && symbol
+        ? await (ctx.prisma as any).tokenRate.findFirst({ where: { symbol }, orderBy: { effectiveAt: "desc" } })
+        : null;
+      if (tokenLimit > 0 && !tokenRate) {
         throw new TRPCError({ code: "BAD_REQUEST", message: `No rate available for ${symbol}` });
       }
 
@@ -1035,7 +1061,7 @@ export const storeRouter = createTRPCRouter({
       }
       profitFiat = clampNumber(profitFiat, 0, totalFiat);
       const tokenPortionFiat = Math.min(totalFiat * tokenLimit, totalFiat);
-      const tokenAmount = tokenPortionFiat > 0 ? tokenPortionFiat / Number(tokenRate.rateToFiat ?? 1) : 0;
+      const tokenAmount = tokenPortionFiat > 0 ? tokenPortionFiat / Number(tokenRate?.rateToFiat ?? 1) : 0;
       const fiatPortion = totalFiat - tokenPortionFiat;
 
       const rewardSnapshot = product.rewardConfig && product.rewardConfig.isActive
@@ -1076,11 +1102,13 @@ export const storeRouter = createTRPCRouter({
             fiat: fiatPortion,
           },
           rewardConfigSnapshot: rewardSnapshot,
-          tokenRateSnapshot: {
-            symbol,
-            rate_to_fiat: Number(tokenRate.rateToFiat ?? 0),
-            effective_at: tokenRate.effectiveAt,
-          },
+          tokenRateSnapshot: tokenRate && symbol
+            ? {
+                symbol,
+                rate_to_fiat: Number(tokenRate.rateToFiat ?? 0),
+                effective_at: tokenRate.effectiveAt,
+              }
+            : null,
           pickupCenterId: product.pickupCenterId ?? null,
           rewardCenterId: product.rewardCenterId ?? null,
         },
@@ -1478,6 +1506,22 @@ export const storeRouter = createTRPCRouter({
         (existing.pricingSnapshot as any)?.token_portion_fiat ??
         0
       );
+      const configuredTokenLimit = Number((existing.pricingSnapshot as any)?.token_limit ?? 0);
+      const isCashOnlyProduct = configuredTokenLimit <= 0;
+
+      if (isCashOnlyProduct && input.paymentMode !== "FIAT") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This product is configured for cashback-only checkout.",
+        });
+      }
+
+      if (isCashOnlyProduct && tokenPortionFiat > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Token contribution is not allowed for cashback-only products.",
+        });
+      }
 
       const grossFiat = Number(
         (existing.pricingSnapshot as any)?.total_fiat ??

@@ -8898,6 +8898,295 @@ export const adminRouter = createTRPCRouter({
       };
     }),
 
+  getMembershipResetOverview: adminProcedure
+    .input(
+      z
+        .object({
+          windowDays: z.number().int().min(1).max(90).default(14),
+          limit: z.number().int().min(1).max(200).default(50),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const windowDays = input?.windowDays ?? 14;
+      const limit = input?.limit ?? 50;
+      const now = new Date();
+      const soon = new Date(now);
+      soon.setDate(soon.getDate() + windowDays);
+
+      const baseMembershipWhere = { activeMembershipPackageId: { not: null } } as const;
+
+      const [expiredCount, expiringSoonCount, noExpiryCount, dueResetCount, dueResetUsers] = await Promise.all([
+        prisma.user.count({
+          where: {
+            ...baseMembershipWhere,
+            membershipExpiresAt: { lte: now },
+          },
+        }),
+        prisma.user.count({
+          where: {
+            ...baseMembershipWhere,
+            membershipExpiresAt: { gt: now, lte: soon },
+          },
+        }),
+        prisma.user.count({
+          where: {
+            ...baseMembershipWhere,
+            membershipExpiresAt: null,
+          },
+        }),
+        prisma.user.count({
+          where: {
+            ...baseMembershipWhere,
+            membershipExpiresAt: { lte: now },
+          },
+        }),
+        prisma.user.findMany({
+          where: {
+            ...baseMembershipWhere,
+            membershipExpiresAt: { lte: now },
+          },
+          orderBy: [{ membershipExpiresAt: "asc" }],
+          take: limit,
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            activeMembershipPackageId: true,
+            membershipActivatedAt: true,
+            membershipExpiresAt: true,
+            activated: true,
+          },
+        }),
+      ]);
+
+      const packageIds = Array.from(
+        new Set(
+          dueResetUsers
+            .map((user) => user.activeMembershipPackageId)
+            .filter((packageId): packageId is string => Boolean(packageId))
+        )
+      );
+
+      const packages = packageIds.length
+        ? await prisma.membershipPackage.findMany({
+            where: { id: { in: packageIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+
+      const packageNameById = new Map(packages.map((pkg) => [pkg.id, pkg.name]));
+
+      return {
+        generatedAt: now,
+        windowDays,
+        summary: {
+          expiredCount,
+          expiringSoonCount,
+          noExpiryCount,
+          dueResetCount,
+        },
+        dueResetUsers: dueResetUsers.map((user) => {
+          const expiresAt = user.membershipExpiresAt ? new Date(user.membershipExpiresAt) : null;
+          const daysExpired = expiresAt
+            ? Math.max(0, Math.floor((now.getTime() - expiresAt.getTime()) / (1000 * 60 * 60 * 24)))
+            : null;
+          return {
+            ...user,
+            packageName: user.activeMembershipPackageId
+              ? packageNameById.get(user.activeMembershipPackageId) ?? "Unknown package"
+              : null,
+            daysExpired,
+          };
+        }),
+      };
+    }),
+
+  resetMembershipPlan: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        reason: z.string().trim().max(500).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          activeMembershipPackageId: true,
+          membershipActivatedAt: true,
+          membershipExpiresAt: true,
+        },
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      if (!user.activeMembershipPackageId) {
+        return {
+          success: true,
+          userId: user.id,
+          alreadyReset: true,
+        };
+      }
+
+      const membershipPackage = await prisma.membershipPackage.findUnique({
+        where: { id: user.activeMembershipPackageId },
+        select: { id: true, name: true },
+      });
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          activeMembershipPackageId: null,
+          membershipActivatedAt: null,
+          membershipExpiresAt: null,
+          updatedAt: new Date(),
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: ctx.session!.user.id,
+          action: "RESET_MEMBERSHIP_PLAN",
+          entity: "USER",
+          entityId: user.id,
+          metadata: {
+            userName: user.name,
+            userEmail: user.email,
+            previousPackageId: membershipPackage?.id ?? user.activeMembershipPackageId,
+            previousPackageName: membershipPackage?.name ?? null,
+            previousActivatedAt: user.membershipActivatedAt,
+            previousExpiresAt: user.membershipExpiresAt,
+            reason: input.reason ?? "Manual admin reset",
+          },
+          ipAddress: "",
+          userAgent: "",
+        },
+      });
+
+      return {
+        success: true,
+        userId: user.id,
+        previousPackageName: membershipPackage?.name ?? null,
+      };
+    }),
+
+  autoResetExpiredMemberships: adminProcedure
+    .input(
+      z
+        .object({
+          dryRun: z.boolean().default(true),
+          limit: z.number().int().min(1).max(500).default(200),
+          reason: z.string().trim().max(500).optional(),
+        })
+        .optional()
+    )
+    .mutation(async ({ ctx, input }) => {
+      const dryRun = input?.dryRun ?? true;
+      const limit = input?.limit ?? 200;
+      const now = new Date();
+
+      const candidates = await prisma.user.findMany({
+        where: {
+          activeMembershipPackageId: { not: null },
+          membershipExpiresAt: { lte: now },
+        },
+        orderBy: [{ membershipExpiresAt: "asc" }],
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          activeMembershipPackageId: true,
+          membershipExpiresAt: true,
+        },
+      });
+
+      if (dryRun) {
+        return {
+          dryRun: true,
+          matched: candidates.length,
+          reset: 0,
+          users: candidates,
+        };
+      }
+
+      if (candidates.length === 0) {
+        return {
+          dryRun: false,
+          matched: 0,
+          reset: 0,
+          users: [],
+        };
+      }
+
+      const packageIds = Array.from(
+        new Set(
+          candidates
+            .map((candidate) => candidate.activeMembershipPackageId)
+            .filter((packageId): packageId is string => Boolean(packageId))
+        )
+      );
+      const packages = packageIds.length
+        ? await prisma.membershipPackage.findMany({
+            where: { id: { in: packageIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const packageNameById = new Map(packages.map((pkg) => [pkg.id, pkg.name]));
+
+      const resetAt = new Date();
+
+      await prisma.$transaction(async (tx) => {
+        for (const candidate of candidates) {
+          await tx.user.update({
+            where: { id: candidate.id },
+            data: {
+              activeMembershipPackageId: null,
+              membershipActivatedAt: null,
+              membershipExpiresAt: null,
+              updatedAt: resetAt,
+            },
+          });
+
+          await tx.auditLog.create({
+            data: {
+              id: randomUUID(),
+              userId: ctx.session!.user.id,
+              action: "AUTO_RESET_EXPIRED_MEMBERSHIP",
+              entity: "USER",
+              entityId: candidate.id,
+              metadata: {
+                userName: candidate.name,
+                userEmail: candidate.email,
+                previousPackageId: candidate.activeMembershipPackageId,
+                previousPackageName: candidate.activeMembershipPackageId
+                  ? packageNameById.get(candidate.activeMembershipPackageId) ?? null
+                  : null,
+                previousExpiresAt: candidate.membershipExpiresAt,
+                reason: input?.reason ?? "Automatic reset for expired membership",
+              },
+              ipAddress: "",
+              userAgent: "",
+            },
+          });
+        }
+      });
+
+      return {
+        dryRun: false,
+        matched: candidates.length,
+        reset: candidates.length,
+        users: candidates,
+      };
+    }),
+
   // Admin wallet adjustments (set balance) and credits for any wallet field
   adjustUserWallet: adminProcedure
     .input(

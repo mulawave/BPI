@@ -1,7 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
-import { internalizeImageFromUrl } from "@/lib/imageInternalizer";
 import fs from "fs/promises";
 import path from "path";
 
@@ -33,7 +32,6 @@ const postInput = z.object({
   featured: z.boolean().default(false),
   categoryId: z.number().optional(),
   image: z.string().optional(),
-  imageUrl: z.string().url().optional(),
   publishedAt: z.date().optional(),
 });
 
@@ -272,7 +270,8 @@ export const adminBlogRouter = createTRPCRouter({
         featured: input.featured,
         categoryId: input.categoryId,
         image: input.image,
-        imageUrl: input.imageUrl,
+        imageUrl: null,
+        imageInternalized: true,
         authorId,
         publishedAt: input.publishedAt ?? (input.status === BlogPostStatusEnum.PUBLISHED ? new Date() : null),
       },
@@ -308,7 +307,8 @@ export const adminBlogRouter = createTRPCRouter({
           featured: input.featured,
           categoryId: input.categoryId,
           image: input.image,
-          imageUrl: input.imageUrl,
+          imageUrl: null,
+          imageInternalized: true,
           publishedAt: input.publishedAt ?? existing.publishedAt,
         },
       });
@@ -390,22 +390,6 @@ export const adminBlogRouter = createTRPCRouter({
     const prisma = ctx.prisma as any;
     await prisma.blogComment.delete({ where: { id: input.id } });
     return { success: true };
-  }),
-
-  internalizeImage: adminProcedure.input(z.object({ postId: z.number() })).mutation(async ({ ctx, input }) => {
-    const prisma = ctx.prisma as any;
-    const post = await prisma.blogPost.findUnique({ where: { id: input.postId } });
-    if (!post) throw new TRPCError({ code: "NOT_FOUND", message: "Post not found" });
-    if (!post.imageUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "No external image URL to internalize" });
-
-    const { localPath } = await internalizeImageFromUrl(post.imageUrl, post.id);
-
-    await prisma.blogPost.update({
-      where: { id: post.id },
-      data: { image: localPath, imageInternalized: true },
-    });
-
-    return { success: true, image: localPath };
   }),
 
   uploadImage: adminProcedure

@@ -48,7 +48,7 @@ export default function PluginInventoryPage() {
 
   useEffect(() => {
     if (inventoryErrorMessage && !isAbortError) {
-      toast.error(inventoryQuery.error?.message);
+      toast.error(inventoryErrorMessage);
     }
   }, [inventoryErrorMessage, isAbortError]);
 

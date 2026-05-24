@@ -20,10 +20,22 @@ const partners = [
   { name: "GATC", url: "https://i.ibb.co/fYDSCjGS/GATCLOGI.jpg" }
 ];
 
+type RecentArticle = {
+  id: number;
+  slug: string;
+  title: string;
+  excerpt?: string | null;
+  image?: string | null;
+  imageUrl?: string | null;
+  publishedAt?: string | Date | null;
+  createdAt: string | Date;
+  category?: { name?: string | null } | null;
+};
+
 export const Media = () => {
   const [activeSlide, setActiveSlide] = useState(0);
   const latestPostsQuery = api.blog.getLatestPosts.useQuery({ limit: 5 });
-  const recentArticles = latestPostsQuery.data?.posts ?? [];
+  const recentArticles: RecentArticle[] = (latestPostsQuery.data?.posts ?? []) as RecentArticle[];
 
   useEffect(() => {
     setActiveSlide(0);
@@ -60,7 +72,7 @@ export const Media = () => {
                     animate={{ x: `-${activeSlide * 100}%` }}
                     transition={{ duration: 0.6, ease: "easeInOut" }}
                   >
-                    {recentArticles.map((item) => (
+                    {recentArticles.map((item: RecentArticle) => (
                       <div key={item.id} className="w-full flex-shrink-0">
                         <Link
                           href={`/blog/${item.slug}`}
@@ -120,7 +132,7 @@ export const Media = () => {
 
                 {recentArticles.length > 1 && (
                   <div className="flex items-center justify-center gap-2">
-                    {recentArticles.map((item, index) => (
+                    {recentArticles.map((item: RecentArticle, index: number) => (
                       <button
                         key={item.id}
                         type="button"
