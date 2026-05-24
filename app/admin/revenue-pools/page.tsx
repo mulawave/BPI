@@ -63,6 +63,10 @@ export default function RevenuePoolsPage() {
   const [splitExecutive, setSplitExecutive] = useState("30");
   const [splitStrategic, setSplitStrategic] = useState("20");
   const [forensicsPoolType, setForensicsPoolType] = useState<PoolTypeFilter>("ALL");
+  const [sourceAuditDays, setSourceAuditDays] = useState("30");
+  const [sourceCutEdits, setSourceCutEdits] = useState<
+    Record<string, { companyPercent: string; executivePercent: string; strategicPercent: string }>
+  >({});
 
   // Pool config editing
   const [editingPoolConfig, setEditingPoolConfig] = useState<{ poolType: string; freq: string; maxMembers: string } | null>(null);
@@ -152,6 +156,10 @@ export default function RevenuePoolsPage() {
     poolType: forensicsPoolType === "ALL" ? undefined : forensicsPoolType,
     limit: 100,
   });
+  const { data: sourceCutSettings, refetch: refetchSourceCutSettings } = api.revenue.getSourceCutSettings.useQuery();
+  const { data: sourceAllocationAudit, isLoading: sourceAllocationAuditLoading, refetch: refetchSourceAllocationAudit } = api.revenue.getSourceAllocationAudit.useQuery({
+    days: Number(sourceAuditDays) || 30,
+  });
 
   // Mutations
   const createExecutive = api.revenue.createExecutivePosition.useMutation({
@@ -235,6 +243,32 @@ export default function RevenuePoolsPage() {
       refetchStats();
     },
     onError: (error: any) => toast.error(error.message || "Failed to update split"),
+  });
+
+  const updateSourceCuts = api.revenue.updateSourceCutSettings.useMutation({
+    onSuccess: async () => {
+      toast.success("Approved source cuts saved");
+      await Promise.all([refetchSourceCutSettings(), refetchSourceAllocationAudit()]);
+    },
+    onError: (error: any) => toast.error(error.message || "Failed to save source cuts"),
+  });
+
+  const syncSourceAllocations = api.revenue.syncSourceAllocationRecords.useMutation({
+    onSuccess: async (result) => {
+      toast.success(
+        result.dryRun
+          ? `Dry run complete: ${result.updated} recalculations possible, ${result.skippedLocked} locked records skipped`
+          : `Sync complete: ${result.updated} records recalculated`
+      );
+      await Promise.all([
+        refetchSourceAllocationAudit(),
+        refetchSourceCutSettings(),
+        refetchForensics(),
+        refetchStats(),
+        refetchPools(),
+      ]);
+    },
+    onError: (error: any) => toast.error(error.message || "Source allocation sync failed"),
   });
 
   const updatePoolConfig = api.revenue.updatePoolConfig.useMutation({
@@ -338,6 +372,19 @@ export default function RevenuePoolsPage() {
     setSplitStrategic(String(splitSettings.strategicPercent));
   }, [splitSettings]);
 
+  useEffect(() => {
+    if (!sourceCutSettings?.sources?.length) return;
+    const next: Record<string, { companyPercent: string; executivePercent: string; strategicPercent: string }> = {};
+    sourceCutSettings.sources.forEach((row: any) => {
+      next[row.source] = {
+        companyPercent: String(row.approvedSplit?.companyPercent ?? 0),
+        executivePercent: String(row.approvedSplit?.executivePercent ?? 0),
+        strategicPercent: String(row.approvedSplit?.strategicPercent ?? 0),
+      };
+    });
+    setSourceCutEdits(next);
+  }, [sourceCutSettings]);
+
   const splitLabel = useMemo(() => {
     const c = splitSettings?.companyPercent ?? 50;
     const e = splitSettings?.executivePercent ?? 30;
@@ -349,6 +396,46 @@ export default function RevenuePoolsPage() {
     () => Object.values(percentages).reduce((sum, val) => sum + Number(val || 0), 0),
     [percentages]
   );
+
+  const handleSaveSourceCuts = () => {
+    try {
+      const rows = (sourceCutSettings?.sources || []).map((row: any) => {
+        const edit = sourceCutEdits[row.source] || {
+          companyPercent: String(row.approvedSplit?.companyPercent ?? 0),
+          executivePercent: String(row.approvedSplit?.executivePercent ?? 0),
+          strategicPercent: String(row.approvedSplit?.strategicPercent ?? 0),
+        };
+
+        const companyPercent = Number(edit.companyPercent);
+        const executivePercent = Number(edit.executivePercent);
+        const strategicPercent = Number(edit.strategicPercent);
+
+        if (
+          !Number.isFinite(companyPercent) ||
+          !Number.isFinite(executivePercent) ||
+          !Number.isFinite(strategicPercent)
+        ) {
+          throw new Error(`Invalid percentage value for ${row.label || row.source}`);
+        }
+
+        const total = companyPercent + executivePercent + strategicPercent;
+        if (Math.abs(total - 100) > 0.0001) {
+          throw new Error(`Split for ${row.label || row.source} must sum to 100 (currently ${total.toFixed(2)})`);
+        }
+
+        return {
+          source: row.source,
+          companyPercent,
+          executivePercent,
+          strategicPercent,
+        };
+      });
+
+      updateSourceCuts.mutate({ sources: rows });
+    } catch (error: any) {
+      toast.error(error.message || "Invalid source cut values");
+    }
+  };
 
   const execLoading = shareholdersLoading || !shareholders;
 
@@ -713,6 +800,203 @@ export default function RevenuePoolsPage() {
               <TrendingUp className="w-12 h-12 opacity-20" />
             </div>
           </div>
+        </div>
+
+        {/* Source Allocation Governance */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <Settings2 className="w-6 h-6 text-indigo-600" />
+                Source Allocation Governance
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Set approved allocation cuts per revenue source, verify actual allocations, and sync records to recalculate saved allocations.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={sourceAuditDays}
+                onChange={(e) => setSourceAuditDays(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-white"
+              >
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="180">Last 180 days</option>
+                <option value="365">Last 365 days</option>
+              </select>
+              <button
+                onClick={() => refetchSourceAllocationAudit()}
+                className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-1"
+              >
+                <RefreshCw className="w-4 h-4" /> Refresh Audit
+              </button>
+              <button
+                onClick={handleSaveSourceCuts}
+                disabled={updateSourceCuts.isPending}
+                className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm disabled:opacity-60"
+              >
+                {updateSourceCuts.isPending ? "Saving..." : "Save Approved Cuts"}
+              </button>
+              <button
+                onClick={() =>
+                  syncSourceAllocations.mutate({
+                    dryRun: true,
+                    limit: 2000,
+                  })
+                }
+                disabled={syncSourceAllocations.isPending}
+                className="px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 text-sm hover:bg-amber-50 dark:hover:bg-amber-900/30 disabled:opacity-60"
+              >
+                Dry Run Sync
+              </button>
+              <button
+                onClick={() =>
+                  syncSourceAllocations.mutate({
+                    dryRun: false,
+                    limit: 2000,
+                  })
+                }
+                disabled={syncSourceAllocations.isPending}
+                className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm disabled:opacity-60"
+              >
+                {syncSourceAllocations.isPending ? "Syncing..." : "Sync & Recalculate"}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-indigo-200 dark:border-indigo-900 bg-indigo-50/70 dark:bg-indigo-950/20 p-3 text-sm text-indigo-800 dark:text-indigo-200">
+            Approved cuts are applied to new revenue records automatically. Use sync when historical records need to be recalculated to match approved per-source cuts.
+          </div>
+
+          <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 uppercase tracking-wide">
+                <tr>
+                  <th className="py-2 px-3 text-left">Source</th>
+                  <th className="py-2 px-3 text-left">Approved Split (C / E / S)</th>
+                  <th className="py-2 px-3 text-right">Gross Revenue</th>
+                  <th className="py-2 px-3 text-right">Actual Company</th>
+                  <th className="py-2 px-3 text-right">Actual Executive</th>
+                  <th className="py-2 px-3 text-right">Actual Strategic</th>
+                  <th className="py-2 px-3 text-right">Alignment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sourceAllocationAuditLoading && (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-slate-500">Loading source allocation audit...</td>
+                  </tr>
+                )}
+
+                {!sourceAllocationAuditLoading && (sourceAllocationAudit?.rows || []).length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-slate-500">No source allocation data available for selected period.</td>
+                  </tr>
+                )}
+
+                {(sourceAllocationAudit?.rows || []).map((row: any) => {
+                  const edit = sourceCutEdits[row.source] || {
+                    companyPercent: String(row.approvedSplit?.companyPercent ?? 0),
+                    executivePercent: String(row.approvedSplit?.executivePercent ?? 0),
+                    strategicPercent: String(row.approvedSplit?.strategicPercent ?? 0),
+                  };
+                  const sum = Number(edit.companyPercent || 0) + Number(edit.executivePercent || 0) + Number(edit.strategicPercent || 0);
+
+                  return (
+                    <tr key={row.source} className="border-t border-slate-100 dark:border-slate-800">
+                      <td className="py-2 px-3">
+                        <div className="font-semibold text-slate-800 dark:text-slate-200">{row.label || row.source}</div>
+                        <div className="text-[10px] text-slate-500">{row.txCount} txns</div>
+                      </td>
+                      <td className="py-2 px-3">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={edit.companyPercent}
+                            onChange={(e) =>
+                              setSourceCutEdits((prev) => ({
+                                ...prev,
+                                [row.source]: { ...edit, companyPercent: e.target.value },
+                              }))
+                            }
+                            className="w-16 px-2 py-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                          />
+                          <span className="text-slate-400">/</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={edit.executivePercent}
+                            onChange={(e) =>
+                              setSourceCutEdits((prev) => ({
+                                ...prev,
+                                [row.source]: { ...edit, executivePercent: e.target.value },
+                              }))
+                            }
+                            className="w-16 px-2 py-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                          />
+                          <span className="text-slate-400">/</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={edit.strategicPercent}
+                            onChange={(e) =>
+                              setSourceCutEdits((prev) => ({
+                                ...prev,
+                                [row.source]: { ...edit, strategicPercent: e.target.value },
+                              }))
+                            }
+                            className="w-16 px-2 py-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white"
+                          />
+                          <span className={`text-[10px] font-semibold ${Math.abs(sum - 100) < 0.001 ? "text-emerald-600" : "text-rose-600"}`}>
+                            {sum.toFixed(2)}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-right font-semibold text-slate-800 dark:text-slate-200">₦{Number(row.grossRevenue || 0).toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right text-slate-700 dark:text-slate-300">₦{Number(row.companyActual || 0).toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right text-slate-700 dark:text-slate-300">₦{Number(row.executiveActual || 0).toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right text-slate-700 dark:text-slate-300">₦{Number(row.strategicActual || 0).toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right">
+                        <span className={`px-2 py-1 rounded-full text-[10px] font-semibold ${row.aligns ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>
+                          {row.aligns ? "Aligned" : "Needs Sync"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {!!sourceAllocationAudit?.summary && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-3">
+                <p className="text-xs text-slate-500">Total Gross Revenue</p>
+                <p className="text-lg font-bold text-slate-900 dark:text-white">₦{Number(sourceAllocationAudit.summary.totalGrossRevenue || 0).toLocaleString()}</p>
+              </div>
+              <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/20 p-3">
+                <p className="text-xs text-emerald-700 dark:text-emerald-300">Aligned Sources</p>
+                <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{Number(sourceAllocationAudit.summary.alignedSources || 0)}</p>
+              </div>
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-3">
+                <p className="text-xs text-amber-700 dark:text-amber-300">Non-Aligned Sources</p>
+                <p className="text-lg font-bold text-amber-700 dark:text-amber-300">{Number(sourceAllocationAudit.summary.nonAlignedSources || 0)}</p>
+              </div>
+              <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-3">
+                <p className="text-xs text-blue-700 dark:text-blue-300">Strategic Allocated</p>
+                <p className="text-lg font-bold text-blue-700 dark:text-blue-300">₦{Number(sourceAllocationAudit.summary.totalStrategicActual || 0).toLocaleString()}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Pool Forensics Command Center */}

@@ -8,6 +8,173 @@ import { randomUUID } from "crypto";
 import type { RevenueSource } from "@prisma/client";
 
 const REVENUE_POOL_START_DATE = new Date("2026-05-01T00:00:00.000Z");
+const REVENUE_SOURCE_CUTS_SETTING_KEY = "revenue_source_pool_cuts_v1";
+const SOURCE_CUT_SYNC_SAFE_STATUSES = new Set(["PENDING", "ALLOCATED"]);
+
+const SUPPORTED_REVENUE_SOURCES = [
+  "COMMUNITY_SUPPORT",
+  "MEMBERSHIP_REGISTRATION",
+  "MEMBERSHIP_RENEWAL",
+  "STORE_PURCHASE",
+  "WITHDRAWAL_FEE",
+  "YOUTUBE_SUBSCRIPTION",
+  "THIRD_PARTY_SERVICES",
+  "PALLIATIVE_PROGRAM",
+  "LEADERSHIP_POOL_FEE",
+  "TRAINING_CENTER",
+  "ELITE_CLUB_OPS",
+  "ELITE_CLUB_INVESTMENT_PROFIT",
+  "OTHER",
+] as const;
+
+const REVENUE_SOURCE_LABELS: Record<string, string> = {
+  COMMUNITY_SUPPORT: "Community Support",
+  MEMBERSHIP_REGISTRATION: "Membership Registration",
+  MEMBERSHIP_RENEWAL: "Membership Renewal",
+  STORE_PURCHASE: "Store Purchase",
+  WITHDRAWAL_FEE: "Withdrawal Fee",
+  YOUTUBE_SUBSCRIPTION: "YouTube Subscription",
+  THIRD_PARTY_SERVICES: "Third Party Services",
+  PALLIATIVE_PROGRAM: "Palliative Program",
+  LEADERSHIP_POOL_FEE: "Leadership Pool Fee",
+  TRAINING_CENTER: "Training Center",
+  ELITE_CLUB_OPS: "Elite Club Ops",
+  ELITE_CLUB_INVESTMENT_PROFIT: "Elite Club Investment Profit",
+  OTHER: "Other",
+};
+
+type SourceSplitConfig = {
+  companyPercent: number;
+  executivePercent: number;
+  strategicPercent: number;
+};
+
+function normalizeSplit(input: SourceSplitConfig): SourceSplitConfig {
+  const companyPercent = Number(input.companyPercent);
+  const executivePercent = Number(input.executivePercent);
+  const strategicPercent = Number(input.strategicPercent);
+  return {
+    companyPercent,
+    executivePercent,
+    strategicPercent,
+  };
+}
+
+function isValidSplit(input: SourceSplitConfig) {
+  return (
+    Number.isFinite(input.companyPercent) &&
+    Number.isFinite(input.executivePercent) &&
+    Number.isFinite(input.strategicPercent) &&
+    input.companyPercent >= 0 &&
+    input.executivePercent >= 0 &&
+    input.strategicPercent >= 0 &&
+    input.companyPercent <= 100 &&
+    input.executivePercent <= 100 &&
+    input.strategicPercent <= 100 &&
+    Math.abs(input.companyPercent + input.executivePercent + input.strategicPercent - 100) < 0.0001
+  );
+}
+
+function toCents(amount: number) {
+  return Math.round(amount * 100);
+}
+
+function fromCents(cents: number) {
+  return cents / 100;
+}
+
+function calculateSplitCents(totalAmount: number, split: SourceSplitConfig) {
+  const totalCents = toCents(totalAmount);
+  const companyCents = Math.floor((totalCents * split.companyPercent) / 100);
+  const executiveCents = Math.floor((totalCents * split.executivePercent) / 100);
+  const strategicCents = totalCents - companyCents - executiveCents;
+  const basePoolCents = Math.floor(strategicCents / 5);
+  const remainder = strategicCents - basePoolCents * 5;
+
+  return {
+    companyCents,
+    executiveCents,
+    strategicCents,
+    strategicPoolCents: [
+      basePoolCents + (remainder > 0 ? 1 : 0),
+      basePoolCents + (remainder > 1 ? 1 : 0),
+      basePoolCents + (remainder > 2 ? 1 : 0),
+      basePoolCents + (remainder > 3 ? 1 : 0),
+      basePoolCents + (remainder > 4 ? 1 : 0),
+    ],
+  };
+}
+
+async function getBaseProfitSplitSettings(prismaLike: any) {
+  const activeVersion = await prismaLike.profitPoolConfigVersion.findFirst({
+    where: { isActive: true },
+    orderBy: { version: "desc" },
+  });
+
+  if (activeVersion) {
+    return {
+      companyPercent: Number(activeVersion.companyPercent ?? 50),
+      executivePercent: Number(activeVersion.executivePercent ?? 30),
+      strategicPercent: Number(activeVersion.strategicPercent ?? 20),
+    };
+  }
+
+  const keys = [
+    "revenue_split_company_percent",
+    "revenue_split_executive_percent",
+    "revenue_split_strategic_percent",
+  ] as const;
+
+  const settings = await prismaLike.adminSettings.findMany({
+    where: { settingKey: { in: [...keys] } },
+    select: { settingKey: true, settingValue: true },
+  });
+
+  const map = new Map(settings.map((row: any) => [row.settingKey, row.settingValue]));
+  return {
+    companyPercent: Number.parseFloat(String(map.get("revenue_split_company_percent") ?? "50")) || 50,
+    executivePercent: Number.parseFloat(String(map.get("revenue_split_executive_percent") ?? "30")) || 30,
+    strategicPercent: Number.parseFloat(String(map.get("revenue_split_strategic_percent") ?? "20")) || 20,
+  };
+}
+
+async function getRevenueSourceCutSettings(prismaLike: any) {
+  const baseSplit = normalizeSplit(await getBaseProfitSplitSettings(prismaLike));
+  const row = await prismaLike.adminSettings.findUnique({
+    where: { settingKey: REVENUE_SOURCE_CUTS_SETTING_KEY },
+    select: { settingValue: true, updatedAt: true },
+  });
+
+  let overrides: Record<string, SourceSplitConfig> = {};
+  if (row?.settingValue) {
+    try {
+      const parsed = JSON.parse(String(row.settingValue));
+      const sourceRows = parsed?.sources && typeof parsed.sources === "object" ? parsed.sources : {};
+      const next: Record<string, SourceSplitConfig> = {};
+      for (const source of SUPPORTED_REVENUE_SOURCES) {
+        const raw = (sourceRows as any)[source];
+        if (!raw) continue;
+        const split = normalizeSplit({
+          companyPercent: Number(raw.companyPercent),
+          executivePercent: Number(raw.executivePercent),
+          strategicPercent: Number(raw.strategicPercent),
+        });
+        if (isValidSplit(split)) {
+          next[source] = split;
+        }
+      }
+      overrides = next;
+    } catch {
+      overrides = {};
+    }
+  }
+
+  return {
+    baseSplit,
+    overrides,
+    updatedAt: row?.updatedAt ?? null,
+  };
+}
 
 function withRevenuePoolCutoff(startDate?: Date) {
   if (!startDate || startDate < REVENUE_POOL_START_DATE) {
@@ -223,6 +390,453 @@ export const revenueRouter = createTRPCRouter({
       });
 
       return { success: true, versionId: String(created.id), version: Number(created.version ?? 0) };
+    }),
+
+  /**
+   * Get approved source-specific allocation cuts and effective values.
+   */
+  getSourceCutSettings: protectedProcedure.query(async ({ ctx }) => {
+    requireAdmin(ctx.session);
+
+    const { baseSplit, overrides, updatedAt } = await getRevenueSourceCutSettings(ctx.prisma as any);
+
+    return {
+      baseSplit,
+      updatedAt,
+      sources: SUPPORTED_REVENUE_SOURCES.map((source) => ({
+        source,
+        label: REVENUE_SOURCE_LABELS[source] ?? source,
+        approvedSplit: overrides[source] ?? baseSplit,
+        usesOverride: Boolean(overrides[source]),
+      })),
+    };
+  }),
+
+  /**
+   * Set approved source-specific allocation cuts. Every source must sum to 100.
+   */
+  updateSourceCutSettings: protectedProcedure
+    .input(
+      z.object({
+        sources: z.array(
+          z.object({
+            source: z.string(),
+            companyPercent: z.number().min(0).max(100),
+            executivePercent: z.number().min(0).max(100),
+            strategicPercent: z.number().min(0).max(100),
+          }),
+        ),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const normalized: Record<string, SourceSplitConfig> = {};
+      for (const row of input.sources) {
+        if (!SUPPORTED_REVENUE_SOURCES.includes(row.source as any)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Unsupported revenue source: ${row.source}`,
+          });
+        }
+        const split = normalizeSplit({
+          companyPercent: row.companyPercent,
+          executivePercent: row.executivePercent,
+          strategicPercent: row.strategicPercent,
+        });
+        if (!isValidSplit(split)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Invalid split for ${row.source}. Values must be 0-100 and sum to 100.`,
+          });
+        }
+        normalized[row.source] = split;
+      }
+
+      const payload = {
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        updatedBy: (ctx.session?.user as any)?.id ?? null,
+        sources: normalized,
+      };
+
+      await ctx.prisma.adminSettings.upsert({
+        where: { settingKey: REVENUE_SOURCE_CUTS_SETTING_KEY },
+        update: {
+          settingValue: JSON.stringify(payload),
+          description: "Approved per-source allocation cuts for company/executive/strategic pools",
+          updatedAt: new Date(),
+        },
+        create: {
+          id: randomUUID(),
+          settingKey: REVENUE_SOURCE_CUTS_SETTING_KEY,
+          settingValue: JSON.stringify(payload),
+          description: "Approved per-source allocation cuts for company/executive/strategic pools",
+          updatedAt: new Date(),
+        },
+      });
+
+      await ctx.prisma.revenueAdminAction.create({
+        data: {
+          adminId: ctx.session!.user.id,
+          actionType: "SOURCE_CUT_SETTINGS_UPDATED",
+          description: `Updated approved source allocation cuts for ${Object.keys(normalized).length} sources`,
+          metadata: JSON.parse(JSON.stringify({ sourceCount: Object.keys(normalized).length })),
+        },
+      });
+
+      return { success: true, sourceCount: Object.keys(normalized).length };
+    }),
+
+  /**
+   * Audit how each revenue source is actually allocated vs approved cuts.
+   */
+  getSourceAllocationAudit: protectedProcedure
+    .input(
+      z
+        .object({
+          days: z.number().min(1).max(365).default(30),
+          dateFrom: z.date().optional(),
+          dateTo: z.date().optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const dynamicStart = new Date();
+      dynamicStart.setDate(dynamicStart.getDate() - (input?.days ?? 30));
+      const dateFrom = withRevenuePoolCutoff(input?.dateFrom ?? dynamicStart);
+      const dateTo = input?.dateTo ?? new Date();
+
+      const { baseSplit, overrides } = await getRevenueSourceCutSettings(ctx.prisma as any);
+
+      const [transactions, allocations] = await Promise.all([
+        ctx.prisma.revenueTransaction.findMany({
+          where: {
+            createdAt: { gte: dateFrom, lte: dateTo },
+          },
+          select: {
+            id: true,
+            source: true,
+            amount: true,
+            allocationStatus: true,
+          },
+        }),
+        ctx.prisma.revenueAllocation.findMany({
+          where: {
+            createdAt: { gte: dateFrom, lte: dateTo },
+          },
+          include: {
+            RevenueTransaction: {
+              select: { source: true },
+            },
+          },
+        }),
+      ]);
+
+      const rows = new Map<string, {
+        source: string;
+        label: string;
+        txCount: number;
+        grossRevenue: number;
+        companyActual: number;
+        executiveActual: number;
+        strategicActual: number;
+      }>();
+
+      for (const source of SUPPORTED_REVENUE_SOURCES) {
+        rows.set(source, {
+          source,
+          label: REVENUE_SOURCE_LABELS[source] ?? source,
+          txCount: 0,
+          grossRevenue: 0,
+          companyActual: 0,
+          executiveActual: 0,
+          strategicActual: 0,
+        });
+      }
+
+      for (const tx of transactions as any[]) {
+        const source = String(tx.source);
+        if (!rows.has(source)) continue;
+        const row = rows.get(source)!;
+        row.txCount += 1;
+        row.grossRevenue += Number(tx.amount || 0);
+      }
+
+      for (const alloc of allocations as any[]) {
+        const source = String(alloc.RevenueTransaction?.source || "OTHER");
+        if (!rows.has(source)) continue;
+        const row = rows.get(source)!;
+        const amount = Number(alloc.amount || 0);
+        if (alloc.destinationType === "COMPANY_RESERVE") row.companyActual += amount;
+        else if (alloc.destinationType === "EXECUTIVE_POOL") row.executiveActual += amount;
+        else if (alloc.destinationType === "STRATEGIC_POOL" || alloc.destinationType === "STRATEGY_POOL") row.strategicActual += amount;
+      }
+
+      const auditRows = Array.from(rows.values()).map((row) => {
+        const approvedSplit = overrides[row.source] ?? baseSplit;
+        const expected = {
+          company: (row.grossRevenue * approvedSplit.companyPercent) / 100,
+          executive: (row.grossRevenue * approvedSplit.executivePercent) / 100,
+          strategic: (row.grossRevenue * approvedSplit.strategicPercent) / 100,
+        };
+        const variance = {
+          company: row.companyActual - expected.company,
+          executive: row.executiveActual - expected.executive,
+          strategic: row.strategicActual - expected.strategic,
+        };
+        const aligns = Math.abs(variance.company) < 0.01 && Math.abs(variance.executive) < 0.01 && Math.abs(variance.strategic) < 0.01;
+
+        return {
+          ...row,
+          approvedSplit,
+          expected,
+          variance,
+          aligns,
+        };
+      });
+
+      return {
+        period: { dateFrom, dateTo },
+        baseSplit,
+        rows: auditRows,
+        summary: {
+          totalGrossRevenue: auditRows.reduce((sum, row) => sum + row.grossRevenue, 0),
+          totalCompanyActual: auditRows.reduce((sum, row) => sum + row.companyActual, 0),
+          totalExecutiveActual: auditRows.reduce((sum, row) => sum + row.executiveActual, 0),
+          totalStrategicActual: auditRows.reduce((sum, row) => sum + row.strategicActual, 0),
+          alignedSources: auditRows.filter((row) => row.aligns).length,
+          nonAlignedSources: auditRows.filter((row) => !row.aligns).length,
+        },
+      };
+    }),
+
+  /**
+   * Recalculate and persist allocations using approved source cuts.
+   */
+  syncSourceAllocationRecords: protectedProcedure
+    .input(
+      z.object({
+        dateFrom: z.date().optional(),
+        dateTo: z.date().optional(),
+        source: z.string().optional(),
+        dryRun: z.boolean().default(false),
+        limit: z.number().min(1).max(5000).default(1000),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const dynamicStart = new Date();
+      dynamicStart.setDate(dynamicStart.getDate() - 30);
+      const dateFrom = withRevenuePoolCutoff(input.dateFrom ?? dynamicStart);
+      const dateTo = input.dateTo ?? new Date();
+
+      const { baseSplit, overrides } = await getRevenueSourceCutSettings(ctx.prisma as any);
+      const pools = await ctx.prisma.strategyPool.findMany({
+        where: { type: { in: ["LEADERSHIP", "STATE", "DIRECTORS", "TECHNOLOGY", "INVESTORS"] } },
+        select: { id: true, type: true },
+      });
+      const poolTypeOrder = ["LEADERSHIP", "STATE", "DIRECTORS", "TECHNOLOGY", "INVESTORS"] as const;
+      const orderedPools = poolTypeOrder
+        .map((type) => pools.find((p: any) => p.type === type))
+        .filter(Boolean) as Array<{ id: string; type: string }>;
+
+      if (orderedPools.length !== 5) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "All 5 strategic pools must exist before running source allocation sync.",
+        });
+      }
+
+      const reserve = await ctx.prisma.companyReserve.findFirst({ orderBy: { updatedAt: "desc" } });
+      const reserveId = reserve?.id ?? "company-reserve";
+      if (!reserve) {
+        await ctx.prisma.companyReserve.create({
+          data: { id: reserveId, balance: 0, totalReceived: 0, totalSpent: 0 },
+        });
+      }
+
+      const transactions = await ctx.prisma.revenueTransaction.findMany({
+        where: {
+          createdAt: { gte: dateFrom, lte: dateTo },
+          ...(input.source ? { source: input.source as RevenueSource } : {}),
+          allocationStatus: { in: ["PENDING", "ALLOCATED", "DISTRIBUTED", "COMPLETED"] },
+        },
+        include: {
+          Allocations: {
+            include: {
+              ExecutiveDistributions: true,
+              PoolDistributions: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+        take: input.limit,
+      });
+
+      let scanned = 0;
+      let updated = 0;
+      let skippedAligned = 0;
+      let skippedLocked = 0;
+      let skippedInvalid = 0;
+      const deltas = {
+        company: 0,
+        executive: 0,
+        strategic: 0,
+      };
+
+      for (const tx of transactions as any[]) {
+        scanned += 1;
+        const source = String(tx.source);
+        const approvedSplit = overrides[source] ?? baseSplit;
+        const allocations = Array.isArray(tx.Allocations) ? tx.Allocations : [];
+
+        if (!SOURCE_CUT_SYNC_SAFE_STATUSES.has(String(tx.allocationStatus))) {
+          skippedLocked += 1;
+          continue;
+        }
+
+        const hasLockedDistribution = allocations.some((alloc: any) => {
+          const hasExec = (alloc.ExecutiveDistributions || []).some((d: any) => d.status === "COMPLETED");
+          const hasPool = (alloc.PoolDistributions || []).some((d: any) => d.status === "COMPLETED");
+          return hasExec || hasPool || alloc.status === "DISTRIBUTED" || alloc.status === "COMPLETED";
+        });
+
+        if (hasLockedDistribution) {
+          skippedLocked += 1;
+          continue;
+        }
+
+        const companyAlloc = allocations.find((a: any) => a.destinationType === "COMPANY_RESERVE");
+        const executiveAlloc = allocations.find((a: any) => a.destinationType === "EXECUTIVE_POOL");
+        const strategicAllocs = allocations
+          .filter((a: any) => a.destinationType === "STRATEGY_POOL" || a.destinationType === "STRATEGIC_POOL")
+          .sort((a: any, b: any) => String(a.destinationId || "").localeCompare(String(b.destinationId || "")));
+
+        if (!companyAlloc || !executiveAlloc || strategicAllocs.length !== 5) {
+          skippedInvalid += 1;
+          continue;
+        }
+
+        const splitCents = calculateSplitCents(Number(tx.amount || 0), approvedSplit);
+        const companyNew = fromCents(splitCents.companyCents);
+        const executiveNew = fromCents(splitCents.executiveCents);
+
+        const poolNewById = new Map<string, number>();
+        orderedPools.forEach((pool, idx) => {
+          poolNewById.set(pool.id, fromCents(splitCents.strategicPoolCents[idx] || 0));
+        });
+
+        const companyOld = Number(companyAlloc.amount || 0);
+        const executiveOld = Number(executiveAlloc.amount || 0);
+        const poolOldById = new Map<string, number>();
+        strategicAllocs.forEach((alloc: any) => {
+          poolOldById.set(String(alloc.destinationId), Number(alloc.amount || 0));
+        });
+
+        const poolDeltaTotal = orderedPools.reduce((sum, p) => {
+          const nextAmount = poolNewById.get(p.id) || 0;
+          const prevAmount = poolOldById.get(p.id) || 0;
+          return sum + (nextAmount - prevAmount);
+        }, 0);
+
+        const companyDelta = companyNew - companyOld;
+        const executiveDelta = executiveNew - executiveOld;
+
+        const isAligned =
+          Math.abs(companyDelta) < 0.01 &&
+          Math.abs(executiveDelta) < 0.01 &&
+          Math.abs(poolDeltaTotal) < 0.01;
+
+        if (isAligned) {
+          skippedAligned += 1;
+          continue;
+        }
+
+        if (!input.dryRun) {
+          await ctx.prisma.$transaction(async (txDb: any) => {
+            await txDb.revenueAllocation.update({
+              where: { id: companyAlloc.id },
+              data: {
+                amount: companyNew,
+                percentage: approvedSplit.companyPercent,
+              },
+            });
+
+            await txDb.revenueAllocation.update({
+              where: { id: executiveAlloc.id },
+              data: {
+                amount: executiveNew,
+                percentage: approvedSplit.executivePercent,
+              },
+            });
+
+            for (const alloc of strategicAllocs) {
+              const destinationId = String(alloc.destinationId);
+              await txDb.revenueAllocation.update({
+                where: { id: alloc.id },
+                data: {
+                  amount: poolNewById.get(destinationId) || 0,
+                  percentage: approvedSplit.strategicPercent / 5,
+                },
+              });
+            }
+
+            if (Math.abs(companyDelta) >= 0.01) {
+              await txDb.companyReserve.update({
+                where: { id: reserveId },
+                data: {
+                  balance: { increment: companyDelta },
+                  totalReceived: { increment: companyDelta },
+                },
+              });
+            }
+
+            for (const pool of orderedPools) {
+              const delta = (poolNewById.get(pool.id) || 0) - (poolOldById.get(pool.id) || 0);
+              if (Math.abs(delta) < 0.01) continue;
+              await txDb.strategyPool.update({
+                where: { id: pool.id },
+                data: { balance: { increment: delta } },
+              });
+            }
+          });
+        }
+
+        updated += 1;
+        deltas.company += companyDelta;
+        deltas.executive += executiveDelta;
+        deltas.strategic += poolDeltaTotal;
+      }
+
+      await ctx.prisma.revenueAdminAction.create({
+        data: {
+          adminId: ctx.session!.user.id,
+          actionType: input.dryRun ? "SOURCE_CUT_SYNC_DRY_RUN" : "SOURCE_CUT_SYNC_EXECUTED",
+          description: `${input.dryRun ? "Dry run" : "Executed"} source cut sync on ${scanned} transactions`,
+          metadata: JSON.parse(
+            JSON.stringify({
+              period: { dateFrom, dateTo },
+              input,
+              result: { scanned, updated, skippedAligned, skippedLocked, skippedInvalid, deltas },
+            }),
+          ),
+        },
+      });
+
+      return {
+        success: true,
+        dryRun: input.dryRun,
+        scanned,
+        updated,
+        skippedAligned,
+        skippedLocked,
+        skippedInvalid,
+        deltas,
+      };
     }),
 
   /**

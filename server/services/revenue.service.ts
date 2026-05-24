@@ -49,6 +49,8 @@ const REVENUE_SPLIT_SETTING_KEYS = {
   strategicPercent: "revenue_split_strategic_percent",
 } as const;
 
+const REVENUE_SOURCE_CUTS_SETTING_KEY = "revenue_source_pool_cuts_v1";
+
 const DEFAULT_SPLIT = {
   companyPercent: 50,
   executivePercent: 30,
@@ -69,7 +71,90 @@ type SplitConfig = {
   version: number | null;
 };
 
-async function getSplitConfig(tx: any): Promise<SplitConfig> {
+type SourceCutOverrides = {
+  sources: Record<
+    string,
+    {
+      companyPercent: number;
+      executivePercent: number;
+      strategicPercent: number;
+    }
+  >;
+};
+
+function normalizeSplit(input: {
+  companyPercent: number;
+  executivePercent: number;
+  strategicPercent: number;
+}) {
+  const companyPercent = clampPercent(Number(input.companyPercent));
+  const executivePercent = clampPercent(Number(input.executivePercent));
+  const strategicPercent = clampPercent(Number(input.strategicPercent));
+
+  if (
+    companyPercent == null ||
+    executivePercent == null ||
+    strategicPercent == null ||
+    Math.abs(companyPercent + executivePercent + strategicPercent - 100) > 0.0001
+  ) {
+    return null;
+  }
+
+  return {
+    companyPercent,
+    executivePercent,
+    strategicPercent,
+  };
+}
+
+async function getSourceCutOverrides(tx: any): Promise<SourceCutOverrides> {
+  const row = await tx.adminSettings.findUnique({
+    where: { settingKey: REVENUE_SOURCE_CUTS_SETTING_KEY },
+    select: { settingValue: true },
+  });
+
+  if (!row?.settingValue) {
+    return { sources: {} };
+  }
+
+  try {
+    const parsed = JSON.parse(String(row.settingValue));
+    const rawSources = parsed?.sources && typeof parsed.sources === "object" ? parsed.sources : {};
+    const sources: SourceCutOverrides["sources"] = {};
+
+    for (const [source, value] of Object.entries(rawSources as Record<string, any>)) {
+      const normalized = normalizeSplit({
+        companyPercent: Number(value?.companyPercent),
+        executivePercent: Number(value?.executivePercent),
+        strategicPercent: Number(value?.strategicPercent),
+      });
+      if (normalized) {
+        sources[source] = normalized;
+      }
+    }
+
+    return { sources };
+  } catch {
+    return { sources: {} };
+  }
+}
+
+async function resolveSplitForSource(tx: any, source: string, fallback: SplitConfig): Promise<SplitConfig> {
+  const overrides = await getSourceCutOverrides(tx);
+  const sourceOverride = overrides.sources[source];
+  if (!sourceOverride) {
+    return fallback;
+  }
+
+  return {
+    ...fallback,
+    companyPercent: sourceOverride.companyPercent,
+    executivePercent: sourceOverride.executivePercent,
+    strategicPercent: sourceOverride.strategicPercent,
+  };
+}
+
+async function getSplitConfig(tx: any, source?: string): Promise<SplitConfig> {
   // Preferred: versioned config
   try {
     const active = await tx.profitPoolConfigVersion.findFirst({
@@ -88,13 +173,14 @@ async function getSplitConfig(tx: any): Promise<SplitConfig> {
         strategicPercent != null &&
         Math.abs(companyPercent + executivePercent + strategicPercent - 100) <= 0.0001
       ) {
-        return {
+        const base = {
           companyPercent,
           executivePercent,
           strategicPercent,
           versionId: String(active.id),
           version: Number(active.version ?? 0),
         };
+        return source ? await resolveSplitForSource(tx, source, base) : base;
       }
 
       console.warn("[REVENUE SERVICE] Invalid ProfitPoolConfigVersion split; falling back", {
@@ -134,15 +220,18 @@ async function getSplitConfig(tx: any): Promise<SplitConfig> {
         executivePercent,
         strategicPercent,
       });
-      return { ...DEFAULT_SPLIT, versionId: null, version: null };
+      const base = { ...DEFAULT_SPLIT, versionId: null, version: null };
+      return source ? await resolveSplitForSource(tx, source, base) : base;
     }
 
-    return { companyPercent, executivePercent, strategicPercent, versionId: null, version: null };
+    const base = { companyPercent, executivePercent, strategicPercent, versionId: null, version: null };
+    return source ? await resolveSplitForSource(tx, source, base) : base;
   } catch (error: any) {
     console.warn("[REVENUE SERVICE] Failed reading split settings; falling back to defaults", {
       error: error?.message,
     });
-    return { ...DEFAULT_SPLIT, versionId: null, version: null };
+    const base = { ...DEFAULT_SPLIT, versionId: null, version: null };
+    return source ? await resolveSplitForSource(tx, source, base) : base;
   }
 }
 
@@ -187,7 +276,7 @@ export async function recordRevenue(
 
   try {
     const writeRevenue = async (tx: any) => {
-      const splitConfig = await getSplitConfig(tx);
+      const splitConfig = await getSplitConfig(tx, source);
       // Record revenue transaction (composite constraint on (source, sourceId) prevents duplicates)
       const revenueTransaction = await tx.revenueTransaction.create({
         data: {
