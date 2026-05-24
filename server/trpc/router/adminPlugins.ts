@@ -161,6 +161,19 @@ export const adminPluginsRouter = createTRPCRouter({
 
       const page = input?.page ?? 1;
       const perPage = input?.perPage ?? 20;
+      const pluginRegistry = (ctx.prisma as any)?.pluginRegistry;
+
+      // If plugin lifecycle tables are not available yet (e.g., migration not applied),
+      // keep admin page stable by returning an empty inventory instead of crashing.
+      if (!pluginRegistry || typeof pluginRegistry.count !== "function" || typeof pluginRegistry.findMany !== "function") {
+        return {
+          total: 0,
+          page,
+          perPage,
+          totalPages: 1,
+          plugins: [],
+        };
+      }
 
       const where: Record<string, unknown> = {
         ...(input?.status ? { status: input.status } : { status: { not: "REMOVED" } }),
@@ -177,8 +190,8 @@ export const adminPluginsRouter = createTRPCRouter({
       };
 
       const [total, plugins] = await Promise.all([
-        (ctx.prisma as any).pluginRegistry.count({ where }),
-        (ctx.prisma as any).pluginRegistry.findMany({
+        pluginRegistry.count({ where }),
+        pluginRegistry.findMany({
           where,
           orderBy: { updatedAt: "desc" },
           skip: (page - 1) * perPage,
