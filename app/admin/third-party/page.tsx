@@ -23,9 +23,11 @@ export default function ThirdPartyPlatformsPage() {
   });
 
   const utils = api.useUtils();
+  const adminApi: any = api.admin;
+  const adminUtils: any = utils.admin;
 
   // Get all platforms (admin view)
-  const { data: platforms, isLoading } = api.admin.getAllThirdPartyPlatforms.useQuery();
+  const { data: platforms, isLoading } = adminApi.getAllThirdPartyPlatforms.useQuery();
 
   // ── Platform Activity Analytics + Reset Tool ────────────────────────────────
   const [resetUserQuery, setResetUserQuery] = useState("");
@@ -48,7 +50,7 @@ export default function ThirdPartyPlatformsPage() {
         `${result.deletedLinks} link(s) and ${result.deletedRegistrations} registration(s) removed for ${result.platformName}`
       );
       await utils.thirdPartyMatrixAdmin.getPlatformAnalytics.invalidate();
-      await utils.admin.getAllThirdPartyPlatforms.invalidate();
+      await adminUtils.getAllThirdPartyPlatforms.invalidate();
       setSelectedResetUserId("");
       setSelectedResetPlatformId("");
       setResetUserQuery("");
@@ -91,7 +93,7 @@ export default function ThirdPartyPlatformsPage() {
     data: overpassPreview,
     isFetching: isFetchingPreview,
     error: overpassPreviewError,
-  } = api.admin.getThirdPartyExecutiveOverpassPreview.useQuery(
+  } = adminApi.getThirdPartyExecutiveOverpassPreview.useQuery(
     { email: debouncedOverpassEmail },
     {
       enabled: isValidEmail(debouncedOverpassEmail),
@@ -101,7 +103,7 @@ export default function ThirdPartyPlatformsPage() {
   );
 
   const { data: overpassEmailMatches, isFetching: isFetchingMatches } =
-    api.admin.searchThirdPartyExecutiveOverpassUsers.useQuery(
+    adminApi.searchThirdPartyExecutiveOverpassUsers.useQuery(
       { query: debouncedOverpassEmail, limit: 10 },
       {
         enabled: debouncedOverpassEmail.trim().length >= 2,
@@ -113,90 +115,90 @@ export default function ThirdPartyPlatformsPage() {
   const {
     data: activeOverpasses,
     isLoading: isLoadingOverpasses,
-  } = api.admin.listThirdPartyExecutiveOverpasses.useQuery(undefined, {
+  } = adminApi.listThirdPartyExecutiveOverpasses.useQuery(undefined, {
     refetchOnWindowFocus: false,
     staleTime: 0,
   });
 
-  const grantOverpassMutation = api.admin.grantThirdPartyExecutiveOverpass.useMutation({
+  const grantOverpassMutation = adminApi.grantThirdPartyExecutiveOverpass.useMutation({
     onSuccess: async () => {
       toast.success("Executive overpass granted");
-      await utils.admin.listThirdPartyExecutiveOverpasses.invalidate();
+      await adminUtils.listThirdPartyExecutiveOverpasses.invalidate();
       if (isValidEmail(debouncedOverpassEmail)) {
-        await utils.admin.getThirdPartyExecutiveOverpassPreview.invalidate({
+        await adminUtils.getThirdPartyExecutiveOverpassPreview.invalidate({
           email: debouncedOverpassEmail,
         });
       }
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(error.message);
     },
   });
 
-  const revokeOverpassMutation = api.admin.revokeThirdPartyExecutiveOverpass.useMutation({
+  const revokeOverpassMutation = adminApi.revokeThirdPartyExecutiveOverpass.useMutation({
     onSuccess: async () => {
       toast.success("Executive overpass revoked");
-      await utils.admin.listThirdPartyExecutiveOverpasses.invalidate();
+      await adminUtils.listThirdPartyExecutiveOverpasses.invalidate();
       if (isValidEmail(debouncedOverpassEmail)) {
-        await utils.admin.getThirdPartyExecutiveOverpassPreview.invalidate({
+        await adminUtils.getThirdPartyExecutiveOverpassPreview.invalidate({
           email: debouncedOverpassEmail,
         });
       }
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(error.message);
     },
   });
 
   // Mutations
-  const createMutation = api.admin.createThirdPartyPlatform.useMutation({
+  const createMutation = adminApi.createThirdPartyPlatform.useMutation({
     onSuccess: () => {
       toast.success("Platform created successfully");
       setIsAddModalOpen(false);
       resetForm();
-      utils.admin.getAllThirdPartyPlatforms.invalidate();
+      adminUtils.getAllThirdPartyPlatforms.invalidate();
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(error.message);
     },
   });
 
-  const updateMutation = api.admin.updateThirdPartyPlatform.useMutation({
+  const updateMutation = adminApi.updateThirdPartyPlatform.useMutation({
     onSuccess: () => {
       toast.success("Platform updated successfully");
       setEditingPlatform(null);
       resetForm();
-      utils.admin.getAllThirdPartyPlatforms.invalidate();
+      adminUtils.getAllThirdPartyPlatforms.invalidate();
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(error.message);
     },
   });
 
-  const deleteMutation = api.admin.deleteThirdPartyPlatform.useMutation({
+  const deleteMutation = adminApi.deleteThirdPartyPlatform.useMutation({
     onSuccess: () => {
       toast.success("Platform deleted successfully");
-      utils.admin.getAllThirdPartyPlatforms.invalidate();
+      adminUtils.getAllThirdPartyPlatforms.invalidate();
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(error.message);
     },
   });
 
-  const toggleActiveMutation = api.admin.toggleThirdPartyPlatformStatus.useMutation({
+  const toggleActiveMutation = adminApi.toggleThirdPartyPlatformStatus.useMutation({
     onSuccess: () => {
-      utils.admin.getAllThirdPartyPlatforms.invalidate();
+      adminUtils.getAllThirdPartyPlatforms.invalidate();
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(error.message);
     },
   });
 
-  const reorderMutation = api.admin.reorderThirdPartyPlatform.useMutation({
+  const reorderMutation = adminApi.reorderThirdPartyPlatform.useMutation({
     onSuccess: () => {
-      utils.admin.getAllThirdPartyPlatforms.invalidate();
+      adminUtils.getAllThirdPartyPlatforms.invalidate();
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(error.message);
     },
   });

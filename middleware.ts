@@ -90,8 +90,9 @@ export async function middleware(req: NextRequest) {
   if (token) {
     const role = (token as any)?.role;
     const isAdmin = role === "admin" || role === "super_admin";
+    const isImpersonation = (token as any)?.isImpersonation === true;
 
-    if (!isAdmin) {
+    if (!isAdmin && !isImpersonation) {
       const hasActiveMembership = (token as any)?.hasActiveMembership === true;
       const isMembershipRoute = pathname === "/membership" || pathname.startsWith("/membership/");
 

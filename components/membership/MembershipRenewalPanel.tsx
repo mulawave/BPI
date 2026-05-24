@@ -18,7 +18,7 @@ export default function MembershipRenewalPanel() {
   // Queries
   const statusQuery = api.package.getMembershipRenewalStatus.useQuery();
   const previewQuery = api.package.previewMembershipRenewal.useQuery(
-    undefined,
+    {},
     {
       enabled: showRenewalDetails && statusQuery.data?.isRenewalWindow,
     }
@@ -73,8 +73,13 @@ export default function MembershipRenewalPanel() {
   }
 
   const status = statusQuery.data;
-  const isExpired = status.daysUntilExpiry < 0;
+  const daysUntilExpiry = status.daysUntilExpiry ?? 0;
+  const isExpired = daysUntilExpiry < 0;
   const canRenew = status.isRenewalWindow;
+  const membershipExpiresAt = status.membershipExpiresAt
+    ? new Date(status.membershipExpiresAt)
+    : null;
+  const renewalFee = status.renewalFee ?? 0;
 
   return (
     <motion.div
@@ -133,7 +138,7 @@ export default function MembershipRenewalPanel() {
               Days Until Expiry
             </p>
             <p className={`text-lg font-semibold ${isExpired ? "text-red-600 dark:text-red-400" : "text-foreground"}`}>
-              {Math.abs(status.daysUntilExpiry)}d
+              {Math.abs(daysUntilExpiry)}d
             </p>
           </div>
           <div className="rounded-xl bg-muted/60 px-4 py-3">
@@ -141,7 +146,7 @@ export default function MembershipRenewalPanel() {
               Expires
             </p>
             <p className="text-lg font-semibold text-foreground">
-              {new Date(status.membershipExpiresAt).toLocaleDateString()}
+              {membershipExpiresAt ? membershipExpiresAt.toLocaleDateString() : "N/A"}
             </p>
           </div>
           <div className="rounded-xl bg-muted/60 px-4 py-3">
@@ -168,7 +173,7 @@ export default function MembershipRenewalPanel() {
         <div className="mt-4 space-y-2">
           <p className="text-xs text-muted-foreground">
             <span className="font-semibold">Renewal Fee:</span> ₦
-            {status.renewalFee.toLocaleString()}
+            {renewalFee.toLocaleString()}
           </p>
           <p className="text-xs text-muted-foreground">
             <span className="font-semibold">Renewal Cycle:</span>{" "}
@@ -229,7 +234,11 @@ export default function MembershipRenewalPanel() {
               <p className="text-sm text-yellow-700 dark:text-yellow-300">
                 Renewal is not yet available. You can renew starting{" "}
                 <span className="font-semibold">
-                  {new Date(new Date(status.membershipExpiresAt).getTime() - 30 * 24 * 60 * 60 * 1000).toLocaleDateString()}
+                  {membershipExpiresAt
+                    ? new Date(
+                        membershipExpiresAt.getTime() - 30 * 24 * 60 * 60 * 1000
+                      ).toLocaleDateString()
+                    : "N/A"}
                 </span>
               </p>
             </div>
@@ -256,13 +265,13 @@ export default function MembershipRenewalPanel() {
                   <div className="rounded-lg bg-muted/60 p-2 text-center">
                     <p className="text-xs text-muted-foreground">Fee</p>
                     <p className="font-bold">
-                      ₦{previewQuery.data.renewalFee.toLocaleString()}
+                      ₦{(previewQuery.data.renewalFee ?? 0).toLocaleString()}
                     </p>
                   </div>
                   <div className="rounded-lg bg-muted/60 p-2 text-center">
                     <p className="text-xs text-muted-foreground">VAT</p>
                     <p className="font-bold">
-                      ₦{previewQuery.data.vat.toLocaleString()}
+                      ₦{(previewQuery.data.vat ?? 0).toLocaleString()}
                     </p>
                   </div>
                   <div className="rounded-lg bg-emerald-100 p-2 text-center dark:bg-emerald-900/30">
@@ -270,19 +279,19 @@ export default function MembershipRenewalPanel() {
                       Total
                     </p>
                     <p className="font-bold text-emerald-700 dark:text-emerald-300">
-                      ₦{previewQuery.data.totalCost.toLocaleString()}
+                      ₦{(previewQuery.data.totalCost ?? 0).toLocaleString()}
                     </p>
                   </div>
                 </div>
 
                 {/* Estimated Rewards */}
-                {Object.values(previewQuery.data.estimatedRewards).some((v: any) => v > 0) && (
+                {Object.values(previewQuery.data.estimatedRewards ?? {}).some((v: any) => v > 0) && (
                   <div>
                     <p className="mb-2 text-xs font-semibold text-muted-foreground">
                       Estimated Referral Rewards
                     </p>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {Object.entries(previewQuery.data.estimatedRewards).map(
+                      {Object.entries(previewQuery.data.estimatedRewards ?? {}).map(
                         ([key, value]) =>
                           (value as number) > 0 && (
                             <div

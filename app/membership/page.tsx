@@ -12,6 +12,7 @@ import { signOut } from "next-auth/react";
 import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 import LoadingScreen from "@/components/LoadingScreen";
 import KycWarningBanner from "@/components/kyc/KycWarningBanner";
+import MembershipRenewalPanel from "@/components/membership/MembershipRenewalPanel";
 
 export default function MembershipPage() {
   const { data: packages, isLoading } = api.package.getPackages.useQuery();
@@ -425,6 +426,12 @@ export default function MembershipPage() {
             }
           </p>
         </div>
+
+        {activeMembership?.package && (
+          <div className="mb-12">
+            <MembershipRenewalPanel />
+          </div>
+        )}
 
         {/* Packages Grid */}
         {!packages || packages.length === 0 ? (

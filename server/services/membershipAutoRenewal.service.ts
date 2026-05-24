@@ -4,6 +4,7 @@ import { getReferralChain } from "./referral.service";
 import { distributeBptReward } from "./rewards.service";
 import { recordRevenue } from "./revenue.service";
 import { notifyMembershipRenewal } from "./notification.service";
+import { deriveMembershipExpiry } from "../../lib/membershipAccess";
 
 // ========================================================================
 // HELPER FUNCTIONS
@@ -124,6 +125,7 @@ export async function validateAutoRenewalEligibility(
     select: {
       id: true,
       activeMembershipPackageId: true,
+      membershipActivatedAt: true,
       membershipExpiresAt: true,
     },
   });
@@ -136,16 +138,27 @@ export async function validateAutoRenewalEligibility(
     return { eligible: false, reason: "User does not have an active membership" };
   }
 
-  if (!user.membershipExpiresAt) {
+  const membershipPackage = await prismaLike.membershipPackage.findUnique({
+    where: { id: user.activeMembershipPackageId },
+    select: { renewalCycle: true },
+  });
+
+  const { expiresAt: effectiveMembershipExpiresAt } = deriveMembershipExpiry({
+    membershipExpiresAt: user.membershipExpiresAt,
+    membershipActivatedAt: user.membershipActivatedAt,
+    renewalCycleDays: membershipPackage?.renewalCycle,
+  });
+
+  if (!effectiveMembershipExpiresAt) {
     return {
       eligible: false,
-      reason: "User membership has no expiration date",
+      reason: "User membership has no expiration date and cannot be derived from activation history",
     };
   }
 
   const now = new Date();
   const daysUntilExpiry = Math.ceil(
-    (user.membershipExpiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+    (effectiveMembershipExpiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
   );
 
   // Auto-renewal is available within 30 days of expiry
@@ -153,7 +166,7 @@ export async function validateAutoRenewalEligibility(
     return {
       eligible: false,
       reason: `Auto-renewal is available within 30 days of expiration. Your membership expires in ${daysUntilExpiry} days.`,
-      membershipExpiresAt: user.membershipExpiresAt,
+      membershipExpiresAt: effectiveMembershipExpiresAt,
       daysUntilExpiry,
     };
   }
@@ -164,14 +177,14 @@ export async function validateAutoRenewalEligibility(
     return {
       eligible: false,
       reason: "Membership has been expired for too long. Please contact support for manual renewal.",
-      membershipExpiresAt: user.membershipExpiresAt,
+      membershipExpiresAt: effectiveMembershipExpiresAt,
       daysUntilExpiry,
     };
   }
 
   return {
     eligible: true,
-    membershipExpiresAt: user.membershipExpiresAt,
+    membershipExpiresAt: effectiveMembershipExpiresAt,
     daysUntilExpiry,
   };
 }
@@ -323,6 +336,7 @@ export async function processAutoRenewal(
         email: true,
         name: true,
         activeMembershipPackageId: true,
+        membershipActivatedAt: true,
         membershipExpiresAt: true,
         renewalCount: true,
       },
@@ -342,7 +356,7 @@ export async function processAutoRenewal(
 
     // 4. Calculate new expiry date
     const now = new Date();
-    const expiresAt = user.membershipExpiresAt || now;
+    const expiresAt = eligibility.membershipExpiresAt || user.membershipExpiresAt || now;
     const newExpiresAt =
       expiresAt > now
         ? new Date(
@@ -564,32 +578,82 @@ export async function getAutoRenewalCandidates(
   const now = new Date();
   const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
 
-  return prismaLike.user.findMany({
+  const rawUsers = await prismaLike.user.findMany({
     where: {
       activeMembershipPackageId: { not: null },
-      membershipExpiresAt: {
-        lte: now,
-        gte: oneYearAgo,
-      },
+      OR: [
+        {
+          membershipExpiresAt: {
+            lte: now,
+            gte: oneYearAgo,
+          },
+        },
+        {
+          membershipExpiresAt: null,
+          membershipActivatedAt: { not: null },
+        },
+      ],
     },
-    orderBy: [{ membershipExpiresAt: "asc" }],
-    take: limit,
+    orderBy: [{ membershipExpiresAt: "asc" }, { membershipActivatedAt: "asc" }],
+    take: Math.min(limit * 5, 1000),
     select: {
       id: true,
       name: true,
       email: true,
       activeMembershipPackageId: true,
+      membershipActivatedAt: true,
       membershipExpiresAt: true,
     },
-  }).then((users: any[]) =>
-    users.map((user: any) => {
-      const daysExpired = user.membershipExpiresAt
-        ? Math.floor(
-            (now.getTime() - user.membershipExpiresAt.getTime()) /
-              (1000 * 60 * 60 * 24)
-          )
-        : 0;
-      return { ...user, daysExpired };
-    })
+  });
+
+  const packageIds = Array.from(
+    new Set(
+      rawUsers
+        .map((user: any) => user.activeMembershipPackageId)
+        .filter((packageId: string | null): packageId is string => Boolean(packageId))
+    )
   );
+
+  const membershipPackages = packageIds.length
+    ? await prismaLike.membershipPackage.findMany({
+        where: { id: { in: packageIds } },
+        select: { id: true, renewalCycle: true },
+      })
+    : [];
+
+  const renewalCycleByPackageId = new Map<string, number>(
+    membershipPackages.map((membershipPackage: any) => [membershipPackage.id, Number(membershipPackage.renewalCycle || 0)])
+  );
+
+  return rawUsers
+    .map((user: any) => {
+      const { expiresAt } = deriveMembershipExpiry({
+        membershipExpiresAt: user.membershipExpiresAt,
+        membershipActivatedAt: user.membershipActivatedAt,
+        renewalCycleDays: renewalCycleByPackageId.get(user.activeMembershipPackageId),
+      });
+
+      if (!expiresAt || expiresAt > now || expiresAt < oneYearAgo) {
+        return null;
+      }
+
+      const daysExpired = Math.floor(
+        (now.getTime() - expiresAt.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      return {
+        ...user,
+        membershipExpiresAt: expiresAt,
+        daysExpired,
+      };
+    })
+    .filter((user: any): user is {
+      id: string;
+      name: string | null;
+      email: string | null;
+      activeMembershipPackageId: string | null;
+      membershipExpiresAt: Date;
+      daysExpired: number;
+    } => Boolean(user))
+    .slice(0, limit);
 }

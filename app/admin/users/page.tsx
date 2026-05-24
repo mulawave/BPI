@@ -68,6 +68,16 @@ type SscUser = {
   name?: string | null;
 };
 
+type MembershipExpiryRepairCandidate = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  packageName: string;
+  renewalCycleDays: number;
+  membershipActivatedAt: string | Date | null;
+  derivedMembershipExpiresAt: string | Date;
+};
+
 export default function UsersPage() {
   const searchParams = useSearchParams();
   const urlSearch = searchParams.get("search") ?? "";
@@ -137,6 +147,11 @@ export default function UsersPage() {
     { refetchOnWindowFocus: false }
   );
 
+  const membershipExpiryRepairOverview = api.admin.getMembershipExpiryRepairOverview.useQuery(
+    { limit: 25 },
+    { refetchOnWindowFocus: false }
+  );
+
   const resetMembershipPlanMutation = api.admin.resetMembershipPlan.useMutation({
     onSuccess: () => {
       toast.success("Membership reset completed");
@@ -153,6 +168,20 @@ export default function UsersPage() {
       } else {
         toast.success(`Auto reset complete: ${result.reset} user(s) reset`);
       }
+      membershipResetOverview.refetch();
+      refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const backfillMembershipExpiryDatesMutation = api.admin.backfillMembershipExpiryDates.useMutation({
+    onSuccess: (result) => {
+      if (result.dryRun) {
+        toast.success(`Repair preview complete: ${result.candidates?.length ?? 0} membership expiry date(s) can be restored`);
+      } else {
+        toast.success(`Membership expiry repair complete: ${result.repaired} user(s) updated`);
+      }
+      membershipExpiryRepairOverview.refetch();
       membershipResetOverview.refetch();
       refetch();
     },
@@ -202,6 +231,17 @@ export default function UsersPage() {
   const formatDate = (value?: string | Date | null) => {
     if (!value) return "—";
     return format(new Date(value), "MMM d, yyyy");
+  };
+
+  const describeRelativeDays = (value?: string | Date | null) => {
+    if (!value) return "";
+    const target = new Date(value);
+    const now = new Date();
+    const days = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (days === 0) return "today";
+    if (days > 0) return `in ${days}d`;
+    return `${Math.abs(days)}d ago`;
   };
 
   const bulkUpdateMutation = api.admin.bulkUpdateUsers.useMutation({
@@ -728,6 +768,119 @@ export default function UsersPage() {
             {isFetchingSsc && (
               <div className="mt-3 text-xs text-muted-foreground">Refreshing SSC stats...</div>
             )}
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.095 }}
+          className="mt-4 premium-stat-card relative overflow-hidden rounded-2xl border border-border bg-card/80 p-6 shadow-xl shadow-black/5 backdrop-blur-sm dark:shadow-black/20"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                <MdCheckCircle className="text-emerald-500" size={18} /> Membership expiry repair
+              </p>
+              <h3 className="text-xl font-bold text-foreground">
+                {membershipExpiryRepairOverview.data?.summary?.repairableCount ?? 0} repairable membership record{(membershipExpiryRepairOverview.data?.summary?.repairableCount ?? 0) === 1 ? "" : "s"}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Restore missing expiry dates from the activation date plus the membership renewal cycle.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => membershipExpiryRepairOverview.refetch()}
+                disabled={membershipExpiryRepairOverview.isFetching}
+                className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted/60 disabled:opacity-60"
+              >
+                <MdRefresh size={16} className={membershipExpiryRepairOverview.isFetching ? "animate-spin" : ""} />
+                Refresh
+              </button>
+              <button
+                onClick={() => backfillMembershipExpiryDatesMutation.mutate({ dryRun: true, limit: 200 })}
+                disabled={backfillMembershipExpiryDatesMutation.isPending}
+                className="inline-flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300"
+              >
+                {backfillMembershipExpiryDatesMutation.isPending ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" /> : <MdInfo size={16} />}
+                Dry run repair
+              </button>
+              <button
+                onClick={() => backfillMembershipExpiryDatesMutation.mutate({ dryRun: false, limit: 200 })}
+                disabled={backfillMembershipExpiryDatesMutation.isPending}
+                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-60"
+              >
+                {backfillMembershipExpiryDatesMutation.isPending ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <MdSync size={16} />}
+                Backfill missing expiries
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl bg-muted/60 px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Missing expiry</p>
+              <p className="text-lg font-semibold text-foreground">{membershipExpiryRepairOverview.data?.summary?.missingExpiryCount ?? 0}</p>
+            </div>
+            <div className="rounded-xl bg-muted/60 px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Repairable now</p>
+              <p className="text-lg font-semibold text-foreground">{membershipExpiryRepairOverview.data?.summary?.repairableCount ?? 0}</p>
+            </div>
+            <div className="rounded-xl bg-muted/60 px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Missing activation date</p>
+              <p className="text-lg font-semibold text-foreground">{membershipExpiryRepairOverview.data?.summary?.unrecoverableCount ?? 0}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 overflow-x-auto rounded-xl border border-border">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 text-left">User</th>
+                  <th className="px-4 py-3 text-left">Package</th>
+                  <th className="px-4 py-3 text-left">Activated</th>
+                  <th className="px-4 py-3 text-left">Derived expiry</th>
+                  <th className="px-4 py-3 text-left">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border text-sm">
+                {membershipExpiryRepairOverview.data?.candidates?.length ? (
+                  membershipExpiryRepairOverview.data.candidates.map((candidate: MembershipExpiryRepairCandidate) => (
+                    <tr key={candidate.id} className="hover:bg-muted/40 transition">
+                      <td className="px-4 py-3 text-foreground">
+                        <p className="font-semibold">{candidate.name || "Unnamed user"}</p>
+                        <p className="text-xs text-muted-foreground">{candidate.email || "No email"}</p>
+                      </td>
+                      <td className="px-4 py-3 text-foreground">
+                        <p>{candidate.packageName}</p>
+                        <p className="text-xs text-muted-foreground">{candidate.renewalCycleDays} day cycle</p>
+                      </td>
+                      <td className="px-4 py-3 text-foreground">{formatDate(candidate.membershipActivatedAt)}</td>
+                      <td className="px-4 py-3 text-foreground">
+                        {formatDate(candidate.derivedMembershipExpiresAt)}
+                        <span className="ml-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">{describeRelativeDays(candidate.derivedMembershipExpiresAt)}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => backfillMembershipExpiryDatesMutation.mutate({ dryRun: false, userId: candidate.id })}
+                          disabled={backfillMembershipExpiryDatesMutation.isPending}
+                          className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-300"
+                        >
+                          {backfillMembershipExpiryDatesMutation.isPending ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" /> : <MdCheckCircle size={14} />}
+                          Backfill now
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
+                      {membershipExpiryRepairOverview.isFetching ? "Loading repair candidates..." : "No repairable missing expiry dates found."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </motion.div>
 

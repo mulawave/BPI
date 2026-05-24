@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { compare } from "bcryptjs";
 import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { resolveAuthSecret } from "@/lib/authSecret";
+import { evaluateMembershipAccess } from "@/lib/membershipAccess";
 
 export const authConfig: NextAuthOptions = {
   secret: resolveAuthSecret() ?? undefined,
@@ -99,14 +100,39 @@ export const authConfig: NextAuthOptions = {
         try {
           const dbUser = await prisma.user.findUnique({
             where: { id: token.id as string },
-            select: { activeMembershipPackageId: true, userType: true },
+            select: {
+              activeMembershipPackageId: true,
+              membershipActivatedAt: true,
+              membershipExpiresAt: true,
+              userType: true,
+            },
           });
-          (token as any).hasActiveMembership = !!dbUser?.activeMembershipPackageId;
+
+          const membershipPackage = dbUser?.activeMembershipPackageId
+            ? await prisma.membershipPackage.findUnique({
+                where: { id: dbUser.activeMembershipPackageId },
+                select: { renewalCycle: true },
+              })
+            : null;
+
+          const membershipAccess = evaluateMembershipAccess({
+            activeMembershipPackageId: dbUser?.activeMembershipPackageId,
+            membershipActivatedAt: dbUser?.membershipActivatedAt,
+            membershipExpiresAt: dbUser?.membershipExpiresAt,
+            renewalCycleDays: membershipPackage?.renewalCycle,
+          });
+
+          (token as any).hasActiveMembership = membershipAccess.membershipValid;
+          (token as any).membershipExpiresAt = membershipAccess.effectiveMembershipExpiresAt?.toISOString() ?? null;
+          (token as any).membershipDerivedFromActivation = membershipAccess.derivedFromActivation;
           token.role = dbUser?.userType ?? "user";
         } catch (e) {
           // Preserve existing values rather than forcing false
           if ((token as any).hasActiveMembership === undefined) {
             (token as any).hasActiveMembership = false;
+          }
+          if ((token as any).membershipExpiresAt === undefined) {
+            (token as any).membershipExpiresAt = null;
           }
         }
 
@@ -141,6 +167,8 @@ export const authConfig: NextAuthOptions = {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role;
         (session.user as any).hasActiveMembership = (token as any).hasActiveMembership ?? false;
+        (session.user as any).membershipExpiresAt = (token as any).membershipExpiresAt ?? null;
+        (session.user as any).membershipDerivedFromActivation = (token as any).membershipDerivedFromActivation ?? false;
         (session.user as any).hasActiveEmpowerment = (token as any).hasActiveEmpowerment ?? false;
         (session.user as any).isImpersonation = (token as any).isImpersonation ?? false;
         (session.user as any).impersonatedBy = (token as any).impersonatedBy ?? null;

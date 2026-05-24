@@ -68,6 +68,7 @@ import { BankDetailsField } from "./profile/BankDetailsFieldEnhanced";
 import { MobileBottomNav } from "./mobile/MobileBottomNav";
 import { CollapsibleSection } from "./mobile/CollapsibleSection";
 import KycWarningBanner from "./kyc/KycWarningBanner";
+import { evaluateMembershipAccess } from "@/lib/membershipAccess";
 
 interface DashboardContentProps {
   session: Session;
@@ -645,7 +646,35 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   const leadershipPool = leadershipData;
   
   // Only show activation modal when: query settled, no error, data received, and user truly has no active membership
-  const needsActivation = !isLoadingDetails && !isErrorDetails && !!userDetails && !userDetails?.activeMembership;
+  const isImpersonating = (session.user as any)?.isImpersonation === true;
+  const membershipAccess = evaluateMembershipAccess({
+    activeMembershipPackageId: userDetails?.activeMembershipPackageId,
+    membershipActivatedAt: userDetails?.membershipActivatedAt,
+    membershipExpiresAt: userDetails?.membershipExpiresAt,
+    renewalCycleDays: userDetails?.activeMembership?.renewalCycle,
+  });
+  const needsActivation = !isImpersonating && !isLoadingDetails && !isErrorDetails && !!userDetails && !membershipAccess.membershipValid;
+
+  useEffect(() => {
+    if (
+      isImpersonating ||
+      isLoadingDetails ||
+      isErrorDetails ||
+      !userDetails?.activeMembershipPackageId ||
+      membershipAccess.membershipValid
+    ) {
+      return;
+    }
+
+    router.replace("/membership");
+  }, [
+    isErrorDetails,
+    isImpersonating,
+    isLoadingDetails,
+    membershipAccess.membershipValid,
+    router,
+    userDetails?.activeMembershipPackageId,
+  ]);
   
   // Training progress for current course tracker
   const { data: myTrainingProgress } = api.trainingCenter.getMyProgress.useQuery(undefined, {
@@ -1715,7 +1744,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
         ) : (
           <>
         {/* Profile Completion Banner - Only show after user data fully loaded, membership confirmed active, profile incomplete */}
-        {!isLoadingProfile && !!userProfile && !needsActivation && !isProfileComplete && (
+        {!isImpersonating && !isLoadingProfile && !!userProfile && !needsActivation && !isProfileComplete && (
           <div className="mb-6 relative z-30">
             <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl p-6 shadow-2xl border-2 border-orange-300">
               <div className="flex items-start gap-4">
@@ -1756,7 +1785,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
         <div className="grid grid-cols-12 gap-3 lg:gap-4 relative items-start">
           
           {/* Profile Incomplete Overlay - Only show if user fully loaded, membership confirmed active, profile incomplete */}
-          {!isLoadingProfile && !!userProfile && !needsActivation && !isProfileComplete && (
+          {!isImpersonating && !isLoadingProfile && !!userProfile && !needsActivation && !isProfileComplete && (
             <>
               {/* Semi-transparent blocking overlay - covers header and all content */}
               <div 

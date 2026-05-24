@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
+import { skipToken } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
   MdRefresh,
@@ -21,7 +22,7 @@ interface Member {
   renewalFee: number;
   membershipExpiresAt: Date;
   daysExpired: number;
-  renewalCount: number;
+  renewalCount?: number;
 }
 
 export default function AdminAutoRenewalPanel() {
@@ -41,7 +42,7 @@ export default function AdminAutoRenewalPanel() {
     { limit: 50 }
   );
   const previewQuery = api.admin.previewAutoRenewal.useQuery(
-    selectedUserId ? { userId: selectedUserId } : undefined,
+    selectedUserId ? { userId: selectedUserId } : skipToken,
     { enabled: showPreview && !!selectedUserId }
   );
   const processAutoRenewalMutation =
@@ -206,7 +207,7 @@ export default function AdminAutoRenewalPanel() {
                             {member.daysExpired}d ago
                           </span>
                         </td>
-                        <td className="px-4 py-3">{member.renewalCount}</td>
+                        <td className="px-4 py-3">{member.renewalCount ?? 0}</td>
                         <td className="px-4 py-3 text-center">
                           <button
                             onClick={() => {
@@ -296,13 +297,13 @@ export default function AdminAutoRenewalPanel() {
                     <div className="rounded-lg bg-muted/60 p-3">
                       <p className="text-xs text-muted-foreground">Renewal Fee</p>
                       <p className="text-lg font-bold">
-                        ₦{previewQuery.data.renewalFee.toLocaleString()}
+                        ₦{(previewQuery.data.renewalFee ?? 0).toLocaleString()}
                       </p>
                     </div>
                     <div className="rounded-lg bg-muted/60 p-3">
                       <p className="text-xs text-muted-foreground">Total Cost</p>
                       <p className="text-lg font-bold">
-                        ₦{previewQuery.data.totalCost.toLocaleString()}
+                        ₦{(previewQuery.data.totalCost ?? 0).toLocaleString()}
                       </p>
                     </div>
                   </div>
@@ -311,7 +312,7 @@ export default function AdminAutoRenewalPanel() {
                   <div>
                     <p className="mb-2 text-sm font-semibold">Estimated Rewards</p>
                     <div className="grid grid-cols-3 gap-2">
-                      {Object.entries(previewQuery.data.estimatedRewards).map(
+                      {Object.entries(previewQuery.data.estimatedRewards ?? {}).map(
                         ([key, value]) =>
                           (value as number) > 0 && (
                             <div

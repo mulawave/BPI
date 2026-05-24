@@ -8,6 +8,7 @@ import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { sendVerificationEmail, sendWelcomeEmail } from "@/lib/email";
 import { TRPCError } from "@trpc/server";
 import { placeUserInThirdPartyMatrix } from "@/server/services/thirdPartyMatrix.service";
+import { evaluateMembershipAccess } from "@/lib/membershipAccess";
 
 // Store verification codes temporarily (in production, use Redis or database)
 const verificationCodes = new Map<string, { code: string; expiresAt: Date }>();
@@ -113,6 +114,13 @@ export const userRouter = createTRPCRouter({
           });
       }
 
+      const membershipAccess = evaluateMembershipAccess({
+        activeMembershipPackageId: user.activeMembershipPackageId,
+        membershipActivatedAt: user.membershipActivatedAt,
+        membershipExpiresAt: user.membershipExpiresAt,
+        renewalCycleDays: activeMembership?.renewalCycle,
+      });
+
       // Check if user has bank accounts on file (indicates Nigerian identity)
       const bankAccountCount = await prisma.userBankRecord.count({
         where: { userId },
@@ -120,7 +128,8 @@ export const userRouter = createTRPCRouter({
 
       return {
         ...user,
-        activeMembership, // This will be the full package object or null
+        activeMembership: membershipAccess.membershipValid ? activeMembership : null,
+        membershipAccess,
         hasBankAccounts: bankAccountCount > 0,
       };
     } catch (error) {
