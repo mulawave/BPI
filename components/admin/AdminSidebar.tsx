@@ -168,10 +168,10 @@ const navigation = [
     description: "User payout accounts"
   },
   { 
-    name: "Financials", 
+    name: "Finance Command", 
     href: "/admin/financials", 
     icon: Banknote,
-    description: "Inflows & outflows"
+    description: "Ledger remediation & audit"
   },
   { 
     name: "Revenue Pools", 

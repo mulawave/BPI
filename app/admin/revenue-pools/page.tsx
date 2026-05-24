@@ -44,6 +44,8 @@ import SnapshotManager from "@/components/revenue/SnapshotManager";
 import RevenueSourcesBreakdown from "@/components/revenue/RevenueSourcesBreakdown";
 import ExecutiveWithdrawalModal from "@/components/revenue/ExecutiveWithdrawalModal";
 
+type PoolTypeFilter = "ALL" | "LEADERSHIP" | "STATE" | "DIRECTORS" | "TECHNOLOGY" | "INVESTORS";
+
 export default function RevenuePoolsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPool, setSelectedPool] = useState<string | null>(null);
@@ -60,6 +62,7 @@ export default function RevenuePoolsPage() {
   const [splitCompany, setSplitCompany] = useState("50");
   const [splitExecutive, setSplitExecutive] = useState("30");
   const [splitStrategic, setSplitStrategic] = useState("20");
+  const [forensicsPoolType, setForensicsPoolType] = useState<PoolTypeFilter>("ALL");
 
   // Pool config editing
   const [editingPoolConfig, setEditingPoolConfig] = useState<{ poolType: string; freq: string; maxMembers: string } | null>(null);
@@ -144,6 +147,10 @@ export default function RevenuePoolsPage() {
   const { data: allocations } = api.revenue.getAllocations.useQuery({
     limit: 50,
     filters: analyticsFiltersPayload,
+  });
+  const { data: poolForensics, isLoading: forensicsLoading, refetch: refetchForensics } = api.revenue.getPoolForensicsCommandCenter.useQuery({
+    poolType: forensicsPoolType === "ALL" ? undefined : forensicsPoolType,
+    limit: 100,
   });
 
   // Mutations
@@ -708,6 +715,180 @@ export default function RevenuePoolsPage() {
           </div>
         </div>
 
+        {/* Pool Forensics Command Center */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 space-y-5">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <Receipt className="w-6 h-6 text-emerald-600" />
+                Pool Forensics Command Center
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Complete source-to-destination tracking with May 1, 2026 pool inflow baseline.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={forensicsPoolType}
+                onChange={(e) => setForensicsPoolType(e.target.value as PoolTypeFilter)}
+                className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-800 dark:text-white"
+              >
+                <option value="ALL">All Pools</option>
+                <option value="LEADERSHIP">Leadership</option>
+                <option value="STATE">State</option>
+                <option value="DIRECTORS">Directors</option>
+                <option value="TECHNOLOGY">Technology</option>
+                <option value="INVESTORS">Investors</option>
+              </select>
+              <button
+                onClick={() => refetchForensics()}
+                className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-1"
+              >
+                <RefreshCw className="w-4 h-4" /> Refresh
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50/70 dark:bg-emerald-950/20 p-3">
+            <p className="text-sm text-emerald-800 dark:text-emerald-200">
+              <strong>Allocation Policy:</strong> Revenue pool inflow and disbursement tracking starts from {poolForensics ? new Date(poolForensics.policy.startDate).toLocaleDateString() : "May 1, 2026"}. Any pre-cutoff entries are excluded from pool inflow.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 bg-slate-50 dark:bg-slate-900/50">
+              <p className="text-xs text-slate-500">Pool Inflow</p>
+              <p className="text-xl font-bold text-slate-900 dark:text-white">₦{Number(poolForensics?.totals.poolInflow || 0).toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 p-3 bg-emerald-50 dark:bg-emerald-950/20">
+              <p className="text-xs text-emerald-700 dark:text-emerald-300">Strategic Approved</p>
+              <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">₦{Number(poolForensics?.totals.poolDisbursedApproved || 0).toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800 p-3 bg-amber-50 dark:bg-amber-950/20">
+              <p className="text-xs text-amber-700 dark:text-amber-300">Strategic Pending</p>
+              <p className="text-xl font-bold text-amber-700 dark:text-amber-300">₦{Number(poolForensics?.totals.poolDisbursedPending || 0).toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg border border-blue-200 dark:border-blue-800 p-3 bg-blue-50 dark:bg-blue-950/20">
+              <p className="text-xs text-blue-700 dark:text-blue-300">Executive Approved</p>
+              <p className="text-xl font-bold text-blue-700 dark:text-blue-300">₦{Number(poolForensics?.totals.executiveDisbursedApproved || 0).toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg border border-rose-200 dark:border-rose-800 p-3 bg-rose-50 dark:bg-rose-950/20">
+              <p className="text-xs text-rose-700 dark:text-rose-300">Executive Pending</p>
+              <p className="text-xl font-bold text-rose-700 dark:text-rose-300">₦{Number(poolForensics?.totals.executiveDisbursedPending || 0).toLocaleString()}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-white mb-3">Source Origin Tracker</h3>
+              <div className="space-y-2 max-h-80 overflow-auto">
+                {forensicsLoading && <div className="text-sm text-slate-500">Loading forensics sources...</div>}
+                {!forensicsLoading && (!poolForensics || poolForensics.sourceOrigins.length === 0) && (
+                  <div className="text-sm text-slate-500">No post-cutoff source records found.</div>
+                )}
+                {poolForensics?.sourceOrigins.map((row: any) => (
+                  <div key={row.source} className="rounded-md border border-slate-200 dark:border-slate-700 p-3 bg-slate-50 dark:bg-slate-900/50">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-slate-800 dark:text-white">{row.source}</span>
+                      <span className="text-xs text-slate-500">Origins: {row.uniqueOriginCount}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                      <div className="text-slate-600 dark:text-slate-300">Gross: ₦{Number(row.grossRevenue || 0).toLocaleString()}</div>
+                      <div className="text-slate-600 dark:text-slate-300">Remitted: ₦{Number(row.remittedToPools || 0).toLocaleString()}</div>
+                      <div className="text-slate-600 dark:text-slate-300">Allocations: {row.allocations}</div>
+                      <div className="text-emerald-700 dark:text-emerald-300">Remit %: {Number(row.remittedPercent || 0).toFixed(2)}%</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-white mb-3">Destination Pool Tracker</h3>
+              <div className="space-y-2 max-h-80 overflow-auto">
+                {!poolForensics || poolForensics.poolDestinations.length === 0 ? (
+                  <div className="text-sm text-slate-500">No pool destination data available.</div>
+                ) : (
+                  poolForensics.poolDestinations.map((row: any) => (
+                    <div key={row.poolId} className="rounded-md border border-slate-200 dark:border-slate-700 p-3 bg-slate-50 dark:bg-slate-900/50">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-slate-800 dark:text-white">{row.poolName}</span>
+                        <span className="text-xs text-slate-500">{row.poolType}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                        <div className="text-slate-600 dark:text-slate-300">Allocated: ₦{Number(row.allocated || 0).toLocaleString()}</div>
+                        <div className="text-emerald-700 dark:text-emerald-300">Distributed: ₦{Number(row.distributed || 0).toLocaleString()}</div>
+                        <div className="text-amber-700 dark:text-amber-300">Pending: ₦{Number(row.pending || 0).toLocaleString()}</div>
+                        <div className="text-slate-600 dark:text-slate-300">Entries: {row.allocationCount}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-white mb-3">Beneficiary Disbursement Totals (Approved)</h3>
+              <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-left text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                    <tr>
+                      <th className="py-2 pr-2">Beneficiary</th>
+                      <th className="py-2 pr-2">Pool</th>
+                      <th className="py-2 pr-2">Payout Count</th>
+                      <th className="py-2 text-right">Total Paid</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {poolForensics?.beneficiaryTotals?.slice(0, 30).map((row: any, idx: number) => (
+                      <tr key={`${row.userId}-${idx}`} className="border-b border-slate-100 dark:border-slate-800">
+                        <td className="py-2 pr-2 text-slate-700 dark:text-slate-200">{row.name || row.email || row.userId}</td>
+                        <td className="py-2 pr-2 text-slate-500">{row.poolType}</td>
+                        <td className="py-2 pr-2 text-slate-600 dark:text-slate-300">{row.paymentCount}</td>
+                        <td className="py-2 text-right font-semibold text-emerald-700 dark:text-emerald-300">₦{Number(row.totalPaid || 0).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-white mb-3">Source to Destination Trail</h3>
+              <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-left text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                    <tr>
+                      <th className="py-2 pr-2">Source</th>
+                      <th className="py-2 pr-2">Origin</th>
+                      <th className="py-2 pr-2">Allocation Status</th>
+                      <th className="py-2 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {poolForensics?.allocationTrail?.slice(0, 50).map((row: any) => (
+                      <tr key={row.allocationId} className="border-b border-slate-100 dark:border-slate-800">
+                        <td className="py-2 pr-2 text-slate-700 dark:text-slate-200">{row.transaction?.source || "-"}</td>
+                        <td className="py-2 pr-2 text-slate-500">
+                          {row.transaction?.originUser?.name || row.transaction?.originUser?.email || row.transaction?.sourceId || row.transaction?.id || "-"}
+                        </td>
+                        <td className="py-2 pr-2">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${row.allocationStatus === "DISTRIBUTED" || row.allocationStatus === "COMPLETED" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : row.allocationStatus === "PENDING" || row.allocationStatus === "PROCESSING" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300"}`}>
+                            {row.allocationStatus}
+                          </span>
+                        </td>
+                        <td className="py-2 text-right font-semibold text-slate-800 dark:text-slate-200">₦{Number(row.allocationAmount || 0).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Executive Shareholders (30% Pool) */}
         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
@@ -716,7 +897,7 @@ export default function RevenuePoolsPage() {
                 <Users className="w-6 h-6 text-purple-600" />
                 Executive Shareholders (30%)
               </h2>
-              <div className="text-sm text-slate-600 dark:text-slate-300">Distributed daily at 8:00 AM</div>
+              <div className="text-sm text-slate-600 dark:text-slate-300">Distributed every Friday at 8:00 AM</div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-200">

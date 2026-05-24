@@ -45,6 +45,7 @@ import { adminBankRouter } from "./adminBank";
 import { documentationRouter } from "./documentation";
 import { securityRouter } from "./security";
 import { adminReferralsRouter } from "./adminReferrals";
+import { adminFinancialRouter } from "./adminFinancial";
 import { contentRouter } from "./content";
 import { cspRouter } from "./csp";
 import { eliteClubRouter } from "./eliteClub";
@@ -103,6 +104,7 @@ export const appRouter = createTRPCRouter({
   documentation: documentationRouter,
   security: securityRouter,
   adminReferrals: adminReferralsRouter,
+  adminFinancial: adminFinancialRouter,
   content: contentRouter,
   csp: cspRouter,
   eliteClub: eliteClubRouter,

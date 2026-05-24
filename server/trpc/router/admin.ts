@@ -6667,7 +6667,8 @@ export const adminRouter = createTRPCRouter({
       },
       _sum: { amount: true },
     });
-    const totalRevenue = revenueTransactions._sum.amount || 0;
+    const totalRevenueRaw = revenueTransactions._sum.amount || 0;
+    const totalRevenue = Math.max(0, Math.abs(totalRevenueRaw));
 
     const previousRevenue = await prisma.transaction.aggregate({
       where: {
@@ -6685,11 +6686,9 @@ export const adminRouter = createTRPCRouter({
       },
       _sum: { amount: true },
     });
-    const prevRevenue = previousRevenue._sum.amount || 0;
-    const revenueChange =
-      prevRevenue > 0
-        ? Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 100)
-        : 0;
+    const prevRevenueRaw = previousRevenue._sum.amount || 0;
+    const prevRevenue = Math.max(0, Math.abs(prevRevenueRaw));
+    const revenueChange = prevRevenue > 0 ? Math.max(0, Math.round(((totalRevenue - prevRevenue) / prevRevenue) * 100)) : 0;
 
     // Active members
     const activeMembers = await prisma.user.count({
@@ -7276,11 +7275,11 @@ export const adminRouter = createTRPCRouter({
       today: {
         users: usersToday,
         payments: paymentsToday,
-        revenue: revenueToday._sum.amount || 0,
+        revenue: Math.max(0, Math.abs(revenueToday._sum.amount || 0)),
       },
       thisMonth: {
         users: usersThisMonth,
-        revenue: revenueThisMonth._sum.amount || 0,
+        revenue: Math.max(0, Math.abs(revenueThisMonth._sum.amount || 0)),
       },
     };
   }),

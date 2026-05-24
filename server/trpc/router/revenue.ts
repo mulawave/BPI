@@ -7,6 +7,15 @@ import {
 import { randomUUID } from "crypto";
 import type { RevenueSource } from "@prisma/client";
 
+const REVENUE_POOL_START_DATE = new Date("2026-05-01T00:00:00.000Z");
+
+function withRevenuePoolCutoff(startDate?: Date) {
+  if (!startDate || startDate < REVENUE_POOL_START_DATE) {
+    return REVENUE_POOL_START_DATE;
+  }
+  return startDate;
+}
+
 /**
  * Revenue Allocation Router
  * Handles all revenue tracking, allocation (50/30/20), and distribution
@@ -1033,8 +1042,9 @@ export const revenueRouter = createTRPCRouter({
       const pendingAllocations = await ctx.prisma.revenueAllocation.findMany({
         where: {
           destinationId: pool.id,
-          destinationType: "STRATEGY_POOL",
+          destinationType: { in: ["STRATEGY_POOL", "STRATEGIC_POOL"] },
           status: "PENDING",
+          createdAt: { gte: REVENUE_POOL_START_DATE },
         },
       });
 
@@ -1188,6 +1198,16 @@ export const revenueRouter = createTRPCRouter({
             totalAmount: result.totalAmount,
             memberCount: result.memberCount,
             sharePerMember: result.sharePerMember,
+            memberShares: memberShares.map((share) => {
+              const member = eligibleMembers.find((m: any) => m.userId === share.userId);
+              return {
+                userId: share.userId,
+                name: member?.User?.name || null,
+                email: member?.User?.email || null,
+                amount: share.amount,
+                percentage: share.percentage,
+              };
+            }),
             ...(beneficiarySnapshot ? { beneficiarySnapshot } : {}),
             distributedAt: new Date().toISOString(),
           })),
@@ -1214,7 +1234,7 @@ export const revenueRouter = createTRPCRouter({
         // Total revenue
         ctx.prisma.revenueTransaction.aggregate({
           _sum: { amount: true },
-          where: { allocationStatus: "ALLOCATED" },
+          where: { allocationStatus: "ALLOCATED", createdAt: { gte: REVENUE_POOL_START_DATE } },
         }),
         // Company reserve
         ctx.prisma.companyReserve.findFirst({
@@ -1226,6 +1246,7 @@ export const revenueRouter = createTRPCRouter({
           where: {
             destinationType: "EXECUTIVE_POOL",
             status: "PENDING",
+            createdAt: { gte: REVENUE_POOL_START_DATE },
           },
         }),
         // Strategic pools
@@ -1238,12 +1259,13 @@ export const revenueRouter = createTRPCRouter({
         }),
         // Recent transactions
         ctx.prisma.revenueTransaction.findMany({
-          where: { allocationStatus: "ALLOCATED" },
+          where: { allocationStatus: "ALLOCATED", createdAt: { gte: REVENUE_POOL_START_DATE } },
           orderBy: { createdAt: "desc" },
           take: 10,
         }),
         // Recent distributions
         ctx.prisma.executiveDistribution.findMany({
+          where: { createdAt: { gte: REVENUE_POOL_START_DATE } },
           include: {
             Shareholder: {
               include: {
@@ -1296,11 +1318,13 @@ export const revenueRouter = createTRPCRouter({
 
       const where: any = {
         allocationStatus: "ALLOCATED",
+        createdAt: { gte: REVENUE_POOL_START_DATE },
       };
 
       if (input.startDate || input.endDate) {
         where.createdAt = {};
-        if (input.startDate) where.createdAt.gte = input.startDate;
+        if (input.startDate) where.createdAt.gte = withRevenuePoolCutoff(input.startDate);
+        else where.createdAt.gte = REVENUE_POOL_START_DATE;
         if (input.endDate) where.createdAt.lte = input.endDate;
       }
 
@@ -1509,8 +1533,9 @@ export const revenueRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       requireAdmin(ctx.session);
 
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - input.days);
+      const dynamicStartDate = new Date();
+      dynamicStartDate.setDate(dynamicStartDate.getDate() - input.days);
+      const startDate = withRevenuePoolCutoff(dynamicStartDate);
 
       const transactions = await ctx.prisma.revenueTransaction.groupBy({
         by: ["source"],
@@ -1550,8 +1575,9 @@ export const revenueRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       requireAdmin(ctx.session);
 
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - input.days);
+      const dynamicStartDate = new Date();
+      dynamicStartDate.setDate(dynamicStartDate.getDate() - input.days);
+      const startDate = withRevenuePoolCutoff(dynamicStartDate);
 
       // Get allocations
       const allocations = await ctx.prisma.revenueAllocation.findMany({
@@ -1661,14 +1687,16 @@ export const revenueRouter = createTRPCRouter({
         where:
           input.source || input.filters
             ? {
+                createdAt: { gte: REVENUE_POOL_START_DATE },
                 RevenueTransaction: {
+                  createdAt: { gte: REVENUE_POOL_START_DATE },
                   ...(input.source
                     ? { source: input.source as RevenueSource }
                     : undefined),
                   ...buildRevenueTransactionFilter(input.filters),
                 },
               }
-            : undefined,
+            : { createdAt: { gte: REVENUE_POOL_START_DATE } },
         include: {
           RevenueTransaction: {
             select: {
@@ -1743,12 +1771,20 @@ export const revenueRouter = createTRPCRouter({
       // Calculate start and end dates for the month
       const startDate = new Date(input.year, input.month - 1, 1);
       const endDate = new Date(input.year, input.month, 0, 23, 59, 59);
+      const effectiveStartDate = withRevenuePoolCutoff(startDate);
+
+      if (endDate < REVENUE_POOL_START_DATE) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Revenue pool snapshots are available only from May 2026 onward.",
+        });
+      }
 
       // Get all transactions for the month
       const transactions = await ctx.prisma.revenueTransaction.findMany({
         where: {
           createdAt: {
-            gte: startDate,
+            gte: effectiveStartDate,
             lte: endDate,
           },
         },
@@ -1782,7 +1818,7 @@ export const revenueRouter = createTRPCRouter({
       const allocations = await ctx.prisma.revenueAllocation.findMany({
         where: {
           createdAt: {
-            gte: startDate,
+            gte: effectiveStartDate,
             lte: endDate,
           },
         },
@@ -1803,7 +1839,7 @@ export const revenueRouter = createTRPCRouter({
       const execDistributions = await ctx.prisma.executiveDistribution.findMany({
         where: {
           createdAt: {
-            gte: startDate,
+            gte: effectiveStartDate,
             lte: endDate,
           },
         },
@@ -1812,7 +1848,7 @@ export const revenueRouter = createTRPCRouter({
       const poolDistributions = await ctx.prisma.poolDistribution.findMany({
         where: {
           createdAt: {
-            gte: startDate,
+            gte: effectiveStartDate,
             lte: endDate,
           },
         },
@@ -1911,8 +1947,9 @@ export const revenueRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       requireAdmin(ctx.session);
 
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - input.days);
+      const dynamicStartDate = new Date();
+      dynamicStartDate.setDate(dynamicStartDate.getDate() - input.days);
+      const startDate = withRevenuePoolCutoff(dynamicStartDate);
 
       const transactions = await ctx.prisma.revenueTransaction.findMany({
         where: {
@@ -1941,6 +1978,263 @@ export const revenueRouter = createTRPCRouter({
         count,
         average,
         transactions,
+      };
+    }),
+
+  /**
+   * Full source-to-destination command center for pool forensics and disbursement tracking.
+   */
+  getPoolForensicsCommandCenter: protectedProcedure
+    .input(
+      z
+        .object({
+          dateFrom: z.date().optional(),
+          dateTo: z.date().optional(),
+          poolType: z
+            .enum(["LEADERSHIP", "STATE", "DIRECTORS", "TECHNOLOGY", "INVESTORS"])
+            .optional(),
+          source: z
+            .enum([
+              "COMMUNITY_SUPPORT",
+              "MEMBERSHIP_REGISTRATION",
+              "MEMBERSHIP_RENEWAL",
+              "STORE_PURCHASE",
+              "WITHDRAWAL_FEE",
+              "YOUTUBE_SUBSCRIPTION",
+              "THIRD_PARTY_SERVICES",
+              "PALLIATIVE_PROGRAM",
+              "LEADERSHIP_POOL_FEE",
+              "TRAINING_CENTER",
+              "OTHER",
+            ])
+            .optional(),
+          limit: z.number().min(10).max(200).default(100),
+        })
+        .optional(),
+    )
+    .query(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const dateFrom = withRevenuePoolCutoff(input?.dateFrom);
+      const dateTo = input?.dateTo ?? new Date();
+
+      const allocationWhere: any = {
+        createdAt: { gte: dateFrom, lte: dateTo },
+        destinationType: { in: ["STRATEGY_POOL", "STRATEGIC_POOL"] },
+      };
+
+      const pools = await ctx.prisma.strategyPool.findMany({
+        select: { id: true, type: true, name: true },
+      });
+      const poolIdByType = new Map(pools.map((p: any) => [p.type, p.id]));
+      if (input?.poolType) {
+        const poolId = poolIdByType.get(input.poolType);
+        if (!poolId) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Pool not found" });
+        }
+        allocationWhere.destinationId = poolId;
+      }
+
+      const allocations = await ctx.prisma.revenueAllocation.findMany({
+        where: allocationWhere,
+        include: {
+          RevenueTransaction: {
+            select: {
+              id: true,
+              source: true,
+              sourceKey: true,
+              amount: true,
+              sourceId: true,
+              userId: true,
+              description: true,
+              createdAt: true,
+              User: { select: { id: true, name: true, email: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: input?.limit ?? 100,
+      });
+
+      const sourceOrigin = new Map<string, { source: string; grossRevenue: number; remittedToPools: number; allocations: number; uniqueOrigins: Set<string> }>();
+      const poolDestination = new Map<string, { poolId: string; poolType: string; poolName: string; allocated: number; distributed: number; pending: number; allocationCount: number }>();
+
+      for (const alloc of allocations as any[]) {
+        const tx = alloc.RevenueTransaction;
+        if (!tx) continue;
+        if (input?.source && tx.source !== input.source) continue;
+
+        const sourceKey = tx.source;
+        const sourceRow = sourceOrigin.get(sourceKey) || {
+          source: sourceKey,
+          grossRevenue: 0,
+          remittedToPools: 0,
+          allocations: 0,
+          uniqueOrigins: new Set<string>(),
+        };
+        sourceRow.grossRevenue += Number(tx.amount || 0);
+        sourceRow.remittedToPools += Number(alloc.amount || 0);
+        sourceRow.allocations += 1;
+        sourceRow.uniqueOrigins.add(String(tx.sourceId || tx.id));
+        sourceOrigin.set(sourceKey, sourceRow);
+
+        const poolMeta = pools.find((p: any) => p.id === alloc.destinationId);
+        if (!poolMeta) continue;
+        const poolRow = poolDestination.get(poolMeta.id) || {
+          poolId: poolMeta.id,
+          poolType: poolMeta.type,
+          poolName: poolMeta.name,
+          allocated: 0,
+          distributed: 0,
+          pending: 0,
+          allocationCount: 0,
+        };
+        poolRow.allocated += Number(alloc.amount || 0);
+        poolRow.allocationCount += 1;
+        if (alloc.status === "DISTRIBUTED" || alloc.status === "COMPLETED") poolRow.distributed += Number(alloc.amount || 0);
+        if (alloc.status === "PENDING" || alloc.status === "PROCESSING") poolRow.pending += Number(alloc.amount || 0);
+        poolDestination.set(poolMeta.id, poolRow);
+      }
+
+      const [poolDistributions, executiveDistributions, adminActions] = await Promise.all([
+        ctx.prisma.poolDistribution.findMany({
+          where: {
+            createdAt: { gte: dateFrom, lte: dateTo },
+            ...(input?.poolType ? { Pool: { type: input.poolType } } : {}),
+          },
+          include: {
+            Pool: { select: { id: true, name: true, type: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: input?.limit ?? 100,
+        }),
+        ctx.prisma.executiveDistribution.findMany({
+          where: { createdAt: { gte: dateFrom, lte: dateTo } },
+          include: {
+            Shareholder: {
+              include: { User: { select: { id: true, name: true, email: true } } },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: input?.limit ?? 100,
+        }),
+        ctx.prisma.poolAdminAction.findMany({
+          where: {
+            actionType: "POOL_DISTRIBUTED",
+            createdAt: { gte: dateFrom, lte: dateTo },
+            ...(input?.poolType ? { Pool: { type: input.poolType } } : {}),
+          },
+          include: {
+            Pool: { select: { id: true, name: true, type: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: input?.limit ?? 100,
+        }),
+      ]);
+
+      const disbursementSummary = {
+        strategic: {
+          pending: poolDistributions
+            .filter((d: any) => d.status === "PENDING" || d.status === "PROCESSING")
+            .reduce((sum: number, d: any) => sum + Number(d.totalAmount || 0), 0),
+          approved: poolDistributions
+            .filter((d: any) => d.status === "COMPLETED")
+            .reduce((sum: number, d: any) => sum + Number(d.totalAmount || 0), 0),
+        },
+        executive: {
+          pending: executiveDistributions
+            .filter((d: any) => d.status === "PENDING" || d.status === "PROCESSING")
+            .reduce((sum: number, d: any) => sum + Number(d.amount || 0), 0),
+          approved: executiveDistributions
+            .filter((d: any) => d.status === "COMPLETED")
+            .reduce((sum: number, d: any) => sum + Number(d.amount || 0), 0),
+        },
+      };
+
+      const beneficiaryTotals = new Map<string, { userId: string; name: string | null; email: string | null; poolType: string; totalPaid: number; paymentCount: number }>();
+      for (const action of adminActions as any[]) {
+        const metadata = action.metadata as any;
+        const shares = Array.isArray(metadata?.memberShares) ? metadata.memberShares : [];
+        for (const share of shares) {
+          const key = `${share.userId}:${action.Pool?.type || "UNKNOWN"}`;
+          const row = beneficiaryTotals.get(key) || {
+            userId: share.userId,
+            name: share.name || null,
+            email: share.email || null,
+            poolType: action.Pool?.type || "UNKNOWN",
+            totalPaid: 0,
+            paymentCount: 0,
+          };
+          row.totalPaid += Number(share.amount || 0);
+          row.paymentCount += 1;
+          beneficiaryTotals.set(key, row);
+        }
+      }
+
+      return {
+        policy: {
+          startDate: REVENUE_POOL_START_DATE,
+          effectiveFrom: dateFrom,
+          effectiveTo: dateTo,
+          message: "Only post-cutoff revenue (from May 1, 2026) is counted for pool inflow and disbursement tracking.",
+        },
+        totals: {
+          poolInflow: allocations.reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0),
+          poolDisbursedApproved: disbursementSummary.strategic.approved,
+          poolDisbursedPending: disbursementSummary.strategic.pending,
+          executiveDisbursedApproved: disbursementSummary.executive.approved,
+          executiveDisbursedPending: disbursementSummary.executive.pending,
+        },
+        sourceOrigins: Array.from(sourceOrigin.values()).map((s) => ({
+          ...s,
+          uniqueOriginCount: s.uniqueOrigins.size,
+          remittedPercent: s.grossRevenue > 0 ? (s.remittedToPools / s.grossRevenue) * 100 : 0,
+        })),
+        poolDestinations: Array.from(poolDestination.values()),
+        allocationTrail: allocations.map((a: any) => ({
+          allocationId: a.id,
+          allocationStatus: a.status,
+          allocationAmount: Number(a.amount || 0),
+          allocationCreatedAt: a.createdAt,
+          destinationType: a.destinationType,
+          destinationId: a.destinationId,
+          transaction: a.RevenueTransaction
+            ? {
+                id: a.RevenueTransaction.id,
+                source: a.RevenueTransaction.source,
+                sourceKey: a.RevenueTransaction.sourceKey,
+                sourceId: a.RevenueTransaction.sourceId,
+                description: a.RevenueTransaction.description,
+                amount: Number(a.RevenueTransaction.amount || 0),
+                createdAt: a.RevenueTransaction.createdAt,
+                originUser: a.RevenueTransaction.User,
+              }
+            : null,
+        })),
+        disbursements: {
+          strategic: poolDistributions.map((d: any) => ({
+            id: d.id,
+            status: d.status,
+            poolType: d.Pool?.type,
+            poolName: d.Pool?.name,
+            totalAmount: Number(d.totalAmount || 0),
+            memberCount: d.memberCount,
+            amountPerMember: Number(d.amountPerMember || 0),
+            distributedAt: d.distributedAt,
+            createdAt: d.createdAt,
+          })),
+          executive: executiveDistributions.map((d: any) => ({
+            id: d.id,
+            status: d.status,
+            role: d.Shareholder?.role,
+            beneficiary: d.Shareholder?.User,
+            amount: Number(d.amount || 0),
+            percentage: Number(d.percentage || 0),
+            distributedAt: d.distributedAt,
+            createdAt: d.createdAt,
+          })),
+        },
+        beneficiaryTotals: Array.from(beneficiaryTotals.values()).sort((a, b) => b.totalPaid - a.totalPaid),
       };
     }),
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import FinancialOverview from "@/components/admin/FinancialOverview";
+import FinancialCommandCenter from "@/components/admin/FinancialCommandCenter";
 
 export default function AdminFinancialsPage() {
   return (
@@ -15,14 +15,14 @@ export default function AdminFinancialsPage() {
         <div className="absolute -top-16 -right-16 h-32 w-32 rounded-full bg-gradient-to-br from-[hsl(var(--secondary))] to-[hsl(var(--primary))] opacity-10 blur-2xl" />
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Financials</h1>
-            <p className="text-sm text-muted-foreground">Detailed inflows, outflows, wallets, and exports.</p>
+            <h1 className="text-2xl font-bold">Financial Accounting & Audit</h1>
+            <p className="text-sm text-muted-foreground">Production-grade ledger intelligence, queue control, and source-to-destination financial traceability.</p>
           </div>
           <a href="/admin" className="rounded-lg border px-3 py-1.5 text-sm hover:bg-muted">Back to Dashboard</a>
         </div>
       </motion.div>
 
-      <FinancialOverview />
+      <FinancialCommandCenter />
     </div>
   );
 }
