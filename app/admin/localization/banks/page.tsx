@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { api } from "@/client/trpc";
 import { Button } from "@/components/ui/button";
-import { Search, Plus, Edit, Trash2, Loader2, Building2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Plus, Edit, Trash2, Loader2, Building2, ChevronLeft, ChevronRight, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function AdminBanksPage() {
@@ -11,6 +11,7 @@ export default function AdminBanksPage() {
   const [search, setSearch] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingBank, setEditingBank] = useState<any>(null);
+  const [syncResult, setSyncResult] = useState<{ source: string; totalFetched: number; created: number; updated: number; unchanged: number } | null>(null);
 
   const { data, isLoading, refetch } = api.adminBank.getBanks.useQuery({
     page,
@@ -50,6 +51,30 @@ export default function AdminBanksPage() {
     },
   });
 
+  const syncPaystackMutation = api.adminBank.syncBanksFromPaystack.useMutation({
+    onSuccess: (result) => {
+      toast.success(`Synced from Paystack: ${result.created} added, ${result.updated} updated`);
+      setSyncResult(result);
+      refetch();
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Paystack sync failed");
+    },
+  });
+
+  const syncFlutterwaveMutation = api.adminBank.syncBanksFromFlutterwave.useMutation({
+    onSuccess: (result) => {
+      toast.success(`Synced from Flutterwave: ${result.created} added, ${result.updated} updated`);
+      setSyncResult(result);
+      refetch();
+    },
+    onError: (error: any) => {
+      toast.error(error.message || "Flutterwave sync failed");
+    },
+  });
+
+  const isSyncing = syncPaystackMutation.isPending || syncFlutterwaveMutation.isPending;
+
   const handleDelete = (bank: any) => {
     toast.custom((t) => (
       <div className="w-full max-w-sm rounded-lg border border-bpi-border bg-white p-3 shadow-lg dark:border-bpi-dark-accent dark:bg-bpi-dark-card">
@@ -87,14 +112,62 @@ export default function AdminBanksPage() {
             Manage Nigerian banks available for user withdrawals
           </p>
         </div>
-        <Button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="bg-bpi-primary hover:bg-bpi-primary/90"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Bank
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => syncPaystackMutation.mutate()}
+            disabled={isSyncing}
+            title="Sync bank list from Paystack"
+          >
+            {syncPaystackMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4 mr-2" />
+            )}
+            Sync Paystack
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => syncFlutterwaveMutation.mutate()}
+            disabled={isSyncing}
+            title="Sync bank list from Flutterwave"
+          >
+            {syncFlutterwaveMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4 mr-2" />
+            )}
+            Sync Flutterwave
+          </Button>
+          <Button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="bg-bpi-primary hover:bg-bpi-primary/90"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Bank
+          </Button>
+        </div>
       </div>
+
+      {/* Sync Result Banner */}
+      {syncResult && (
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-800/40 dark:bg-emerald-950/20">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <div className="text-sm text-emerald-800 dark:text-emerald-300">
+            <span className="font-semibold capitalize">{syncResult.source}</span> sync complete —{" "}
+            <span className="font-medium">{syncResult.totalFetched}</span> banks fetched,{" "}
+            <span className="font-medium">{syncResult.created}</span> added,{" "}
+            <span className="font-medium">{syncResult.updated}</span> updated,{" "}
+            <span className="font-medium">{syncResult.unchanged}</span> unchanged.
+          </div>
+          <button
+            className="ml-auto text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-200"
+            onClick={() => setSyncResult(null)}
+          >
+            <AlertCircle className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Search */}
       <div className="mb-4 flex items-center gap-2">

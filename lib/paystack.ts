@@ -163,6 +163,49 @@ export async function createPaystackCustomer(
   return { customer_code: result.data.customer_code };
 }
 
+// ─── Bank List ───────────────────────────────────────────────────────
+
+export interface PaystackBank {
+  id: number;
+  name: string;
+  slug: string;
+  code: string;
+  longcode: string;
+  type: string;
+  active: boolean;
+  country: string;
+  currency: string;
+}
+
+/**
+ * Fetch list of Nigerian banks from Paystack
+ */
+export async function getPaystackBanks(secretKey: string): Promise<PaystackBank[]> {
+  const response = await fetch(
+    'https://api.paystack.co/bank?country=nigeria&use_cursor=false&perPage=200&type=nuban',
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Paystack bank list failed: ${err}`);
+  }
+
+  const result = await response.json();
+
+  if (!result.status) {
+    throw new Error(result.message || 'Paystack bank list returned an error');
+  }
+
+  return (result.data ?? []) as PaystackBank[];
+}
+
 /**
  * Create a Dedicated Virtual Account for a customer
  */

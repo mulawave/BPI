@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { getPaystackBanks } from "@/lib/paystack";
+import { getFlutterwaveBanks } from "@/lib/flutterwave";
 
 // Admin middleware
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -374,4 +376,131 @@ export const adminBankRouter = createTRPCRouter({
 
       return { success: true };
     }),
+
+  // Sync banks from Paystack (upsert by bankCode)
+  syncBanksFromPaystack: adminProcedure.mutation(async ({ ctx }) => {
+    const gatewayConfig = await ctx.prisma.paymentGatewayConfig.findUnique({
+      where: { gatewayName: "paystack" },
+      select: { secretKey: true, isActive: true },
+    });
+
+    const secretKey = gatewayConfig?.secretKey || process.env.PAYSTACK_SECRET_KEY;
+
+    if (!secretKey) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "Paystack secret key is not configured. Set it in Admin → Settings → Payment Gateways.",
+      });
+    }
+
+    const remoteBanks = await getPaystackBanks(secretKey);
+
+    if (!remoteBanks.length) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Paystack returned an empty bank list.",
+      });
+    }
+
+    let created = 0;
+    let updated = 0;
+
+    for (const bank of remoteBanks) {
+      const bankCode = bank.code?.trim();
+      const bankName = bank.name?.trim();
+      if (!bankCode || !bankName) continue;
+
+      const existing = await ctx.prisma.bank.findFirst({ where: { bankCode } });
+
+      if (existing) {
+        if (existing.bankName !== bankName) {
+          await ctx.prisma.bank.update({
+            where: { id: existing.id },
+            data: { bankName },
+          });
+          updated++;
+        }
+      } else {
+        await ctx.prisma.bank.create({ data: { bankName, bankCode } });
+        created++;
+      }
+    }
+
+    return {
+      success: true,
+      source: "paystack",
+      totalFetched: remoteBanks.length,
+      created,
+      updated,
+      unchanged: remoteBanks.length - created - updated,
+    };
+  }),
+
+  // Sync banks from Flutterwave (upsert by bankCode)
+  syncBanksFromFlutterwave: adminProcedure.mutation(async ({ ctx }) => {
+    const [gatewayConfig, legacySetting] = await Promise.all([
+      ctx.prisma.paymentGatewayConfig.findUnique({
+        where: { gatewayName: "flutterwave" },
+        select: { secretKey: true, isActive: true },
+      }),
+      ctx.prisma.adminSettings.findUnique({
+        where: { settingKey: "flutterwave_secret_key" },
+        select: { settingValue: true },
+      }),
+    ]);
+
+    const secretKey =
+      gatewayConfig?.secretKey ||
+      legacySetting?.settingValue ||
+      process.env.FLUTTERWAVE_SECRET_KEY;
+
+    if (!secretKey) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "Flutterwave secret key is not configured. Set it in Admin → Settings → Payment Gateways.",
+      });
+    }
+
+    const remoteBanks = await getFlutterwaveBanks(secretKey);
+
+    if (!remoteBanks.length) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Flutterwave returned an empty bank list.",
+      });
+    }
+
+    let created = 0;
+    let updated = 0;
+
+    for (const bank of remoteBanks as any[]) {
+      const bankCode = (bank.code || bank.shortcode || "")?.trim();
+      const bankName = (bank.name || "")?.trim();
+      if (!bankCode || !bankName) continue;
+
+      const existing = await ctx.prisma.bank.findFirst({ where: { bankCode } });
+
+      if (existing) {
+        if (existing.bankName !== bankName) {
+          await ctx.prisma.bank.update({
+            where: { id: existing.id },
+            data: { bankName },
+          });
+          updated++;
+        }
+      } else {
+        await ctx.prisma.bank.create({ data: { bankName, bankCode } });
+        created++;
+      }
+    }
+
+    return {
+      success: true,
+      source: "flutterwave",
+      totalFetched: remoteBanks.length,
+      created,
+      updated,
+      unchanged: remoteBanks.length - created - updated,
+    };
+  }),
 });

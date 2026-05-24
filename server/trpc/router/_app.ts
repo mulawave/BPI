@@ -56,6 +56,7 @@ import { adminCurrencyRouter } from "./admin-currency";
 import { revenueRouter } from "./revenue";
 import { techquizRouter } from "./techquiz";
 import { kycRouter } from "./kyc";
+import { adminPluginsRouter } from "./adminPlugins";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -114,6 +115,7 @@ export const appRouter = createTRPCRouter({
   revenue: revenueRouter,
   techquiz: techquizRouter,
   kyc: kycRouter,
+  adminPlugins: adminPluginsRouter,
 
   // Legacy router, to be deprecated
 });

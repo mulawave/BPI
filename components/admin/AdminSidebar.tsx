@@ -280,6 +280,12 @@ const navigation = [
     description: "System config"
   },
   { 
+    name: "Plugins", 
+    href: "/admin/plugins", 
+    icon: Package,
+    description: "Upload and manage plugins"
+  },
+  { 
     name: "App Design", 
     href: "/admin/design", 
     icon: Palette,
