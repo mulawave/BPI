@@ -2696,6 +2696,263 @@ export const revenueRouter = createTRPCRouter({
 
       return transactions;
     }),
+
+  /**
+   * Revenue Allocation Audit Query
+   * Verifies 50/30/20 split compliance and alignment between allocations, distributions, and current pool state
+   */
+  auditRevenueAllocationIntegrity: protectedProcedure
+    .input(
+      z.object({
+        dateFrom: z.date().optional(),
+        dateTo: z.date().optional(),
+      }).optional()
+    )
+    .query(async ({ ctx, input }) => {
+      requireAdmin(ctx.session);
+
+      const dateFrom = withRevenuePoolCutoff(input?.dateFrom);
+      const dateTo = input?.dateTo ?? new Date();
+
+      // 1. Total Revenue Recorded (ALLOCATED transactions only)
+      const totalRevenueAgg = await ctx.prisma.revenueTransaction.aggregate({
+        _sum: { amount: true },
+        _count: { id: true },
+        where: {
+          allocationStatus: "ALLOCATED",
+          createdAt: { gte: dateFrom, lte: dateTo },
+        },
+      });
+      const totalRevenue = Number(totalRevenueAgg._sum.amount || 0);
+      const transactionCount = totalRevenueAgg._count;
+
+      // 2. Allocations by Destination Type (what was actually allocated out)
+      const allocations = await ctx.prisma.revenueAllocation.groupBy({
+        by: ["destinationType"],
+        _sum: { amount: true },
+        _count: { id: true },
+        where: {
+          createdAt: { gte: dateFrom, lte: dateTo },
+        },
+      });
+
+      const allocByType: Record<string, { sum: number; count: number }> = {
+        COMPANY_RESERVE: { sum: 0, count: 0 },
+        EXECUTIVE_POOL: { sum: 0, count: 0 },
+        STRATEGIC_POOL: { sum: 0, count: 0 },
+      };
+
+      let totalAllocated = 0;
+      for (const row of allocations) {
+        const sum = Number(row._sum.amount || 0);
+        const count = row._count;
+        allocByType[row.destinationType] = { sum, count };
+        totalAllocated += sum;
+      }
+
+      // 3. Calculate expected allocations (50/30/20)
+      const expectedCompanyReserve = totalRevenue * 0.5;
+      const expectedExecutivePool = totalRevenue * 0.3;
+      const expectedStrategicPools = totalRevenue * 0.2;
+
+      // 4. Current Pool Balances (what's currently sitting in pools)
+      const companyReserve = await ctx.prisma.companyReserve.findFirst({
+        orderBy: { updatedAt: "desc" },
+      });
+      const strategicPools = await ctx.prisma.strategyPool.findMany({
+        select: { type: true, name: true, balance: true },
+      });
+      const strategicPoolsTotal = strategicPools.reduce((sum, p) => sum + Number(p.balance || 0), 0);
+
+      // 5. Distribution Analysis
+      const executiveDistributions = await ctx.prisma.executiveDistribution.aggregate({
+        _sum: { amount: true },
+        _count: { id: true },
+        where: { createdAt: { gte: dateFrom, lte: dateTo } },
+      });
+      const poolDistributions = await ctx.prisma.poolDistribution.aggregate({
+        _sum: { totalAmount: true },
+        _count: { id: true },
+        where: { createdAt: { gte: dateFrom, lte: dateTo } },
+      });
+
+      const executiveDistributed = Number(executiveDistributions._sum.amount || 0);
+      const poolsDistributed = Number(poolDistributions._sum.totalAmount || 0);
+
+      // 6. Allocation Status Breakdown (pending vs distributed)
+      const allocationsByStatus = await ctx.prisma.revenueAllocation.groupBy({
+        by: ["destinationType", "status"],
+        _sum: { amount: true },
+        _count: { id: true },
+        where: {
+          createdAt: { gte: dateFrom, lte: dateTo },
+        },
+      });
+
+      const statusByType: Record<string, Record<string, { sum: number; count: number }>> = {};
+      for (const row of allocationsByStatus) {
+        const type = row.destinationType;
+        if (!statusByType[type]) statusByType[type] = {};
+        statusByType[type][row.status] = {
+          sum: Number(row._sum.amount || 0),
+          count: row._count,
+        };
+      }
+
+      // 7. Compliance Check: Variance Analysis
+      const companyReserveVariance = allocByType.COMPANY_RESERVE.sum - expectedCompanyReserve;
+      const executivePoolVariance = allocByType.EXECUTIVE_POOL.sum - expectedExecutivePool;
+      const strategicPoolsVariance = allocByType.STRATEGIC_POOL.sum - expectedStrategicPools;
+      const totalAllocatedVariance = totalAllocated - totalRevenue;
+
+      // Determine if compliant (within 1% tolerance for rounding)
+      const tolerancePercent = 0.01;
+      const companyReserveCompliant = Math.abs(companyReserveVariance / expectedCompanyReserve) <= tolerancePercent;
+      const executivePoolCompliant = Math.abs(executivePoolVariance / expectedExecutivePool) <= tolerancePercent;
+      const strategicPoolsCompliant = Math.abs(strategicPoolsVariance / expectedStrategicPools) <= tolerancePercent;
+      const totalAllocatedCompliant = Math.abs(totalAllocatedVariance / totalRevenue) <= tolerancePercent;
+
+      return {
+        // Period metadata
+        period: {
+          startDate: dateFrom,
+          endDate: dateTo,
+        },
+
+        // Total Revenue Recorded
+        revenue: {
+          totalRecorded: totalRevenue,
+          transactionCount,
+        },
+
+        // Allocation Targets (50/30/20)
+        expectedAllocations: {
+          companyReserve: expectedCompanyReserve,
+          executivePool: expectedExecutivePool,
+          strategicPools: expectedStrategicPools,
+          total: expectedCompanyReserve + expectedExecutivePool + expectedStrategicPools,
+        },
+
+        // Actual Allocations
+        actualAllocations: {
+          companyReserve: allocByType.COMPANY_RESERVE.sum,
+          companyReserveCount: allocByType.COMPANY_RESERVE.count,
+          executivePool: allocByType.EXECUTIVE_POOL.sum,
+          executivePoolCount: allocByType.EXECUTIVE_POOL.count,
+          strategicPools: allocByType.STRATEGIC_POOL.sum,
+          strategicPoolsCount: allocByType.STRATEGIC_POOL.count,
+          total: totalAllocated,
+        },
+
+        // Variance Analysis (difference from expected)
+        variances: {
+          companyReserve: {
+            difference: companyReserveVariance,
+            differencePercent: expectedCompanyReserve > 0 ? (companyReserveVariance / expectedCompanyReserve) * 100 : 0,
+            compliant: companyReserveCompliant,
+          },
+          executivePool: {
+            difference: executivePoolVariance,
+            differencePercent: expectedExecutivePool > 0 ? (executivePoolVariance / expectedExecutivePool) * 100 : 0,
+            compliant: executivePoolCompliant,
+          },
+          strategicPools: {
+            difference: strategicPoolsVariance,
+            differencePercent: expectedStrategicPools > 0 ? (strategicPoolsVariance / expectedStrategicPools) * 100 : 0,
+            compliant: strategicPoolsCompliant,
+          },
+          totalAllocated: {
+            difference: totalAllocatedVariance,
+            differencePercent: totalRevenue > 0 ? (totalAllocatedVariance / totalRevenue) * 100 : 0,
+            compliant: totalAllocatedCompliant,
+          },
+        },
+
+        // Current Pool States
+        currentState: {
+          companyReserveBalance: Number(companyReserve?.balance || 0),
+          companyReserveTotalReceived: Number(companyReserve?.totalReceived || 0),
+          companyReserveTotalSpent: Number(companyReserve?.totalSpent || 0),
+          strategicPoolsBalance: strategicPoolsTotal,
+          strategicPoolsBreakdown: strategicPools.map((p) => ({
+            type: p.type,
+            name: p.name,
+            balance: Number(p.balance || 0),
+          })),
+        },
+
+        // Distribution Tracking
+        distributions: {
+          executiveDistributed,
+          executiveDistributionCount: executiveDistributions._count,
+          poolsDistributed,
+          poolsDistributionCount: poolDistributions._count,
+        },
+
+        // Allocation Status (pending vs distributed)
+        allocationStatus: Object.entries(statusByType).reduce(
+          (acc, [type, statuses]) => ({
+            ...acc,
+            [type]: Object.entries(statuses).reduce(
+              (statusAcc, [status, data]) => ({
+                ...statusAcc,
+                [status]: data,
+              }),
+              {}
+            ),
+          }),
+          {}
+        ),
+
+        // Overall Compliance Summary
+        compliance: {
+          allocationSplit50_30_20Compliant:
+            companyReserveCompliant &&
+            executivePoolCompliant &&
+            strategicPoolsCompliant &&
+            totalAllocatedCompliant,
+          allocationVarianceTolerance: `${(tolerancePercent * 100).toFixed(1)}%`,
+          summary: (() => {
+            const failures = [];
+            if (!companyReserveCompliant) failures.push("Company Reserve allocation variance exceeds tolerance");
+            if (!executivePoolCompliant) failures.push("Executive Pool allocation variance exceeds tolerance");
+            if (!strategicPoolsCompliant) failures.push("Strategic Pools allocation variance exceeds tolerance");
+            if (!totalAllocatedCompliant) failures.push("Total allocated variance exceeds tolerance");
+            return failures.length === 0
+              ? "✅ All 50/30/20 allocations are within tolerance and compliant"
+              : `❌ Compliance issues: ${failures.join("; ")}`;
+          })(),
+        },
+
+        // Alignment Check: Flow-to-Balance
+        alignmentCheck: {
+          companyReserveFlowCheck: {
+            allocated: allocByType.COMPANY_RESERVE.sum,
+            distributed: 0, // Company reserve doesn't have distributions like pools
+            currentBalance: Number(companyReserve?.balance || 0),
+            explanation: "Company Reserve: [allocated] - [operational spend] = [balance]",
+            balanceShouldBe: allocByType.COMPANY_RESERVE.sum - Number(companyReserve?.totalSpent || 0),
+            balanceActual: Number(companyReserve?.balance || 0),
+            flowCloses: allocByType.COMPANY_RESERVE.sum - Number(companyReserve?.totalSpent || 0) === Number(companyReserve?.balance || 0),
+          },
+          executivePoolFlowCheck: {
+            allocated: allocByType.EXECUTIVE_POOL.sum,
+            distributed: executiveDistributed,
+            pending: allocByType.EXECUTIVE_POOL.sum - executiveDistributed,
+            explanation: "Executive Pool: [allocated] = [distributed] + [pending]",
+            flowCloses: allocByType.EXECUTIVE_POOL.sum === executiveDistributed + (statusByType.EXECUTIVE_POOL?.PENDING?.sum || 0),
+          },
+          strategicPoolsFlowCheck: {
+            allocated: allocByType.STRATEGIC_POOL.sum,
+            distributed: poolsDistributed,
+            currentBalance: strategicPoolsTotal,
+            pending: allocByType.STRATEGIC_POOL.sum - poolsDistributed,
+            explanation: "Strategic Pools: [allocated] - [distributed] + [internal transfers] = [balance]",
+            flowCloses: Math.abs(allocByType.STRATEGIC_POOL.sum - poolsDistributed - strategicPoolsTotal) <= 1, // Allow 1 naira for rounding
+          },
+        },
+      };
+    }),
 });
 
 /**
