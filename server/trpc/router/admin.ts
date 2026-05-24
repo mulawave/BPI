@@ -734,10 +734,340 @@ export const adminRouter = createTRPCRouter({
               { User: { name: { contains: term, mode: "insensitive" } } },
               { User: { email: { contains: term, mode: "insensitive" } } },
             ],
+              // ═════════════════════════════════════════════════════════════════════════
+              // MEMBERSHIP AUTO-RENEWAL SYSTEM
+              // Automatically renew expired memberships with downgrade prevention
+              // ═════════════════════════════════════════════════════════════════════════
+
+              getAutoRenewalCandidates: adminProcedure
+                .input(
+                  z
+                    .object({
+                      limit: z.number().int().min(1).max(500).default(50),
+                      expiredDaysAgo: z.number().int().min(0).max(365).optional(),
+                    })
+                    .optional()
+                )
+                .query(async ({ ctx, input }) => {
+                  const limit = input?.limit ?? 50;
+                  const now = new Date();
+                  const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+
+                  const candidates = await prisma.user.findMany({
+                    where: {
+                      activeMembershipPackageId: { not: null },
+                      membershipExpiresAt: {
+                        lte: now,
+                        gte: oneYearAgo,
+                      },
+                    },
+                    orderBy: [{ membershipExpiresAt: "asc" }],
+                    take: limit,
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                      activeMembershipPackageId: true,
+                      membershipExpiresAt: true,
+                      renewalCount: true,
+                    },
+                  });
+
+                  const packageIds = Array.from(
+                    new Set(
+                      candidates
+                        .map((c) => c.activeMembershipPackageId)
+                        .filter((id): id is string => Boolean(id))
+                    )
+                  );
+
+                  const packages = packageIds.length
+                    ? await prisma.membershipPackage.findMany({
+                        where: { id: { in: packageIds } },
+                        select: { id: true, name: true, renewalFee: true, price: true },
+                      })
+                    : [];
+
+                  const packageMap = new Map(packages.map((p) => [p.id, p]));
+
+                  return {
+                    total: candidates.length,
+                    candidates: candidates.map((user) => {
+                      const expiresAt = user.membershipExpiresAt || new Date();
+                      const daysExpired = Math.floor(
+                        (now.getTime() - expiresAt.getTime()) / (1000 * 60 * 60 * 24)
+                      );
+                      const currentPackage = user.activeMembershipPackageId
+                        ? packageMap.get(user.activeMembershipPackageId)
+                        : null;
+
+                      return {
+                        userId: user.id,
+                        userName: user.name || "Unknown",
+                        userEmail: user.email || "No email",
+                        currentPackage: currentPackage?.name || "Unknown",
+                        renewalFee: currentPackage?.renewalFee || currentPackage?.price || 0,
+                        membershipExpiresAt: expiresAt,
+                        daysExpired,
+                        renewalCount: user.renewalCount,
+                      };
+                    }),
+                  };
+                }),
+
+              previewAutoRenewal: adminProcedure
+                .input(
+                  z.object({
+                    userId: z.string(),
+                    optionalUpgradePackageId: z.string().optional(),
+                  })
+                )
+                .query(async ({ ctx, input }) => {
+                  try {
+                    const {
+                      validateAutoRenewalEligibility,
+                      getRenewalPackage,
+                    } = await import(
+                      "@/server/services/membershipAutoRenewal.service"
+                    );
+
+                    const eligibility = await validateAutoRenewalEligibility(
+                      prisma,
+                      input.userId
+                    );
+
+                    if (!eligibility.eligible) {
+                      return {
+                        eligible: false,
+                        reason: eligibility.reason,
+                      };
+                    }
+
+                    const renewalPackageInfo = await getRenewalPackage(
+                      prisma,
+                      input.userId,
+                      input.optionalUpgradePackageId
+                    );
+
+                    // Get referral chain for preview
+                    const { getReferralChain } = await import(
+                      "@/server/utils/referralUtils"
+                    );
+                    const referralChain = await getReferralChain(input.userId, 4);
+
+                    const membershipPackage = await prisma.membershipPackage.findUnique({
+                      where: { id: renewalPackageInfo.packageId },
+                    });
+
+                    // Calculate rewards
+                    let totalCash = 0,
+                      totalBpt = 0,
+                      totalHealth = 0,
+                      totalMeal = 0,
+                      totalSecurity = 0,
+                      totalPalliative = 0,
+                      totalShelter = 0;
+
+                    for (let i = 0; i < referralChain.length; i++) {
+                      const level = (i + 1) as 1 | 2 | 3 | 4;
+                      totalCash +=
+                        (membershipPackage as any)[`renewal_cash_l${level}`] || 0;
+                      totalBpt +=
+                        (membershipPackage as any)[`renewal_bpt_l${level}`] || 0;
+                      totalHealth +=
+                        (membershipPackage as any)[`renewal_health_l${level}`] || 0;
+                      totalMeal +=
+                        (membershipPackage as any)[`renewal_meal_l${level}`] || 0;
+                      totalSecurity +=
+                        (membershipPackage as any)[`renewal_security_l${level}`] || 0;
+                      totalPalliative +=
+                        (membershipPackage as any)[`renewal_palliative_l${level}`] || 0;
+                      totalShelter +=
+                        (membershipPackage as any)[`shelter_l${level}`] || 0;
+                    }
+
+                    return {
+                      eligible: true,
+                      userId: input.userId,
+                      renewalPackage: renewalPackageInfo.packageName,
+                      renewalFee: renewalPackageInfo.renewalFee,
+                      vat: renewalPackageInfo.vat,
+                      totalCost: renewalPackageInfo.totalCost,
+                      isUpgrade: renewalPackageInfo.isUpgrade,
+                      referralCount: referralChain.length,
+                      estimatedRewards: {
+                        cash: totalCash,
+                        bpt: totalBpt,
+                        health: totalHealth,
+                        meal: totalMeal,
+                        security: totalSecurity,
+                        palliative: totalPalliative,
+                        shelter: totalShelter,
+                      },
+                    };
+                  } catch (err) {
+                    return {
+                      eligible: false,
+                      reason: `Preview failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+                    };
+                  }
+                }),
+
+              processAutoRenewalForUser: adminProcedure
+                .input(
+                  z.object({
+                    userId: z.string(),
+                    optionalUpgradePackageId: z.string().optional(),
+                    reason: z.string().trim().max(500).optional(),
+                  })
+                )
+                .mutation(async ({ ctx, input }) => {
+                  try {
+                    const { processAutoRenewal } = await import(
+                      "@/server/services/membershipAutoRenewal.service"
+                    );
+
+                    const result = await processAutoRenewal(
+                      prisma,
+                      input.userId,
+                      input.optionalUpgradePackageId
+                    );
+
+                    if (!result.success) {
+                      return {
+                        success: false,
+                        error: result.error,
+                      };
+                    }
+
+                    // Log the action
+                    await prisma.auditLog.create({
+                      data: {
+                        id: randomUUID(),
+                        userId: ctx.session!.user.id,
+                        action: "MANUAL_AUTO_RENEWAL",
+                        entity: "USER",
+                        entityId: input.userId,
+                        metadata: {
+                          renewalHistoryId: result.renewalHistoryId,
+                          newExpiresAt: result.newExpiresAt,
+                          totalRewardsDistributed: result.totalRewardsDistributed,
+                          reason: input.reason ?? "Admin-triggered auto-renewal",
+                        },
+                        ipAddress: "",
+                        userAgent: "",
+                      },
+                    });
+
+                    return {
+                      success: true,
+                      renewalHistoryId: result.renewalHistoryId,
+                      newExpiresAt: result.newExpiresAt,
+                      totalRewardsDistributed: result.totalRewardsDistributed,
+                    };
+                  } catch (err) {
+                    return {
+                      success: false,
+                      error: `Auto-renewal failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+                    };
+                  }
+                }),
+
+              bulkProcessAutoRenewal: adminProcedure
+                .input(
+                  z
+                    .object({
+                      dryRun: z.boolean().default(true),
+                      limit: z.number().int().min(1).max(500).default(100),
+                      reasonIfFailed: z.string().trim().max(500).optional(),
+                    })
+                    .optional()
+                )
+                .mutation(async ({ ctx, input }) => {
+                  const dryRun = input?.dryRun ?? true;
+                  const limit = input?.limit ?? 100;
+
+                  try {
+                    const {
+                      getAutoRenewalCandidates,
+                      processAutoRenewal,
+                    } = await import(
+                      "@/server/services/membershipAutoRenewal.service"
+                    );
           },
+                    const candidates = await getAutoRenewalCandidates(prisma, limit);
+
+                    if (dryRun) {
+                      return {
+                        success: true,
+                        dryRun: true,
+                        processed: 0,
+                        failed: 0,
+                        totalCandidates: candidates.length,
+                        message: `Dry run: Found ${candidates.length} users eligible for auto-renewal`,
+                        candidates: candidates.slice(0, 20), // Show first 20
+                      };
+                    }
+
+                    let processed = 0;
+                    let failed = 0;
+                    const failures: Array<{ userId: string; error: string }> = [];
           take,
+                    for (const candidate of candidates) {
+                      try {
+                        const result = await processAutoRenewal(prisma, candidate.id);
+                        if (result.success) {
+                          processed++;
+                        } else {
+                          failed++;
+                          failures.push({
+                            userId: candidate.id,
+                            error: result.error || "Unknown error",
+                          });
+                        }
+                      } catch (err) {
+                        failed++;
+                        failures.push({
+                          userId: candidate.id,
+                          error: err instanceof Error ? err.message : "Unknown error",
+                        });
+                      }
+                    }
           orderBy: { createdAt: "desc" },
+                    // Log bulk operation
+                    await prisma.auditLog.create({
+                      data: {
+                        id: randomUUID(),
+                        userId: ctx.session!.user.id,
+                        action: "BULK_AUTO_RENEWAL",
+                        entity: "SYSTEM",
+                        entityId: "BULK_AUTO_RENEWAL",
+                        metadata: {
+                          processed,
+                          failed,
+                          totalCandidates: candidates.length,
+                          failures: failures.slice(0, 50), // Keep first 50 failures in log
+                        },
+                        ipAddress: "",
+                        userAgent: "",
+                      },
+                    });
           select: {
+                    return {
+                      success: true,
+                      dryRun: false,
+                      processed,
+                      failed,
+                      totalCandidates: candidates.length,
+                      failures: failures.slice(0, 50),
+                    };
+                  } catch (err) {
+                    return {
+                      success: false,
+                      error: `Bulk auto-renewal failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+                    };
+                  }
+                }),
             id: true,
             reference: true,
             description: true,
