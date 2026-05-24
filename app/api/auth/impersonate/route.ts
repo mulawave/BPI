@@ -495,14 +495,20 @@ export async function GET(req: NextRequest) {
 
     const maxAge = 4 * 60 * 60; // 4 hours
 
-    const dashboardUrl = new URL("/dashboard", req.url);
+    // Use NEXTAUTH_URL / NEXT_PUBLIC_APP_URL as the authoritative origin so that
+    // the redirect lands on the public domain rather than the internal proxy host
+    // (e.g., http://localhost:3000) when Next.js runs behind nginx or Caddy.
+    const appOrigin =
+      (process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "") ||
+      new URL(req.url).origin;
+    const dashboardUrl = `${appOrigin}/dashboard`;
 
     const response = new NextResponse(
       renderImpersonationPage({
         title: "Starting impersonation session",
         message: `You are being logged in as ${impToken.TargetUser.email}.`,
         detail: "Your admin session is preserved and will be restored when you end impersonation.",
-        redirectUrl: dashboardUrl.toString(),
+        redirectUrl: dashboardUrl,
       }),
       { headers: HTML_HEADERS }
     );
