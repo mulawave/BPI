@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Plus, Edit2, Trash2, Power, PowerOff, ExternalLink, Image as ImageIcon, MoveUp, MoveDown, Upload, X, UserCheck, Calendar, Shield } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Edit2, Trash2, Power, PowerOff, ExternalLink, Image as ImageIcon, MoveUp, MoveDown, Upload, X, UserCheck, Calendar, Shield, BarChart3 } from "lucide-react";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,50 @@ export default function ThirdPartyPlatformsPage() {
 
   // Get all platforms (admin view)
   const { data: platforms, isLoading } = api.admin.getAllThirdPartyPlatforms.useQuery();
+
+  // ── Platform Activity Analytics + Reset Tool ────────────────────────────────
+  const [resetUserQuery, setResetUserQuery] = useState("");
+  const [selectedResetUserId, setSelectedResetUserId] = useState("");
+  const [selectedResetPlatformId, setSelectedResetPlatformId] = useState("");
+  const [resetRemoveRegistration, setResetRemoveRegistration] = useState(true);
+
+  const { data: platformAnalytics, isLoading: loadingPlatformAnalytics } =
+    api.thirdPartyMatrixAdmin.getPlatformAnalytics.useQuery();
+
+  const { data: resetUserMatches, isFetching: searchingResetUsers } =
+    api.thirdPartyMatrixAdmin.searchUsersForReset.useQuery(
+      { query: resetUserQuery.trim(), limit: 12 },
+      { enabled: resetUserQuery.trim().length >= 2 }
+    );
+
+  const resetUserSubmission = api.thirdPartyMatrixAdmin.resetUserPlatformSubmission.useMutation({
+    onSuccess: async (result) => {
+      toast.success(
+        `${result.deletedLinks} link(s) and ${result.deletedRegistrations} registration(s) removed for ${result.platformName}`
+      );
+      await utils.thirdPartyMatrixAdmin.getPlatformAnalytics.invalidate();
+      await utils.admin.getAllThirdPartyPlatforms.invalidate();
+      setSelectedResetUserId("");
+      setSelectedResetPlatformId("");
+      setResetUserQuery("");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const selectedResetUser = useMemo(
+    () => (resetUserMatches || []).find((u: any) => u.id === selectedResetUserId) || null,
+    [resetUserMatches, selectedResetUserId]
+  );
+
+  function handleResetSubmission() {
+    if (!selectedResetUserId) { toast.error("Select a user to reset"); return; }
+    if (!selectedResetPlatformId) { toast.error("Select a platform to reset"); return; }
+    resetUserSubmission.mutate({
+      userId: selectedResetUserId,
+      platformId: selectedResetPlatformId,
+      removeRegistration: resetRemoveRegistration,
+    });
+  }
 
   // =========================
   // Executive Overpass
@@ -846,6 +890,140 @@ export default function ThirdPartyPlatformsPage() {
       </div>
 
       {/* Add/Edit Modal */}
+      {/* ── Platform Activity Analytics ───────────────────────────────────── */}
+      <div className="rounded-2xl border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card p-4">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-bpi-primary" />
+            Platform Activity Analytics
+          </h2>
+          {loadingPlatformAnalytics && <span className="text-xs text-muted-foreground">Loading...</span>}
+        </div>
+
+        <div className="overflow-x-auto mb-4">
+          <table className="w-full min-w-[980px] text-sm">
+            <thead>
+              <tr className="text-left text-muted-foreground border-b border-bpi-border dark:border-bpi-dark-accent">
+                <th className="px-3 py-2">Platform</th>
+                <th className="px-3 py-2">Owner</th>
+                <th className="px-3 py-2">Submissions</th>
+                <th className="px-3 py-2">Registrations</th>
+                <th className="px-3 py-2">Owner Downlines</th>
+                <th className="px-3 py-2">Downline Submitted</th>
+                <th className="px-3 py-2">Downline Registered</th>
+                <th className="px-3 py-2">Completion</th>
+                <th className="px-3 py-2">Recent Activity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(platformAnalytics || []).length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
+                    No analytics yet. Activity will appear after users submit their referral links.
+                  </td>
+                </tr>
+              ) : (
+                (platformAnalytics || []).map((row: any) => (
+                  <tr key={row.platformId} className="border-b border-bpi-border/60 dark:border-bpi-dark-accent/60">
+                    <td className="px-3 py-2">
+                      <div className="font-medium text-foreground">{row.platformName}</div>
+                      <div className="text-xs text-muted-foreground">{row.isActive ? "Active" : "Inactive"}</div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="text-foreground">{row.ownerName}</div>
+                      <div className="text-xs text-muted-foreground">{row.ownerRole || "—"}</div>
+                    </td>
+                    <td className="px-3 py-2">{row.totalSubmissions}</td>
+                    <td className="px-3 py-2">{row.totalRegistrations}</td>
+                    <td className="px-3 py-2">{row.ownerDownlines}</td>
+                    <td className="px-3 py-2">{row.downlineSubmissions}</td>
+                    <td className="px-3 py-2">{row.downlineRegistrations}</td>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                        {row.downlineCompletionRate}%
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      {row.recentSubmissions?.length ? (
+                        <div className="text-xs text-muted-foreground">
+                          Latest: {row.recentSubmissions[0].userName} • {new Date(row.recentSubmissions[0].createdAt).toLocaleDateString()}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No submissions</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Reset Tool */}
+        <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/10 p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-3">Clear User Platform Submission</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Find User</label>
+              <input
+                value={resetUserQuery}
+                onChange={(e) => { setResetUserQuery(e.target.value); setSelectedResetUserId(""); }}
+                placeholder="Search by name or email"
+                className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm"
+              />
+              {searchingResetUsers && <p className="text-xs text-muted-foreground mt-1">Searching...</p>}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Select User</label>
+              <select
+                value={selectedResetUserId}
+                onChange={(e) => setSelectedResetUserId(e.target.value)}
+                className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm"
+              >
+                <option value="">Choose user</option>
+                {(resetUserMatches || []).map((u: any) => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.email || "no-email"})</option>
+                ))}
+              </select>
+              {selectedResetUser && (
+                <p className="text-xs text-muted-foreground mt-1">Sponsor: {(selectedResetUser as any).sponsorName || "None"}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Platform</label>
+              <select
+                value={selectedResetPlatformId}
+                onChange={(e) => setSelectedResetPlatformId(e.target.value)}
+                className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm"
+              >
+                <option value="">Choose platform</option>
+                {(platforms || []).map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={resetRemoveRegistration}
+                onChange={(e) => setResetRemoveRegistration(e.target.checked)}
+                className="rounded"
+              />
+              Also clear registration record
+            </label>
+            <Button
+              variant="destructive"
+              onClick={handleResetSubmission}
+              disabled={resetUserSubmission.isPending}
+            >
+              {resetUserSubmission.isPending ? "Resetting..." : "Reset Submission"}
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-bpi-dark-card rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
