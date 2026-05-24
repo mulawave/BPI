@@ -24,6 +24,41 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next();
 });
 
+async function realignBankIdSequence(prismaLike: any) {
+  try {
+    await prismaLike.$executeRawUnsafe(`
+      SELECT setval(
+        pg_get_serial_sequence('"nigerian_banks"', 'id'),
+        COALESCE((SELECT MAX(id) FROM "nigerian_banks"), 0) + 1,
+        false
+      );
+    `);
+  } catch (error) {
+    // Non-Postgres providers or restricted roles may fail this statement.
+    // In that case we simply let the original create error bubble up.
+    console.warn("[adminBank] Unable to realign bank id sequence", error);
+  }
+}
+
+async function createBankWithRecovery(prismaLike: any, data: { bankName: string; bankCode: string }) {
+  try {
+    return await prismaLike.bank.create({ data });
+  } catch (error: any) {
+    // P2002 on id can happen when DB sequence is behind max(id).
+    if (error?.code !== "P2002") {
+      throw error;
+    }
+
+    const target = Array.isArray(error?.meta?.target) ? error.meta.target.join(",") : String(error?.meta?.target || "");
+    if (!target.includes("id")) {
+      throw error;
+    }
+
+    await realignBankIdSequence(prismaLike);
+    return prismaLike.bank.create({ data });
+  }
+}
+
 export const adminBankRouter = createTRPCRouter({
   // Bank record stats for dashboards
   getBankRecordStats: adminProcedure.query(async ({ ctx }) => {
@@ -421,7 +456,7 @@ export const adminBankRouter = createTRPCRouter({
           updated++;
         }
       } else {
-        await ctx.prisma.bank.create({ data: { bankName, bankCode } });
+        await createBankWithRecovery(ctx.prisma, { bankName, bankCode });
         created++;
       }
     }
@@ -489,7 +524,7 @@ export const adminBankRouter = createTRPCRouter({
           updated++;
         }
       } else {
-        await ctx.prisma.bank.create({ data: { bankName, bankCode } });
+        await createBankWithRecovery(ctx.prisma, { bankName, bankCode });
         created++;
       }
     }
