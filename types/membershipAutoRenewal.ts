@@ -233,13 +233,13 @@ export interface AutoRenewalJobResult {
 // User Operations
 // ═════════════════════════════════════════════════════════════════════════
 
-export interface GetMembershipRenewalStatusResult extends MembershipRenewalStatus {}
+export type GetMembershipRenewalStatusResult = MembershipRenewalStatus;
 
 export interface PreviewMembershipRenewalInput {
   optionalUpgradePackageId?: string;
 }
 
-export interface PreviewMembershipRenewalResult extends RenewalPreview {}
+export type PreviewMembershipRenewalResult = RenewalPreview;
 
 export interface InitiateUserAutoRenewalInput {
   optionalUpgradePackageId?: string;

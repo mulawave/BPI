@@ -145,7 +145,7 @@ export async function runMembershipAutoRenewalJob(
             const errorMsg = result.error || "Unknown error";
             errors.push({
               userId: candidate.id,
-              userEmail: candidate.email,
+                userEmail: candidate.email ?? undefined,
               error: errorMsg,
             });
             console.error(
@@ -158,7 +158,7 @@ export async function runMembershipAutoRenewalJob(
         const errorMsg = err instanceof Error ? err.message : String(err);
         errors.push({
           userId: candidate.id,
-          userEmail: candidate.email,
+          userEmail: candidate.email ?? undefined,
           error: errorMsg,
         });
         console.error(

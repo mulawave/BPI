@@ -1,9 +1,41 @@
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "crypto";
-import { getReferralChain } from "../utils/referralUtils";
-import { distributeBptReward } from "../utils/bptRewardUtils";
-import { recordRevenue, computeProfitFiat } from "../utils/revenueUtils";
+import { getReferralChain } from "./referral.service";
+import { distributeBptReward } from "./rewards.service";
+import { recordRevenue } from "./revenue.service";
 import { notifyMembershipRenewal } from "./notification.service";
+
+// ========================================================================
+// HELPER FUNCTIONS
+// ========================================================================
+
+function normalizePercent(maybePercent: number, fallback: number): number {
+  if (!Number.isFinite(maybePercent)) return fallback;
+  if (maybePercent < 0) return fallback;
+  return maybePercent > 1 ? maybePercent / 100 : maybePercent;
+}
+
+function computeProfitFiat(params: {
+  profitMode: "PERCENT" | "FIXED" | "HYBRID";
+  profitPercent: number;
+  profitFixedAmountFiat: number;
+  baseFiat: number;
+}): number {
+  const profitPercent = normalizePercent(params.profitPercent, 0);
+  const fixed = Number(params.profitFixedAmountFiat ?? 0);
+  const baseFiat = Number(params.baseFiat ?? 0);
+
+  let profitFiat = 0;
+  if (params.profitMode === "PERCENT") {
+    profitFiat = baseFiat * profitPercent;
+  } else if (params.profitMode === "FIXED") {
+    profitFiat = fixed;
+  } else {
+    profitFiat = baseFiat * profitPercent + fixed;
+  }
+
+  return Math.min(Math.max(profitFiat, 0), baseFiat);
+}
 
 /**
  * Membership Package Hierarchy Levels
@@ -455,7 +487,7 @@ export async function processAutoRenewal(
 
     try {
       await recordRevenue(prismaLike, {
-        source: "AUTO_MEMBERSHIP_RENEWAL",
+        source: "MEMBERSHIP_RENEWAL",
         amount: renewalProfitFiat,
         currency: "NGN",
         sourceId: `AUTO_RENEWAL:${renewalHistory.id}`,
@@ -483,8 +515,7 @@ export async function processAutoRenewal(
         userId,
         renewalPackageInfo.packageName,
         user.renewalCount + 1,
-        newExpiresAt,
-        true // isAutoRenewal
+        newExpiresAt
       );
     } catch (err) {
       console.error(`[AUTO-RENEWAL] Notification failed for user ${userId}:`, err);
@@ -550,8 +581,8 @@ export async function getAutoRenewalCandidates(
       activeMembershipPackageId: true,
       membershipExpiresAt: true,
     },
-  }).then((users) =>
-    users.map((user) => {
+  }).then((users: any[]) =>
+    users.map((user: any) => {
       const daysExpired = user.membershipExpiresAt
         ? Math.floor(
             (now.getTime() - user.membershipExpiresAt.getTime()) /

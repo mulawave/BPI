@@ -16,22 +16,22 @@ export default function MembershipRenewalPanel() {
   const [showRenewalHistory, setShowRenewalHistory] = useState(false);
 
   // Queries
-  const statusQuery = api.user.package.getMembershipRenewalStatus.useQuery();
-  const previewQuery = api.user.package.previewMembershipRenewal.useQuery(
+  const statusQuery = api.package.getMembershipRenewalStatus.useQuery();
+  const previewQuery = api.package.previewMembershipRenewal.useQuery(
     undefined,
     {
       enabled: showRenewalDetails && statusQuery.data?.isRenewalWindow,
     }
   );
-  const historyQuery = api.user.package.getMembershipRenewalHistory.useQuery(
+  const historyQuery = api.package.getMembershipRenewalHistory.useQuery(
     { limit: 10, page: 1 },
     { enabled: showRenewalHistory }
   );
 
   // Mutations
   const autoRenewalMutation =
-    api.user.package.initiateUserAutoRenewal.useMutation({
-      onSuccess: (data) => {
+    api.package.initiateUserAutoRenewal.useMutation({
+      onSuccess: (data: any) => {
         if (data.success) {
           toast.success(data.message || "Membership renewed successfully!");
           statusQuery.refetch();
@@ -40,7 +40,7 @@ export default function MembershipRenewalPanel() {
           toast.error(data.error || "Auto-renewal failed");
         }
       },
-      onError: (error) => {
+      onError: (error: any) => {
         toast.error(error.message || "Error processing renewal");
       },
     });

@@ -9,7 +9,7 @@ import {
   MdCancel,
   MdCheck,
   MdWarning,
-  MdPlay,
+  MdPlaylistPlay,
   MdPause,
 } from "react-icons/md";
 
@@ -46,7 +46,7 @@ export default function AdminAutoRenewalPanel() {
   );
   const processAutoRenewalMutation =
     api.admin.processAutoRenewalForUser.useMutation({
-      onSuccess: (data) => {
+      onSuccess: (data: any) => {
         if (data.success) {
           toast.success(
             `Auto-renewal completed! New expiry: ${new Date(data.newExpiresAt!).toLocaleDateString()}`
@@ -58,13 +58,13 @@ export default function AdminAutoRenewalPanel() {
           toast.error(data.error || "Auto-renewal failed");
         }
       },
-      onError: (error) => {
+      onError: (error: any) => {
         toast.error(error.message || "Error processing auto-renewal");
       },
     });
 
   const bulkProcessMutation = api.admin.bulkProcessAutoRenewal.useMutation({
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       if (data.success) {
         if (data.dryRun) {
           setDryRunResults({
@@ -84,7 +84,7 @@ export default function AdminAutoRenewalPanel() {
         toast.error(data.error || "Bulk operation failed");
       }
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast.error(error.message || "Error during bulk operation");
     },
   });
@@ -394,7 +394,7 @@ export default function AdminAutoRenewalPanel() {
                 {bulkProcessMutation.isPending ? (
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                 ) : (
-                  <MdPlay size={20} />
+                  <MdCheck size={20} />
                 )}
                 Execute Bulk Renewal
               </button>
