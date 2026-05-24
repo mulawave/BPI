@@ -116,6 +116,9 @@ export const impersonationGlobalRouteLimiter = createRateLimiter({ windowMs: 5 *
 /** Super-admin impersonation token creation: 5 tokens per 5 minutes per admin */
 export const impersonationCreationLimiter = createRateLimiter({ windowMs: 5 * 60_000, max: 5 });
 
+/** Plugin uploads: 20 uploads per 10 minutes per IP */
+export const pluginUploadLimiter = createRateLimiter({ windowMs: 10 * 60_000, max: 20 });
+
 // ─── Helper to extract client IP from NextRequest ───────────────────────────
 
 export function getClientIp(req: Request): string {

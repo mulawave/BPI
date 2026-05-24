@@ -44,3 +44,17 @@ export function generateTxReferenceBatch(prefix: string, count: number): string[
   
   return references;
 }
+
+/**
+ * Sort items by a string field in ascending, locale-aware order.
+ */
+export function sortByStringKey<T extends Record<string, unknown>>(
+  items: T[],
+  key: keyof T,
+): T[] {
+  return [...items].sort((left, right) => {
+    const leftValue = String(left[key] ?? "");
+    const rightValue = String(right[key] ?? "");
+    return leftValue.localeCompare(rightValue);
+  });
+}

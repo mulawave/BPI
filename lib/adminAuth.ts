@@ -79,3 +79,13 @@ export async function logAdminAction(
     console.error("Failed to log admin action:", error);
   }
 }
+
+export function assertPluginLifecycleAccess(input: {
+  user: { role?: string | null } | null;
+  action: "inspect" | "install" | "configure" | "enable" | "disable" | "uninstall" | "remove";
+}) {
+  const role = input.user?.role ?? null;
+  if (role !== "admin" && role !== "super_admin") {
+    throw new Error("FORBIDDEN: Admin access required");
+  }
+}
