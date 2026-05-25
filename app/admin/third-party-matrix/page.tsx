@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -18,6 +18,7 @@ import toast from "react-hot-toast";
 import { api } from "@/client/trpc";
 import { Button } from "@/components/ui/button";
 import AdminPageGuide from "@/components/admin/AdminPageGuide";
+import { Layers, Pencil, Plus, Trash2, ToggleLeft, ToggleRight, Upload, X } from "lucide-react";
 
 type ThirdPartyMatrixSettings = {
   id: string;
@@ -31,9 +32,40 @@ type ThirdPartyMatrixSettings = {
 };
 
 export default function ThirdPartyMatrixAdminPage() {
+    // ── Platform management state ──────────────────────────────────────────────
+    const [platformSection, setPlatformSection] = useState(true);
+    const [showAddPlatform, setShowAddPlatform] = useState(false);
+    const [editingPlatform, setEditingPlatform] = useState<any | null>(null);
+    const [platformForm, setPlatformForm] = useState({
+      name: "",
+      description: "",
+      registrationUrl: "",
+      adminDefaultLink: "",
+      defaultAdminUserId: "",
+      category: "",
+      displayOrder: 0,
+      logo: "",
+      isActive: true,
+    });
+    const [deletingPlatformId, setDeletingPlatformId] = useState<string | null>(null);
+    const [confirmDeletePlatformId, setConfirmDeletePlatformId] = useState<string | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string>("");
+    const [uploadProgress, setUploadProgress] = useState<number>(0);
+    const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  useEffect(() => {
+    if (!confirmDeletePlatformId) return;
+    const timeout = setTimeout(() => setConfirmDeletePlatformId(null), 5000);
+    return () => clearTimeout(timeout);
+  }, [confirmDeletePlatformId]);
+
   const utils = api.useUtils();
   const [query, setQuery] = useState("");
   const [selectedSponsorId, setSelectedSponsorId] = useState<string | null>(null);
+  const [resetUserQuery, setResetUserQuery] = useState("");
+  const [selectedResetUserId, setSelectedResetUserId] = useState<string>("");
+  const [selectedResetPlatformId, setSelectedResetPlatformId] = useState<string>("");
+  const [resetRemoveRegistration, setResetRemoveRegistration] = useState(true);
 
   // Query for matrix settings
   const rawSettingsQuery = api.thirdPartyMatrixAdmin.getSettings.useQuery();
@@ -47,6 +79,16 @@ export default function ThirdPartyMatrixAdminPage() {
   const { data: sponsorDetails, isLoading: loadingSponsorDetails } = api.thirdPartyMatrixAdmin.getSponsorDetails.useQuery(
     { sponsorId: selectedSponsorId || "" },
     { enabled: !!selectedSponsorId }
+  );
+  const { data: platformAnalytics, isLoading: loadingPlatformAnalytics } = api.thirdPartyMatrixAdmin.getPlatformAnalytics.useQuery();
+  const { data: resetUserMatches, isFetching: searchingResetUsers } = api.thirdPartyMatrixAdmin.searchUsersForReset.useQuery(
+    {
+      query: resetUserQuery.trim(),
+      limit: 12,
+    },
+    {
+      enabled: resetUserQuery.trim().length >= 2,
+    }
   );
 
   const updateSettings = api.thirdPartyMatrixAdmin.updateSettings.useMutation({
@@ -85,10 +127,29 @@ export default function ThirdPartyMatrixAdminPage() {
     enabled: false,
   });
 
+  const resetUserSubmission = api.thirdPartyMatrixAdmin.resetUserPlatformSubmission.useMutation({
+    onSuccess: async (result) => {
+      toast.success(
+        `${result.deletedLinks} link(s) and ${result.deletedRegistrations} registration(s) removed for ${result.platformName}`
+      );
+      await utils.thirdPartyMatrixAdmin.getPlatformAnalytics.invalidate();
+      await utils.thirdPartyPlatforms.adminListPlatforms.invalidate();
+      setSelectedResetUserId("");
+      setSelectedResetPlatformId("");
+      setResetUserQuery("");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
   const selectedSponsorName = useMemo(() => {
     if (!sponsorDetails?.sponsor) return null;
     return sponsorDetails.sponsor.name;
   }, [sponsorDetails]);
+
+  const selectedResetUser = useMemo(
+    () => (resetUserMatches || []).find((u: any) => u.id === selectedResetUserId) || null,
+    [resetUserMatches, selectedResetUserId]
+  );
 
   const triggerCsvDownload = async () => {
     try {
@@ -113,6 +174,158 @@ export default function ThirdPartyMatrixAdminPage() {
       toast.error(error?.message || "Failed to export CSV");
     }
   };
+
+    // ── Platform CRUD helpers ──────────────────────────────────────────────────
+    const { data: platformList, isLoading: loadingPlatforms } = api.thirdPartyPlatforms.adminListPlatforms.useQuery();
+    const {
+      data: platformOwners,
+      isLoading: loadingPlatformOwners,
+      error: platformOwnersError,
+    } = api.thirdPartyPlatforms.adminListPlatformOwners.useQuery();
+
+    const addPlatform = api.thirdPartyPlatforms.adminAddPlatform.useMutation({
+      onSuccess: async () => {
+        toast.success("Platform added");
+        resetPlatformForm();
+        setShowAddPlatform(false);
+        await utils.thirdPartyPlatforms.adminListPlatforms.invalidate();
+      },
+      onError: (e) => toast.error(e.message),
+    });
+
+    const updatePlatform = api.thirdPartyPlatforms.adminUpdatePlatform.useMutation({
+      onSuccess: async () => {
+        toast.success("Platform updated");
+        setEditingPlatform(null);
+        resetPlatformForm();
+        await utils.thirdPartyPlatforms.adminListPlatforms.invalidate();
+      },
+      onError: (e) => toast.error(e.message),
+    });
+
+    const togglePlatformActive = api.thirdPartyPlatforms.adminTogglePlatformActive.useMutation({
+      onSuccess: async (data) => {
+        toast.success(data.isActive ? "Platform activated" : "Platform deactivated");
+        await utils.thirdPartyPlatforms.adminListPlatforms.invalidate();
+      },
+      onError: (e) => toast.error(e.message),
+    });
+
+    const deletePlatform = api.thirdPartyPlatforms.adminDeletePlatform.useMutation({
+      onMutate: (variables) => {
+        setDeletingPlatformId(variables.id);
+      },
+      onSuccess: async () => {
+        toast.success("Platform deleted");
+        await utils.thirdPartyPlatforms.adminListPlatforms.invalidate();
+        setDeletingPlatformId(null);
+        setConfirmDeletePlatformId(null);
+      },
+      onError: (e) => {
+        toast.error(e.message);
+        setDeletingPlatformId(null);
+        setConfirmDeletePlatformId(null);
+      },
+    });
+
+    function resetPlatformForm() {
+      setPlatformForm({ name: "", description: "", registrationUrl: "", adminDefaultLink: "", defaultAdminUserId: "", category: "", displayOrder: 0, logo: "", isActive: true });
+      setLogoPreview("");
+      setUploadProgress(0);
+    }
+
+    function openEditPlatform(p: any) {
+      setEditingPlatform(p);
+      setPlatformForm({
+        name: p.name,
+        description: p.description || "",
+        registrationUrl: p.registrationUrl || "",
+        adminDefaultLink: p.adminDefaultLink || "",
+        defaultAdminUserId: p.defaultAdminUserId || "",
+        category: p.category || "",
+        displayOrder: p.displayOrder ?? 0,
+        logo: p.logo || "",
+        isActive: p.isActive,
+      });
+      setLogoPreview(p.logo || "");
+      setShowAddPlatform(true);
+    }
+
+    async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      // Instant local preview
+      const reader = new FileReader();
+      reader.onload = (ev) => setLogoPreview(ev.target?.result as string);
+      reader.readAsDataURL(file);
+
+      // Upload with XHR progress tracking
+      setUploadingLogo(true);
+      setUploadProgress(0);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/admin/upload-platform-logo");
+
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable) {
+          setUploadProgress(Math.round((ev.loaded / ev.total) * 100));
+        }
+      };
+
+      xhr.onload = () => {
+        setUploadingLogo(false);
+        if (xhr.status === 200) {
+          const data = JSON.parse(xhr.responseText);
+          setPlatformForm((prev) => ({ ...prev, logo: data.url }));
+          toast.success("Logo uploaded");
+        } else {
+          const err = JSON.parse(xhr.responseText);
+          toast.error(err.error || "Logo upload failed");
+          setLogoPreview("");
+        }
+      };
+
+      xhr.onerror = () => {
+        setUploadingLogo(false);
+        toast.error("Logo upload failed");
+        setLogoPreview("");
+      };
+
+      xhr.send(formData);
+    }
+
+    function handleSubmitPlatform() {
+      if (!platformForm.name.trim()) { toast.error("Platform name is required"); return; }
+      if (!platformForm.registrationUrl.trim()) { toast.error("Platform base URL is required"); return; }
+      if (!platformForm.defaultAdminUserId) { toast.error("Please select the default owner admin"); return; }
+
+      if (editingPlatform) {
+        updatePlatform.mutate({ id: editingPlatform.id, ...platformForm, displayOrder: Number(platformForm.displayOrder) });
+      } else {
+        addPlatform.mutate({ ...platformForm, displayOrder: Number(platformForm.displayOrder) });
+      }
+    }
+
+    function handleResetSubmission() {
+      if (!selectedResetUserId) {
+        toast.error("Select a user to reset");
+        return;
+      }
+      if (!selectedResetPlatformId) {
+        toast.error("Select a platform to reset");
+        return;
+      }
+
+      resetUserSubmission.mutate({
+        userId: selectedResetUserId,
+        platformId: selectedResetPlatformId,
+        removeRegistration: resetRemoveRegistration,
+      });
+    }
 
   return (
     <div className="p-6 space-y-6">
@@ -171,6 +384,484 @@ export default function ThirdPartyMatrixAdminPage() {
         warning="Reset actions can remove sponsor matrix structure. Confirm with operations before executing maintenance changes."
       />
 
+        {/* ── Platform Management ─────────────────────────────────────────── */}
+        <div className="rounded-2xl border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card">
+          <div
+            className="flex items-center justify-between p-4 cursor-pointer select-none"
+            onClick={() => setPlatformSection((v) => !v)}
+          >
+            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <Layers className="w-5 h-5 text-bpi-primary" />
+              Platform Management
+              {platformList && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  ({platformList.length} platform{platformList.length !== 1 ? "s" : ""})
+                </span>
+              )}
+            </h2>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                className="gap-1"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingPlatform(null);
+                  resetPlatformForm();
+                  setShowAddPlatform(true);
+                  setPlatformSection(true);
+                }}
+              >
+                <Plus className="w-4 h-4" />
+                Add Platform
+              </Button>
+            </div>
+          </div>
+
+          {platformSection && (
+            <div className="border-t border-bpi-border dark:border-bpi-dark-accent">
+              {/* Add / Edit form */}
+              {showAddPlatform && (
+                <div className="p-5 border-b border-bpi-border dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/20">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-foreground">
+                      {editingPlatform ? `Editing: ${editingPlatform.name}` : "Add New Platform"}
+                    </h3>
+                    <button
+                      onClick={() => { setShowAddPlatform(false); setEditingPlatform(null); resetPlatformForm(); }}
+                      className="p-1 hover:bg-gray-200 dark:hover:bg-bpi-dark-accent rounded"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Logo upload */}
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-muted-foreground mb-2">Platform Logo</label>
+                      <div className="flex items-start gap-4">
+                        <div className="w-20 h-20 rounded-xl border-2 border-dashed border-bpi-border dark:border-bpi-dark-accent flex items-center justify-center bg-white dark:bg-bpi-dark-card overflow-hidden flex-shrink-0">
+                          {logoPreview ? (
+                            <img src={logoPreview} alt="Logo preview" className="w-full h-full object-contain" />
+                          ) : (
+                            <Upload className="w-8 h-8 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-bpi-dark-accent/50 transition-colors">
+                            <Upload className="w-4 h-4" />
+                            {uploadingLogo ? `Uploading… ${uploadProgress}%` : "Choose Logo"}
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                              className="hidden"
+                              onChange={handleLogoUpload}
+                              disabled={uploadingLogo}
+                            />
+                          </label>
+                          <p className="text-xs text-muted-foreground mt-1">JPEG, PNG, GIF, WebP or SVG · Max 2 MB</p>
+                          {uploadingLogo && (
+                            <div className="mt-2 w-full max-w-xs">
+                              <div className="h-2 rounded-full bg-gray-200 dark:bg-bpi-dark-accent overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-200"
+                                  style={{ width: `${uploadProgress}%` }}
+                                />
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">{uploadProgress}% uploaded</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Platform Name *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Facebook"
+                        value={platformForm.name}
+                        onChange={(e) => setPlatformForm((p) => ({ ...p, name: e.target.value }))}
+                        className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm text-foreground"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Category</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Social Media"
+                        value={platformForm.category}
+                        onChange={(e) => setPlatformForm((p) => ({ ...p, category: e.target.value }))}
+                        className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm text-foreground"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Description</label>
+                      <input
+                        type="text"
+                        placeholder="Brief platform description"
+                        value={platformForm.description}
+                        onChange={(e) => setPlatformForm((p) => ({ ...p, description: e.target.value }))}
+                        className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm text-foreground"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                        Platform Base URL * <span className="text-[10px] font-normal">(used for link validation only – not shown to users)</span>
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://facebook.com"
+                        value={platformForm.registrationUrl}
+                        onChange={(e) => setPlatformForm((p) => ({ ...p, registrationUrl: e.target.value }))}
+                        className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm text-foreground"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                        Default Admin Referral Link <span className="text-[10px] font-normal">(link used for the selected owner admin and shown to their direct downlines)</span>
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://facebook.com/r/yourref"
+                        value={platformForm.adminDefaultLink}
+                        onChange={(e) => setPlatformForm((p) => ({ ...p, adminDefaultLink: e.target.value }))}
+                        className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm text-foreground"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Default Link Owner Admin *</label>
+                      <select
+                        value={platformForm.defaultAdminUserId}
+                        onChange={(e) => setPlatformForm((p) => ({ ...p, defaultAdminUserId: e.target.value }))}
+                        disabled={loadingPlatformOwners}
+                        className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm text-foreground"
+                      >
+                        <option value="">{loadingPlatformOwners ? "Loading admins..." : "Select admin owner"}</option>
+                        {(platformOwners || []).map((owner: any) => (
+                          <option key={owner.id} value={owner.id}>
+                            {owner.name} ({owner.role}{owner.activated ? "" : " - inactive"})
+                          </option>
+                        ))}
+                      </select>
+                      {platformOwnersError && (
+                        <p className="text-xs text-red-600 mt-1">Failed to load admins. Try refreshing the page.</p>
+                      )}
+                      {!loadingPlatformOwners && (platformOwners || []).length === 0 && (
+                        <p className="text-xs text-orange-600 mt-1">No admins found. Create an admin first.</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Display Order</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={platformForm.displayOrder}
+                        onChange={(e) => setPlatformForm((p) => ({ ...p, displayOrder: Number(e.target.value) }))}
+                        className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm text-foreground"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-semibold text-muted-foreground">Active</label>
+                      <button
+                        type="button"
+                        onClick={() => setPlatformForm((p) => ({ ...p, isActive: !p.isActive }))}
+                        className={`inline-flex w-12 h-6 rounded-full transition-colors ${platformForm.isActive ? "bg-emerald-600" : "bg-gray-300 dark:bg-bpi-dark-accent"}`}
+                      >
+                        <span className={`h-4 w-4 rounded-full bg-white my-1 transition-transform ${platformForm.isActive ? "translate-x-7" : "translate-x-1"}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-4">
+                    <Button
+                      onClick={handleSubmitPlatform}
+                      disabled={addPlatform.isPending || updatePlatform.isPending || uploadingLogo}
+                      className="gap-2"
+                    >
+                      {(addPlatform.isPending || updatePlatform.isPending) ? "Saving…" : editingPlatform ? "Save Changes" : "Add Platform"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => { setShowAddPlatform(false); setEditingPlatform(null); resetPlatformForm(); }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Platform list */}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[700px] text-sm">
+                  <thead>
+                    <tr className="text-left text-muted-foreground border-b border-bpi-border dark:border-bpi-dark-accent">
+                      <th className="px-4 py-3">Logo</th>
+                      <th className="px-4 py-3">Platform</th>
+                      <th className="px-4 py-3">Category</th>
+                      <th className="px-4 py-3">Owner Admin</th>
+                      <th className="px-4 py-3">Base URL</th>
+                      <th className="px-4 py-3">Admin Link</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loadingPlatforms ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">Loading platforms…</td>
+                      </tr>
+                    ) : (platformList || []).length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No platforms added yet. Click "Add Platform" to get started.</td>
+                      </tr>
+                    ) : (
+                      (platformList || []).map((p: any) => (
+                        <tr key={p.id} className="border-b border-bpi-border/60 dark:border-bpi-dark-accent/60 hover:bg-gray-50 dark:hover:bg-bpi-dark-accent/20 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 dark:bg-bpi-dark-accent flex items-center justify-center flex-shrink-0">
+                              {p.logo ? (
+                                <img src={p.logo} alt={p.name} className="w-full h-full object-contain" />
+                              ) : (
+                                <span className="text-sm font-bold text-muted-foreground">{p.name.charAt(0)}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-foreground">{p.name}</div>
+                            {p.description && <div className="text-xs text-muted-foreground truncate max-w-[180px]">{p.description}</div>}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">{p.category || "—"}</td>
+                          <td className="px-4 py-3">
+                            {p.DefaultAdminUser ? (
+                              <div>
+                                <div className="text-xs font-medium text-foreground">
+                                  {`${p.DefaultAdminUser.firstname || ""} ${p.DefaultAdminUser.lastname || ""}`.trim() || p.DefaultAdminUser.email}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  {p.DefaultAdminUser.role}
+                                  {p.DefaultAdminUser.activated ? "" : " • inactive"}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-orange-600 dark:text-orange-400">Unassigned</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {p.registrationUrl ? (
+                              <span className="text-xs font-mono text-muted-foreground truncate block max-w-[140px]">{p.registrationUrl}</span>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {p.adminDefaultLink ? (
+                              <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">Set ✓</span>
+                            ) : (
+                              <span className="text-xs text-orange-600 dark:text-orange-400">Not set</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${p.isActive ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
+                              {p.isActive ? "Active" : "Inactive"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1 justify-end">
+                              <button
+                                onClick={() => openEditPlatform(p)}
+                                className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-bpi-dark-accent text-muted-foreground hover:text-foreground transition-colors"
+                                title="Edit"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => togglePlatformActive.mutate({ id: p.id })}
+                                className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-bpi-dark-accent text-muted-foreground hover:text-foreground transition-colors"
+                                title={p.isActive ? "Deactivate" : "Activate"}
+                                disabled={togglePlatformActive.isPending}
+                              >
+                                {p.isActive ? <ToggleRight className="w-4 h-4 text-green-600" /> : <ToggleLeft className="w-4 h-4" />}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (deletingPlatformId) return;
+                                  if (confirmDeletePlatformId !== p.id) {
+                                    setConfirmDeletePlatformId(p.id);
+                                    toast("Click delete again within 5 seconds to confirm.");
+                                    return;
+                                  }
+                                  setConfirmDeletePlatformId(null);
+                                  deletePlatform.mutate({ id: p.id });
+                                }}
+                                className={`p-1.5 rounded transition-colors ${confirmDeletePlatformId === p.id ? "bg-red-100 dark:bg-red-900/20 text-red-600" : "hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600"}`}
+                                title={confirmDeletePlatformId === p.id ? "Click again to confirm delete" : "Delete"}
+                                disabled={deletePlatform.isPending || deletingPlatformId === p.id}
+                              >
+                                {deletingPlatformId === p.id ? (
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className={`w-4 h-4 ${confirmDeletePlatformId === p.id ? "animate-pulse" : ""}`} />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Platform Analytics + Reset Tool ─────────────────────────────── */}
+        <div className="rounded-2xl border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card p-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-bpi-primary" />
+              Platform Activity Analytics
+            </h2>
+            {loadingPlatformAnalytics && <span className="text-xs text-muted-foreground">Loading...</span>}
+          </div>
+
+          <div className="overflow-x-auto mb-4">
+            <table className="w-full min-w-[980px] text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b border-bpi-border dark:border-bpi-dark-accent">
+                  <th className="px-3 py-2">Platform</th>
+                  <th className="px-3 py-2">Owner</th>
+                  <th className="px-3 py-2">Submissions</th>
+                  <th className="px-3 py-2">Registrations</th>
+                  <th className="px-3 py-2">Owner Downlines</th>
+                  <th className="px-3 py-2">Downline Submitted</th>
+                  <th className="px-3 py-2">Downline Registered</th>
+                  <th className="px-3 py-2">Completion</th>
+                  <th className="px-3 py-2">Recent Activity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(platformAnalytics || []).length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
+                      No platform analytics yet. Activity will appear after link submissions or registrations.
+                                          No platform analytics yet. Activity will appear after users submit their referral links.
+                    </td>
+                  </tr>
+                ) : (
+                  (platformAnalytics || []).map((row: any) => (
+                    <tr key={row.platformId} className="border-b border-bpi-border/60 dark:border-bpi-dark-accent/60">
+                      <td className="px-3 py-2">
+                        <div className="font-medium text-foreground">{row.platformName}</div>
+                        <div className="text-xs text-muted-foreground">{row.isActive ? "Active" : "Inactive"}</div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="text-foreground">{row.ownerName}</div>
+                        <div className="text-xs text-muted-foreground">{row.ownerRole || "—"}</div>
+                      </td>
+                      <td className="px-3 py-2">{row.totalSubmissions}</td>
+                      <td className="px-3 py-2">{row.totalRegistrations}</td>
+                      <td className="px-3 py-2">{row.ownerDownlines}</td>
+                      <td className="px-3 py-2">{row.downlineSubmissions}</td>
+                      <td className="px-3 py-2">{row.downlineRegistrations}</td>
+                      <td className="px-3 py-2">
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                          {row.downlineCompletionRate}%
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.recentSubmissions?.length ? (
+                          <div className="text-xs text-muted-foreground">
+                            Latest: {row.recentSubmissions[0].userName} • {new Date(row.recentSubmissions[0].createdAt).toLocaleDateString()}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">No submissions</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/10 p-4">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Test Reset: Clear User Platform Submission</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Find User</label>
+                <input
+                  value={resetUserQuery}
+                  onChange={(e) => {
+                    setResetUserQuery(e.target.value);
+                    setSelectedResetUserId("");
+                  }}
+                  placeholder="Search by name or email"
+                  className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm"
+                />
+                {searchingResetUsers && <p className="text-xs text-muted-foreground mt-1">Searching users...</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Select User</label>
+                <select
+                  value={selectedResetUserId}
+                  onChange={(e) => setSelectedResetUserId(e.target.value)}
+                  className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm"
+                >
+                  <option value="">Choose user</option>
+                  {(resetUserMatches || []).map((u: any) => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.email || "no-email"})</option>
+                  ))}
+                </select>
+                {selectedResetUser && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Sponsor: {selectedResetUser.sponsorName || "None"}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">Platform</label>
+                <select
+                  value={selectedResetPlatformId}
+                  onChange={(e) => setSelectedResetPlatformId(e.target.value)}
+                  className="w-full rounded-lg border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card px-3 py-2 text-sm"
+                >
+                  <option value="">Choose platform</option>
+                  {(platformList || []).map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={resetRemoveRegistration}
+                  onChange={(e) => setResetRemoveRegistration(e.target.checked)}
+                  className="rounded"
+                />
+                Also clear registration record
+              </label>
+              <Button
+                variant="destructive"
+                onClick={handleResetSubmission}
+                disabled={resetUserSubmission.isPending}
+              >
+                {resetUserSubmission.isPending ? "Resetting..." : "Reset Submission"}
+              </Button>
+            </div>
+          </div>
+        </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
         <div className="xl:col-span-8 space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -179,7 +870,6 @@ export default function ThirdPartyMatrixAdminPage() {
             <StatCard label="Placements" value={overview?.totalPlacements ?? 0} icon={<Activity className="w-4 h-4" />} />
             <StatCard label="Imbalance" value={overview?.imbalance ?? 0} icon={<AlertTriangle className="w-4 h-4" />} />
           </div>
-
 
           <div className="rounded-2xl border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card p-4">
             <div className="flex items-center justify-between gap-3 mb-3">
