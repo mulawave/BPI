@@ -176,31 +176,29 @@ export default function PromoCampaignsAdminPage() {
   const activeCampaigns = campaigns.filter((c: Campaign) => c.isActive).length;
 
   return (
-    <div className="min-h-screen bg-[#0a0f0a] text-white">
+    <div className="min-h-screen">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="border-b border-white/10 bg-gradient-to-r from-[#0d1f14] to-[#0a0f0a] px-6 py-5">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-green-500/30 bg-green-900/30">
-              <Gift className="h-5 w-5 text-green-400" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">Promo Campaigns</h1>
-              <p className="text-xs text-white/50">
-                Revenue-isolated free membership activations
-              </p>
-            </div>
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-green-500/30 bg-green-100 dark:bg-green-900/30">
+            <Gift className="h-5 w-5 text-green-600 dark:text-green-400" />
           </div>
-          <Button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 rounded-lg bg-green-700 px-4 py-2 text-sm font-medium hover:bg-green-600"
-          >
-            <Plus className="h-4 w-4" /> New Campaign
-          </Button>
+          <div>
+            <h1 className="premium-gradient-text text-2xl font-bold">Promo Campaigns</h1>
+            <p className="text-sm text-muted-foreground">
+              Revenue-isolated free membership activations
+            </p>
+          </div>
         </div>
+        <Button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-2 rounded-lg bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-600"
+        >
+          <Plus className="h-4 w-4" /> New Campaign
+        </Button>
       </div>
 
-      <div className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+      <div className="space-y-6">
         {/* ── Summary stats ────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
@@ -208,50 +206,58 @@ export default function PromoCampaignsAdminPage() {
               label: "Total Campaigns",
               value: campaigns.length,
               icon: Gift,
-              color: "blue",
+              iconBg: "bg-blue-100 dark:bg-blue-900/30",
+              iconColor: "text-blue-600 dark:text-blue-400",
+              valColor: "text-blue-600 dark:text-blue-400",
             },
             {
               label: "Active Campaigns",
               value: activeCampaigns,
               icon: CheckCircle,
-              color: "green",
+              iconBg: "bg-green-100 dark:bg-green-900/30",
+              iconColor: "text-green-600 dark:text-green-400",
+              valColor: "text-green-600 dark:text-green-400",
             },
             {
               label: "Total Quota",
               value: totalQuota.toLocaleString(),
               icon: Users,
-              color: "purple",
+              iconBg: "bg-purple-100 dark:bg-purple-900/30",
+              iconColor: "text-purple-600 dark:text-purple-400",
+              valColor: "text-purple-600 dark:text-purple-400",
             },
             {
               label: "Claims Used",
               value: totalUsed.toLocaleString(),
               icon: Clock,
-              color: "amber",
+              iconBg: "bg-amber-100 dark:bg-amber-900/30",
+              iconColor: "text-amber-600 dark:text-amber-400",
+              valColor: "text-amber-600 dark:text-amber-400",
             },
-          ].map(({ label, value, icon: Icon, color }) => (
+          ].map(({ label, value, icon: Icon, iconBg, iconColor, valColor }) => (
             <div
               key={label}
-              className={`rounded-xl border border-${color}-500/20 bg-${color}-900/10 p-4`}
+              className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
             >
               <div className="flex items-center gap-2">
-                <Icon className={`h-4 w-4 text-${color}-400`} />
-                <span className="text-xs text-white/60">{label}</span>
+                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconBg}`}>
+                  <Icon className={`h-4 w-4 ${iconColor}`} />
+                </div>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
               </div>
-              <p className={`mt-2 text-2xl font-bold text-${color}-400`}>
-                {value}
-              </p>
+              <p className={`mt-2 text-2xl font-bold ${valColor}`}>{value}</p>
             </div>
           ))}
         </div>
 
         {/* ── Campaign list ─────────────────────────────────────────────────── */}
         {campaigns.length === 0 ? (
-          <div className="rounded-xl border border-white/10 bg-white/5 py-16 text-center">
-            <Gift className="mx-auto mb-3 h-10 w-10 text-white/20" />
-            <p className="text-white/50">No promo campaigns yet.</p>
+          <div className="rounded-xl border border-gray-200 bg-white py-16 text-center dark:border-gray-700 dark:bg-gray-800">
+            <Gift className="mx-auto mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
+            <p className="text-gray-500 dark:text-gray-400">No promo campaigns yet.</p>
             <Button
               onClick={() => setShowCreate(true)}
-              className="mt-4 bg-green-700 hover:bg-green-600"
+              className="mt-4 bg-green-700 text-white hover:bg-green-600"
             >
               Create your first campaign
             </Button>
@@ -266,48 +272,48 @@ export default function PromoCampaignsAdminPage() {
               return (
                 <div
                   key={c.id}
-                  className="rounded-xl border border-white/10 bg-white/5"
+                  className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
                 >
                   {/* Card header */}
                   <div className="flex items-center gap-4 p-4">
                     {/* Status dot */}
                     <div
-                      className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${c.isActive ? "bg-green-400" : "bg-white/20"}`}
+                      className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${c.isActive ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`}
                     />
 
                     {/* Campaign info */}
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-white">
+                        <span className="font-semibold text-gray-900 dark:text-white">
                           {c.name}
                         </span>
                         {c.isActive && (
-                          <span className="rounded-full bg-green-900/50 px-2 py-0.5 text-xs text-green-400">
+                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900/50 dark:text-green-400">
                             Active
                           </span>
                         )}
                         {!c.isActive && (
-                          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/40">
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">
                             Inactive
                           </span>
                         )}
                       </div>
                       {/* Progress bar */}
                       <div className="mt-2 flex items-center gap-3">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
                           <div
                             className={`h-full rounded-full transition-all ${pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-green-500"}`}
                             style={{ width: `${pct}%` }}
                           />
                         </div>
-                        <span className="text-xs text-white/50">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
                           {c.usedCount.toLocaleString()} /{" "}
                           {c.quota.toLocaleString()} ({pct}%)
                         </span>
                       </div>
                       {/* Dates */}
                       {(c.startDate || c.endDate) && (
-                        <p className="mt-1 text-xs text-white/40">
+                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                           {c.startDate
                             ? `From ${new Date(c.startDate).toLocaleDateString()}`
                             : ""}{" "}
@@ -322,13 +328,13 @@ export default function PromoCampaignsAdminPage() {
                     <div className="flex flex-shrink-0 items-center gap-2">
                       <button
                         onClick={() => handleToggle(c.id, c.isActive)}
-                        className="rounded-lg border border-white/10 p-2 transition hover:border-green-500/50 hover:bg-green-900/20"
+                        className="rounded-lg border border-gray-200 p-2 transition hover:border-green-400 hover:bg-green-50 dark:border-gray-600 dark:hover:border-green-500/50 dark:hover:bg-green-900/20"
                         title={c.isActive ? "Deactivate" : "Activate"}
                       >
                         {c.isActive ? (
-                          <ToggleRight className="h-4 w-4 text-green-400" />
+                          <ToggleRight className="h-4 w-4 text-green-600 dark:text-green-400" />
                         ) : (
-                          <ToggleLeft className="h-4 w-4 text-white/40" />
+                          <ToggleLeft className="h-4 w-4 text-gray-400" />
                         )}
                       </button>
 
@@ -338,30 +344,30 @@ export default function PromoCampaignsAdminPage() {
                             isViewingClaims ? null : c.id,
                           );
                         }}
-                        className="rounded-lg border border-white/10 p-2 transition hover:border-blue-500/50 hover:bg-blue-900/20"
+                        className="rounded-lg border border-gray-200 p-2 transition hover:border-blue-400 hover:bg-blue-50 dark:border-gray-600 dark:hover:border-blue-500/50 dark:hover:bg-blue-900/20"
                         title="View claims"
                       >
                         <Eye
-                          className={`h-4 w-4 ${isViewingClaims ? "text-blue-400" : "text-white/40"}`}
+                          className={`h-4 w-4 ${isViewingClaims ? "text-blue-600 dark:text-blue-400" : "text-gray-400"}`}
                         />
                       </button>
 
                       <button
                         onClick={() => handleDelete(c.id)}
-                        className="rounded-lg border border-white/10 p-2 transition hover:border-red-500/50 hover:bg-red-900/20"
+                        className="rounded-lg border border-gray-200 p-2 transition hover:border-red-400 hover:bg-red-50 dark:border-gray-600 dark:hover:border-red-500/50 dark:hover:bg-red-900/20"
                         title="Delete (only if no claims)"
                       >
-                        <Trash2 className="h-4 w-4 text-white/40 hover:text-red-400" />
+                        <Trash2 className="h-4 w-4 text-gray-400 hover:text-red-500" />
                       </button>
 
                       <button
                         onClick={() => toggleExpand(c.id)}
-                        className="rounded-lg border border-white/10 p-2 transition hover:bg-white/10"
+                        className="rounded-lg border border-gray-200 p-2 transition hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
                       >
                         {isExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-white/40" />
+                          <ChevronUp className="h-4 w-4 text-gray-400" />
                         ) : (
-                          <ChevronDown className="h-4 w-4 text-white/40" />
+                          <ChevronDown className="h-4 w-4 text-gray-400" />
                         )}
                       </button>
                     </div>
@@ -369,23 +375,23 @@ export default function PromoCampaignsAdminPage() {
 
                   {/* Expanded details */}
                   {isExpanded && (
-                    <div className="border-t border-white/10 px-4 py-3">
+                    <div className="border-t border-gray-100 px-4 py-3 dark:border-gray-700">
                       <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
                         <div>
-                          <dt className="text-white/40">Campaign ID</dt>
-                          <dd className="font-mono text-xs text-white/70">
+                          <dt className="text-gray-400 dark:text-gray-500">Campaign ID</dt>
+                          <dd className="font-mono text-xs text-gray-600 dark:text-gray-300">
                             {c.id}
                           </dd>
                         </div>
                         <div>
-                          <dt className="text-white/40">Created</dt>
-                          <dd className="text-white/70">
+                          <dt className="text-gray-400 dark:text-gray-500">Created</dt>
+                          <dd className="text-gray-700 dark:text-gray-300">
                             {new Date(c.createdAt).toLocaleDateString()}
                           </dd>
                         </div>
                         <div>
-                          <dt className="text-white/40">Target Package</dt>
-                          <dd className="text-white/70">
+                          <dt className="text-gray-400 dark:text-gray-500">Target Package</dt>
+                          <dd className="text-gray-700 dark:text-gray-300">
                             {c.targetPackageId
                               ? packages.find(
                                   (p: any) => p.id === c.targetPackageId,
@@ -395,8 +401,8 @@ export default function PromoCampaignsAdminPage() {
                         </div>
                         {c.notes && (
                           <div className="col-span-full">
-                            <dt className="text-white/40">Notes</dt>
-                            <dd className="text-white/70">{c.notes}</dd>
+                            <dt className="text-gray-400 dark:text-gray-500">Notes</dt>
+                            <dd className="text-gray-700 dark:text-gray-300">{c.notes}</dd>
                           </div>
                         )}
                       </dl>
@@ -405,15 +411,15 @@ export default function PromoCampaignsAdminPage() {
 
                   {/* Claims panel */}
                   {isViewingClaims && (
-                    <div className="border-t border-white/10 p-4">
+                    <div className="border-t border-gray-100 p-4 dark:border-gray-700">
                       <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-white/80">
+                        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                           Claims ({claimsData.length})
                         </h3>
                         {claimsData.length > 0 && (
                           <button
                             onClick={() => exportClaims(c.id, c.name)}
-                            className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/60 hover:bg-white/10"
+                            className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
                           >
                             <Download className="h-3.5 w-3.5" /> Export CSV
                           </button>
@@ -421,24 +427,24 @@ export default function PromoCampaignsAdminPage() {
                       </div>
 
                       {claimsLoading ? (
-                        <p className="text-sm text-white/40">Loading…</p>
+                        <p className="text-sm text-gray-400">Loading…</p>
                       ) : claimsData.length === 0 ? (
-                        <p className="text-sm text-white/40">No claims yet.</p>
+                        <p className="text-sm text-gray-400">No claims yet.</p>
                       ) : (
-                        <div className="max-h-64 overflow-y-auto rounded-lg border border-white/10">
+                        <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
                           <table className="w-full text-xs">
-                            <thead className="border-b border-white/10 bg-white/5">
+                            <thead className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-700/50">
                               <tr>
-                                <th className="px-3 py-2 text-left text-white/50">
+                                <th className="px-3 py-2 text-left text-gray-500 dark:text-gray-400">
                                   User
                                 </th>
-                                <th className="px-3 py-2 text-left text-white/50">
+                                <th className="px-3 py-2 text-left text-gray-500 dark:text-gray-400">
                                   Email
                                 </th>
-                                <th className="px-3 py-2 text-left text-white/50">
+                                <th className="px-3 py-2 text-left text-gray-500 dark:text-gray-400">
                                   Claimed At
                                 </th>
-                                <th className="px-3 py-2 text-left text-white/50">
+                                <th className="px-3 py-2 text-left text-gray-500 dark:text-gray-400">
                                   Expires
                                 </th>
                               </tr>
@@ -447,20 +453,20 @@ export default function PromoCampaignsAdminPage() {
                               {claimsData.map((claim: Claim) => (
                                 <tr
                                   key={claim.id}
-                                  className="border-b border-white/5 hover:bg-white/5"
+                                  className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-700/50 dark:hover:bg-gray-700/30"
                                 >
-                                  <td className="px-3 py-2 text-white/80">
+                                  <td className="px-3 py-2 text-gray-800 dark:text-gray-200">
                                     {claim.User.name}
                                   </td>
-                                  <td className="px-3 py-2 text-white/60">
+                                  <td className="px-3 py-2 text-gray-600 dark:text-gray-400">
                                     {claim.User.email}
                                   </td>
-                                  <td className="px-3 py-2 text-white/60">
+                                  <td className="px-3 py-2 text-gray-600 dark:text-gray-400">
                                     {new Date(
                                       claim.claimedAt,
                                     ).toLocaleDateString()}
                                   </td>
-                                  <td className="px-3 py-2 text-white/60">
+                                  <td className="px-3 py-2 text-gray-600 dark:text-gray-400">
                                     {claim.User.membershipExpiresAt
                                       ? new Date(
                                           claim.User.membershipExpiresAt,
@@ -484,24 +490,24 @@ export default function PromoCampaignsAdminPage() {
 
       {/* ── Create Campaign Modal ────────────────────────────────────────────── */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center">
-          <div className="w-full max-w-lg rounded-2xl border border-white/15 bg-[#0d1f14] p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm sm:items-center">
+          <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-800">
             <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">
                 New Promo Campaign
               </h2>
               <button
                 onClick={() => setShowCreate(false)}
-                className="rounded-lg p-1.5 hover:bg-white/10"
+                className="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
-                <X className="h-4 w-4 text-white/60" />
+                <X className="h-4 w-4 text-gray-500 dark:text-gray-400" />
               </button>
             </div>
 
             <form onSubmit={handleCreate} className="space-y-4">
               {/* Name */}
               <div>
-                <label className="mb-1 block text-xs text-white/60">
+                <label className="mb-1 block text-xs text-gray-600 dark:text-gray-400">
                   Campaign Name *
                 </label>
                 <input
@@ -511,13 +517,13 @@ export default function PromoCampaignsAdminPage() {
                   }
                   required
                   placeholder="e.g. 10K Free Activations Wave 1"
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/30 focus:border-green-600/60 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-green-600 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-green-500"
                 />
               </div>
 
               {/* Quota */}
               <div>
-                <label className="mb-1 block text-xs text-white/60">
+                <label className="mb-1 block text-xs text-gray-600 dark:text-gray-400">
                   Quota (number of free activations) *
                 </label>
                 <input
@@ -532,13 +538,13 @@ export default function PromoCampaignsAdminPage() {
                     }))
                   }
                   required
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/30 focus:border-green-600/60 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-green-600 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-green-500"
                 />
               </div>
 
               {/* Target package (optional) */}
               <div>
-                <label className="mb-1 block text-xs text-white/60">
+                <label className="mb-1 block text-xs text-gray-600 dark:text-gray-400">
                   Restrict to Package (optional — leave blank for any)
                 </label>
                 <select
@@ -546,7 +552,7 @@ export default function PromoCampaignsAdminPage() {
                   onChange={(e) =>
                     setForm((f) => ({ ...f, targetPackageId: e.target.value }))
                   }
-                  className="w-full rounded-lg border border-white/10 bg-[#0a0f0a] px-3 py-2 text-sm text-white focus:border-green-600/60 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-green-600 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-green-500"
                 >
                   <option value="">Any package</option>
                   {packages.map((p: any) => (
@@ -560,7 +566,7 @@ export default function PromoCampaignsAdminPage() {
               {/* Date range */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs text-white/60">
+                  <label className="mb-1 block text-xs text-gray-600 dark:text-gray-400">
                     Start Date (optional)
                   </label>
                   <input
@@ -569,11 +575,11 @@ export default function PromoCampaignsAdminPage() {
                     onChange={(e) =>
                       setForm((f) => ({ ...f, startDate: e.target.value }))
                     }
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-green-600/60 focus:outline-none [color-scheme:dark]"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-green-600 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-green-500 dark:[color-scheme:dark]"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-white/60">
+                  <label className="mb-1 block text-xs text-gray-600 dark:text-gray-400">
                     End Date (optional)
                   </label>
                   <input
@@ -582,14 +588,14 @@ export default function PromoCampaignsAdminPage() {
                     onChange={(e) =>
                       setForm((f) => ({ ...f, endDate: e.target.value }))
                     }
-                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-green-600/60 focus:outline-none [color-scheme:dark]"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-green-600 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-green-500 dark:[color-scheme:dark]"
                   />
                 </div>
               </div>
 
               {/* Notes */}
               <div>
-                <label className="mb-1 block text-xs text-white/60">
+                <label className="mb-1 block text-xs text-gray-600 dark:text-gray-400">
                   Admin Notes (optional)
                 </label>
                 <textarea
@@ -600,14 +606,14 @@ export default function PromoCampaignsAdminPage() {
                   rows={3}
                   maxLength={500}
                   placeholder="Internal notes for tracking this campaign…"
-                  className="w-full resize-none rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/30 focus:border-green-600/60 focus:outline-none"
+                  className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-green-600 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-green-500"
                 />
               </div>
 
               {/* Revenue isolation notice */}
-              <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-900/10 p-3">
-                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-400" />
-                <p className="text-xs text-amber-300/80">
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-900/10">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+                <p className="text-xs text-amber-700 dark:text-amber-300/80">
                   Promo activations are <strong>completely revenue-isolated</strong>.
                   They do not create revenue transactions, wallet entries, or
                   referral payouts. Activations are logged only in the promo
@@ -620,14 +626,14 @@ export default function PromoCampaignsAdminPage() {
                   type="button"
                   variant="outline"
                   onClick={() => setShowCreate(false)}
-                  className="flex-1 border-white/10 bg-transparent text-white/70 hover:bg-white/10"
+                  className="flex-1 border-gray-200 bg-transparent text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   disabled={createMutation.isPending}
-                  className="flex-1 bg-green-700 hover:bg-green-600"
+                  className="flex-1 bg-green-700 text-white hover:bg-green-600"
                 >
                   {createMutation.isPending ? "Creating…" : "Create Campaign"}
                 </Button>

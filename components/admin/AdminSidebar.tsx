@@ -233,6 +233,12 @@ const navigation = [
     icon: GitBranch,
     description: "Matrix controls & sponsor tree"
   },
+  {
+    name: "Promo Campaigns",
+    href: "/admin/promo-campaigns",
+    icon: Gift,
+    description: "Free activation campaigns"
+  },
   { 
     name: "Promotional Materials", 
     href: "/admin/promotional-materials", 

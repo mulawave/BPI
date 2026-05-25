@@ -92,7 +92,7 @@ export default function LoginForm() {
       )}
       <form onSubmit={onSubmit} className="space-y-8 font-sans">
       {/* Email */}
-      <div className="relative">
+      <div className="relative w-full">
         <div className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center">
           <span className="flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] border-[1px]">
             <Mail size={16} className="text-[#4a4a4a]" />
@@ -105,12 +105,12 @@ export default function LoginForm() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="h-12 w-[260px] md:w-[320px] rounded-full pl-10 pr-10 bg-[#f4f4f4] border border-[#a6a6a6] focus:border-[#0d3b29] placeholder:text-[#4a4a4a] text-[1.25rem] font-sans font-light text-[#232323]"
+          className="h-12 w-full rounded-full pl-10 pr-10 bg-[#f4f4f4] border border-[#a6a6a6] focus:border-[#0d3b29] placeholder:text-[#4a4a4a] text-[1.25rem] font-sans font-light text-[#232323]"
         />
       </div>
 
       {/* Password */}
-      <div className="relative">
+      <div className="relative w-full">
         <div className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 flex items-center justify-center">
           <span className="flex items-center justify-center w-7 h-7 rounded-full border border-[#4a4a4a] border-[1px]">
             {/* Larger padlock icon, darker color */}
@@ -130,7 +130,7 @@ export default function LoginForm() {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="h-12 w-[260px] md:w-[320px] rounded-full pl-10 pr-10 bg-[#f4f4f4] border border-[#a6a6a6] focus:border-[#0d3b29] placeholder:text-[#4a4a4a] text-[1.25rem] font-sans font-light text-[#232323]"
+          className="h-12 w-full rounded-full pl-10 pr-10 bg-[#f4f4f4] border border-[#a6a6a6] focus:border-[#0d3b29] placeholder:text-[#4a4a4a] text-[1.25rem] font-sans font-light text-[#232323]"
         />
         <button
           type="button"

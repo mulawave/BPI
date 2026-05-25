@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
-import { Award, Check, TrendingUp, Users, Gift, Shield, Moon, Sun, LogOut, ChevronDown, ChevronUp, ArrowLeft, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Award, Check, TrendingUp, Users, Gift, Shield, Moon, Sun, LogOut, ChevronDown, ChevronUp, ArrowLeft, Loader2, RefreshCw, Sparkles, Zap, Star, Flame, BadgePercent } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -89,6 +89,148 @@ export default function MembershipPage() {
   const currentPackageIndex = sortedPackages.findIndex(
     pkg => pkg.id === activeMembership?.package?.id
   );
+
+  // Determine which packages get promo treatment
+  const promoEligibleIds: Set<string> = new Set(
+    promoData && promoData.remaining > 0
+      ? promoData.targetPackageId
+        ? [promoData.targetPackageId]
+        : sortedPackages.filter((p) => !isAddonPackage(p.name)).map((p) => p.id)
+      : []
+  );
+
+  // Render FREE promo card
+  function renderPromoCard(pkg: any) {
+    const isExpanded = expandedPackages[pkg.id] || false;
+    return (
+      <div key={`promo-${pkg.id}`} className="relative col-span-1 sm:col-span-2 lg:col-span-3">
+        {/* Animated glow ring */}
+        <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-yellow-400 via-green-400 to-emerald-500 opacity-60 blur-lg animate-pulse" />
+        <div className="relative rounded-3xl overflow-hidden border-2 border-yellow-400/60 shadow-2xl">
+          {/* Diagonal ribbon – top-right */}
+          <div className="absolute top-0 right-0 z-20">
+            <div className="relative overflow-hidden w-36 h-36">
+              <div className="absolute top-5 right-[-30px] rotate-45 bg-gradient-to-r from-yellow-400 to-amber-500 text-black text-[11px] font-black tracking-widest uppercase px-10 py-1.5 shadow-lg">
+                FREE
+              </div>
+            </div>
+          </div>
+
+          {/* Hero gradient background */}
+          <div className="bg-gradient-to-br from-[#012d18] via-[#014d28] to-[#023320] px-6 pt-8 pb-6 text-white">
+            {/* Top labels row */}
+            <div className="flex flex-wrap items-center gap-2 mb-5">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-400/20 border border-yellow-400/50 px-3 py-1 text-xs font-black uppercase tracking-widest text-yellow-300">
+                <Sparkles className="h-3.5 w-3.5" /> Promo Activation
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-400/20 border border-green-400/40 px-3 py-1 text-xs font-bold text-green-300">
+                <Zap className="h-3.5 w-3.5 fill-green-300" />
+                {promoData!.remaining.toLocaleString()} slots left
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-400/20 border border-red-400/40 px-3 py-1 text-xs font-bold text-red-300 animate-pulse">
+                <Flame className="h-3.5 w-3.5" /> Limited Time
+              </span>
+            </div>
+
+            {/* Content grid: info + price + CTA */}
+            <div className="flex flex-col lg:flex-row items-center gap-8">
+              {/* Left: icon + name */}
+              <div className="flex flex-col items-center lg:items-start gap-3 text-center lg:text-left">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-400 to-amber-500 shadow-xl">
+                  <Star className="h-8 w-8 text-white fill-white" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-yellow-300/80 mb-1">Free Membership</p>
+                  <h2 className="text-2xl md:text-3xl font-black text-white leading-tight">{pkg.name}</h2>
+                  <p className="text-sm text-white/60 mt-1">{promoData!.name}</p>
+                </div>
+              </div>
+
+              {/* Center: price crossed out → FREE */}
+              <div className="flex-1 flex flex-col items-center gap-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl line-through text-white/30 font-bold">{formatAmount(pkg.price + pkg.vat)}</span>
+                  <span className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-green-300">FREE</span>
+                </div>
+                <p className="text-sm text-white/50">Zero payment · No credit card</p>
+                <div className="mt-2 flex flex-wrap justify-center gap-3 text-xs text-white/60">
+                  <span className="flex items-center gap-1"><Check className="h-3.5 w-3.5 text-green-400" /> Full membership access</span>
+                  <span className="flex items-center gap-1"><Check className="h-3.5 w-3.5 text-green-400" /> Referral rewards active</span>
+                  <span className="flex items-center gap-1"><Check className="h-3.5 w-3.5 text-green-400" /> No payment required</span>
+                </div>
+              </div>
+
+              {/* Right: CTA */}
+              <div className="flex flex-col items-center gap-3">
+                <button
+                  onClick={() => handleClaimPromo(pkg.id)}
+                  disabled={!!claimingPromo}
+                  className="group relative inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 px-10 py-4 text-base font-black uppercase tracking-widest text-black shadow-2xl transition-all hover:from-yellow-300 hover:to-amber-400 hover:scale-105 active:scale-100 disabled:opacity-60 disabled:pointer-events-none"
+                >
+                  {claimingPromo === pkg.id ? (
+                    <><Loader2 className="h-5 w-5 animate-spin" /> Activating…</>
+                  ) : (
+                    <><Sparkles className="h-5 w-5" /> Claim Free Membership</>
+                  )}
+                  <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[9px] font-black text-white animate-bounce">!</span>
+                </button>
+                <p className="text-xs text-white/40">Spots filling fast — claim yours now</p>
+              </div>
+            </div>
+
+            {/* Expand details */}
+            <div className="mt-5 border-t border-white/10 pt-4">
+              <button
+                onClick={() => togglePackageDetails(pkg.id)}
+                className="flex w-full items-center justify-between text-sm font-semibold text-white/70 hover:text-white transition-colors"
+              >
+                <span className="flex items-center gap-2"><Gift className="h-4 w-4" />{isExpanded ? 'Hide' : 'View'} Package Details</span>
+                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+              {isExpanded && (
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-white/50 mb-2">Referral Rewards</h4>
+                    <div className="space-y-2">
+                      {[
+                        { level: 'L1', cash: pkg.cash_l1, bpt: pkg.bpt_l1, palliative: pkg.palliative_l1, cashback: pkg.cashback_l1 },
+                        { level: 'L2', cash: pkg.cash_l2, bpt: pkg.bpt_l2, palliative: pkg.palliative_l2, cashback: pkg.cashback_l2 },
+                        { level: 'L3', cash: pkg.cash_l3, bpt: pkg.bpt_l3, palliative: pkg.palliative_l3, cashback: pkg.cashback_l3 },
+                        { level: 'L4', cash: pkg.cash_l4, bpt: pkg.bpt_l4, palliative: pkg.palliative_l4, cashback: pkg.cashback_l4 },
+                      ].map((reward) => (
+                        <div key={reward.level} className="rounded-lg bg-white/10 px-3 py-2">
+                          <p className="text-xs font-semibold text-white/80 mb-1">{reward.level}</p>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            {reward.cash > 0 && <span className="text-emerald-300">Cash: {formatAmount(reward.cash)}</span>}
+                            {reward.palliative > 0 && <span className="text-blue-300">Pal: {formatAmount(reward.palliative)}</span>}
+                            {reward.bpt > 0 && <span className="text-purple-300">BPT: {formatAmount(reward.bpt)}</span>}
+                            {reward.cashback && reward.cashback > 0 && <span className="text-amber-300">CB: {formatAmount(reward.cashback)}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {pkg.features && pkg.features.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-white/50 mb-2">Key Features</h4>
+                      <div className="space-y-1.5">
+                        {pkg.features.slice(0, 6).map((feature: string, i: number) => (
+                          <div key={i} className="flex items-start gap-2">
+                            <Check className="h-3.5 w-3.5 text-green-400 mt-0.5 flex-shrink-0" />
+                            <span className="text-xs text-white/60 leading-tight">{feature}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Render package card function
   function renderPackageCard(pkg: any, context: 'tier' | 'bundle' | 'new') {
@@ -457,48 +599,14 @@ export default function MembershipPage() {
           </div>
         )}
 
-        {/* Promo Banner — free activation available */}
+        {/* Promo chip — subtle announcement above grid */}
         {!activeMembership && promoData && promoData.remaining > 0 && (
-          <div className="mb-10 rounded-2xl border border-green-500/30 bg-gradient-to-r from-green-900/30 via-emerald-900/20 to-teal-900/30 p-6 shadow-xl">
-            <div className="flex flex-col items-center gap-4 sm:flex-row">
-              <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg">
-                <Sparkles className="h-7 w-7 text-white" />
-              </div>
-              <div className="flex-1 text-center sm:text-left">
-                <p className="text-xs font-semibold uppercase tracking-widest text-green-400">
-                  Limited-Time Promotion · {promoData.remaining.toLocaleString()} slots remaining
-                </p>
-                <h3 className="mt-1 text-xl font-bold text-white">
-                  🎉 {promoData.name}
-                </h3>
-                <p className="mt-1 text-sm text-white/60">
-                  Activate your membership for <strong className="text-green-300">completely free</strong>.
-                  No payment required — courtesy of BPI.
-                </p>
-              </div>
-              {/* Quick-claim buttons per package */}
-              <div className="flex flex-wrap justify-center gap-2 sm:flex-nowrap sm:flex-col">
-                {(promoData.targetPackageId
-                  ? sortedPackages.filter((p) => p.id === promoData.targetPackageId)
-                  : sortedPackages.filter((p) => !isAddonPackage(p.name))
-                ).map((pkg: any) => (
-                  <button
-                    key={pkg.id}
-                    onClick={() => handleClaimPromo(pkg.id)}
-                    disabled={!!claimingPromo}
-                    className="rounded-xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-green-500 disabled:opacity-60"
-                  >
-                    {claimingPromo === pkg.id ? (
-                      <span className="flex items-center gap-2">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Activating…
-                      </span>
-                    ) : (
-                      `Claim Free ${pkg.name}`
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
+          <div className="mb-6 flex items-center justify-center gap-2">
+            <span className="inline-flex items-center gap-2 rounded-full border border-yellow-400/40 bg-yellow-400/10 px-4 py-1.5 text-sm font-semibold text-yellow-700 dark:text-yellow-300">
+              <Sparkles className="h-4 w-4" />
+              Free activation promo is live — scroll down to claim your spot
+              <span className="rounded-full bg-yellow-400/20 px-2 py-0.5 text-xs font-bold">{promoData.remaining.toLocaleString()} left</span>
+            </span>
           </div>
         )}
 
@@ -564,7 +672,14 @@ export default function MembershipPage() {
             {/* All Packages for non-members */}
             {!activeMembership && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-                {sortedPackages.map((pkg) => renderPackageCard(pkg, 'new'))}
+                {/* Promo cards first — full-width, visually dominant */}
+                {sortedPackages
+                  .filter((pkg) => promoEligibleIds.has(pkg.id))
+                  .map((pkg) => renderPromoCard(pkg))}
+                {/* Regular packages below */}
+                {sortedPackages
+                  .filter((pkg) => !promoEligibleIds.has(pkg.id))
+                  .map((pkg) => renderPackageCard(pkg, 'new'))}
               </div>
             )}
           </>
