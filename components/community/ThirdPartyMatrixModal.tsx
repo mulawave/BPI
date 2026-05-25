@@ -156,72 +156,72 @@ export default function ThirdPartyMatrixModal({ isOpen, onClose }: ThirdPartyMat
   ];
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[9999] flex items-end justify-center sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative z-10 w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card shadow-2xl animate-fadeIn">
-        <div className="sticky top-0 z-20 bg-gradient-to-r from-emerald-700 via-green-700 to-teal-700 text-white">
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-3 rounded-full bg-white/20 backdrop-blur-sm">
-                  <GitBranch className="w-7 h-7" />
+      <div className="relative z-10 flex w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl sm:rounded-2xl border border-bpi-border dark:border-bpi-dark-accent bg-white dark:bg-bpi-dark-card shadow-2xl animate-fadeIn max-h-[96dvh] sm:max-h-[90vh]">
+        <div className="sticky top-0 z-20 bg-gradient-to-r from-emerald-700 via-green-700 to-teal-700 text-white flex-shrink-0">
+          <div className="px-3 pt-3 pb-2 sm:p-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="p-2 sm:p-3 rounded-full bg-white/20 backdrop-blur-sm">
+                  <GitBranch className="w-5 h-5 sm:w-7 sm:h-7" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold">Third Party Matrix</h2>
-                  <p className="text-emerald-100 text-sm">Binary auto-balanced team placement</p>
+                  <h2 className="text-lg sm:text-2xl font-bold leading-tight">Third Party Matrix</h2>
+                  <p className="hidden sm:block text-emerald-100 text-sm">Binary auto-balanced team placement</p>
                 </div>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 rounded-full hover:bg-white/20 transition-colors"
+                className="p-2 rounded-full hover:bg-white/20 transition-colors flex-shrink-0"
                 aria-label="Close matrix modal"
               >
-                <FiX className="w-6 h-6" />
+                <FiX className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-              <div className="bg-white/10 rounded-lg p-3">
-                <p className="text-xs text-white/70 mb-1">Nodes</p>
-                <p className="text-2xl font-bold">{summary?.totalNodes ?? 0}</p>
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-3">
+              <div className="bg-white/10 rounded-lg p-2 sm:p-3">
+                <p className="text-[10px] sm:text-xs text-white/70 mb-0.5">Nodes</p>
+                <p className="text-lg sm:text-2xl font-bold">{summary?.totalNodes ?? 0}</p>
               </div>
-              <div className="bg-white/10 rounded-lg p-3">
-                <p className="text-xs text-white/70 mb-1">Placements</p>
-                <p className="text-2xl font-bold">{summary?.totalPlacements ?? 0}</p>
+              <div className="bg-white/10 rounded-lg p-2 sm:p-3">
+                <p className="text-[10px] sm:text-xs text-white/70 mb-0.5">Placements</p>
+                <p className="text-lg sm:text-2xl font-bold">{summary?.totalPlacements ?? 0}</p>
               </div>
-              <div className="bg-white/10 rounded-lg p-3">
-                <p className="text-xs text-white/70 mb-1">Open Legs</p>
-                <p className="text-2xl font-bold">{summary?.openLegs ?? 0}</p>
+              <div className="bg-white/10 rounded-lg p-2 sm:p-3">
+                <p className="text-[10px] sm:text-xs text-white/70 mb-0.5">Open Legs</p>
+                <p className="text-lg sm:text-2xl font-bold">{summary?.openLegs ?? 0}</p>
               </div>
-              <div className="bg-white/10 rounded-lg p-3">
-                <p className="text-xs text-white/70 mb-1">Balance Gap</p>
-                <p className="text-2xl font-bold">{summary?.imbalance ?? 0}</p>
+              <div className="bg-white/10 rounded-lg p-2 sm:p-3 col-span-1 sm:col-span-1">
+                <p className="text-[10px] sm:text-xs text-white/70 mb-0.5">Balance</p>
+                <p className="text-lg sm:text-2xl font-bold">{summary?.imbalance ?? 0}</p>
               </div>
-              <div className="bg-white/10 rounded-lg p-3">
-                <p className="text-xs text-white/70 mb-1">Completion</p>
-                <p className="text-2xl font-bold">{teamReport?.completionRate ?? 0}%</p>
+              <div className="bg-white/10 rounded-lg p-2 sm:p-3 col-span-2 sm:col-span-1">
+                <p className="text-[10px] sm:text-xs text-white/70 mb-0.5">Completion</p>
+                <p className="text-lg sm:text-2xl font-bold">{teamReport?.completionRate ?? 0}%</p>
               </div>
             </div>
 
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1">
               {tabs.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   onClick={() => setActiveTab(id)}
-                  className={`px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
+                  className={`px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2 transition-colors whitespace-nowrap flex-shrink-0 ${
                     activeTab === id ? "bg-white text-emerald-700" : "bg-white/10 text-white hover:bg-white/20"
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
-                  {label}
+                  <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                  <span className="hidden min-[380px]:inline">{label}</span>
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-260px)]">
+        <div className="px-3 sm:px-6 py-4 sm:py-6 overflow-y-auto flex-1 min-h-0">
           {activeTab === "overview" && (
             <div className="space-y-4 animate-fadeIn">
               {loadingSummary ? (
@@ -349,7 +349,7 @@ export default function ThirdPartyMatrixModal({ isOpen, onClose }: ThirdPartyMat
                               </Button>
                             </div>
 
-                            <div className="flex gap-2">
+                            <div className="flex flex-col sm:flex-row gap-2">
                               <input
                                 type="url"
                                 placeholder="Paste your own referral link after registration"
@@ -370,7 +370,7 @@ export default function ThirdPartyMatrixModal({ isOpen, onClose }: ThirdPartyMat
                                 size="sm"
                                 onClick={() => handleSubmitLink(platform.id)}
                                 disabled={submittingPlatformId === platform.id || !(newLinks[platform.id] || "").trim()}
-                                className="bg-blue-600 hover:bg-blue-700 text-white"
+                                className="bg-blue-600 hover:bg-blue-700 text-white sm:flex-shrink-0"
                               >
                                 <Save className="w-3.5 h-3.5 mr-1.5" />
                                 {submittingPlatformId === platform.id ? "Saving..." : "Save"}
@@ -564,7 +564,7 @@ export default function ThirdPartyMatrixModal({ isOpen, onClose }: ThirdPartyMat
           )}
         </div>
 
-        <div className="px-6 pb-6 pt-1 border-t border-bpi-border dark:border-bpi-dark-accent bg-gray-50/70 dark:bg-bpi-dark-card/50">
+        <div className="px-3 sm:px-6 pb-3 sm:pb-6 pt-1 border-t border-bpi-border dark:border-bpi-dark-accent bg-gray-50/70 dark:bg-bpi-dark-card/50 flex-shrink-0">
           <div className="flex items-center justify-end gap-2">
             <Button variant="outline" onClick={onClose}>
               Close

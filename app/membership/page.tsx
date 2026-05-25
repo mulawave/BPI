@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
-import { Award, Check, TrendingUp, Users, Gift, Shield, Moon, Sun, LogOut, ChevronDown, ChevronUp, ArrowLeft, Loader2, RefreshCw } from "lucide-react";
+import { Award, Check, TrendingUp, Users, Gift, Shield, Moon, Sun, LogOut, ChevronDown, ChevronUp, ArrowLeft, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -13,6 +13,7 @@ import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 import LoadingScreen from "@/components/LoadingScreen";
 import KycWarningBanner from "@/components/kyc/KycWarningBanner";
 import MembershipRenewalPanel from "@/components/membership/MembershipRenewalPanel";
+import toast from "react-hot-toast";
 
 export default function MembershipPage() {
   const { data: packages, isLoading } = api.package.getPackages.useQuery();
@@ -26,6 +27,29 @@ export default function MembershipPage() {
   const [expandedPackages, setExpandedPackages] = useState<Record<string, boolean>>({});
   const [isDashboardLoading, setIsDashboardLoading] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [claimingPromo, setClaimingPromo] = useState<string | null>(null);
+
+  const { data: promoData } = api.promoCampaign.getActivePromo.useQuery(undefined, {
+    enabled: !activeMembership,
+  });
+  const claimPromoMutation = api.promoCampaign.claimPromo.useMutation();
+
+  const handleClaimPromo = async (packageId: string) => {
+    if (!promoData) return;
+    setClaimingPromo(packageId);
+    const tid = toast.loading('Activating your free membership…');
+    try {
+      await claimPromoMutation.mutateAsync({
+        campaignId: promoData.id,
+        packageId,
+      });
+      toast.success('Membership activated! Welcome to BPI.', { id: tid });
+      router.push('/dashboard');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to claim promo activation.', { id: tid });
+      setClaimingPromo(null);
+    }
+  };
 
   const togglePackageDetails = (packageId: string) => {
     setExpandedPackages(prev => ({
@@ -430,6 +454,51 @@ export default function MembershipPage() {
         {activeMembership?.package && (
           <div className="mb-12">
             <MembershipRenewalPanel />
+          </div>
+        )}
+
+        {/* Promo Banner — free activation available */}
+        {!activeMembership && promoData && promoData.remaining > 0 && (
+          <div className="mb-10 rounded-2xl border border-green-500/30 bg-gradient-to-r from-green-900/30 via-emerald-900/20 to-teal-900/30 p-6 shadow-xl">
+            <div className="flex flex-col items-center gap-4 sm:flex-row">
+              <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg">
+                <Sparkles className="h-7 w-7 text-white" />
+              </div>
+              <div className="flex-1 text-center sm:text-left">
+                <p className="text-xs font-semibold uppercase tracking-widest text-green-400">
+                  Limited-Time Promotion · {promoData.remaining.toLocaleString()} slots remaining
+                </p>
+                <h3 className="mt-1 text-xl font-bold text-white">
+                  🎉 {promoData.name}
+                </h3>
+                <p className="mt-1 text-sm text-white/60">
+                  Activate your membership for <strong className="text-green-300">completely free</strong>.
+                  No payment required — courtesy of BPI.
+                </p>
+              </div>
+              {/* Quick-claim buttons per package */}
+              <div className="flex flex-wrap justify-center gap-2 sm:flex-nowrap sm:flex-col">
+                {(promoData.targetPackageId
+                  ? sortedPackages.filter((p) => p.id === promoData.targetPackageId)
+                  : sortedPackages.filter((p) => !isAddonPackage(p.name))
+                ).map((pkg: any) => (
+                  <button
+                    key={pkg.id}
+                    onClick={() => handleClaimPromo(pkg.id)}
+                    disabled={!!claimingPromo}
+                    className="rounded-xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-green-500 disabled:opacity-60"
+                  >
+                    {claimingPromo === pkg.id ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Activating…
+                      </span>
+                    ) : (
+                      `Claim Free ${pkg.name}`
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

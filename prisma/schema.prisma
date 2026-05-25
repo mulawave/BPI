@@ -1967,6 +1967,7 @@ model User {
   MaterialDownload                                                     MaterialDownload[]
   Notification                                                         Notification[]
   NewsletterCampaigns                                                  NewsletterCampaign[]         @relation("NewsletterCampaignAdmin")
+  PromoActivationClaim                                                 PromoActivationClaim?        @relation("UserPromoActivationClaim")
   PackageActivation                                                    PackageActivation[]
   PalliativeMaturity                                                   PalliativeMaturity[]
   PalliativeTicket_PalliativeTicket_createdByToUser                    PalliativeTicket[]           @relation("PalliativeTicket_createdByToUser")
@@ -4053,4 +4054,47 @@ model NewsletterCampaign {
   @@index([status])
   @@index([status, scheduledFor])
   @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Promo Campaign System — revenue-isolated free membership activations
+// ---------------------------------------------------------------------------
+
+enum PromoCampaignType {
+  FREE_MEMBERSHIP_ACTIVATION
+}
+
+model PromoCampaign {
+  id               String            @id @default(cuid())
+  name             String
+  type             PromoCampaignType
+  quota            Int
+  usedCount        Int               @default(0)
+  isActive         Boolean           @default(false)
+  targetPackageId  String?
+  startDate        DateTime?
+  endDate          DateTime?
+  notes            String?
+  createdByAdminId String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  Claims PromoActivationClaim[]
+
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model PromoActivationClaim {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  campaignId String
+  packageId  String
+  claimedAt  DateTime @default(now())
+
+  User     User          @relation("UserPromoActivationClaim", fields: [userId],  references: [id], onDelete: Cascade)
+  Campaign PromoCampaign @relation(fields: [campaignId], references: [id])
+
+  @@index([campaignId])
+  @@index([claimedAt])
 }
