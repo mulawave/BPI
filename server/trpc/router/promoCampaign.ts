@@ -83,6 +83,7 @@ export const promoCampaignRouter = createTRPCRouter({
       z.object({
         name: z.string().min(1).max(100),
         quota: z.number().int().min(1).max(100_000),
+        isActive: z.boolean().optional(),
         targetPackageId: z.string().optional(),
         startDate: z.string().optional(),
         endDate: z.string().optional(),
@@ -98,6 +99,7 @@ export const promoCampaignRouter = createTRPCRouter({
           name: input.name,
           type: "FREE_MEMBERSHIP_ACTIVATION",
           quota: input.quota,
+          isActive: input.isActive ?? true,
           targetPackageId: input.targetPackageId ?? null,
           startDate: input.startDate ? new Date(input.startDate) : null,
           endDate: input.endDate ? new Date(input.endDate) : null,
