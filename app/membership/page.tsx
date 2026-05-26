@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
-import { Award, Check, TrendingUp, Users, Gift, Shield, Moon, Sun, LogOut, ChevronDown, ChevronUp, ArrowLeft, Loader2, RefreshCw, Sparkles, Zap, Star, Flame, BadgePercent } from "lucide-react";
+import { Award, Check, TrendingUp, Users, Gift, Shield, Moon, Sun, LogOut, ChevronDown, ChevronUp, ArrowLeft, ArrowRight, Loader2, RefreshCw, Sparkles, Zap, Star, Flame, BadgePercent } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -28,6 +28,7 @@ export default function MembershipPage() {
   const [isDashboardLoading, setIsDashboardLoading] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [claimingPromo, setClaimingPromo] = useState<string | null>(null);
+  const [promoClaimSuccess, setPromoClaimSuccess] = useState<{ packageName: string; expiresAt: Date } | null>(null);
 
   const { data: promoData } = api.promoCampaign.getActivePromo.useQuery(undefined, {
     enabled: !activeMembership,
@@ -39,12 +40,14 @@ export default function MembershipPage() {
     setClaimingPromo(packageId);
     const tid = toast.loading('Activating your free membership…');
     try {
-      await claimPromoMutation.mutateAsync({
+      const result = await claimPromoMutation.mutateAsync({
         campaignId: promoData.id,
         packageId,
       });
-      toast.success('Membership activated! Welcome to BPI.', { id: tid });
-      router.push('/dashboard');
+      toast.dismiss(tid);
+      const claimedPkg = packages?.find((p: any) => p.id === packageId);
+      setPromoClaimSuccess({ packageName: claimedPkg?.name || 'Membership', expiresAt: result.expiresAt });
+      setClaimingPromo(null);
     } catch (err: any) {
       toast.error(err.message || 'Failed to claim promo activation.', { id: tid });
       setClaimingPromo(null);
@@ -477,6 +480,82 @@ export default function MembershipPage() {
 
   return (
     <div className="min-h-screen bg-bpi-gradient-light dark:bg-bpi-gradient-dark">
+
+      {/* ── Promo Claim Success Overlay ────────────────────────────────────── */}
+      {promoClaimSuccess && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md">
+          <div className="relative w-full max-w-lg mx-4 rounded-3xl overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.6)]">
+            {/* Ambient glow layers */}
+            <div className="absolute inset-0 bg-gradient-to-br from-[#011f10] via-[#013820] to-[#021c0c]" />
+            <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full bg-yellow-400/10 blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-24 right-0 w-64 h-64 rounded-full bg-green-500/10 blur-3xl pointer-events-none" />
+            {/* Top accent bar */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-yellow-400 via-amber-400 to-green-400" />
+
+            {/* Main content */}
+            <div className="relative z-10 px-8 pt-10 pb-8 text-center">
+              {/* Success badge */}
+              <div className="mb-1 flex justify-center">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-400/15 border border-green-400/30 px-4 py-1 text-xs font-black uppercase tracking-widest text-green-300">
+                  <Check className="h-3.5 w-3.5 stroke-[3]" /> Activation Successful
+                </span>
+              </div>
+
+              {/* Big checkmark */}
+              <div className="mx-auto my-6 relative flex h-24 w-24 items-center justify-center">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 opacity-20 blur-xl" />
+                <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-green-400 to-emerald-500 shadow-xl shadow-green-500/40">
+                  <Check className="h-12 w-12 text-white stroke-[3]" />
+                </div>
+              </div>
+
+              {/* Heading */}
+              <h2 className="text-4xl font-black text-white mb-1">You&apos;re In!</h2>
+              <p className="text-white/50 text-sm mb-3">Your free membership is now active</p>
+
+              {/* Package info pill */}
+              <div className="inline-flex items-center gap-2 rounded-2xl bg-white/5 border border-white/10 px-5 py-3 mb-6">
+                <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
+                <div className="text-left">
+                  <p className="text-xs text-white/40 font-medium uppercase tracking-wider">Active Plan</p>
+                  <p className="text-base font-black text-white leading-tight">{promoClaimSuccess.packageName}</p>
+                </div>
+                <div className="w-px h-8 bg-white/10 mx-1" />
+                <div className="text-left">
+                  <p className="text-xs text-white/40 font-medium uppercase tracking-wider">Expires</p>
+                  <p className="text-sm font-semibold text-white/80 leading-tight">
+                    {new Date(promoClaimSuccess.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Features row */}
+              <div className="flex flex-wrap justify-center gap-3 mb-8">
+                {['Referral Rewards Active', 'Full Dashboard Access', 'Community Unlocked'].map((f) => (
+                  <span key={f} className="inline-flex items-center gap-1.5 text-xs text-white/50">
+                    <Check className="h-3 w-3 text-green-400 stroke-[3]" /> {f}
+                  </span>
+                ))}
+              </div>
+
+              {/* PRIMARY CTA — Proceed to Dashboard */}
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="group w-full inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 px-8 py-5 text-lg font-black uppercase tracking-widest text-black shadow-2xl shadow-amber-500/25 transition-all duration-200 hover:from-yellow-300 hover:to-amber-400 hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Sparkles className="h-5 w-5" />
+                Proceed to Dashboard
+                <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+              </button>
+
+              <p className="mt-4 text-[11px] text-white/25 leading-relaxed">
+                All features are ready — start exploring your BPI dashboard now.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white/80 dark:bg-bpi-dark-card/80 backdrop-blur-md border-b border-bpi-border dark:border-bpi-dark-accent shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4">

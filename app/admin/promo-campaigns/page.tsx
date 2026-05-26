@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
+  TrendingDown,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { api } from "@/client/trpc";
@@ -75,7 +76,6 @@ export default function PromoCampaignsAdminPage() {
   const [form, setForm] = useState({
     name: "",
     quota: 100,
-    isActive: true,
     targetPackageId: "",
     startDate: "",
     endDate: "",
@@ -89,21 +89,16 @@ export default function PromoCampaignsAdminPage() {
       await createMutation.mutateAsync({
         name: form.name,
         quota: form.quota,
-        isActive: form.isActive,
         targetPackageId: form.targetPackageId || undefined,
         startDate: form.startDate || undefined,
         endDate: form.endDate || undefined,
         notes: form.notes || undefined,
       });
-      toast.success(
-        form.isActive ? "Campaign created and is live now" : "Campaign created",
-        { id: tid },
-      );
+      toast.success("Campaign created", { id: tid });
       setShowCreate(false);
       setForm({
         name: "",
         quota: 100,
-        isActive: true,
         targetPackageId: "",
         startDate: "",
         endDate: "",
@@ -180,6 +175,7 @@ export default function PromoCampaignsAdminPage() {
     0,
   );
   const activeCampaigns = campaigns.filter((c: Campaign) => c.isActive).length;
+  const quotaLeft = totalQuota - totalUsed;
 
   return (
     <div className="min-h-screen">
@@ -206,7 +202,7 @@ export default function PromoCampaignsAdminPage() {
 
       <div className="space-y-6">
         {/* ── Summary stats ────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {[
             {
               label: "Total Campaigns",
@@ -239,6 +235,14 @@ export default function PromoCampaignsAdminPage() {
               iconBg: "bg-amber-100 dark:bg-amber-900/30",
               iconColor: "text-amber-600 dark:text-amber-400",
               valColor: "text-amber-600 dark:text-amber-400",
+            },
+            {
+              label: "Quota Left",
+              value: quotaLeft.toLocaleString(),
+              icon: TrendingDown,
+              iconBg: "bg-rose-100 dark:bg-rose-900/30",
+              iconColor: "text-rose-600 dark:text-rose-400",
+              valColor: quotaLeft === 0 ? "text-red-600 dark:text-red-400" : "text-rose-600 dark:text-rose-400",
             },
           ].map(({ label, value, icon: Icon, iconBg, iconColor, valColor }) => (
             <div
@@ -597,27 +601,6 @@ export default function PromoCampaignsAdminPage() {
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-green-600 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-green-500 dark:[color-scheme:dark]"
                   />
                 </div>
-              </div>
-
-              <div className="rounded-xl border border-green-200 bg-green-50/70 p-4 dark:border-green-500/20 dark:bg-green-900/10">
-                <label className="flex cursor-pointer items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={form.isActive}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, isActive: e.target.checked }))
-                    }
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-green-700 focus:ring-green-600 dark:border-gray-600"
-                  />
-                  <div>
-                    <p className="text-sm font-semibold text-green-900 dark:text-green-300">
-                      Launch this campaign immediately
-                    </p>
-                    <p className="mt-1 text-xs text-green-700 dark:text-green-400/80">
-                      When enabled, the promo package becomes visible on the membership page as soon as you create the campaign.
-                    </p>
-                  </div>
-                </label>
               </div>
 
               {/* Notes */}
