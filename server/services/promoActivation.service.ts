@@ -21,6 +21,20 @@ export type ActivePromo = {
   targetPackageId: string | null;
 };
 
+function getPromoStartBoundary(date: Date | null) {
+  if (!date) return null;
+  const boundary = new Date(date);
+  boundary.setHours(0, 0, 0, 0);
+  return boundary;
+}
+
+function getPromoEndBoundary(date: Date | null) {
+  if (!date) return null;
+  const boundary = new Date(date);
+  boundary.setHours(23, 59, 59, 999);
+  return boundary;
+}
+
 /**
  * Returns the first active, non-expired promo campaign that still has quota.
  * Returns null if no promo is currently available.
@@ -33,13 +47,21 @@ export async function getActivePromo(
   const campaigns = await prisma.promoCampaign.findMany({
     where: {
       isActive: true,
-      OR: [{ startDate: null }, { startDate: { lte: now } }],
-      AND: [{ OR: [{ endDate: null }, { endDate: { gte: now } }] }],
     },
     orderBy: { createdAt: "asc" },
   });
 
-  const campaign = campaigns.find((c) => c.usedCount < c.quota) ?? null;
+  const campaign =
+    campaigns.find((c) => {
+      const startBoundary = getPromoStartBoundary(c.startDate);
+      const endBoundary = getPromoEndBoundary(c.endDate);
+
+      if (c.usedCount >= c.quota) return false;
+      if (startBoundary && startBoundary > now) return false;
+      if (endBoundary && endBoundary < now) return false;
+
+      return true;
+    }) ?? null;
   if (!campaign) return null;
 
   return {
@@ -90,10 +112,13 @@ export async function claimPromoActivation(
       }
 
       const now = new Date();
-      if (campaign.startDate && campaign.startDate > now) {
+      const startBoundary = getPromoStartBoundary(campaign.startDate);
+      const endBoundary = getPromoEndBoundary(campaign.endDate);
+
+      if (startBoundary && startBoundary > now) {
         throw new Error("PROMO_NOT_STARTED");
       }
-      if (campaign.endDate && campaign.endDate < now) {
+      if (endBoundary && endBoundary < now) {
         throw new Error("PROMO_EXPIRED");
       }
 

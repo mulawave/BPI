@@ -8,6 +8,20 @@ import {
   claimPromoActivation,
 } from "@/server/services/promoActivation.service";
 
+function parsePromoStartDate(dateString?: string) {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function parsePromoEndDate(dateString?: string) {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  date.setHours(23, 59, 59, 999);
+  return date;
+}
+
 function requireAdmin(ctx: any) {
   const role = (ctx.session?.user as any)?.role as string;
   const isAdmin = role === "admin" || role === "super_admin";
@@ -101,8 +115,8 @@ export const promoCampaignRouter = createTRPCRouter({
           quota: input.quota,
           isActive: input.isActive ?? true,
           targetPackageId: input.targetPackageId ?? null,
-          startDate: input.startDate ? new Date(input.startDate) : null,
-          endDate: input.endDate ? new Date(input.endDate) : null,
+          startDate: parsePromoStartDate(input.startDate),
+          endDate: parsePromoEndDate(input.endDate),
           notes: input.notes ?? null,
           createdByAdminId: adminId,
         },
