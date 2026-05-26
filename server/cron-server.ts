@@ -10,6 +10,7 @@
 
 import cron from "node-cron";
 import { prisma } from "@/lib/prisma";
+import { startNewsletterRuntime } from "@/server/trpc/router/admin";
 import fs from "fs";
 import path from "path";
 
@@ -359,6 +360,9 @@ function startCronJobs() {
   console.log("\n🚀 ===== BPI CRON SERVER STARTED =====");
   console.log(`📅 Server Time: ${new Date().toLocaleString()}`);
   console.log(`🌍 Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`);
+
+  startNewsletterRuntime();
+  console.log("📧 Newsletter scheduler attached to cron worker");
 
   // Weekly Executive Pool Distribution every Friday at 8:00 AM WAT (Nigeria Time)
   cron.schedule("0 8 * * 5", async () => {

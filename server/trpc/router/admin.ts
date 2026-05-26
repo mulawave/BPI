@@ -152,6 +152,7 @@ const newsletterJobs = new Map<string, NewsletterJobState>();
 const newsletterCampaignStore = prisma.newsletterCampaign as any;
 let newsletterRestoreStarted = false;
 let newsletterSchedulerStarted = false;
+let newsletterRuntimeStarted = false;
 
 // Clean up completed jobs older than 1 hour
 setInterval(() => {
@@ -506,10 +507,13 @@ async function processScheduledNewsletterCampaigns() {
   }, 60 * 1000);
 }
 
-setTimeout(() => {
+export function startNewsletterRuntime() {
+  if (newsletterRuntimeStarted) return;
+  newsletterRuntimeStarted = true;
+
   void restoreRunningNewsletterJobs();
   void processScheduledNewsletterCampaigns();
-}, 0);
+}
 
 async function processNewsletterInBackground(
   jobId: string,
