@@ -7,6 +7,26 @@ import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { sendPasswordResetEmail, sendWelcomeEmail } from "@/lib/email";
 import { placeUserInThirdPartyMatrix } from "@/server/services/thirdPartyMatrix.service";
 
+const REFERRER_CACHE_TTL_MS = 60_000;
+const referrerInfoCache = new Map<string, { value: { name: string; firstname: string; lastname: string }; expiresAt: number }>();
+
+function cacheReferrerInfo(refId: string, value: { name: string; firstname: string; lastname: string }) {
+  referrerInfoCache.set(refId, {
+    value,
+    expiresAt: Date.now() + REFERRER_CACHE_TTL_MS,
+  });
+}
+
+function getCachedReferrerInfo(refId: string) {
+  const cached = referrerInfoCache.get(refId);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    referrerInfoCache.delete(refId);
+    return null;
+  }
+  return cached.value;
+}
+
 const registerSchema = z.object({
   firstname: z.string().min(2, "First name must be at least 2 characters"),
   lastname: z.string().min(2, "Last name must be at least 2 characters"),
@@ -354,6 +374,11 @@ export const authRouter = createTRPCRouter({
         };
       }
 
+      const cached = getCachedReferrerInfo(refId);
+      if (cached) {
+        return cached;
+      }
+
       console.log(`[getReferrerInfo] Looking up refId: ${refId}`);
 
       // Try to find by invite code first
@@ -391,19 +416,23 @@ export const authRouter = createTRPCRouter({
       if (referrer) {
         const fullName = referrer.name || `${referrer.firstname} ${referrer.lastname}`;
         console.log(`[getReferrerInfo] Returning name: ${fullName}`);
-        return {
+        const resolved = {
           name: fullName,
           firstname: referrer.firstname || "",
           lastname: referrer.lastname || "",
         };
+        cacheReferrerInfo(refId, resolved);
+        return resolved;
       }
 
       // If no referrer found, return default
       console.log(`[getReferrerInfo] No referrer found, returning Administrator`);
-      return {
+      const fallback = {
         name: "Administrator",
         firstname: "BPI",
         lastname: "Administrator",
       };
+      cacheReferrerInfo(refId, fallback);
+      return fallback;
     }),
 });

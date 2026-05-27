@@ -57,11 +57,10 @@ export default function Providers({ children }: { children: ReactNode }) {
         // render. Hard navigation always produces an empty cache anyway.
         staleTime: 30 * 1000,
         gcTime: 5 * 60 * 1000,
-        // Re-enable window-focus refetch so returning to a tab always shows
-        // current data (critical for financial balances).
-        refetchOnWindowFocus: true,
-        refetchOnReconnect: true,
-        refetchOnMount: true,
+        // Keep defaults conservative; pages that need live refresh can opt in.
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+        refetchOnMount: false,
         retry: 1,
       },
     },

@@ -2,6 +2,21 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 
+const FOOTER_CACHE_TTL_MS = 60_000;
+const PAGE_BY_SLUG_CACHE_TTL_MS = 60_000;
+
+let footerPagesCache: { value: any[]; expiresAt: number } | null = null;
+const pageBySlugCache = new Map<string, { value: any; expiresAt: number }>();
+
+function isFresh(expiresAt: number) {
+  return expiresAt > Date.now();
+}
+
+function clearPublicContentCache() {
+  footerPagesCache = null;
+  pageBySlugCache.clear();
+}
+
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const userRole = (ctx.session?.user as any)?.role;
   if (userRole !== "admin" && userRole !== "super_admin") {
@@ -15,21 +30,44 @@ export const contentRouter = createTRPCRouter({
   getPageBySlug: publicProcedure
     .input(z.object({ slug: z.string().min(1) }))
     .query(async ({ input }) => {
+      const normalizedSlug = input.slug.trim().toLowerCase();
+      const cached = pageBySlugCache.get(normalizedSlug);
+      if (cached && isFresh(cached.expiresAt)) {
+        return cached.value;
+      }
+
       const pageRepo = (prisma as any).page;
       const page = await pageRepo.findFirst({
-        where: { slug: input.slug, status: "published" },
+        where: { slug: normalizedSlug, status: "published" },
       });
-      return page || null;
+
+      const value = page || null;
+      pageBySlugCache.set(normalizedSlug, {
+        value,
+        expiresAt: Date.now() + PAGE_BY_SLUG_CACHE_TTL_MS,
+      });
+
+      return value;
     }),
 
   // Public: footer links
   getFooterPages: publicProcedure.query(async () => {
+    if (footerPagesCache && isFresh(footerPagesCache.expiresAt)) {
+      return footerPagesCache.value;
+    }
+
     const pageRepo = (prisma as any).page;
     const pages = await pageRepo.findMany({
       where: { status: "published", category: { in: ["terms", "policy", "privacy", "cookies", "custom"] } },
       orderBy: { updatedAt: "desc" },
       select: { id: true, title: true, slug: true, category: true },
     });
+
+    footerPagesCache = {
+      value: pages,
+      expiresAt: Date.now() + FOOTER_CACHE_TTL_MS,
+    };
+
     return pages;
   }),
 
@@ -120,9 +158,11 @@ export const contentRouter = createTRPCRouter({
 
       if (input.id) {
         const updated = await pageRepo.update({ where: { id: input.id }, data });
+        clearPublicContentCache();
         return updated;
       }
       const created = await pageRepo.create({ data });
+      clearPublicContentCache();
       return created;
     }),
 });

@@ -17,7 +17,8 @@ export const t = initTRPC.context<Context>().create({
 });
 
 export type Context = {
-  session: Awaited<ReturnType<typeof import("../auth").auth>>;
+  session: Awaited<ReturnType<typeof import("../auth").auth>> | null;
+  getSession: () => Promise<Awaited<ReturnType<typeof import("../auth").auth>> | null>;
   prisma: typeof import("@/lib/prisma").prisma;
   clientIp: string;
 };
@@ -25,9 +26,9 @@ export type Context = {
 export const createTRPCRouter = t.router;
 export const publicProcedure = t.procedure;
 export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
-  const session = ctx.session;
+  const session = await ctx.getSession();
   if (!session?.user) throw new Error("UNAUTHORIZED");
-  return next({ ctx: { ...ctx, user: session.user } });
+  return next({ ctx: { ...ctx, session, user: session.user } });
 });
 
 /** Rate-limited public procedure for auth endpoints (login, register) */

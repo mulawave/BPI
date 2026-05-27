@@ -5,7 +5,17 @@ import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 import { getClientIp } from "@/lib/rateLimit";
 
 export async function createContext(opts: FetchCreateContextFnOptions): Promise<Context> {
-  const session = await auth();
+  let session: Awaited<ReturnType<typeof auth>> | null = null;
+  let sessionResolved = false;
+
+  const getSession = async () => {
+    if (!sessionResolved) {
+      session = await auth();
+      sessionResolved = true;
+    }
+    return session;
+  };
+
   const clientIp = getClientIp(opts.req);
-  return { session, prisma, clientIp };
+  return { session, getSession, prisma, clientIp };
 }
