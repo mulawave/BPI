@@ -187,9 +187,104 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-4 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {activeTabConfig && (
+                  <>
+                    <div className="w-9 h-9 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
+                      <activeTabConfig.icon className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{activeTabConfig.label}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Tap to switch section</p>
+                    </div>
+                  </>
+                )}
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-500" />
+            </div>
+          </button>
+        </div>
+
+        <AnimatePresence>
+          {isMobileMenuOpen && (
+            <motion.div
+              className="fixed inset-0 z-[60] lg:hidden"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/45"
+                onClick={() => setIsMobileMenuOpen(false)}
+                aria-label="Close settings sections"
+              />
+
+              <motion.div
+                className="absolute bottom-0 left-0 right-0 max-h-[78vh] overflow-y-auto rounded-t-2xl border-t border-gray-200 bg-white p-3 shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+                initial={{ y: 120 }}
+                animate={{ y: 0 }}
+                exit={{ y: 120 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="mb-2 flex items-center justify-between px-2">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Settings Sections</h3>
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    aria-label="Close settings menu"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-1">
+                  {tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = activeTab === tab.id;
+
+                    return (
+                      <button
+                        key={`mobile-${tab.id}`}
+                        onClick={() => handleTabClick(tab.id, tab.available)}
+                        disabled={!tab.available}
+                        className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-lg transition-all ${
+                          isActive
+                            ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-md'
+                            : tab.available
+                              ? 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
+                              : 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-600'
+                        }`}
+                      >
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-white/20' : 'bg-gray-100 dark:bg-gray-800'}`}>
+                          <Icon className={`w-4 h-4 ${isActive ? 'text-white' : ''}`} />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <div className="font-medium text-sm">{tab.label}</div>
+                          <p className={`text-xs ${isActive ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'}`}>
+                            {tab.description}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Sidebar Navigation */}
-          <aside className="lg:col-span-3">
+          <aside className="hidden lg:block lg:col-span-3">
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-2 shadow-sm sticky top-24">
               <nav className="space-y-1">
                 {tabs.map((tab) => {

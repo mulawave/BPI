@@ -15,6 +15,12 @@ pnpm i # or npm i / yarn
 
 Copy `.env.example` to `.env.local` and set `DATABASE_URL`, `NEXTAUTH_SECRET` (use `openssl rand -base64 32`). Set `AUTH_SECRET` to the same value only if you still have older runtime paths depending on it. Add provider creds if using GitHub/Google.
 
+Production note for Prisma pool stability:
+
+- Include `connection_limit` and `pool_timeout` in `DATABASE_URL`.
+- Recommended baseline: `connection_limit=20` and `pool_timeout=30`.
+- Example: `postgresql://USER:PASSWORD@HOST:PORT/DBNAME?schema=public&connection_limit=20&pool_timeout=30`
+
 ## 3) Prisma schema sync & generate
 
 ```bash

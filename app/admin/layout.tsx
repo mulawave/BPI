@@ -191,7 +191,7 @@ export default function AdminLayout({
           }}
         />
         
-        <main className="p-6">
+        <main className="px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-6">
           <div className="mx-auto max-w-screen-2xl">
             {children}
           </div>

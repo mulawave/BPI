@@ -6,7 +6,9 @@ const FOOTER_CACHE_TTL_MS = 60_000;
 const PAGE_BY_SLUG_CACHE_TTL_MS = 60_000;
 
 let footerPagesCache: { value: any[]; expiresAt: number } | null = null;
+let footerPagesInFlight: Promise<any[]> | null = null;
 const pageBySlugCache = new Map<string, { value: any; expiresAt: number }>();
+const pageBySlugInFlight = new Map<string, Promise<any>>();
 
 function isFresh(expiresAt: number) {
   return expiresAt > Date.now();
@@ -14,7 +16,9 @@ function isFresh(expiresAt: number) {
 
 function clearPublicContentCache() {
   footerPagesCache = null;
+  footerPagesInFlight = null;
   pageBySlugCache.clear();
+  pageBySlugInFlight.clear();
 }
 
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -36,18 +40,30 @@ export const contentRouter = createTRPCRouter({
         return cached.value;
       }
 
-      const pageRepo = (prisma as any).page;
-      const page = await pageRepo.findFirst({
-        where: { slug: normalizedSlug, status: "published" },
+      const inFlight = pageBySlugInFlight.get(normalizedSlug);
+      if (inFlight) {
+        return inFlight;
+      }
+
+      const request = (async () => {
+        const pageRepo = (prisma as any).page;
+        const page = await pageRepo.findFirst({
+          where: { slug: normalizedSlug, status: "published" },
+        });
+
+        const value = page || null;
+        pageBySlugCache.set(normalizedSlug, {
+          value,
+          expiresAt: Date.now() + PAGE_BY_SLUG_CACHE_TTL_MS,
+        });
+
+        return value;
+      })().finally(() => {
+        pageBySlugInFlight.delete(normalizedSlug);
       });
 
-      const value = page || null;
-      pageBySlugCache.set(normalizedSlug, {
-        value,
-        expiresAt: Date.now() + PAGE_BY_SLUG_CACHE_TTL_MS,
-      });
-
-      return value;
+      pageBySlugInFlight.set(normalizedSlug, request);
+      return request;
     }),
 
   // Public: footer links
@@ -56,19 +72,29 @@ export const contentRouter = createTRPCRouter({
       return footerPagesCache.value;
     }
 
-    const pageRepo = (prisma as any).page;
-    const pages = await pageRepo.findMany({
-      where: { status: "published", category: { in: ["terms", "policy", "privacy", "cookies", "custom"] } },
-      orderBy: { updatedAt: "desc" },
-      select: { id: true, title: true, slug: true, category: true },
+    if (footerPagesInFlight) {
+      return footerPagesInFlight;
+    }
+
+    footerPagesInFlight = (async () => {
+      const pageRepo = (prisma as any).page;
+      const pages = await pageRepo.findMany({
+        where: { status: "published", category: { in: ["terms", "policy", "privacy", "cookies", "custom"] } },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, title: true, slug: true, category: true },
+      });
+
+      footerPagesCache = {
+        value: pages,
+        expiresAt: Date.now() + FOOTER_CACHE_TTL_MS,
+      };
+
+      return pages;
+    })().finally(() => {
+      footerPagesInFlight = null;
     });
 
-    footerPagesCache = {
-      value: pages,
-      expiresAt: Date.now() + FOOTER_CACHE_TTL_MS,
-    };
-
-    return pages;
+    return footerPagesInFlight;
   }),
 
   // Admin: list pages with filters

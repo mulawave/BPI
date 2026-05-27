@@ -2,6 +2,21 @@ import { createTRPCRouter, publicProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import type { FirebaseOptions } from "firebase/app";
 
+const CONFIG_CACHE_TTL_MS = 45_000;
+
+let featureTogglesCache: { value: Record<string, boolean>; expiresAt: number } | null = null;
+let featureTogglesInFlight: Promise<Record<string, boolean>> | null = null;
+
+let publicSettingsCache: { value: Record<string, any>; expiresAt: number } | null = null;
+let publicSettingsInFlight: Promise<Record<string, any>> | null = null;
+
+let firebaseConfigCache: { value: FirebaseConfigResponse; expiresAt: number } | null = null;
+let firebaseConfigInFlight: Promise<FirebaseConfigResponse> | null = null;
+
+function isFresh(expiresAt: number) {
+  return expiresAt > Date.now();
+}
+
 const firebaseSettingKeys = {
   apiKey: "firebase_api_key",
   authDomain: "firebase_auth_domain",
@@ -22,6 +37,21 @@ type FirebaseConfigResponse = {
 
 export const configRouter = createTRPCRouter({
   getFeatureToggles: publicProcedure.query(async () => {
+    if (featureTogglesCache && isFresh(featureTogglesCache.expiresAt)) {
+      return {
+        enableEpcEpp: featureTogglesCache.value.enableEpcEpp ?? false,
+        enableSolarAssessment: featureTogglesCache.value.enableSolarAssessment ?? false,
+        enableBestDeals: featureTogglesCache.value.enableBestDeals ?? false,
+        enableBpiCalculator: featureTogglesCache.value.enableBpiCalculator ?? true,
+        enableDigitalFarm: featureTogglesCache.value.enableDigitalFarm ?? false,
+        enableTrainingCenter: featureTogglesCache.value.enableTrainingCenter ?? true,
+        enablePromotionalMaterials: featureTogglesCache.value.enablePromotionalMaterials ?? true,
+        enableLatestUpdates: featureTogglesCache.value.enableLatestUpdates ?? true,
+      };
+    }
+
+    if (!featureTogglesInFlight) {
+      featureTogglesInFlight = (async () => {
     const toggleKeys = [
       "enableEpcEpp",
       "enableSolarAssessment",
@@ -43,6 +73,19 @@ export const configRouter = createTRPCRouter({
       return acc;
     }, {});
 
+        featureTogglesCache = {
+          value: settingsMap,
+          expiresAt: Date.now() + CONFIG_CACHE_TTL_MS,
+        };
+
+        return settingsMap;
+      })().finally(() => {
+        featureTogglesInFlight = null;
+      });
+    }
+
+    const settingsMap = await featureTogglesInFlight;
+
     return {
       enableEpcEpp: settingsMap.enableEpcEpp ?? false,
       enableSolarAssessment: settingsMap.enableSolarAssessment ?? false,
@@ -55,6 +98,12 @@ export const configRouter = createTRPCRouter({
     };
   }),
   getPublicSettings: publicProcedure.query(async () => {
+    if (publicSettingsCache && isFresh(publicSettingsCache.expiresAt)) {
+      return publicSettingsCache.value;
+    }
+
+    if (!publicSettingsInFlight) {
+      publicSettingsInFlight = (async () => {
     const publicSettingKeys = [
       "bank_name",
       "bank_account_number",
@@ -83,9 +132,26 @@ export const configRouter = createTRPCRouter({
       };
     });
 
-    return settingsMap;
+        publicSettingsCache = {
+          value: settingsMap,
+          expiresAt: Date.now() + CONFIG_CACHE_TTL_MS,
+        };
+
+        return settingsMap;
+      })().finally(() => {
+        publicSettingsInFlight = null;
+      });
+    }
+
+    return publicSettingsInFlight;
   }),
   getFirebaseConfig: publicProcedure.query(async (): Promise<FirebaseConfigResponse> => {
+    if (firebaseConfigCache && isFresh(firebaseConfigCache.expiresAt)) {
+      return firebaseConfigCache.value;
+    }
+
+    if (!firebaseConfigInFlight) {
+      firebaseConfigInFlight = (async (): Promise<FirebaseConfigResponse> => {
     const settingKeys = Object.values(firebaseSettingKeys);
 
     const settings = await prisma.adminSettings.findMany({
@@ -131,10 +197,23 @@ export const configRouter = createTRPCRouter({
     );
     const missing = requiredKeys.filter((key) => !finalConfig[key]);
 
-    return {
+        const response = {
       config: finalConfig,
       source,
       missing,
     };
+
+        firebaseConfigCache = {
+          value: response,
+          expiresAt: Date.now() + CONFIG_CACHE_TTL_MS,
+        };
+
+        return response;
+      })().finally(() => {
+        firebaseConfigInFlight = null;
+      });
+    }
+
+    return firebaseConfigInFlight;
   }),
 });

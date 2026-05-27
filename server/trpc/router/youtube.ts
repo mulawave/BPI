@@ -8,6 +8,23 @@ import { randomUUID } from "crypto";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { google } from "googleapis";
 
+const YOUTUBE_USER_CACHE_TTL_MS = 20_000;
+const userChannelCache = new Map<string, { value: any; expiresAt: number }>();
+const userChannelInFlight = new Map<string, Promise<any>>();
+const draftStatusCache = new Map<string, { value: any; expiresAt: number }>();
+const draftStatusInFlight = new Map<string, Promise<any>>();
+
+function isFresh(expiresAt: number) {
+  return expiresAt > Date.now();
+}
+
+function clearYoutubeUserCache(userId: string) {
+  userChannelCache.delete(userId);
+  draftStatusCache.delete(userId);
+  userChannelInFlight.delete(userId);
+  draftStatusInFlight.delete(userId);
+}
+
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const role = (ctx.session?.user as { role?: string | null } | undefined)?.role;
 
@@ -31,11 +48,35 @@ export const youtubeRouter = createTRPCRouter({
   // Get user's submitted channel or draft
   getUserChannel: protectedProcedure.query(async ({ ctx }) => {
     if (!ctx.session?.user?.id) throw new Error("Unauthorized");
-    const channel = await prisma.youtubeChannel.findFirst({
-      where: { userId: ctx.session.user.id },
-      orderBy: { createdAt: "desc" }
-    });
-    return channel;
+    const userId = ctx.session.user.id;
+
+    const cached = userChannelCache.get(userId);
+    if (cached && isFresh(cached.expiresAt)) {
+      return cached.value;
+    }
+
+    if (!userChannelInFlight.has(userId)) {
+      userChannelInFlight.set(
+        userId,
+        prisma.youtubeChannel
+          .findFirst({
+            where: { userId },
+            orderBy: { createdAt: "desc" },
+          })
+          .then((channel) => {
+            userChannelCache.set(userId, {
+              value: channel,
+              expiresAt: Date.now() + YOUTUBE_USER_CACHE_TTL_MS,
+            });
+            return channel;
+          })
+          .finally(() => {
+            userChannelInFlight.delete(userId);
+          })
+      );
+    }
+
+    return userChannelInFlight.get(userId)!;
   }),
 
   // Check if user has a draft or active subscription
@@ -43,27 +84,51 @@ export const youtubeRouter = createTRPCRouter({
     if (!ctx.session?.user?.id) throw new Error("Unauthorized");
     const userId = ctx.session.user.id;
 
-    // Check for existing draft
-    const draft = await prisma.youtubeChannel.findFirst({
-      where: { 
-        userId,
-        status: 'DRAFT'
-      },
-      orderBy: { createdAt: 'desc' }
+    const cached = draftStatusCache.get(userId);
+    if (cached && isFresh(cached.expiresAt)) {
+      return cached.value;
+    }
+
+    if (draftStatusInFlight.has(userId)) {
+      return draftStatusInFlight.get(userId)!;
+    }
+
+    const request = (async () => {
+
+      // Check for existing draft
+      const draft = await prisma.youtubeChannel.findFirst({
+        where: {
+          userId,
+          status: 'DRAFT'
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      // Check for active provider (paid plan)
+      const provider = await prisma.youtubeProvider.findUnique({
+        where: { userId },
+        include: { YoutubePlan: true }
+      });
+
+      const value = {
+        hasDraft: !!draft,
+        draftData: draft,
+        hasActivePlan: !!provider,
+        providerData: provider
+      };
+
+      draftStatusCache.set(userId, {
+        value,
+        expiresAt: Date.now() + YOUTUBE_USER_CACHE_TTL_MS,
+      });
+
+      return value;
+    })().finally(() => {
+      draftStatusInFlight.delete(userId);
     });
 
-    // Check for active provider (paid plan)
-    const provider = await prisma.youtubeProvider.findUnique({
-      where: { userId },
-      include: { YoutubePlan: true }
-    });
-
-    return {
-      hasDraft: !!draft,
-      draftData: draft,
-      hasActivePlan: !!provider,
-      providerData: provider
-    };
+    draftStatusInFlight.set(userId, request);
+    return request;
   }),
 
   // Purchase a YouTube plan - Option 2: Deduct immediately, create draft
@@ -176,6 +241,8 @@ export const youtubeRouter = createTRPCRouter({
         }
       });
 
+      clearYoutubeUserCache(userId);
+
       return { 
         success: true, 
         message: `Plan activated! You have ${plan.totalSub} subscription slots. Complete your channel submission.`,
@@ -213,6 +280,8 @@ export const youtubeRouter = createTRPCRouter({
         }
       });
 
+      clearYoutubeUserCache(userId);
+
       return { success: true, message: "Draft saved" };
     }),
 
@@ -247,6 +316,8 @@ export const youtubeRouter = createTRPCRouter({
           }
         });
 
+        clearYoutubeUserCache(userId);
+
         return {
           success: true,
           verificationCode: draft.verificationCode,
@@ -276,6 +347,8 @@ export const youtubeRouter = createTRPCRouter({
           isVerified: false
         }
       });
+
+      clearYoutubeUserCache(userId);
 
       return {
         success: true,

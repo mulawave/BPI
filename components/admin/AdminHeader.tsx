@@ -20,16 +20,16 @@ export default function AdminHeader({ admin }: AdminHeaderProps) {
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/70 backdrop-blur-xl">
-      <div className="flex h-16 items-center justify-between px-6">
+      <div className="flex h-14 items-center justify-between px-3 sm:h-16 sm:px-4 lg:px-6">
         {/* Left: Page Title (can be customized per page) */}
         <div>
-          <h1 className="text-2xl font-bold premium-gradient-text">
+          <h1 className="text-base font-bold premium-gradient-text sm:text-lg lg:text-2xl">
             Admin Dashboard
           </h1>
         </div>
 
         {/* Right: Actions */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           {/* Theme Toggle */}
           <button
             onClick={toggleTheme}
@@ -45,7 +45,7 @@ export default function AdminHeader({ admin }: AdminHeaderProps) {
 
           {/* Notifications */}
           <button
-            className="relative rounded-xl border border-border bg-card/60 p-2 text-foreground/70 shadow-sm transition-all hover:bg-card hover:text-foreground"
+            className="relative hidden rounded-xl border border-border bg-card/60 p-2 text-foreground/70 shadow-sm transition-all hover:bg-card hover:text-foreground sm:inline-flex"
             aria-label="Notifications"
           >
             <Bell className="h-5 w-5" />
@@ -53,7 +53,7 @@ export default function AdminHeader({ admin }: AdminHeaderProps) {
           </button>
 
           {/* Admin Profile Dropdown */}
-          <div className="flex items-center gap-3 rounded-2xl border border-border bg-card/70 px-3 py-2 shadow-sm backdrop-blur">
+          <div className="flex items-center gap-2 rounded-2xl border border-border bg-card/70 px-2 py-1.5 shadow-sm backdrop-blur sm:gap-3 sm:px-3 sm:py-2">
             <div className="relative h-8 w-8 overflow-hidden rounded-full bg-gradient-to-br from-green-400 to-emerald-600">
               {admin.image ? (
                 <Image
@@ -68,7 +68,7 @@ export default function AdminHeader({ admin }: AdminHeaderProps) {
                 </div>
               )}
             </div>
-            <div className="hidden sm:block">
+            <div className="hidden md:block">
               <p className="text-sm font-medium text-foreground">
                 {admin.name || "Admin"}
               </p>

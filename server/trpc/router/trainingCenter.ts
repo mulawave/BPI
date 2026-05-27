@@ -3,28 +3,55 @@ import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
 
+const COURSES_CACHE_TTL_MS = 30_000;
+let coursesCache: { value: any[]; expiresAt: number } | null = null;
+let coursesInFlight: Promise<any[]> | null = null;
+
+function isFresh(expiresAt: number) {
+  return expiresAt > Date.now();
+}
+
 export const trainingCenterRouter = createTRPCRouter({
   getCourses: protectedProcedure.query(async ({ ctx }) => {
-    const courses = await ctx.prisma.trainingCourse.findMany({
-      where: { isActive: true },
-      orderBy: { displayOrder: 'asc' },
-      include: {
-        TrainingLesson: {
-          orderBy: { lessonOrder: 'asc' },
-          select: { id: true, title: true, lessonOrder: true, estimatedMinutes: true },
-        },
-        _count: { select: { TrainingProgress: true } },
-      },
-    });
+    if (coursesCache && isFresh(coursesCache.expiresAt)) {
+      return coursesCache.value;
+    }
 
-    // Keep backward-compatible shape expected by the UI
-    return courses.map((course) => ({
-      ...course,
-      lessons: course.TrainingLesson,
-      _count: {
-        enrollments: course._count.TrainingProgress,
-      },
-    }));
+    if (!coursesInFlight) {
+      coursesInFlight = (async () => {
+        const courses = await ctx.prisma.trainingCourse.findMany({
+          where: { isActive: true },
+          orderBy: { displayOrder: 'asc' },
+          include: {
+            TrainingLesson: {
+              orderBy: { lessonOrder: 'asc' },
+              select: { id: true, title: true, lessonOrder: true, estimatedMinutes: true },
+            },
+            _count: { select: { TrainingProgress: true } },
+          },
+        });
+
+        // Keep backward-compatible shape expected by the UI
+        const shaped = courses.map((course) => ({
+          ...course,
+          lessons: course.TrainingLesson,
+          _count: {
+            enrollments: course._count.TrainingProgress,
+          },
+        }));
+
+        coursesCache = {
+          value: shaped,
+          expiresAt: Date.now() + COURSES_CACHE_TTL_MS,
+        };
+
+        return shaped;
+      })().finally(() => {
+        coursesInFlight = null;
+      });
+    }
+
+    return coursesInFlight;
   }),
 
   getCourseById: protectedProcedure

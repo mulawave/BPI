@@ -38,6 +38,8 @@ import {
   Crown,
   Trophy,
   School,
+  Menu,
+  X,
 } from "lucide-react";
 import { FiBookOpen } from "react-icons/fi";
 import { useEffect, useState } from "react";
@@ -308,15 +310,145 @@ interface AdminSidebarProps {
 export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount = 0, pendingKycCount = 0 }: AdminSidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]); // Default collapsed
 
   useEffect(() => {
     setPendingHref(null);
+    setIsMobileOpen(false);
   }, [pathname]);
 
   return (
     <>
+      {/* Mobile Nav Trigger */}
+      <button
+        type="button"
+        onClick={() => setIsMobileOpen(true)}
+        className="fixed bottom-5 right-5 z-50 flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-card/95 text-foreground shadow-lg backdrop-blur lg:hidden"
+        aria-label="Open admin navigation"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
+      {/* Mobile Drawer */}
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-[70] lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setIsMobileOpen(false)}
+            aria-label="Close admin navigation overlay"
+          />
+
+          <div className="absolute right-0 top-0 h-full w-[88%] max-w-[340px] border-l border-border bg-card/95 backdrop-blur-xl">
+            <div className="flex h-16 items-center justify-between border-b border-border px-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--secondary))] shadow-sm">
+                  <ShieldCheck className="h-4 w-4 text-white" />
+                </div>
+                <span className="text-base font-semibold premium-gradient-text">Admin Menu</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsMobileOpen(false)}
+                className="rounded-xl border border-border bg-background/60 p-1.5 text-foreground/70"
+                aria-label="Close admin menu"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <nav className="h-[calc(100%-8rem)] space-y-1 overflow-y-auto p-3">
+              {navigation.map((item) => {
+                const isActive = pathname === item.href || item.submenu?.some((sub) => pathname === sub.href);
+                const Icon = item.icon;
+                const itemBadgeCount = item.name === "Payments" ? pendingCount : item.name === "KYC" ? pendingKycCount : item.name === "Withdrawals" ? pendingWithdrawalsCount : 0;
+                const showBadge = (item.badge === "pending" || item.name === "Withdrawals") && itemBadgeCount > 0;
+                const isExpanded = expandedMenus.includes(item.name);
+                const hasSubmenu = !!item.submenu;
+
+                return (
+                  <div key={`mobile-${item.name}`}>
+                    <Link
+                      href={item.href}
+                      onClick={(e) => {
+                        if (hasSubmenu) {
+                          e.preventDefault();
+                          setExpandedMenus((prev) =>
+                            prev.includes(item.name) ? prev.filter((n) => n !== item.name) : [...prev, item.name]
+                          );
+                        } else if (item.href !== pathname) {
+                          setPendingHref(item.href);
+                        }
+                      }}
+                      className={`group relative flex items-start gap-3 rounded-lg px-3 py-2.5 text-sm transition-all ${
+                        isActive
+                          ? "bg-gradient-to-r from-[hsl(var(--primary))] to-[hsl(var(--secondary))] text-white shadow-md"
+                          : "text-foreground/80 hover:bg-background/70 hover:text-foreground"
+                      }`}
+                    >
+                      <Icon className="mt-0.5 h-4.5 w-4.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium truncate">{item.name}</span>
+                          {showBadge && (
+                            <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white">
+                              {itemBadgeCount > 99 ? "99+" : itemBadgeCount}
+                            </span>
+                          )}
+                          {hasSubmenu && (
+                            <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                          )}
+                        </div>
+                        <p className={`mt-0.5 text-xs ${isActive ? "text-white/80" : "text-muted-foreground"}`}>{item.description}</p>
+                      </div>
+                    </Link>
+
+                    {hasSubmenu && isExpanded && (
+                      <div className="ml-7 mt-1 space-y-1">
+                        {item.submenu?.map((subItem) => {
+                          const isSubActive = pathname === subItem.href;
+                          return (
+                            <Link
+                              key={`mobile-${subItem.href}`}
+                              href={subItem.href}
+                              onClick={() => {
+                                if (subItem.href !== pathname) {
+                                  setPendingHref(subItem.href);
+                                }
+                              }}
+                              className={`flex items-center rounded-lg px-3 py-1.5 text-sm transition-all ${
+                                isSubActive
+                                  ? "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] font-medium"
+                                  : "text-foreground/65 hover:bg-background/60 hover:text-foreground"
+                              }`}
+                            >
+                              {subItem.name}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </nav>
+
+            <div className="border-t border-border p-3">
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-foreground/75 transition-all hover:bg-background/60 hover:text-foreground"
+              >
+                <LayoutDashboard className="h-5 w-5" />
+                <span>User Dashboard</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Desktop Sidebar */}
       <motion.aside
         animate={{ width: collapsed ? 80 : 280 }}

@@ -1495,7 +1495,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
       <div>
         {/* Extended Header with BPI Theme */}
         <header className="bg-white/80 dark:bg-bpi-dark-card/80 backdrop-blur-md border-b border-bpi-border dark:border-bpi-dark-accent shadow-sm sticky top-0 z-40">
-          <div className="w-full px-3 sm:px-4 lg:px-6 py-4 space-y-3">
+          <div className="w-full px-3 sm:px-4 lg:px-6 py-3 sm:py-4 space-y-3">
             <div className="flex items-center justify-between">
               {/* Logo & Brand - Aligned with container left */}
               <div className="flex items-center gap-3">
@@ -1511,7 +1511,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
               </div>
 
               {/* User Menu - Aligned with container right */}
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
                   <Calendar className="w-4 h-4" />
                   <span>{currentTime.toLocaleDateString()}</span>
@@ -1552,7 +1552,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                 </Button>
 
                 {/* Currency Selector */}
-                <div className="relative">
+                <div className="relative hidden sm:block">
                   <select
                     value={selectedCurrencyId}
                     onChange={(e) => setSelectedCurrencyId(e.target.value)}
@@ -1621,11 +1621,11 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
         </header>
 
         {/* Main Dashboard */}
-        <main className="w-full py-6 sm:py-8 px-3 sm:px-4 lg:px-6 relative">
+        <main className="w-full py-5 sm:py-8 px-3 sm:px-4 lg:px-6 pb-24 sm:pb-8 relative">
         {/* KYC Warning Banner */}
         <KycWarningBanner />
         {customContent ? (
-          <div className="grid grid-cols-12 gap-2 lg:gap-3 relative items-start">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-2 lg:gap-3 relative items-start">
             <div className="hidden lg:block lg:col-span-1">{sidebarNav()}</div>
             <div className="hidden md:block md:col-span-12 lg:col-span-2">
               <div className={`bg-white dark:bg-bpi-dark-card rounded-2xl p-3 sm:p-4 shadow-lg dark:shadow-none mb-3`}>
@@ -1782,7 +1782,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
           </div>
         )}
 
-        <div className="grid grid-cols-12 gap-3 lg:gap-4 relative items-start">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 lg:gap-4 relative items-start">
           
           {/* Profile Incomplete Overlay - Only show if user fully loaded, membership confirmed active, profile incomplete */}
           {!isImpersonating && !isLoadingProfile && !!userProfile && !needsActivation && !isProfileComplete && (
@@ -3888,7 +3888,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
       </div>
 
       {/* Separator before stats row (aligned with first column / referrals) */}
-      <div className="grid grid-cols-12 gap-3 lg:gap-4 items-stretch col-span-12 mt-4">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 lg:gap-4 items-stretch col-span-12 mt-4">
         <div className="hidden lg:block lg:col-span-1" />
         <div className="col-span-12 lg:col-span-11">
           <hr className="border-gray-200 dark:border-bpi-dark-accent" />
@@ -3896,7 +3896,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
       </div>
 
       {/* Balanced row for Community Statistics (2 columns) and Third-Party Opportunities (1 column) */}
-      <div className="col-span-12 grid grid-cols-12 gap-3 lg:gap-4 items-stretch">
+      <div className="col-span-12 grid grid-cols-1 md:grid-cols-12 gap-3 lg:gap-4 items-stretch">
         <div className="hidden lg:block lg:col-span-1" />
         <div className="col-span-12 lg:col-span-7 flex">
           <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-3 sm:p-6 shadow-lg dark:shadow-none mb-3 w-full flex flex-col">
@@ -4384,7 +4384,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
       </div>
 
       {/* Separator before blog section */}
-      <div className="col-span-12 mt-4 grid grid-cols-12 gap-3 lg:gap-4 items-stretch">
+      <div className="col-span-12 mt-4 grid grid-cols-1 md:grid-cols-12 gap-3 lg:gap-4 items-stretch">
         <div className="hidden lg:block lg:col-span-1" />
         <div className="col-span-12 lg:col-span-11">
           <hr className="border-gray-200 dark:border-bpi-dark-accent" />
@@ -4392,7 +4392,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
       </div>
 
       {/* Community Blog / Latest Posts - Aligned with first column (referrals) */}
-      <div className="col-span-12 mt-4 lg:mt-6 grid grid-cols-12 gap-3 lg:gap-4 items-stretch">
+      <div className="col-span-12 mt-4 lg:mt-6 grid grid-cols-1 md:grid-cols-12 gap-3 lg:gap-4 items-stretch">
         <div className="hidden lg:block lg:col-span-1" />
         <div className="col-span-12 lg:col-span-11">
           <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-4 sm:p-6 shadow-lg dark:shadow-none border border-border/70 dark:border-bpi-dark-accent/60">

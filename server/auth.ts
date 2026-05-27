@@ -9,6 +9,131 @@ import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { resolveAuthSecret } from "@/lib/authSecret";
 import { evaluateMembershipAccess } from "@/lib/membershipAccess";
 
+const AUTH_USER_LOOKUP_TTL_MS = 60_000;
+const AUTH_DB_CACHE_TTL_MS = 5 * 60 * 1000;
+
+const authUserLookupCache = new Map<string, { value: any; expiresAt: number }>();
+const authUserLookupInFlight = new Map<string, Promise<any>>();
+
+const authEnrichmentCache = new Map<
+  string,
+  {
+    value: {
+      role: string;
+      hasActiveMembership: boolean;
+      membershipExpiresAt: string | null;
+      membershipDerivedFromActivation: boolean;
+      hasActiveEmpowerment: boolean;
+    };
+    expiresAt: number;
+  }
+>();
+const authEnrichmentInFlight = new Map<string, Promise<any>>();
+
+function isFresh(expiresAt: number) {
+  return expiresAt > Date.now();
+}
+
+async function getCachedAuthUserByEmail(email: string) {
+  const key = email.trim().toLowerCase();
+  const cached = authUserLookupCache.get(key);
+  if (cached && isFresh(cached.expiresAt)) {
+    return cached.value;
+  }
+
+  const inFlight = authUserLookupInFlight.get(key);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const request = prisma.user
+    .findUnique({ where: { email: key } })
+    .then((user) => {
+      authUserLookupCache.set(key, {
+        value: user,
+        expiresAt: Date.now() + AUTH_USER_LOOKUP_TTL_MS,
+      });
+      return user;
+    })
+    .finally(() => {
+      authUserLookupInFlight.delete(key);
+    });
+
+  authUserLookupInFlight.set(key, request);
+  return request;
+}
+
+async function getCachedAuthEnrichment(userId: string) {
+  const cached = authEnrichmentCache.get(userId);
+  if (cached && isFresh(cached.expiresAt)) {
+    return cached.value;
+  }
+
+  const inFlight = authEnrichmentInFlight.get(userId);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const request = (async () => {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        activeMembershipPackageId: true,
+        membershipActivatedAt: true,
+        membershipExpiresAt: true,
+        userType: true,
+      },
+    });
+
+    const membershipPackage = dbUser?.activeMembershipPackageId
+      ? await prisma.membershipPackage.findUnique({
+          where: { id: dbUser.activeMembershipPackageId },
+          select: { renewalCycle: true },
+        })
+      : null;
+
+    const membershipAccess = evaluateMembershipAccess({
+      activeMembershipPackageId: dbUser?.activeMembershipPackageId,
+      membershipActivatedAt: dbUser?.membershipActivatedAt,
+      membershipExpiresAt: dbUser?.membershipExpiresAt,
+      renewalCycleDays: membershipPackage?.renewalCycle,
+    });
+
+    let hasActiveEmpowerment = false;
+    try {
+      const empPkgs = await prisma.empowermentPackage.findMany({
+        where: { beneficiaryId: userId },
+        select: { status: true },
+      });
+      hasActiveEmpowerment = empPkgs.some(
+        (p: any) => typeof p?.status === "string" && p.status.startsWith("Active")
+      );
+    } catch {
+      hasActiveEmpowerment = false;
+    }
+
+    const value = {
+      role: dbUser?.userType ?? "user",
+      hasActiveMembership: membershipAccess.membershipValid,
+      membershipExpiresAt: membershipAccess.effectiveMembershipExpiresAt?.toISOString() ?? null,
+      membershipDerivedFromActivation: membershipAccess.derivedFromActivation,
+      hasActiveEmpowerment,
+    };
+
+    authEnrichmentCache.set(userId, {
+      value,
+      expiresAt: Date.now() + AUTH_DB_CACHE_TTL_MS,
+    });
+
+    return value;
+  })().finally(() => {
+    authEnrichmentInFlight.delete(userId);
+  });
+
+  authEnrichmentInFlight.set(userId, request);
+  return request;
+}
+
 export const authConfig: NextAuthOptions = {
   secret: resolveAuthSecret() ?? undefined,
   adapter: PrismaAdapter(prisma),
@@ -33,7 +158,7 @@ export const authConfig: NextAuthOptions = {
         const password = creds?.password as string | undefined;
         if (!email || !password) return null;
         
-        const user = await prisma.user.findUnique({ where: { email } });
+        const user = await getCachedAuthUserByEmail(email);
         if (!user || !user.passwordHash) return null;
         
         const ok = await compare(password, user.passwordHash);
@@ -89,43 +214,18 @@ export const authConfig: NextAuthOptions = {
 
       // Enrich token with membership flags (Edge-safe gating via middleware)
       // Use a 5-minute TTL to avoid DB queries on every single request.
-      const DB_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
       const now = Date.now();
       const lastFetch = (token as any)._dbFetchedAt ?? 0;
-      const needsRefresh = now - lastFetch > DB_CACHE_TTL_MS;
+      const needsRefresh = now - lastFetch > AUTH_DB_CACHE_TTL_MS;
 
       if (token?.id && needsRefresh) {
-        // Split into two queries: (1) base membership/role — must always succeed,
-        // (2) empowerment include — may fail if schema migration not yet applied on production.
         try {
-          const dbUser = await prisma.user.findUnique({
-            where: { id: token.id as string },
-            select: {
-              activeMembershipPackageId: true,
-              membershipActivatedAt: true,
-              membershipExpiresAt: true,
-              userType: true,
-            },
-          });
-
-          const membershipPackage = dbUser?.activeMembershipPackageId
-            ? await prisma.membershipPackage.findUnique({
-                where: { id: dbUser.activeMembershipPackageId },
-                select: { renewalCycle: true },
-              })
-            : null;
-
-          const membershipAccess = evaluateMembershipAccess({
-            activeMembershipPackageId: dbUser?.activeMembershipPackageId,
-            membershipActivatedAt: dbUser?.membershipActivatedAt,
-            membershipExpiresAt: dbUser?.membershipExpiresAt,
-            renewalCycleDays: membershipPackage?.renewalCycle,
-          });
-
-          (token as any).hasActiveMembership = membershipAccess.membershipValid;
-          (token as any).membershipExpiresAt = membershipAccess.effectiveMembershipExpiresAt?.toISOString() ?? null;
-          (token as any).membershipDerivedFromActivation = membershipAccess.derivedFromActivation;
-          token.role = dbUser?.userType ?? "user";
+          const enrichment = await getCachedAuthEnrichment(token.id as string);
+          (token as any).hasActiveMembership = enrichment.hasActiveMembership;
+          (token as any).membershipExpiresAt = enrichment.membershipExpiresAt;
+          (token as any).membershipDerivedFromActivation = enrichment.membershipDerivedFromActivation;
+          (token as any).hasActiveEmpowerment = enrichment.hasActiveEmpowerment;
+          token.role = enrichment.role;
         } catch (e) {
           // Preserve existing values rather than forcing false
           if ((token as any).hasActiveMembership === undefined) {
@@ -134,19 +234,9 @@ export const authConfig: NextAuthOptions = {
           if ((token as any).membershipExpiresAt === undefined) {
             (token as any).membershipExpiresAt = null;
           }
-        }
-
-        // Empowerment check — isolated so a schema mismatch on prod won't break login
-        try {
-          const empPkgs = await prisma.empowermentPackage.findMany({
-            where: { beneficiaryId: token.id as string },
-            select: { status: true },
-          });
-          (token as any).hasActiveEmpowerment = empPkgs.some(
-            (p: any) => typeof p?.status === "string" && p.status.startsWith("Active")
-          );
-        } catch (e) {
-          (token as any).hasActiveEmpowerment = false;
+          if ((token as any).hasActiveEmpowerment === undefined) {
+            (token as any).hasActiveEmpowerment = false;
+          }
         }
 
         (token as any)._dbFetchedAt = now;

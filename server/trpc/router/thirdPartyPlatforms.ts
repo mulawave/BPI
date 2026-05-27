@@ -4,6 +4,55 @@ import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { placeUserInThirdPartyMatrix } from "@/server/services/thirdPartyMatrix.service";
 
+const THIRD_PARTY_CACHE_TTL_MS = 15_000;
+const thirdPartyQueryCache = new Map<string, { value: any; expiresAt: number }>();
+const thirdPartyQueryInFlight = new Map<string, Promise<any>>();
+
+function isFresh(expiresAt: number) {
+  return expiresAt > Date.now();
+}
+
+function getCachedThirdPartyQuery<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+  const cached = thirdPartyQueryCache.get(key);
+  if (cached && isFresh(cached.expiresAt)) {
+    return Promise.resolve(cached.value as T);
+  }
+
+  const inFlight = thirdPartyQueryInFlight.get(key);
+  if (inFlight) {
+    return inFlight as Promise<T>;
+  }
+
+  const request = fetcher()
+    .then((value) => {
+      thirdPartyQueryCache.set(key, {
+        value,
+        expiresAt: Date.now() + THIRD_PARTY_CACHE_TTL_MS,
+      });
+      return value;
+    })
+    .finally(() => {
+      thirdPartyQueryInFlight.delete(key);
+    });
+
+  thirdPartyQueryInFlight.set(key, request as Promise<any>);
+  return request;
+}
+
+function clearThirdPartyUserCache(userId: string) {
+  const prefix = `${userId}:`;
+  for (const key of thirdPartyQueryCache.keys()) {
+    if (key.startsWith(prefix)) {
+      thirdPartyQueryCache.delete(key);
+    }
+  }
+  for (const key of thirdPartyQueryInFlight.keys()) {
+    if (key.startsWith(prefix)) {
+      thirdPartyQueryInFlight.delete(key);
+    }
+  }
+}
+
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const role = (ctx.session?.user as any)?.role;
   if (role !== "admin" && role !== "super_admin" && role !== "superadmin") {
@@ -236,6 +285,9 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
   // Get all active platforms for current user (filtered - exclude completed ones)
   getAvailablePlatforms: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session!.user.id;
+    const cacheKey = `${userId}:availablePlatforms`;
+
+    return getCachedThirdPartyQuery(cacheKey, async () => {
 
     // Get all active platforms
     const allPlatforms = await ctx.prisma.thirdPartyPlatform.findMany({
@@ -352,6 +404,7 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
     );
 
     return platformsWithLinks.filter(Boolean);
+    });
   }),
 
   // Submit user's referral link for a platform
@@ -420,6 +473,7 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
           updatedAt: new Date(),
         },
       });
+      clearThirdPartyUserCache(userId);
 
       // Submitting a link confirms the user completed external registration —
       // place them in their sponsor's third-party matrix (non-blocking).
@@ -447,6 +501,9 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
   // Get user's submitted platforms with stats
   getMyPlatformsWithStats: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session!.user.id;
+    const cacheKey = `${userId}:myPlatformsWithStats`;
+
+    return getCachedThirdPartyQuery(cacheKey, async () => {
 
     // Get user's submitted links
     const userLinks = await ctx.prisma.userThirdPartyLink.findMany({
@@ -514,6 +571,7 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
     );
 
     return platformsWithStats;
+    });
   }),
 
   // Get pending downlines for a specific platform (for reminders)
@@ -521,6 +579,9 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
     .input(z.object({ platformId: z.string() }))
     .query(async ({ ctx, input }) => {
       const userId = ctx.session!.user.id;
+      const cacheKey = `${userId}:pendingDownlines:${input.platformId}`;
+
+      return getCachedThirdPartyQuery(cacheKey, async () => {
 
       // Get all direct downlines
       const directDownlines = await ctx.prisma.user.findMany({
@@ -554,6 +615,7 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
         name: `${d.firstname || ''} ${d.lastname || ''}`.trim() || d.email || 'Member',
         email: d.email,
       }));
+      });
     }),
 
   // Mark a registration (when user clicks sponsor's link and completes)
@@ -615,6 +677,7 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
           referredByUserId: user?.sponsorId ?? null,
         },
       });
+      clearThirdPartyUserCache(userId);
 
       return {
         success: true,
@@ -625,6 +688,9 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
   // Get summary stats for dashboard card
   getSummary: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session!.user.id;
+    const cacheKey = `${userId}:summary`;
+
+    return getCachedThirdPartyQuery(cacheKey, async () => {
 
     // Count total active platforms
     const totalPlatforms = await ctx.prisma.thirdPartyPlatform.count({
@@ -663,5 +729,6 @@ export const thirdPartyPlatformsRouter = createTRPCRouter({
       totalDirectDownlines,
       totalRegistrations,
     };
+    });
   }),
 });
