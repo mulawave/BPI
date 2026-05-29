@@ -17,13 +17,16 @@ const MYNGUL_PACKAGES = [
   "Child Educational / Vocational Support",
 ] as const;
 
+const MEMBERSHIP_TX_MAX_WAIT_MS = 30_000;
+const MEMBERSHIP_TX_TIMEOUT_MS = 90_000;
+
 type TxClient = PrismaClient | Prisma.TransactionClient;
 
 /** Run a callback inside an interactive transaction if the client supports it, otherwise run directly. */
 async function runAtomically<T>(
   client: TxClient,
   fn: (tx: TxClient) => Promise<T>,
-  options?: { timeout: number },
+  options?: Prisma.PrismaTransactionOptions,
 ): Promise<T> {
   if ('$transaction' in client && typeof (client as any).$transaction === 'function') {
     return (client as PrismaClient).$transaction(fn, options);
@@ -313,7 +316,7 @@ export async function activateMembershipAfterExternalPayment(params: {
     }
 
     return { distributions, activationPin };
-  }, { timeout: 30000 });
+  }, { maxWait: MEMBERSHIP_TX_MAX_WAIT_MS, timeout: MEMBERSHIP_TX_TIMEOUT_MS });
 
   // ── Post-commit: BPT distribution (best-effort, uses its own transaction) ──
   for (let i = 0; i < referralChain.length; i++) {
@@ -685,7 +688,7 @@ export async function upgradeMembershipAfterExternalPayment(params: {
     }
 
     return { upgradePin };
-  }, { timeout: 30000 });
+  }, { maxWait: MEMBERSHIP_TX_MAX_WAIT_MS, timeout: MEMBERSHIP_TX_TIMEOUT_MS });
 
   // ── Post-commit: BPT distribution (best-effort) ──
   for (const item of deferredBpt) {
