@@ -3,6 +3,46 @@ import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import { TRPCError } from "@trpc/server";
 
+const ADMIN_CURRENCY_CACHE_TTL_MS = 30_000;
+let adminCurrencyCache: { value: any[]; expiresAt: number } | null = null;
+let adminCurrencyInFlight: Promise<any[]> | null = null;
+
+function isFresh(expiresAt: number) {
+  return expiresAt > Date.now();
+}
+
+async function getCachedAdminCurrencies() {
+  if (adminCurrencyCache && isFresh(adminCurrencyCache.expiresAt)) {
+    return adminCurrencyCache.value;
+  }
+
+  if (adminCurrencyInFlight) {
+    return adminCurrencyInFlight;
+  }
+
+  adminCurrencyInFlight = prisma.currencyManagement.findMany({
+    orderBy: [
+      { default: "desc" },
+      { symbol: "asc" },
+    ],
+  });
+
+  try {
+    const currencies = await adminCurrencyInFlight;
+    adminCurrencyCache = {
+      value: currencies,
+      expiresAt: Date.now() + ADMIN_CURRENCY_CACHE_TTL_MS,
+    };
+    return currencies;
+  } finally {
+    adminCurrencyInFlight = null;
+  }
+}
+
+function invalidateAdminCurrencyCache() {
+  adminCurrencyCache = null;
+}
+
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.session?.user) {
     throw new TRPCError({
@@ -23,12 +63,7 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 export const adminCurrencyRouter = createTRPCRouter({
   // Get all currencies with details
   getAllCurrencies: adminProcedure.query(async () => {
-    return await prisma.currencyManagement.findMany({
-      orderBy: [
-        { default: 'desc' },
-        { symbol: 'asc' },
-      ],
-    });
+    return await getCachedAdminCurrencies();
   }),
 
   // Update currency rate
@@ -46,6 +81,8 @@ export const adminCurrencyRouter = createTRPCRouter({
           rate: input.rate,
         },
       });
+
+      invalidateAdminCurrencyCache();
 
       return {
         success: true,
@@ -71,6 +108,8 @@ export const adminCurrencyRouter = createTRPCRouter({
         where: { id: input.currencyId },
         data: { default: 1 },
       });
+
+      invalidateAdminCurrencyCache();
 
       return {
         success: true,

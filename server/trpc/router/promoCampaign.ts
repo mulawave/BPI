@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import {
   getActivePromo,
   claimPromoActivation,
+  invalidateActivePromoCache,
 } from "@/server/services/promoActivation.service";
 
 function parsePromoStartDate(dateString?: string) {
@@ -108,7 +109,7 @@ export const promoCampaignRouter = createTRPCRouter({
       requireAdmin(ctx);
       const adminId = (ctx.session?.user as any)?.id as string;
 
-      return prisma.promoCampaign.create({
+      const created = await prisma.promoCampaign.create({
         data: {
           name: input.name,
           type: "FREE_MEMBERSHIP_ACTIVATION",
@@ -121,6 +122,9 @@ export const promoCampaignRouter = createTRPCRouter({
           createdByAdminId: adminId,
         },
       });
+
+      invalidateActivePromoCache();
+      return created;
     }),
 
   /** Toggle the isActive flag on a campaign. */
@@ -128,10 +132,13 @@ export const promoCampaignRouter = createTRPCRouter({
     .input(z.object({ id: z.string().min(1), isActive: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       requireAdmin(ctx);
-      return prisma.promoCampaign.update({
+      const updated = await prisma.promoCampaign.update({
         where: { id: input.id },
         data: { isActive: input.isActive },
       });
+
+      invalidateActivePromoCache();
+      return updated;
     }),
 
   /** Delete a campaign (only if it has 0 claims). */
@@ -151,7 +158,9 @@ export const promoCampaignRouter = createTRPCRouter({
           message: "Cannot delete a campaign that has claims.",
         });
       }
-      return prisma.promoCampaign.delete({ where: { id: input.id } });
+      const deleted = await prisma.promoCampaign.delete({ where: { id: input.id } });
+      invalidateActivePromoCache();
+      return deleted;
     }),
 
   /** List all claims for a campaign with user details. */

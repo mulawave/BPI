@@ -21,6 +21,18 @@ export type ActivePromo = {
   targetPackageId: string | null;
 };
 
+const ACTIVE_PROMO_CACHE_TTL_MS = 15_000;
+let activePromoCache: { value: ActivePromo | null; expiresAt: number } | null = null;
+let activePromoInFlight: Promise<ActivePromo | null> | null = null;
+
+function isFresh(expiresAt: number) {
+  return expiresAt > Date.now();
+}
+
+export function invalidateActivePromoCache() {
+  activePromoCache = null;
+}
+
 function getPromoStartBoundary(date: Date | null) {
   if (!date) return null;
   const boundary = new Date(date);
@@ -42,6 +54,15 @@ function getPromoEndBoundary(date: Date | null) {
 export async function getActivePromo(
   prisma: PrismaClient,
 ): Promise<ActivePromo | null> {
+  if (activePromoCache && isFresh(activePromoCache.expiresAt)) {
+    return activePromoCache.value;
+  }
+
+  if (activePromoInFlight) {
+    return activePromoInFlight;
+  }
+
+  activePromoInFlight = (async () => {
   const now = new Date();
 
   const campaigns = await prisma.promoCampaign.findMany({
@@ -62,16 +83,30 @@ export async function getActivePromo(
 
       return true;
     }) ?? null;
-  if (!campaign) return null;
-
-  return {
+  const value = !campaign
+    ? null
+    : {
     id: campaign.id,
     name: campaign.name,
     quota: campaign.quota,
     usedCount: campaign.usedCount,
     remaining: campaign.quota - campaign.usedCount,
     targetPackageId: campaign.targetPackageId,
+    };
+
+  activePromoCache = {
+    value,
+    expiresAt: Date.now() + ACTIVE_PROMO_CACHE_TTL_MS,
   };
+
+  return value;
+  })();
+
+  try {
+    return await activePromoInFlight;
+  } finally {
+    activePromoInFlight = null;
+  }
 }
 
 /**
@@ -177,6 +212,8 @@ export async function claimPromoActivation(
         where: { id: campaignId },
         data: { usedCount: { increment: 1 } },
       });
+
+      invalidateActivePromoCache();
 
       return { success: true as const, expiresAt: result.expiresAt as Date };
     },

@@ -41,6 +41,37 @@ import {
 } from "@/server/services/compositePackages.service";
 import { finalizeEmpowermentPackage } from "@/server/services/empowermentPayments.service";
 
+const PACKAGE_LIST_CACHE_TTL_MS = 30_000;
+let packageListCache: { value: MembershipPackage[]; expiresAt: number } | null = null;
+let packageListInFlight: Promise<MembershipPackage[]> | null = null;
+
+function isFresh(expiresAt: number) {
+  return expiresAt > Date.now();
+}
+
+async function getCachedMembershipPackages() {
+  if (packageListCache && isFresh(packageListCache.expiresAt)) {
+    return packageListCache.value;
+  }
+
+  if (packageListInFlight) {
+    return packageListInFlight;
+  }
+
+  packageListInFlight = prisma.membershipPackage.findMany();
+
+  try {
+    const packages = await packageListInFlight;
+    packageListCache = {
+      value: packages,
+      expiresAt: Date.now() + PACKAGE_LIST_CACHE_TTL_MS,
+    };
+    return packages;
+  } finally {
+    packageListInFlight = null;
+  }
+}
+
 // Helper to fetch numeric admin settings with a fallback
 async function getAdminSetting(key: string, defaultValue: number): Promise<number> {
   const setting = await prisma.adminSettings.findUnique({
@@ -101,7 +132,7 @@ function computeProfitFiat(params: {
 
 export const packageRouter = createTRPCRouter({
   getPackages: publicProcedure.query(async () => {
-    return await prisma.membershipPackage.findMany();
+    return await getCachedMembershipPackages();
   }),
 
   // Initiate membership payment (wallet or external gateway)
