@@ -8,8 +8,30 @@ const isBuild =
 const isServer = typeof window === "undefined";
 
 const PRISMA_BUILD_IDLE_DISCONNECT_MS = 10_000;
+const DEFAULT_CONNECTION_LIMIT = 20;
+const DEFAULT_POOL_TIMEOUT = 30;
 const MIN_RECOMMENDED_CONNECTION_LIMIT = 15;
 const MIN_RECOMMENDED_POOL_TIMEOUT = 20;
+
+function normalizeDatabaseUrl(urlValue: string) {
+  try {
+    const url = new URL(urlValue);
+    const connectionLimit = url.searchParams.get("connection_limit");
+    const poolTimeout = url.searchParams.get("pool_timeout");
+
+    if (!connectionLimit) {
+      url.searchParams.set("connection_limit", String(DEFAULT_CONNECTION_LIMIT));
+    }
+
+    if (!poolTimeout) {
+      url.searchParams.set("pool_timeout", String(DEFAULT_POOL_TIMEOUT));
+    }
+
+    return url.toString();
+  } catch {
+    return urlValue;
+  }
+}
 
 function parseDatabasePoolConfig(urlValue: string) {
   try {
@@ -61,6 +83,18 @@ function warnOnUnsafePoolConfig() {
     );
   }
 }
+
+function ensureRuntimePoolConfig() {
+  const rawDbUrl = process.env.DATABASE_URL;
+  if (!rawDbUrl) return;
+
+  const normalizedDbUrl = normalizeDatabaseUrl(rawDbUrl);
+  if (normalizedDbUrl !== rawDbUrl) {
+    process.env.DATABASE_URL = normalizedDbUrl;
+  }
+}
+
+ensureRuntimePoolConfig();
 
 const createClient = () =>
   new PrismaClient({
