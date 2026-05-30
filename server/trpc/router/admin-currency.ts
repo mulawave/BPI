@@ -140,6 +140,8 @@ export const adminCurrencyRouter = createTRPCRouter({
         },
       });
 
+      invalidateAdminCurrencyCache();
+
       return {
         success: true,
         currency,
@@ -166,6 +168,8 @@ export const adminCurrencyRouter = createTRPCRouter({
       await prisma.currencyManagement.delete({
         where: { id: input.currencyId },
       });
+
+      invalidateAdminCurrencyCache();
 
       return {
         success: true,
@@ -229,7 +233,7 @@ export const adminCurrencyRouter = createTRPCRouter({
 
   // Get currency statistics
   getCurrencyStats: adminProcedure.query(async () => {
-    const currencies = await prisma.currencyManagement.findMany();
+    const currencies = await getCachedAdminCurrencies();
     const defaultCurrency = currencies.find((c: any) => c.default === 1);
     
     const bpTokenPrice = await prisma.bPTokenPrice.findFirst({

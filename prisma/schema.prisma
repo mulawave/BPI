@@ -1078,6 +1078,8 @@ model Referral {
   User_Referral_referrerIdToUser User     @relation("Referral_referrerIdToUser", fields: [referrerId], references: [id], onDelete: Cascade)
 
   @@unique([referrerId, referredId])
+  @@index([referredId])
+  @@index([referrerId])
 }
 
 model ReferralTree {

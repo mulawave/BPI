@@ -8,24 +8,32 @@ const isBuild =
 const isServer = typeof window === "undefined";
 
 const PRISMA_BUILD_IDLE_DISCONNECT_MS = 10_000;
-const DEFAULT_CONNECTION_LIMIT = 20;
-const DEFAULT_POOL_TIMEOUT = 30;
+const DEFAULT_CONNECTION_LIMIT = 30;
+const DEFAULT_POOL_TIMEOUT = 45;
 const MIN_RECOMMENDED_CONNECTION_LIMIT = 15;
 const MIN_RECOMMENDED_POOL_TIMEOUT = 20;
 
 function normalizeDatabaseUrl(urlValue: string) {
   try {
     const url = new URL(urlValue);
-    const connectionLimit = url.searchParams.get("connection_limit");
-    const poolTimeout = url.searchParams.get("pool_timeout");
+    const connectionLimitRaw = url.searchParams.get("connection_limit");
+    const poolTimeoutRaw = url.searchParams.get("pool_timeout");
 
-    if (!connectionLimit) {
-      url.searchParams.set("connection_limit", String(DEFAULT_CONNECTION_LIMIT));
-    }
+    const connectionLimit = connectionLimitRaw ? Number(connectionLimitRaw) : null;
+    const poolTimeout = poolTimeoutRaw ? Number(poolTimeoutRaw) : null;
 
-    if (!poolTimeout) {
-      url.searchParams.set("pool_timeout", String(DEFAULT_POOL_TIMEOUT));
-    }
+    const effectiveConnectionLimit =
+      connectionLimit && Number.isFinite(connectionLimit)
+        ? Math.max(connectionLimit, DEFAULT_CONNECTION_LIMIT)
+        : DEFAULT_CONNECTION_LIMIT;
+
+    const effectivePoolTimeout =
+      poolTimeout && Number.isFinite(poolTimeout)
+        ? Math.max(poolTimeout, DEFAULT_POOL_TIMEOUT)
+        : DEFAULT_POOL_TIMEOUT;
+
+    url.searchParams.set("connection_limit", String(effectiveConnectionLimit));
+    url.searchParams.set("pool_timeout", String(effectivePoolTimeout));
 
     return url.toString();
   } catch {
