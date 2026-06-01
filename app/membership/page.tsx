@@ -27,6 +27,7 @@ export default function MembershipPage() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [claimingPromo, setClaimingPromo] = useState<string | null>(null);
   const [promoClaimSuccess, setPromoClaimSuccess] = useState<{ packageName: string; expiresAt: Date } | null>(null);
+  const [promoJustActivated, setPromoJustActivated] = useState(false);
 
   const { data: promoData } = api.promoCampaign.getActivePromo.useQuery(undefined, {
     enabled: !activeMembership,
@@ -45,6 +46,7 @@ export default function MembershipPage() {
       toast.dismiss(tid);
       const claimedPkg = packages?.find((p: any) => p.id === packageId);
       setPromoClaimSuccess({ packageName: claimedPkg?.name || 'Membership', expiresAt: result.expiresAt });
+      setPromoJustActivated(true);
       setClaimingPromo(null);
     } catch (err: any) {
       toast.error(err.message || 'Failed to claim promo activation.', { id: tid });
@@ -536,18 +538,18 @@ export default function MembershipPage() {
                 ))}
               </div>
 
-              {/* PRIMARY CTA — Proceed to Dashboard */}
-              <a
-                href="/dashboard"
+              {/* PRIMARY CTA — close modal so user reads renewal info below */}
+              <button
+                onClick={() => setPromoClaimSuccess(null)}
                 className="group w-full inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 px-8 py-5 text-lg font-black uppercase tracking-widest text-black shadow-2xl shadow-amber-500/25 transition-all duration-200 hover:from-yellow-300 hover:to-amber-400 hover:scale-[1.02] active:scale-[0.98]"
               >
-                <Sparkles className="h-5 w-5" />
-                Proceed to Dashboard
+                <Check className="h-5 w-5" />
+                Got it — View My Plan Details
                 <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-              </a>
+              </button>
 
               <p className="mt-4 text-[11px] text-white/25 leading-relaxed">
-                All features are ready — start exploring your BPI dashboard now.
+                Your plan info and renewal details are ready below.
               </p>
             </div>
           </div>
@@ -659,8 +661,22 @@ export default function MembershipPage() {
         </div>
 
         {activeMembership?.package && (
-          <div className="mb-12">
+          <div className="mb-8">
             <MembershipRenewalPanel />
+          </div>
+        )}
+
+        {/* Post-promo CTA — shown after user closes the success modal and reads their plan info */}
+        {promoJustActivated && promoClaimSuccess === null && (
+          <div className="mb-12 flex justify-center">
+            <a
+              href="/dashboard"
+              className="group inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 px-10 py-5 text-lg font-black uppercase tracking-widest text-black shadow-2xl shadow-amber-500/25 transition-all duration-200 hover:from-yellow-300 hover:to-amber-400 hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Sparkles className="h-5 w-5" />
+              Proceed to Dashboard
+              <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+            </a>
           </div>
         )}
 
