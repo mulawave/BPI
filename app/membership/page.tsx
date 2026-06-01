@@ -15,6 +15,12 @@ import KycWarningBanner from "@/components/kyc/KycWarningBanner";
 import MembershipRenewalPanel from "@/components/membership/MembershipRenewalPanel";
 import toast from "react-hot-toast";
 
+function navigateToDashboard() {
+  const baseUrl = resolveClientBaseUrl();
+  const target = baseUrl ? `${baseUrl}/dashboard` : "/dashboard";
+  window.location.assign(target);
+}
+
 export default function MembershipPage() {
   const { data: packages, isLoading } = api.package.getPackages.useQuery();
   const { data: activeMembership, isLoading: loadingActive } = api.package.getUserActiveMembership.useQuery();
@@ -540,7 +546,7 @@ export default function MembershipPage() {
 
               {/* PRIMARY CTA — Proceed to Dashboard */}
               <button
-                onClick={() => router.push('/dashboard')}
+                onClick={navigateToDashboard}
                 className="group w-full inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 px-8 py-5 text-lg font-black uppercase tracking-widest text-black shadow-2xl shadow-amber-500/25 transition-all duration-200 hover:from-yellow-300 hover:to-amber-400 hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Sparkles className="h-5 w-5" />
@@ -580,7 +586,7 @@ export default function MembershipPage() {
                   className="gap-2"
                   onClick={() => {
                     setIsDashboardLoading(true);
-                    router.push('/dashboard');
+                    navigateToDashboard();
                   }}
                   disabled={isDashboardLoading}
                 >
