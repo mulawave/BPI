@@ -21,12 +21,13 @@ const MEMBERSHIP_TX_MAX_WAIT_MS = 30_000;
 const MEMBERSHIP_TX_TIMEOUT_MS = 90_000;
 
 type TxClient = PrismaClient | Prisma.TransactionClient;
+type TxOptions = Parameters<PrismaClient["$transaction"]>[1];
 
 /** Run a callback inside an interactive transaction if the client supports it, otherwise run directly. */
 async function runAtomically<T>(
   client: TxClient,
   fn: (tx: TxClient) => Promise<T>,
-  options?: Prisma.PrismaTransactionOptions,
+  options?: TxOptions,
 ): Promise<T> {
   if ('$transaction' in client && typeof (client as any).$transaction === 'function') {
     return (client as PrismaClient).$transaction(fn, options);

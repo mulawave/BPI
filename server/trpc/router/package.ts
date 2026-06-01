@@ -44,6 +44,18 @@ import { finalizeEmpowermentPackage } from "@/server/services/empowermentPayment
 const PACKAGE_LIST_CACHE_TTL_MS = 30_000;
 let packageListCache: { value: MembershipPackage[]; expiresAt: number } | null = null;
 let packageListInFlight: Promise<MembershipPackage[]> | null = null;
+const ACTIVE_MEMBERSHIP_CACHE_TTL_MS = 30_000;
+const activeMembershipCache = new Map<
+  string,
+  {
+    value: { package: MembershipPackage; activatedAt: Date | null; expiresAt: Date | null } | null;
+    expiresAt: number;
+  }
+>();
+const activeMembershipInFlight = new Map<
+  string,
+  Promise<{ package: MembershipPackage; activatedAt: Date | null; expiresAt: Date | null } | null>
+>();
 
 function isFresh(expiresAt: number) {
   return expiresAt > Date.now();
@@ -70,6 +82,78 @@ async function getCachedMembershipPackages() {
   } finally {
     packageListInFlight = null;
   }
+}
+
+async function getCachedActiveMembership(userId: string) {
+  const cached = activeMembershipCache.get(userId);
+  if (cached && isFresh(cached.expiresAt)) {
+    return cached.value;
+  }
+
+  const inFlight = activeMembershipInFlight.get(userId);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const request = (async () => {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        activeMembershipPackageId: true,
+        membershipActivatedAt: true,
+        membershipExpiresAt: true,
+      },
+    });
+
+    if (!user?.activeMembershipPackageId) {
+      activeMembershipCache.set(userId, {
+        value: null,
+        expiresAt: Date.now() + ACTIVE_MEMBERSHIP_CACHE_TTL_MS,
+      });
+      return null;
+    }
+
+    const membershipPackage = await prisma.membershipPackage.findUnique({
+      where: { id: user.activeMembershipPackageId },
+    });
+
+    if (!membershipPackage) {
+      activeMembershipCache.set(userId, {
+        value: null,
+        expiresAt: Date.now() + ACTIVE_MEMBERSHIP_CACHE_TTL_MS,
+      });
+      return null;
+    }
+
+    const { expiresAt } = deriveMembershipExpiry({
+      membershipExpiresAt: user.membershipExpiresAt,
+      membershipActivatedAt: user.membershipActivatedAt,
+      renewalCycleDays: membershipPackage.renewalCycle,
+    });
+
+    const value = {
+      package: membershipPackage,
+      activatedAt: user.membershipActivatedAt,
+      expiresAt,
+    };
+
+    activeMembershipCache.set(userId, {
+      value,
+      expiresAt: Date.now() + ACTIVE_MEMBERSHIP_CACHE_TTL_MS,
+    });
+
+    return value;
+  })().finally(() => {
+    activeMembershipInFlight.delete(userId);
+  });
+
+  activeMembershipInFlight.set(userId, request);
+  return request;
+}
+
+function invalidateActiveMembershipCache(userId: string) {
+  activeMembershipCache.delete(userId);
+  activeMembershipInFlight.delete(userId);
 }
 
 // Helper to fetch numeric admin settings with a fallback
@@ -192,6 +276,7 @@ export const packageRouter = createTRPCRouter({
           paymentMethodLabel: "Wallet",
           activatorName: ctx.session?.user?.name || ctx.session?.user?.email || "Member",
         });
+        invalidateActiveMembershipCache(userId);
 
         const membershipProfitFiat = computeProfitFiat({
           profitMode: ((membershipPackage.profitMode ?? "PERCENT") as any) as "PERCENT" | "FIXED" | "HYBRID",
@@ -252,6 +337,7 @@ export const packageRouter = createTRPCRouter({
           paymentMethodLabel: "Mock",
           activatorName: ctx.session?.user?.name || ctx.session?.user?.email || "Member",
         });
+        invalidateActiveMembershipCache(userId);
 
         return { success: true, gateway: "mock", paymentUrl: null, reference: mockReference };
       }
@@ -438,6 +524,7 @@ export const packageRouter = createTRPCRouter({
         paymentMethodLabel: input.gateway,
         activatorName: ctx.session?.user?.name || ctx.session?.user?.email || "Member",
       });
+      invalidateActiveMembershipCache(userId);
 
       if (pending) {
         await prisma.pendingPayment.update({
@@ -2639,34 +2726,7 @@ export const packageRouter = createTRPCRouter({
     }
     const userId = (ctx.session.user as any).id;
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        activeMembershipPackageId: true,
-        membershipActivatedAt: true,
-        membershipExpiresAt: true,
-      },
-    });
-
-    if (!user?.activeMembershipPackageId) {
-      return null;
-    }
-
-    const membershipPackage = await prisma.membershipPackage.findUnique({
-      where: { id: user.activeMembershipPackageId },
-    });
-
-    const { expiresAt } = deriveMembershipExpiry({
-      membershipExpiresAt: user.membershipExpiresAt,
-      membershipActivatedAt: user.membershipActivatedAt,
-      renewalCycleDays: membershipPackage?.renewalCycle,
-    });
-
-    return {
-      package: membershipPackage,
-      activatedAt: user.membershipActivatedAt,
-      expiresAt,
-    };
+    return getCachedActiveMembership(userId);
   }),
 
   /**
@@ -3650,6 +3710,7 @@ export const packageRouter = createTRPCRouter({
           paymentMethodLabel: input.gateway,
           activatorName: user?.name || user?.email || ctx.session?.user?.name || "Member",
         });
+        invalidateActiveMembershipCache(userId);
 
         await markPendingPaymentReviewed(prisma, {
           paymentId: pending.id,
@@ -3726,6 +3787,7 @@ export const packageRouter = createTRPCRouter({
           paymentReference: input.reference,
           paymentMethodLabel: input.gateway,
         });
+        invalidateActiveMembershipCache(userId);
 
         await markPendingPaymentReviewed(prisma, {
           paymentId: pending.id,

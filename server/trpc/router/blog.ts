@@ -8,33 +8,102 @@ const BlogPostStatusEnum = {
 } as const;
 type BlogPostStatus = (typeof BlogPostStatusEnum)[keyof typeof BlogPostStatusEnum];
 
+const BLOG_LATEST_CACHE_TTL_MS = 15_000;
+const BLOG_LIST_CACHE_TTL_MS = 15_000;
+const BLOG_POST_CACHE_TTL_MS = 30_000;
+
+type CachedValue<T> = {
+  value: T;
+  expiresAt: number;
+};
+
+const latestPostsCache = new Map<string, CachedValue<any>>();
+const latestPostsInFlight = new Map<string, Promise<any>>();
+const blogListCache = new Map<string, CachedValue<any>>();
+const blogListInFlight = new Map<string, Promise<any>>();
+const postBySlugCache = new Map<string, CachedValue<any>>();
+const postBySlugInFlight = new Map<string, Promise<any>>();
+
+function isFresh(expiresAt: number) {
+  return expiresAt > Date.now();
+}
+
+function setCachedValue<T>(cache: Map<string, CachedValue<T>>, key: string, value: T, ttlMs: number) {
+  cache.set(key, {
+    value,
+    expiresAt: Date.now() + ttlMs,
+  });
+}
+
+function resolveCachedValue<T>(
+  cache: Map<string, CachedValue<T>>,
+  inFlight: Map<string, Promise<T>>,
+  key: string,
+  loader: () => Promise<T>,
+  ttlMs: number,
+) {
+  const cached = cache.get(key);
+  if (cached && isFresh(cached.expiresAt)) {
+    return Promise.resolve(cached.value);
+  }
+
+  const pending = inFlight.get(key);
+  if (pending) {
+    return pending;
+  }
+
+  const request = loader()
+    .then((value) => {
+      setCachedValue(cache, key, value, ttlMs);
+      return value;
+    })
+    .finally(() => {
+      inFlight.delete(key);
+    });
+
+  inFlight.set(key, request);
+  return request;
+}
+
+export function clearBlogPublicCache() {
+  latestPostsCache.clear();
+  latestPostsInFlight.clear();
+  blogListCache.clear();
+  blogListInFlight.clear();
+  postBySlugCache.clear();
+  postBySlugInFlight.clear();
+}
+
 export const blogRouter = createTRPCRouter({
   // Latest posts for dashboards/carousels
   getLatestPosts: publicProcedure
     .input(z.object({ limit: z.number().min(1).max(20).default(6) }))
     .query(async ({ ctx, input }) => {
-      const prisma = ctx.prisma as any;
-      const posts = await prisma.blogPost.findMany({
-        where: { status: BlogPostStatusEnum.PUBLISHED },
-        orderBy: { publishedAt: "desc" },
-        take: input.limit,
-        select: {
-          id: true,
-          title: true,
-          slug: true,
-          excerpt: true,
-          image: true,
-          imageUrl: true,
-          viewCount: true,
-          createdAt: true,
-          publishedAt: true,
-          category: { select: { id: true, name: true, slug: true } },
-          author: { select: { id: true, name: true, image: true } },
-          _count: { select: { comments: true } },
-        },
-      });
+      const cacheKey = `limit:${input.limit}`;
+      return resolveCachedValue(latestPostsCache, latestPostsInFlight, cacheKey, async () => {
+        const prisma = ctx.prisma as any;
+        const posts = await prisma.blogPost.findMany({
+          where: { status: BlogPostStatusEnum.PUBLISHED },
+          orderBy: { publishedAt: "desc" },
+          take: input.limit,
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            excerpt: true,
+            image: true,
+            imageUrl: true,
+            viewCount: true,
+            createdAt: true,
+            publishedAt: true,
+            category: { select: { id: true, name: true, slug: true } },
+            author: { select: { id: true, name: true, image: true } },
+            _count: { select: { comments: true } },
+          },
+        });
 
-      return { posts };
+        return { posts };
+      }, BLOG_LATEST_CACHE_TTL_MS);
     }),
 
   list: publicProcedure
@@ -47,72 +116,86 @@ export const blogRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const prisma = ctx.prisma as any;
+      const normalizedSearch = input.search?.trim() || "";
+      const normalizedCategorySlug = input.categorySlug?.trim() || "";
+      const cacheKey = JSON.stringify({
+        page: input.page,
+        perPage: input.perPage,
+        search: normalizedSearch,
+        categorySlug: normalizedCategorySlug,
+      });
+
       const where = {
         status: BlogPostStatusEnum.PUBLISHED,
-        ...(input.search
+        ...(normalizedSearch
           ? {
               OR: [
-                { title: { contains: input.search, mode: "insensitive" } },
-                { content: { contains: input.search, mode: "insensitive" } },
+                { title: { contains: normalizedSearch, mode: "insensitive" } },
+                { content: { contains: normalizedSearch, mode: "insensitive" } },
               ],
             }
           : {}),
-        ...(input.categorySlug ? { category: { slug: input.categorySlug } } : {}),
+        ...(normalizedCategorySlug ? { category: { slug: normalizedCategorySlug } } : {}),
       } as const;
 
-      const [total, posts, categories] = await Promise.all([
-        prisma.blogPost.count({ where }),
-        prisma.blogPost.findMany({
-          where,
-          orderBy: { publishedAt: "desc" },
-          skip: (input.page - 1) * input.perPage,
-          take: input.perPage,
-          select: {
-            id: true,
-            title: true,
-            slug: true,
-            excerpt: true,
-            image: true,
-            imageUrl: true,
-            viewCount: true,
-            publishedAt: true,
-            category: { select: { id: true, name: true, slug: true } },
-            author: { select: { id: true, name: true, image: true } },
-            _count: { select: { comments: true } },
-          },
-        }),
-        prisma.blogCategory.findMany({ orderBy: { name: "asc" } }),
-      ]);
+      return resolveCachedValue(blogListCache, blogListInFlight, cacheKey, async () => {
+        const prisma = ctx.prisma as any;
+        const [total, posts, categories] = await Promise.all([
+          prisma.blogPost.count({ where }),
+          prisma.blogPost.findMany({
+            where,
+            orderBy: { publishedAt: "desc" },
+            skip: (input.page - 1) * input.perPage,
+            take: input.perPage,
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              excerpt: true,
+              image: true,
+              imageUrl: true,
+              viewCount: true,
+              publishedAt: true,
+              category: { select: { id: true, name: true, slug: true } },
+              author: { select: { id: true, name: true, image: true } },
+              _count: { select: { comments: true } },
+            },
+          }),
+          prisma.blogCategory.findMany({ orderBy: { name: "asc" } }),
+        ]);
 
-      return {
-        total,
-        page: input.page,
-        perPage: input.perPage,
-        totalPages: Math.max(1, Math.ceil(total / input.perPage)),
-        posts,
-        categories,
-      };
+        return {
+          total,
+          page: input.page,
+          perPage: input.perPage,
+          totalPages: Math.max(1, Math.ceil(total / input.perPage)),
+          posts,
+          categories,
+        };
+      }, BLOG_LIST_CACHE_TTL_MS);
     }),
 
   getPostBySlug: publicProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ ctx, input }) => {
-      const prisma = ctx.prisma as any;
-      const post = await prisma.blogPost.findUnique({
-        where: { slug: input.slug },
-        include: {
-          category: true,
-          author: { select: { id: true, name: true, image: true, role: true } },
-          _count: { select: { comments: true } },
-        },
-      });
+      const cacheKey = input.slug.trim().toLowerCase();
+      return resolveCachedValue(postBySlugCache, postBySlugInFlight, cacheKey, async () => {
+        const prisma = ctx.prisma as any;
+        const post = await prisma.blogPost.findUnique({
+          where: { slug: input.slug },
+          include: {
+            category: true,
+            author: { select: { id: true, name: true, image: true, role: true } },
+            _count: { select: { comments: true } },
+          },
+        });
 
-      if (!post || post.status !== BlogPostStatusEnum.PUBLISHED) {
-        throw new Error("Post not found");
-      }
+        if (!post || post.status !== BlogPostStatusEnum.PUBLISHED) {
+          throw new Error("Post not found");
+        }
 
-      return post;
+        return post;
+      }, BLOG_POST_CACHE_TTL_MS);
     }),
 
   getComments: publicProcedure
@@ -148,13 +231,16 @@ export const blogRouter = createTRPCRouter({
       if (!post || post.status !== BlogPostStatusEnum.PUBLISHED) {
         throw new Error("Cannot comment on this post");
       }
-      return prisma.blogComment.create({
+      const result = await prisma.blogComment.create({
         data: {
           postId: input.postId,
           userId: ctx.session!.user!.id,
           content: input.content,
         },
       });
+
+      clearBlogPublicCache();
+      return result;
     }),
 
   incrementView: publicProcedure
@@ -174,6 +260,8 @@ export const blogRouter = createTRPCRouter({
           ipAddress: input.ip,
         },
       });
+
+      clearBlogPublicCache();
 
       return { success: true };
     }),

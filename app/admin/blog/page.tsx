@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { api } from "@/client/trpc";
 import toast from "react-hot-toast";
+import { keepPreviousData } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   BookOpen,
@@ -71,16 +72,32 @@ export default function AdminBlogPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [submitProgress, setSubmitProgress] = useState(0);
 
-  const stats = api.adminBlog.getStats.useQuery();
-  const categoriesQuery = api.adminBlog.listCategories.useQuery();
-  const posts = api.adminBlog.listPosts.useQuery({
-    page,
-    perPage,
-    search: search || undefined,
-    status: status as any,
-    categoryId,
-    featured: featuredOnly ? true : undefined,
+  const stats = api.adminBlog.getStats.useQuery(undefined, {
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
+  const categoriesQuery = api.adminBlog.listCategories.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  const posts = api.adminBlog.listPosts.useQuery(
+    {
+      page,
+      perPage,
+      search: search || undefined,
+      status: status as any,
+      categoryId,
+      featured: featuredOnly ? true : undefined,
+    },
+    {
+      staleTime: 60 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      placeholderData: keepPreviousData,
+    }
+  );
 
   const createPost = api.adminBlog.createPost.useMutation({
     onSuccess: () => {

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { createTRPCRouter, protectedProcedure } from "@/server/trpc/trpc";
+import { createTRPCRouter, protectedProcedure, publicProcedure } from "@/server/trpc/trpc";
 import { prisma } from "@/lib/prisma";
 import {
   getActivePromo,
@@ -35,7 +35,7 @@ export const promoCampaignRouter = createTRPCRouter({
   // ── User-facing ──────────────────────────────────────────────────────────
 
   /** Returns the currently active promo if one exists with quota remaining. */
-  getActivePromo: protectedProcedure.query(async () => {
+  getActivePromo: publicProcedure.query(async () => {
     return getActivePromo(prisma);
   }),
 

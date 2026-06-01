@@ -34,7 +34,10 @@ type RecentArticle = {
 
 export const Media = () => {
   const [activeSlide, setActiveSlide] = useState(0);
-  const latestPostsQuery = api.blog.getLatestPosts.useQuery({ limit: 5 });
+  const latestPostsQuery = api.blog.getLatestPosts.useQuery(
+    { limit: 5 },
+    { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false }
+  );
   const recentArticles: RecentArticle[] = (latestPostsQuery.data?.posts ?? []) as RecentArticle[];
 
   useEffect(() => {

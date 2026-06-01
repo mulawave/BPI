@@ -32,7 +32,7 @@ export async function getReferralChain(userId: string, maxLevels: number = 4): P
   }
 
   const request = (async () => {
-  try {
+    try {
     if (maxLevels > 4) {
       console.warn(`⚠️ getReferralChain called with maxLevels=${maxLevels}, capping at 4`);
     }
@@ -44,12 +44,12 @@ export async function getReferralChain(userId: string, maxLevels: number = 4): P
     for (let i = 0; i < cappedMaxLevels; i++) {
       if (!currentUserId) break;
 
-      const referral = await prisma.referral.findFirst({
+      const referral: { referrerId: string | null } | null = await prisma.referral.findFirst({
         where: { referredId: currentUserId },
         select: { referrerId: true },
       });
 
-      const nextReferrerId = referral?.referrerId ?? null;
+      const nextReferrerId: string | null = referral?.referrerId ?? null;
       if (!nextReferrerId) break;
       if (orderedIds.includes(nextReferrerId)) break;
 
@@ -62,7 +62,7 @@ export async function getReferralChain(userId: string, maxLevels: number = 4): P
     // Batch fetch all users in one query, then restore chain order.
     const users = await prisma.user.findMany({ where: { id: { in: orderedIds } } });
     const usersById = new Map(users.map((u) => [u.id, u]));
-    const chain = orderedIds.map((id) => usersById.get(id)).filter(Boolean);
+    const chain: any[] = orderedIds.map((id) => usersById.get(id)).filter(Boolean) as any[];
 
     referralChainCache.set(cacheKey, {
       expiresAt: Date.now() + REFERRAL_CHAIN_TTL_MS,
@@ -70,10 +70,10 @@ export async function getReferralChain(userId: string, maxLevels: number = 4): P
     });
 
     return chain;
-  } catch (error) {
-    console.error('❌ getReferralChain failed for userId:', userId, error);
-    return [];
-  }
+    } catch (error) {
+      console.error('❌ getReferralChain failed for userId:', userId, error);
+      return [];
+    }
   })().finally(() => {
     referralChainInFlight.delete(cacheKey);
   });

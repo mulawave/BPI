@@ -132,91 +132,90 @@ export async function claimPromoActivation(
 ): Promise<{ success: true; expiresAt: Date }> {
   const { userId, campaignId, packageId } = params;
 
-  return prisma.$transaction(
-    async (tx) => {
-      // ── 1. Check campaign is still valid ─────────────────────────────────
-      const campaign = await tx.promoCampaign.findUnique({
-        where: { id: campaignId },
-      });
+  const now = new Date();
 
-      if (!campaign || !campaign.isActive) {
-        throw new Error("PROMO_NOT_ACTIVE");
-      }
-      if (campaign.usedCount >= campaign.quota) {
-        throw new Error("PROMO_QUOTA_EXHAUSTED");
-      }
+  const campaign = await prisma.promoCampaign.findUnique({
+    where: { id: campaignId },
+  });
 
-      const now = new Date();
-      const startBoundary = getPromoStartBoundary(campaign.startDate);
-      const endBoundary = getPromoEndBoundary(campaign.endDate);
+  if (!campaign || !campaign.isActive) {
+    throw new Error("PROMO_NOT_ACTIVE");
+  }
+  if (campaign.usedCount >= campaign.quota) {
+    throw new Error("PROMO_QUOTA_EXHAUSTED");
+  }
 
-      if (startBoundary && startBoundary > now) {
-        throw new Error("PROMO_NOT_STARTED");
-      }
-      if (endBoundary && endBoundary < now) {
-        throw new Error("PROMO_EXPIRED");
-      }
+  const startBoundary = getPromoStartBoundary(campaign.startDate);
+  const endBoundary = getPromoEndBoundary(campaign.endDate);
 
-      // Package must match if campaign targets a specific one
-      if (campaign.targetPackageId && campaign.targetPackageId !== packageId) {
-        throw new Error("PROMO_PACKAGE_MISMATCH");
-      }
+  if (startBoundary && startBoundary > now) {
+    throw new Error("PROMO_NOT_STARTED");
+  }
+  if (endBoundary && endBoundary < now) {
+    throw new Error("PROMO_EXPIRED");
+  }
 
-      // ── 2. Guard: user must not have already claimed ──────────────────────
-      const existingClaim = await tx.promoActivationClaim.findUnique({
-        where: { userId },
-      });
-      if (existingClaim) {
-        throw new Error("PROMO_ALREADY_CLAIMED");
-      }
+  if (campaign.targetPackageId && campaign.targetPackageId !== packageId) {
+    throw new Error("PROMO_PACKAGE_MISMATCH");
+  }
 
-      // ── 3. Guard: user must not already have an active membership ─────────
-      const user = await tx.user.findUnique({
-        where: { id: userId },
-        select: { membershipExpiresAt: true },
-      });
-      if (!user) throw new Error("USER_NOT_FOUND");
+  const existingClaim = await prisma.promoActivationClaim.findUnique({
+    where: { userId },
+  });
+  if (existingClaim) {
+    throw new Error("PROMO_ALREADY_CLAIMED");
+  }
 
-      if (user.membershipExpiresAt && user.membershipExpiresAt > now) {
-        throw new Error("MEMBERSHIP_ALREADY_ACTIVE");
-      }
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { membershipExpiresAt: true },
+  });
+  if (!user) throw new Error("USER_NOT_FOUND");
 
-      // ── 4. Activate membership (no revenue recording) ────────────────────
-      // We generate a deterministic promo reference so idempotency is preserved.
-      const promoReference = `PROMO-${campaignId.slice(0, 8)}-${userId.slice(0, 8)}-${randomUUID().slice(0, 8)}`;
+  if (user.membershipExpiresAt && user.membershipExpiresAt > now) {
+    throw new Error("MEMBERSHIP_ALREADY_ACTIVE");
+  }
 
-      const result = await activateMembershipAfterExternalPayment({
-        prisma: tx,
-        userId,
-        packageId,
-        paymentReference: promoReference,
-        paymentMethodLabel: `Promo Campaign: ${campaign.name}`,
-        activatorName: "Promo System",
-      });
+  const promoReference = `PROMO-${campaignId.slice(0, 8)}-${userId.slice(0, 8)}-${randomUUID().slice(0, 8)}`;
 
-      if (!result.success) {
-        throw new Error("ACTIVATION_FAILED");
-      }
+  const result = await activateMembershipAfterExternalPayment({
+    prisma,
+    userId,
+    packageId,
+    paymentReference: promoReference,
+    paymentMethodLabel: `Promo Campaign: ${campaign.name}`,
+    activatorName: "Promo System",
+  });
 
-      // ── 5. Record the claim ───────────────────────────────────────────────
-      await tx.promoActivationClaim.create({
-        data: {
-          userId,
-          campaignId,
-          packageId,
-        },
-      });
+  if (!result.success) {
+    throw new Error("ACTIVATION_FAILED");
+  }
 
-      // ── 6. Increment usedCount ────────────────────────────────────────────
-      await tx.promoCampaign.update({
-        where: { id: campaignId },
-        data: { usedCount: { increment: 1 } },
-      });
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.promoActivationClaim.create({
+          data: {
+            userId,
+            campaignId,
+            packageId,
+          },
+        });
 
-      invalidateActivePromoCache();
-
+        await tx.promoCampaign.update({
+          where: { id: campaignId },
+          data: { usedCount: { increment: 1 } },
+        });
+      },
+      { timeout: 10_000 },
+    );
+  } catch (error: any) {
+    if (error?.code === "P2002") {
       return { success: true as const, expiresAt: result.expiresAt as Date };
-    },
-    { timeout: 30_000 },
-  );
+    }
+    throw error;
+  }
+
+  invalidateActivePromoCache();
+  return { success: true as const, expiresAt: result.expiresAt as Date };
 }

@@ -26,8 +26,14 @@ export default function BlogContent({ session: _session, embedded = false }: Blo
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
 
-  const hero = api.blog.getLatestPosts.useQuery({ limit: 5 });
-  const list = api.blog.list.useQuery({ page, perPage: 12, search: search || undefined, categorySlug: category });
+  const hero = api.blog.getLatestPosts.useQuery(
+    { limit: 5 },
+    { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false }
+  );
+  const list = api.blog.list.useQuery(
+    { page, perPage: 12, search: search || undefined, categorySlug: category },
+    { staleTime: 60 * 1000, refetchOnWindowFocus: false }
+  );
 
   const heroPosts = hero.data?.posts ?? [];
 

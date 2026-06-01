@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import fs from "fs/promises";
 import path from "path";
+import { clearBlogPublicCache } from "./blog";
 
 const BlogPostStatusEnum = {
   DRAFT: "DRAFT",
@@ -259,7 +260,7 @@ export const adminBlogRouter = createTRPCRouter({
     while (await prisma.blogPost.findUnique({ where: { slug } })) {
       slug = `${slugBase}-${suffix++}`;
     }
-    return prisma.blogPost.create({
+    const created = await prisma.blogPost.create({
       data: {
         title: input.title,
         slug,
@@ -276,6 +277,9 @@ export const adminBlogRouter = createTRPCRouter({
         publishedAt: input.publishedAt ?? (input.status === BlogPostStatusEnum.PUBLISHED ? new Date() : null),
       },
     });
+
+    clearBlogPublicCache();
+    return created;
   }),
 
   updatePost: adminProcedure
@@ -295,7 +299,7 @@ export const adminBlogRouter = createTRPCRouter({
         }
       }
 
-      return prisma.blogPost.update({
+      const updated = await prisma.blogPost.update({
         where: { id: input.id },
         data: {
           title: input.title,
@@ -312,11 +316,15 @@ export const adminBlogRouter = createTRPCRouter({
           publishedAt: input.publishedAt ?? existing.publishedAt,
         },
       });
+
+      clearBlogPublicCache();
+      return updated;
     }),
 
   deletePost: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     const prisma = ctx.prisma as any;
     await prisma.blogPost.delete({ where: { id: input.id } });
+    clearBlogPublicCache();
     return { success: true };
   }),
 
@@ -335,9 +343,12 @@ export const adminBlogRouter = createTRPCRouter({
       while (await prisma.blogCategory.findUnique({ where: { slug } })) {
         slug = `${slugBase}-${suffix++}`;
       }
-      return prisma.blogCategory.create({
+      const created = await prisma.blogCategory.create({
         data: { name: input.name, slug, description: input.description },
       });
+
+      clearBlogPublicCache();
+      return created;
     }),
 
   updateCategory: adminProcedure
@@ -350,15 +361,19 @@ export const adminBlogRouter = createTRPCRouter({
       while (await prisma.blogCategory.findFirst({ where: { slug, NOT: { id: input.id } } })) {
         slug = `${slugBase}-${suffix++}`;
       }
-      return prisma.blogCategory.update({
+      const updated = await prisma.blogCategory.update({
         where: { id: input.id },
         data: { name: input.name, slug, description: input.description },
       });
+
+      clearBlogPublicCache();
+      return updated;
     }),
 
   deleteCategory: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     const prisma = ctx.prisma as any;
     await prisma.blogCategory.delete({ where: { id: input.id } });
+    clearBlogPublicCache();
     return { success: true };
   }),
 
@@ -389,6 +404,7 @@ export const adminBlogRouter = createTRPCRouter({
   deleteComment: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     const prisma = ctx.prisma as any;
     await prisma.blogComment.delete({ where: { id: input.id } });
+    clearBlogPublicCache();
     return { success: true };
   }),
 

@@ -707,10 +707,14 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   });
   
   // Get latest blog posts for dashboard carousel
-  const { data: latestBlogPosts } = api.blog.getLatestPosts.useQuery({ limit: 12 }, {
-    staleTime: 15 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
+  const { data: latestBlogPosts } = api.blog.getLatestPosts.useQuery(
+    { limit: 12 },
+    {
+      staleTime: 15 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    }
+  );
   const [blogSlide, setBlogSlide] = useState(0);
   const [blogCardsPerView, setBlogCardsPerView] = useState(1);
   const blogCarouselRef = useRef<HTMLDivElement | null>(null);

@@ -23,10 +23,26 @@ export default function BlogDetailPage() {
   const [comment, setComment] = useState("");
   const [commentsPage, setCommentsPage] = useState(1);
 
-  const postQuery = api.blog.getPostBySlug.useQuery({ slug }, { enabled: Boolean(slug) });
+  const postQuery = api.blog.getPostBySlug.useQuery(
+    { slug },
+    {
+      enabled: Boolean(slug),
+      staleTime: 5 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    }
+  );
   const postId = postQuery.data?.id;
 
-  const commentsQuery = api.blog.getComments.useQuery({ postId: postId || 0, page: commentsPage }, { enabled: Boolean(postId) });
+  const commentsQuery = api.blog.getComments.useQuery(
+    { postId: postId || 0, page: commentsPage },
+    {
+      enabled: Boolean(postId),
+      staleTime: 30 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    }
+  );
 
   const addComment = api.blog.addComment.useMutation({
     onSuccess: () => {
