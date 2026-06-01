@@ -11,6 +11,25 @@ import { CurrencyProvider } from "@/contexts/CurrencyContext";
 import { Toaster } from "react-hot-toast";
 
 /**
+ * Listens for unhandled promise rejections caused by a stale browser bundle
+ * (error: "Failed to find Server Action"). When detected, forces a hard reload
+ * so the client picks up the current deployment bundle automatically.
+ */
+function StaleDeployGuard() {
+  useEffect(() => {
+    const handler = (e: PromiseRejectionEvent) => {
+      const msg: string = e.reason?.message ?? String(e.reason ?? "");
+      if (msg.includes("Failed to find Server Action")) {
+        window.location.reload();
+      }
+    };
+    window.addEventListener("unhandledrejection", handler);
+    return () => window.removeEventListener("unhandledrejection", handler);
+  }, []);
+  return null;
+}
+
+/**
  * Watches the signed-in user ID and:
  * 1. Purges the ENTIRE React Query cache the moment the user identity changes
  *    (sign-out or account switch) — prevents cross-user data bleed.
@@ -104,6 +123,7 @@ export default function Providers({ children }: { children: ReactNode }) {
         <QueryClientProvider client={qc}>
           <ThemeProvider>
             <CurrencyProvider>
+              <StaleDeployGuard />
               <SessionCacheGuard />
               <Toaster 
                 position="top-right"

@@ -13,6 +13,10 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
+    if (error?.message?.includes("Failed to find Server Action")) {
+      window.location.reload();
+      return;
+    }
     console.error(error);
   }, [error]);
 
