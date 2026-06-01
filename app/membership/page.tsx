@@ -9,17 +9,10 @@ import { Award, Check, TrendingUp, Users, Gift, Shield, Moon, Sun, LogOut, Chevr
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 import LoadingScreen from "@/components/LoadingScreen";
 import KycWarningBanner from "@/components/kyc/KycWarningBanner";
 import MembershipRenewalPanel from "@/components/membership/MembershipRenewalPanel";
 import toast from "react-hot-toast";
-
-function navigateToDashboard() {
-  const baseUrl = resolveClientBaseUrl();
-  const target = baseUrl ? `${baseUrl}/dashboard` : "/dashboard";
-  window.location.assign(target);
-}
 
 export default function MembershipPage() {
   const { data: packages, isLoading } = api.package.getPackages.useQuery();
@@ -31,7 +24,6 @@ export default function MembershipPage() {
   const router = useRouter();
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [expandedPackages, setExpandedPackages] = useState<Record<string, boolean>>({});
-  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [claimingPromo, setClaimingPromo] = useState<string | null>(null);
   const [promoClaimSuccess, setPromoClaimSuccess] = useState<{ packageName: string; expiresAt: Date } | null>(null);
@@ -545,14 +537,14 @@ export default function MembershipPage() {
               </div>
 
               {/* PRIMARY CTA — Proceed to Dashboard */}
-              <button
-                onClick={navigateToDashboard}
+              <a
+                href="/dashboard"
                 className="group w-full inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 px-8 py-5 text-lg font-black uppercase tracking-widest text-black shadow-2xl shadow-amber-500/25 transition-all duration-200 hover:from-yellow-300 hover:to-amber-400 hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Sparkles className="h-5 w-5" />
                 Proceed to Dashboard
                 <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-              </button>
+              </a>
 
               <p className="mt-4 text-[11px] text-white/25 leading-relaxed">
                 All features are ready — start exploring your BPI dashboard now.
@@ -580,25 +572,13 @@ export default function MembershipPage() {
             
             <div className="flex items-center gap-4">
               {activeMembership && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="gap-2"
-                  onClick={() => {
-                    setIsDashboardLoading(true);
-                    navigateToDashboard();
-                  }}
-                  disabled={isDashboardLoading}
+                <Link
+                  href="/dashboard"
+                  className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground"
                 >
-                  {isDashboardLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <ArrowLeft className="w-4 h-4" />
-                  )}
-                  <span className="hidden md:inline">
-                    {isDashboardLoading ? 'Loading...' : 'Back to Dashboard'}
-                  </span>
-                </Button>
+                  <ArrowLeft className="w-4 h-4" />
+                  <span className="hidden md:inline">Back to Dashboard</span>
+                </Link>
               )}
 
               <Button
