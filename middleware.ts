@@ -3,6 +3,8 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { resolveAuthSecret } from "@/lib/authSecret";
 
+const MAINTENANCE_FETCH_TIMEOUT_MS = 10_000;
+
 export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: resolveAuthSecret() ?? undefined });
   const { pathname } = req.nextUrl;
@@ -23,10 +25,10 @@ export async function middleware(req: NextRequest) {
 
   if (!isMaintenancePage && !isStaticOrApi && !isAdmin) {
     try {
-      const origin = req.nextUrl.origin;
-      const res = await fetch(`${origin}/api/internal/maintenance`, {
-        // short timeout — if it fails, fail open
-        signal: AbortSignal.timeout(3000),
+      const res = await fetch(new URL("/api/internal/maintenance", req.url), {
+        cache: "no-store",
+        // Production cold starts can exceed 3s; do not silently bypass maintenance.
+        signal: AbortSignal.timeout(MAINTENANCE_FETCH_TIMEOUT_MS),
       });
       if (res.ok) {
         const { enabled } = await res.json();
