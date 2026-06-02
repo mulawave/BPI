@@ -29,15 +29,15 @@ function CountUnit({ value, label }: { value: number; label: string }) {
     <div className="flex flex-col items-center gap-2">
       <div className="relative">
         {/* Card */}
-        <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-          <span className="text-3xl md:text-4xl font-black text-white tabular-nums tracking-tight">
+        <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+          <span className="text-2xl sm:text-3xl md:text-4xl font-black text-white tabular-nums tracking-tight">
             {pad(value)}
           </span>
         </div>
         {/* bottom-edge accent */}
-        <div className="absolute bottom-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-emerald-400/40 to-transparent" />
+        <div className="absolute bottom-0 left-3 right-3 h-px bg-gradient-to-r from-transparent via-emerald-400/40 to-transparent" />
       </div>
-      <span className="text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] text-white/30">
+      <span className="text-[9px] sm:text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] text-white/30">
         {label}
       </span>
     </div>
@@ -139,7 +139,7 @@ export default function MaintenanceClient({ targetMs }: { targetMs: number }) {
 
         {/* headline */}
         <div className="text-center mb-10 space-y-3">
-          <h2 className="text-4xl md:text-5xl font-black text-white leading-[1.1]">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white leading-[1.1]">
             We&apos;ll Be Back
             <br />
             <span className="bg-gradient-to-r from-emerald-300 via-green-400 to-emerald-500 bg-clip-text text-transparent">
@@ -154,11 +154,11 @@ export default function MaintenanceClient({ targetMs }: { targetMs: number }) {
 
         {/* ── countdown ── */}
         {!isDone ? (
-          <div className="flex items-center justify-center gap-4 md:gap-6 mb-10">
+          <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-6 mb-10">
             <CountUnit value={timeLeft.hours} label="Hours" />
-            <div className="mb-6 text-white/20 text-3xl font-black select-none">:</div>
+            <div className="mb-6 text-white/20 text-xl sm:text-3xl font-black select-none">:</div>
             <CountUnit value={timeLeft.minutes} label="Minutes" />
-            <div className="mb-6 text-white/20 text-3xl font-black select-none">:</div>
+            <div className="mb-6 text-white/20 text-xl sm:text-3xl font-black select-none">:</div>
             <CountUnit value={timeLeft.seconds} label="Seconds" />
           </div>
         ) : (
@@ -191,7 +191,7 @@ export default function MaintenanceClient({ targetMs }: { targetMs: number }) {
         </div>
 
         {/* feature checklist */}
-        <div className="grid grid-cols-2 gap-3 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-10">
           {[
             { label: "Database optimisation", done: true },
             { label: "Security hardening", done: true },

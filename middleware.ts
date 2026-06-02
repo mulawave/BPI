@@ -8,21 +8,34 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // ── Maintenance mode ───────────────────────────────────────────────────
-  // Enable by setting MAINTENANCE_MODE=true in env.
-  // Admins (role admin/super_admin) bypass automatically.
-  // The /maintenance page and all static/API paths are always exempt.
-  if (process.env.MAINTENANCE_MODE === "true") {
-    const isMaintenancePage = pathname === "/maintenance";
-    const isStaticOrApi =
-      pathname.startsWith("/_next") ||
-      pathname.startsWith("/api") ||
-      pathname.startsWith("/static") ||
-      pathname.includes(".");
-    const role = (token as any)?.role;
-    const isAdmin = role === "admin" || role === "super_admin";
+  // Controlled from Admin → Settings → General → Site Status toggle.
+  // Reads from /api/internal/maintenance which caches the DB value for 30s.
+  // Admins bypass automatically. /maintenance itself and all API/static paths
+  // are always exempt to prevent redirect loops.
+  const isMaintenancePage = pathname === "/maintenance";
+  const isStaticOrApi =
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/static") ||
+    pathname.includes(".");
+  const role = (token as any)?.role;
+  const isAdmin = role === "admin" || role === "super_admin";
 
-    if (!isMaintenancePage && !isStaticOrApi && !isAdmin) {
-      return NextResponse.redirect(new URL("/maintenance", req.url));
+  if (!isMaintenancePage && !isStaticOrApi && !isAdmin) {
+    try {
+      const origin = req.nextUrl.origin;
+      const res = await fetch(`${origin}/api/internal/maintenance`, {
+        // short timeout — if it fails, fail open
+        signal: AbortSignal.timeout(3000),
+      });
+      if (res.ok) {
+        const { enabled } = await res.json();
+        if (enabled) {
+          return NextResponse.redirect(new URL("/maintenance", req.url));
+        }
+      }
+    } catch {
+      // DB unavailable or timeout — fail open, don't block users
     }
   }
 
@@ -69,6 +82,7 @@ export async function middleware(req: NextRequest) {
     "/checkout",
     "/csp",
     "/empowerment",
+    "/maintenance",
   ]);
 
   const publicRoutePrefixes = [

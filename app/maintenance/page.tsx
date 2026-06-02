@@ -7,15 +7,18 @@ export const metadata = {
   description: "We are upgrading the platform. We'll be back shortly.",
 };
 
-export default function MaintenancePage() {
-  // Read the target return time from env (ISO string or unix ms).
-  // If unset, default to 2 hours from the time the server rendered this page.
-  const rawUntil = process.env.MAINTENANCE_UNTIL;
+export default async function MaintenancePage() {
+  // Read the estimated return time from AdminSettings (set via admin panel).
+  // Fall back to 2 hours from now if unset or unparseable.
   let targetMs: number;
-  if (rawUntil) {
-    const parsed = Date.parse(rawUntil);
+  try {
+    const { prisma } = await import("@/lib/prisma");
+    const row = await prisma.adminSettings.findUnique({
+      where: { settingKey: "maintenance_until" },
+    });
+    const parsed = row?.settingValue ? Date.parse(row.settingValue) : NaN;
     targetMs = isNaN(parsed) ? Date.now() + 2 * 60 * 60 * 1000 : parsed;
-  } else {
+  } catch {
     targetMs = Date.now() + 2 * 60 * 60 * 1000;
   }
 

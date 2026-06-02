@@ -4,20 +4,24 @@ import { useEffect, useState } from "react";
 import { api } from "../../../client/trpc";
 import { motion } from "framer-motion";
 import {
-  HiCog,
-  HiRefresh,
-  HiSave,
-  HiCreditCard,
-  HiBell,
-  HiShieldCheck,
-  HiDatabase,
-  HiCheckCircle,
-  HiXCircle,
-  HiCloud,
-  HiKey,
-  HiEye,
-  HiEyeOff,
-} from "react-icons/hi";
+  Settings as HiCog,
+  RefreshCw as HiRefresh,
+  Save as HiSave,
+  CreditCard as HiCreditCard,
+  Bell as HiBell,
+  ShieldCheck as HiShieldCheck,
+  Database as HiDatabase,
+  CheckCircle as HiCheckCircle,
+  XCircle as HiXCircle,
+  Cloud as HiCloud,
+  Key as HiKey,
+  Eye as HiEye,
+  EyeOff as HiEyeOff,
+  Wifi as HiStatusOnline,
+  WifiOff as HiStatusOffline,
+  Lock as HiLockClosed,
+  Globe as HiGlobeAlt,
+} from "lucide-react";
 import toast from "react-hot-toast";
 import BackupRestorePanel from "@/components/admin/BackupRestorePanel";
 import SecuritySettingsPanel from "@/components/admin/SecuritySettingsPanel";
@@ -30,6 +34,10 @@ type TabType = "general" | "payments" | "notifications" | "security" | "integrat
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("general");
   const [gatewayEdits, setGatewayEdits] = useState({} as any);
+  // Maintenance mode state — seeded from systemSettings once loaded
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+  const [maintenanceUntil, setMaintenanceUntil] = useState("");
+  const [maintenanceSaving, setMaintenanceSaving] = useState(false);
   const [generalSettings, setGeneralSettings] = useState({
     siteName: "",
     siteUrl: "",
@@ -42,6 +50,13 @@ export default function SettingsPage() {
 
   // API Queries
   const { data: systemSettings, refetch: refetchSettings } = api.admin.getSystemSettings.useQuery();
+
+  // Seed maintenance state from DB once settings load
+  useEffect(() => {
+    if (!systemSettings) return;
+    setMaintenanceEnabled(systemSettings?.maintenance_mode?.value === "true");
+    setMaintenanceUntil(systemSettings?.maintenance_until?.value ?? "");
+  }, [systemSettings]);
   const { data: paymentGateways, refetch: refetchGateways } = api.admin.getPaymentGateways.useQuery();
   const { data: notificationSettings, refetch: refetchNotifications } = api.admin.getNotificationSettings.useQuery();
   const { data: firebaseConfigStatus, isLoading: firebaseConfigLoading } = api.config.getFirebaseConfig.useQuery();
@@ -94,6 +109,52 @@ export default function SettingsPage() {
       settingValue: value,
       description,
     });
+  };
+
+  const handleToggleMaintenance = async (enabled: boolean) => {
+    setMaintenanceSaving(true);
+    try {
+      await updateSettingMutation.mutateAsync({
+        settingKey: "maintenance_mode",
+        settingValue: enabled ? "true" : "false",
+        description: "Controls whether the site is in maintenance mode",
+      });
+      if (maintenanceUntil) {
+        await updateSettingMutation.mutateAsync({
+          settingKey: "maintenance_until",
+          settingValue: maintenanceUntil,
+          description: "ISO datetime when maintenance ends",
+        });
+      }
+      setMaintenanceEnabled(enabled);
+      // Bust the middleware cache immediately
+      try { await fetch("/api/internal/maintenance", { method: "POST" }); } catch {}
+      toast.success(enabled ? "🔒 Maintenance mode ENABLED — site is now offline for users" : "✅ Site is now LIVE for all users");
+      refetchSettings();
+    } catch (err: any) {
+      toast.error(`Failed to update site status: ${err.message}`);
+    } finally {
+      setMaintenanceSaving(false);
+    }
+  };
+
+  const handleSaveMaintenanceUntil = async () => {
+    if (!maintenanceUntil) return;
+    setMaintenanceSaving(true);
+    try {
+      await updateSettingMutation.mutateAsync({
+        settingKey: "maintenance_until",
+        settingValue: maintenanceUntil,
+        description: "ISO datetime when maintenance ends",
+      });
+      try { await fetch("/api/internal/maintenance", { method: "POST" }); } catch {}
+      toast.success("Estimated return time saved");
+      refetchSettings();
+    } catch (err: any) {
+      toast.error(`Failed to save return time: ${err.message}`);
+    } finally {
+      setMaintenanceSaving(false);
+    }
   };
 
   const handleToggleGateway = (gatewayId: string, currentStatus: boolean) => {
@@ -484,6 +545,105 @@ export default function SettingsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
+            {/* ── Site Status (Maintenance Mode) ── */}
+            <div className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-xl transition-all duration-500">
+              {/* Left accent stripe — status color only here, not the whole card */}
+              <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl transition-colors duration-500 ${
+                maintenanceEnabled ? "bg-red-500" : "bg-[hsl(var(--primary))]"
+              }`} />
+              {/* Very subtle ambient glow behind the card */}
+              <div className={`pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full blur-3xl transition-colors duration-500 ${
+                maintenanceEnabled ? "bg-red-500/5" : "bg-[hsl(var(--primary))]/5"
+              }`} />
+
+              {/* Top row: icon + info + toggle */}
+              <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-5 pl-7 pr-6 pt-6 pb-0">
+                {/* Left — status info */}
+                <div className="flex items-start gap-4">
+                  <div className={`flex-shrink-0 flex h-12 w-12 items-center justify-center rounded-xl border transition-colors duration-300 ${
+                    maintenanceEnabled
+                      ? "bg-red-500/10 border-red-500/20 text-red-500"
+                      : "bg-[hsl(var(--primary))]/10 border-[hsl(var(--primary))]/20 text-[hsl(var(--primary))]"
+                  }`}>
+                    {maintenanceEnabled
+                      ? <HiLockClosed className="h-6 w-6" />
+                      : <HiGlobeAlt className="h-6 w-6" />
+                    }
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 mb-1">
+                      <h2 className="text-base font-bold text-foreground">Site Status</h2>
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-widest border transition-colors duration-300 ${
+                        maintenanceEnabled
+                          ? "bg-red-500/10 text-red-500 border-red-500/20"
+                          : "bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))] border-[hsl(var(--primary))]/20"
+                      }`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${maintenanceEnabled ? "bg-red-500 animate-pulse" : "bg-[hsl(var(--primary))]"}`} />
+                        {maintenanceEnabled ? "Offline — Maintenance" : "Live"}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
+                      {maintenanceEnabled
+                        ? "The platform is currently offline. Only admins can access it. Users see the maintenance page."
+                        : "The platform is live and accessible to all users."
+                      }
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right — toggle + label */}
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <button
+                    role="switch"
+                    aria-checked={maintenanceEnabled}
+                    onClick={() => handleToggleMaintenance(!maintenanceEnabled)}
+                    disabled={maintenanceSaving}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed ${
+                      maintenanceEnabled
+                        ? "bg-red-500 focus-visible:ring-red-500"
+                        : "bg-[hsl(var(--primary))] focus-visible:ring-[hsl(var(--primary))]"
+                    }`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ${
+                      maintenanceEnabled ? "translate-x-5" : "translate-x-0"
+                    }`} />
+                  </button>
+                  <span className={`min-w-[80px] text-xs font-bold uppercase tracking-wider transition-colors duration-300 ${
+                    maintenanceSaving
+                      ? "text-muted-foreground animate-pulse"
+                      : maintenanceEnabled
+                        ? "text-red-500"
+                        : "text-[hsl(var(--primary))]"
+                  }`}>
+                    {maintenanceSaving ? "Saving…" : maintenanceEnabled ? "Maintenance" : "Live"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Return time picker */}
+              <div className="relative ml-7 mr-6 mt-5 mb-6 pt-4 border-t border-border">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                  Estimated Return Time
+                  <span className="ml-1.5 normal-case font-normal text-muted-foreground/60">(shown on maintenance page)</span>
+                </label>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <input
+                    type="datetime-local"
+                    value={maintenanceUntil ? maintenanceUntil.slice(0, 16) : ""}
+                    onChange={(e) => setMaintenanceUntil(e.target.value ? new Date(e.target.value).toISOString() : "")}
+                    className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground focus:border-[hsl(var(--primary))]/50 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--primary))]/30 transition-colors [color-scheme:light] dark:[color-scheme:dark]"
+                  />
+                  <button
+                    onClick={handleSaveMaintenanceUntil}
+                    disabled={maintenanceSaving || !maintenanceUntil}
+                    className="inline-flex items-center gap-2 rounded-xl border border-border bg-muted hover:bg-muted/80 px-5 py-2.5 text-sm font-semibold text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <HiSave className="h-4 w-4" />
+                    Save time
+                  </button>
+                </div>
+              </div>
+            </div>
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
                 General Configuration
@@ -517,7 +677,7 @@ export default function SettingsPage() {
                   settingKey="default_currency"
                   description="Select from available currencies"
                   currentValue={systemSettings?.default_currency?.value || defaultCurrency?.symbol || "USD"}
-                  currencies={currencies}
+                  currencies={currencies ?? []}
                   onSave={handleSaveGeneralSetting}
                 />
                 <SettingField
