@@ -7,6 +7,25 @@ export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: resolveAuthSecret() ?? undefined });
   const { pathname } = req.nextUrl;
 
+  // ── Maintenance mode ───────────────────────────────────────────────────
+  // Enable by setting MAINTENANCE_MODE=true in env.
+  // Admins (role admin/super_admin) bypass automatically.
+  // The /maintenance page and all static/API paths are always exempt.
+  if (process.env.MAINTENANCE_MODE === "true") {
+    const isMaintenancePage = pathname === "/maintenance";
+    const isStaticOrApi =
+      pathname.startsWith("/_next") ||
+      pathname.startsWith("/api") ||
+      pathname.startsWith("/static") ||
+      pathname.includes(".");
+    const role = (token as any)?.role;
+    const isAdmin = role === "admin" || role === "super_admin";
+
+    if (!isMaintenancePage && !isStaticOrApi && !isAdmin) {
+      return NextResponse.redirect(new URL("/maintenance", req.url));
+    }
+  }
+
   // Admin routes protection
   if (pathname.startsWith("/admin")) {
     // Allow admin login page
