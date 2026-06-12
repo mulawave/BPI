@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { PrismaClient } from "@prisma/client";
+import { slugify } from "@/lib/utils";
 
 // This script migrates legacy tbl_blog data (and blog_comments) from the legacy SQL dump.
 // It intentionally ignores the cicool `blog` table per requirements.
@@ -18,15 +19,6 @@ const BlogPostStatusEnum = {
   PUBLISHED: "PUBLISHED",
   ARCHIVED: "ARCHIVED",
 } as const;
-
-function slugify(title: string) {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
-}
 
 function unescapeSqlString(value: string) {
   return value

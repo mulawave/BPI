@@ -1,18 +1,10 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { createTRPCRouter, adminProcedure } from "../trpc";
 import { buildPermissionGrantDrafts, normalizeRequestedCapabilities } from "@/lib/plugins/permissions";
 import { isKnownPluginCapability } from "@/lib/plugins/capabilities";
 import { recordPluginInstallEvent, listPluginInstallEvents } from "@/server/services/plugins/pluginEvents.service";
 import { assertPluginLifecycleAccess } from "@/lib/adminAuth";
 import { derivePluginStatusFromReadiness, evaluatePluginReadiness } from "@/lib/plugins/readiness";
-
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  const role = (ctx.session?.user as any)?.role;
-  if (role !== "admin" && role !== "super_admin") {
-    throw new Error("FORBIDDEN: Admin access required");
-  }
-  return next();
-});
 
 const statusEnum = z.enum([
   "DRAFT",

@@ -1,6 +1,6 @@
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { TRPCError } from "@trpc/server";
+import { createTRPCRouter, adminProcedure } from "../trpc";
 import fs from "fs/promises";
 import path from "path";
 import { clearBlogPublicCache } from "./blog";
@@ -11,17 +11,6 @@ const BlogPostStatusEnum = {
   ARCHIVED: "ARCHIVED",
 } as const;
 type BlogPostStatus = (typeof BlogPostStatusEnum)[keyof typeof BlogPostStatusEnum];
-
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  if (!ctx.session?.user) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "You must be logged in" });
-  }
-  const role = (ctx.session.user as any).role;
-  if (role !== "admin" && role !== "super_admin") {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "Admin access required" });
-  }
-  return next();
-});
 
 const postInput = z.object({
   title: z.string().min(3),

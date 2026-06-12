@@ -1,23 +1,6 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
-
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  if (!ctx.session?.user) {
-    throw new TRPCError({
-      code: "UNAUTHORIZED",
-      message: "You must be logged in to perform this action.",
-    });
-  }
-  const userRole = (ctx.session.user as any).role;
-  if (userRole !== "admin" && userRole !== "super_admin") {
-    throw new TRPCError({
-      code: "UNAUTHORIZED",
-      message: "You must be an admin to perform this action.",
-    });
-  }
-  return next();
-});
+import { createTRPCRouter, adminProcedure } from "../trpc";
 
 export const adminLocationRouter = createTRPCRouter({
   // COUNTRIES

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { randomUUID } from "crypto";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure, adminProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { placeUserInThirdPartyMatrix } from "@/server/services/thirdPartyMatrix.service";
 
@@ -52,17 +52,6 @@ function clearThirdPartyUserCache(userId: string) {
     }
   }
 }
-
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  const role = (ctx.session?.user as any)?.role;
-  if (role !== "admin" && role !== "super_admin" && role !== "superadmin") {
-    throw new TRPCError({
-      code: "UNAUTHORIZED",
-      message: "Admin access required",
-    });
-  }
-  return next();
-});
 
 const platformUpsertInput = z.object({
   name: z.string().trim().min(1, "Platform name is required"),

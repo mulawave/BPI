@@ -1,6 +1,5 @@
 // @ts-nocheck
 import { z } from "zod";
-import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "@/server/trpc/trpc";
 import { prisma } from "@/lib/prisma";
 import {
@@ -8,6 +7,7 @@ import {
   claimPromoActivation,
   invalidateActivePromoCache,
 } from "@/server/services/promoActivation.service";
+import { requireAdmin } from "@/server/utils/adminAuth";
 
 function parsePromoStartDate(dateString?: string) {
   if (!dateString) return null;
@@ -21,14 +21,6 @@ function parsePromoEndDate(dateString?: string) {
   const date = new Date(dateString);
   date.setHours(23, 59, 59, 999);
   return date;
-}
-
-function requireAdmin(ctx: any) {
-  const role = (ctx.session?.user as any)?.role as string;
-  const isAdmin = role === "admin" || role === "super_admin";
-  if (!isAdmin) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "Admins only" });
-  }
 }
 
 export const promoCampaignRouter = createTRPCRouter({

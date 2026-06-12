@@ -1,16 +1,7 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
-import { prisma } from "@/lib/prisma";
 import { TRPCError } from "@trpc/server";
-
-// ── Admin guard ─────────────────────────────────────────────
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  const role = (ctx.session?.user as any)?.role;
-  if (role !== "admin" && role !== "super_admin") {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "Admin access required." });
-  }
-  return next();
-});
+import { createTRPCRouter, protectedProcedure, adminProcedure } from "../trpc";
+import { prisma } from "@/lib/prisma";
 
 // ── Zod schemas ─────────────────────────────────────────────
 const documentTypeEnum = z.enum(["national_id", "passport", "drivers_license", "voters_card"]);

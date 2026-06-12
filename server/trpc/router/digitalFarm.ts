@@ -1,18 +1,6 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure, adminProcedure } from "../trpc";
 import { randomUUID } from "crypto";
-
-// Admin middleware
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  if (!ctx.session?.user) {
-    throw new Error("UNAUTHORIZED: You must be logged in to perform this action.");
-  }
-  const userRole = (ctx.session.user as any).role;
-  if (userRole !== "admin" && userRole !== "super_admin") {
-    throw new Error("UNAUTHORIZED: You must be an admin to perform this action.");
-  }
-  return next();
-});
 
 export const digitalFarmRouter = createTRPCRouter({
   // Get all available crops

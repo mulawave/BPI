@@ -12,22 +12,8 @@ import {
   canActivatePalliative 
 } from "@/lib/palliative";
 import { recordRevenue } from "@/server/services/revenue.service";
-
-function requireAdmin(session: any) {
-  const userRole = (session?.user as any)?.role;
-  if (userRole !== "admin") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
-  }
-}
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
-}
+import { requireAdmin } from "@/server/utils/adminAuth";
+import { slugify } from "@/lib/utils";
 
 export const palliativeRouter = createTRPCRouter({
   /**
@@ -306,7 +292,7 @@ export const palliativeRouter = createTRPCRouter({
    * Admin: list all palliative options (active + inactive)
    */
   adminListOptions: protectedProcedure.query(async ({ ctx }) => {
-    requireAdmin(ctx.session);
+    requireAdmin(ctx);
 
     return ctx.prisma.palliativeOption.findMany({
       orderBy: { displayOrder: "asc" },
@@ -327,7 +313,7 @@ export const palliativeRouter = createTRPCRouter({
       displayOrder: z.number().int().default(0),
     }))
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const slug = input.slug ? slugify(input.slug) : slugify(input.name);
 
@@ -361,7 +347,7 @@ export const palliativeRouter = createTRPCRouter({
       displayOrder: z.number().int(),
     }))
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const slug = input.slug ? slugify(input.slug) : slugify(input.name);
 
@@ -386,7 +372,7 @@ export const palliativeRouter = createTRPCRouter({
   adminDeleteOption: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       await ctx.prisma.palliativeOption.delete({ where: { id: input.id } });
       return { success: true };
