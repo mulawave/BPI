@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { resolveAuthSecret } from "@/lib/authSecret";
-
-const MAINTENANCE_FETCH_TIMEOUT_MS = 10_000;
+import { getCachedMaintenanceState, type MaintenanceState } from "@/lib/maintenance";
 
 export async function middleware(req: NextRequest) {
   const token = await getToken({ req, secret: resolveAuthSecret() ?? undefined });
@@ -11,9 +10,13 @@ export async function middleware(req: NextRequest) {
 
   // ── Maintenance mode ───────────────────────────────────────────────────
   // Controlled from Admin → Settings → General → Site Status toggle.
-  // Reads from /api/internal/maintenance which caches the DB value for 30s.
+  // Reads from a shared in-memory global cache (populated by /api/internal/maintenance).
   // Admins bypass automatically. /maintenance itself and all API/static paths
   // are always exempt to prevent redirect loops.
+  //
+  // Previous approach used fetch() to own API route, which failed under PM2
+  // due to self-referencing loops / timeouts. The shared global works because
+  // middleware and API routes run in the same Node.js process under `next start`.
   const isMaintenancePage = pathname === "/maintenance";
   const isStaticOrApi =
     pathname.startsWith("/_next") ||
@@ -24,20 +27,28 @@ export async function middleware(req: NextRequest) {
   const isAdmin = role === "admin" || role === "super_admin";
 
   if (!isMaintenancePage && !isStaticOrApi && !isAdmin) {
-    try {
-      const res = await fetch(new URL("/api/internal/maintenance", req.url), {
-        cache: "no-store",
-        // Production cold starts can exceed 3s; do not silently bypass maintenance.
-        signal: AbortSignal.timeout(MAINTENANCE_FETCH_TIMEOUT_MS),
-      });
-      if (res.ok) {
-        const { enabled } = await res.json();
-        if (enabled) {
-          return NextResponse.redirect(new URL("/maintenance", req.url));
+    let maintenanceState: MaintenanceState | null = getCachedMaintenanceState();
+
+    // On cold start the cache is empty. Warm it via a one-time fetch to the
+    // internal API route. Once populated, subsequent requests use the cache
+    // without any network call.
+    if (!maintenanceState) {
+      try {
+        const res = await fetch(new URL("/api/internal/maintenance", req.url), {
+          cache: "no-store",
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          maintenanceState = { enabled: data.enabled, until: data.until, ts: Date.now() };
         }
+      } catch {
+        // Cold-start fetch failed — fail open, next request will retry
       }
-    } catch {
-      // DB unavailable or timeout — fail open, don't block users
+    }
+
+    if (maintenanceState?.enabled) {
+      return NextResponse.redirect(new URL("/maintenance", req.url));
     }
   }
 
