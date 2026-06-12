@@ -2,20 +2,21 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authConfig } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  getCachedMaintenanceState,
+  updateMaintenanceCache,
+  invalidateMaintenanceCache,
+} from "@/lib/maintenance";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// 30-second in-memory cache — shared across requests in the same Node.js process.
-// Edge-safe: this runs as a standard Node.js API route, never on Edge runtime.
-let cache: { enabled: boolean; until: string | null; ts: number } | null = null;
-const CACHE_TTL = 30_000;
-
 export async function GET() {
-  const now = Date.now();
-  if (cache && now - cache.ts < CACHE_TTL) {
+  // Check shared in-memory cache first (also used by middleware)
+  const cached = getCachedMaintenanceState();
+  if (cached) {
     return NextResponse.json(
-      { enabled: cache.enabled, until: cache.until },
+      { enabled: cached.enabled, until: cached.until },
       { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
     );
   }
@@ -29,7 +30,9 @@ export async function GET() {
     const enabled = modeRow?.settingValue === "true";
     const until = untilRow?.settingValue ?? null;
 
-    cache = { enabled, until, ts: now };
+    // Update the shared global cache (accessible from middleware too)
+    updateMaintenanceCache(enabled, until);
+
     return NextResponse.json(
       { enabled, until },
       { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
@@ -43,7 +46,7 @@ export async function GET() {
   }
 }
 
-// Allow the middleware to invalidate the cache immediately after an admin toggle.
+// Invalidate cache immediately after admin toggle + re-read from DB.
 export async function POST() {
   const session = await getServerSession(authConfig);
   const role = (session?.user as any)?.role;
@@ -51,7 +54,22 @@ export async function POST() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  cache = null;
+  // Invalidate immediately
+  invalidateMaintenanceCache();
+
+  // Re-read from DB and populate the fresh cache
+  try {
+    const [modeRow, untilRow] = await Promise.all([
+      prisma.adminSettings.findUnique({ where: { settingKey: "maintenance_mode" } }),
+      prisma.adminSettings.findUnique({ where: { settingKey: "maintenance_until" } }),
+    ]);
+    const enabled = modeRow?.settingValue === "true";
+    const until = untilRow?.settingValue ?? null;
+    updateMaintenanceCache(enabled, until);
+  } catch {
+    // Best-effort; cache remains invalidated so next read will re-fetch
+  }
+
   return NextResponse.json(
     { ok: true },
     { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
