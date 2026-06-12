@@ -34,7 +34,7 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
   const [error, setError] = useState<string | null>(null);
   const [cryptoTxHash, setCryptoTxHash] = useState("");
 
-  const { data: product } = api.store.getProduct.useQuery({ id: productId }, { enabled: !!productId });
+  const { data: product, isLoading: productLoading } = api.store.getProduct.useQuery({ id: productId }, { enabled: !!productId });
   const { data: tokenRates } = api.store.listTokenRates.useQuery(undefined, { enabled: !!product });
   const confirmCheckout = api.store.confirmCheckoutIntent.useMutation();
   const submitCryptoProof = api.payment.submitCryptoProof.useMutation({
@@ -79,7 +79,10 @@ export default function CheckoutClient({ intentId, productId, quantity }: Props)
     return { gross, tokenPortionFiat, fiatPortion, tokenUnits };
   }, [product, quantity, paymentMode, tokenAllowed, canTokenOnly, tokenLimit, tokenRate]);
 
-  const isMissing = useMemo(() => !productId || !intentId || !product, [intentId, productId, product]);
+  const isMissing = useMemo(
+    () => !productLoading && (!productId || !intentId || !product),
+    [intentId, productId, product, productLoading],
+  );
 
   useEffect(() => {
     if (isMissing) {
