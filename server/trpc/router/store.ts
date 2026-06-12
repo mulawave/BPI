@@ -1596,6 +1596,7 @@ export const storeRouter = createTRPCRouter({
 
           await tx.transaction.create({
             data: {
+              id: randomUUID(),
               userId: ctx.user.id,
               transactionType: "STORE_PURCHASE",
               amount: -fiatPortion,
@@ -1616,6 +1617,7 @@ export const storeRouter = createTRPCRouter({
 
           await tx.transaction.create({
             data: {
+              id: randomUUID(),
               userId: ctx.user.id,
               transactionType: "STORE_PURCHASE_TOKEN",
               amount: -tokenPortion,
