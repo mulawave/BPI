@@ -2750,7 +2750,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
               </div>
               
               {/* Quick Actions */}
-              <div className="grid grid-cols-3 gap-2 py-4 border-t border-white/20">
+              <div className="grid grid-cols-4 gap-2 py-4 border-t border-white/20">
                 <button 
                   onClick={() => {
                     if (isUsdBlockedForNigerian) {
@@ -2801,6 +2801,13 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                 >
                   <RefreshCw className="w-4 h-4" />
                   <span className="text-xs font-medium">Transfer</span>
+                </button>
+                <button 
+                  onClick={() => router.push('/wallet/settings')}
+                  className="flex flex-col items-center gap-1 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <Settings className="w-4 h-4" />
+                  <span className="text-xs font-medium">Auto-Debit</span>
                 </button>
               </div>
             </Card>

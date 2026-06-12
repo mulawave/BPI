@@ -3,6 +3,9 @@ node_modules/
 /.pnp
 .pnp.js
 
+# Runtime maintenance flag (written by admin toggle, read by middleware)
+.maintenance-status.json
+
 # Testing
 /coverage
 
