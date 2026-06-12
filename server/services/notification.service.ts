@@ -139,9 +139,11 @@ export async function notifyCspRequestRejected(userId: string, category: string,
 }
 
 /**
- * Send a notification to a user
+ * Send a notification to a user.
+ * Returns true on success, false on failure. Logs errors but does not throw
+ * so that notification failures don't break the calling business flow.
  */
-export async function sendNotification(data: NotificationData) {
+export async function sendNotification(data: NotificationData): Promise<boolean> {
   try {
     await prisma.notification.create({
       data: {
@@ -153,15 +155,18 @@ export async function sendNotification(data: NotificationData) {
         isRead: false,
       },
     });
+    return true;
   } catch (error) {
-    console.error("Failed to send notification:", error);
+    console.error(`[NOTIFICATION] Failed to send notification (type=${data.type}, user=${data.userId}):`, error instanceof Error ? error.message : error);
+    return false;
   }
 }
 
 /**
- * Send notifications to multiple users
+ * Send notifications to multiple users.
+ * Returns true on success, false on failure.
  */
-export async function sendBulkNotifications(notifications: NotificationData[]) {
+export async function sendBulkNotifications(notifications: NotificationData[]): Promise<boolean> {
   try {
     await prisma.notification.createMany({
       data: notifications.map(n => ({
@@ -173,8 +178,10 @@ export async function sendBulkNotifications(notifications: NotificationData[]) {
         isRead: false,
       })),
     });
+    return true;
   } catch (error) {
-    console.error("Failed to send bulk notifications:", error);
+    console.error(`[NOTIFICATION] Failed to send bulk notifications (count=${notifications.length}):`, error instanceof Error ? error.message : error);
+    return false;
   }
 }
 
@@ -612,7 +619,7 @@ export async function notifyDepositStatus(
       html,
     });
   } catch (error) {
-    console.error("Failed to send deposit status email:", error);
+    console.error(`[NOTIFICATION] Failed to send deposit status email (user=${userId}, status=${status}, ref=${reference}):`, error instanceof Error ? error.message : error);
   }
 }
 

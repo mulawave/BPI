@@ -68,8 +68,11 @@ export async function POST(request: NextRequest) {
     const uploadDir = join(process.cwd(), "public", "uploads", folder);
     try {
       await mkdir(uploadDir, { recursive: true });
-    } catch (error) {
-      // Directory might already exist
+    } catch (error: any) {
+      if (error?.code !== "EEXIST") {
+        console.error("Failed to create upload directory:", error);
+        return NextResponse.json({ error: "Upload directory creation failed" }, { status: 500 });
+      }
     }
 
     // Save file

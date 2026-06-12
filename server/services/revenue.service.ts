@@ -134,7 +134,8 @@ async function getSourceCutOverrides(tx: any): Promise<SourceCutOverrides> {
     }
 
     return { sources };
-  } catch {
+  } catch (err) {
+    console.error("[REVENUE] Failed to parse source cut overrides:", err instanceof Error ? err.message : err);
     return { sources: {} };
   }
 }
