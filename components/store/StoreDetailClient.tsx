@@ -33,6 +33,7 @@ export default function StoreDetailClient({ product }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const autoCheckoutTriggered = useRef(false);
   const checkoutMutation = api.store.createCheckoutIntent.useMutation();
   const externalCheckoutMutation = api.store.createExternalTokenCheckoutIntent.useMutation();
   const { data: catalog } = api.store.listProducts.useQuery({ status: "all" });
@@ -59,12 +60,13 @@ export default function StoreDetailClient({ product }: Props) {
     }
   }, [checkoutMutation, externalCheckoutMutation, product, router]);
 
-  // Auto-trigger when arriving with checkout=1 (from Quick Buy)
+  // Auto-trigger when arriving with checkout=1 (from Quick Buy) — fires only once
   useEffect(() => {
-    if (searchParams.get("checkout") === "1" && !checkoutLoading) {
+    if (searchParams.get("checkout") === "1" && !autoCheckoutTriggered.current) {
+      autoCheckoutTriggered.current = true;
       startCheckout();
     }
-  }, [checkoutLoading, searchParams, startCheckout]);
+  }, [searchParams, startCheckout]);
 
   const galleryImages = useMemo<string[]>(() => {
     const primary = product?.images?.[0] || "/img/default.jpg";
