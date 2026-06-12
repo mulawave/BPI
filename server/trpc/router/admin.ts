@@ -672,7 +672,9 @@ async function processNewsletterInBackground(
         },
       },
     });
-  } catch {}
+  } catch (err) {
+    console.error("[ADMIN] Failed to write newsletter campaign audit log:", err instanceof Error ? err.message : err);
+  }
 
   // Notify admin if there were failures
   if (job.failed > 0) {
@@ -690,7 +692,9 @@ async function processNewsletterInBackground(
           html: `<p>Campaign "${opts.subject}" finished in ${duration} min.<br>Sent: ${job.sent} | Failed: ${job.failed} | Total: ${job.total}<br>Failed addresses: ${job.failedRecipients.slice(0, 20).join(', ')}${job.failedRecipients.length > 20 ? '...' : ''}</p>`,
         });
       }
-    } catch {}
+    } catch (err) {
+      console.error("[ADMIN] Failed to send newsletter failure notification email:", err instanceof Error ? err.message : err);
+    }
   }
 }
 
@@ -4715,10 +4719,14 @@ export const adminRouter = createTRPCRouter({
           for (const d of toDelete) {
             try {
               await fs.promises.unlink(path.join(backupDir, d.f));
-            } catch (_) {}
+            } catch (err) {
+              console.warn(`[ADMIN][BACKUP] Failed to delete old backup ${d.f}:`, err instanceof Error ? err.message : err);
+            }
           }
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn("[ADMIN][BACKUP] Backup retention cleanup failed:", err instanceof Error ? err.message : err);
+      }
 
       return {
         filename,
@@ -4788,8 +4796,8 @@ export const adminRouter = createTRPCRouter({
             } catch (err) {
               try {
                 await model.create({ data: item });
-              } catch (_) {
-                // skip rows that violate constraints
+              } catch (createErr) {
+                console.warn(`[ADMIN][RESTORE] Skipped row (constraint violation):`, createErr instanceof Error ? createErr.message : createErr);
               }
             }
           }
@@ -4814,7 +4822,9 @@ export const adminRouter = createTRPCRouter({
         for (const [userId, sponsorId] of sponsorMap) {
           try {
             await prisma.user.update({ where: { id: userId }, data: { sponsorId } });
-          } catch (_) {}
+          } catch (err) {
+            console.warn(`[ADMIN][RESTORE] Failed to re-link sponsor for user ${userId}:`, err instanceof Error ? err.message : err);
+          }
         }
 
         await upsertArray(prisma.referral, payload.referrals || []);
@@ -4828,10 +4838,14 @@ export const adminRouter = createTRPCRouter({
         for (const log of payload.auditLogs || []) {
           try {
             await prisma.auditLog.create({ data: log });
-          } catch (_) {}
+          } catch (err) {
+            console.warn(`[ADMIN][RESTORE] Failed to restore audit log entry:`, err instanceof Error ? err.message : err);
+          }
         }
 
-        try { await prisma.$executeRawUnsafe("SET CONSTRAINTS ALL IMMEDIATE"); } catch (_) {}
+        try { await prisma.$executeRawUnsafe("SET CONSTRAINTS ALL IMMEDIATE"); } catch (err) {
+          console.error("[ADMIN][RESTORE] Failed to re-enable constraints:", err instanceof Error ? err.message : err);
+        }
       }
 
       await prisma.auditLog.create({
@@ -5011,7 +5025,9 @@ export const adminRouter = createTRPCRouter({
               createdAt: now,
             },
           });
-        } catch (_) {}
+        } catch (err) {
+          console.error("[ADMIN] Failed to write WIPE_NON_ESSENTIAL_DATA audit log:", err instanceof Error ? err.message : err);
+        }
 
         return { superAdmin };
       });
@@ -5105,7 +5121,9 @@ export const adminRouter = createTRPCRouter({
             createdAt: now,
           },
         });
-      } catch (_) {}
+      } catch (err) {
+        console.error(`[ADMIN] Failed to write TRUNCATE_TABLE audit log for ${target.tablename}:`, err instanceof Error ? err.message : err);
+      }
 
       return { truncated: target.tablename };
     }),
@@ -5273,7 +5291,9 @@ export const adminRouter = createTRPCRouter({
           createdAt: new Date(),
         },
       });
-    } catch (_) {}
+    } catch (err) {
+      console.error("[ADMIN] Failed to write CAPTURE_WIPE_PROFILE audit log:", err instanceof Error ? err.message : err);
+    }
 
     return { wipeableTables, protectedTables, capturedAt };
   }),
@@ -5335,7 +5355,9 @@ export const adminRouter = createTRPCRouter({
           createdAt: now,
         },
       });
-    } catch (_) {}
+    } catch (err) {
+      console.error("[ADMIN] Failed to write WIPE_STORED_TABLES audit log:", err instanceof Error ? err.message : err);
+    }
 
     return {
       wipedTables: candidates.map((t: any) => t.tablename),
@@ -5467,7 +5489,9 @@ export const adminRouter = createTRPCRouter({
             createdAt: now,
           },
         });
-      } catch (_) {}
+      } catch (err) {
+        console.error(`[ADMIN] Failed to write IMPORT_TABLE_DATA audit log for ${target.tablename}:`, err instanceof Error ? err.message : err);
+      }
 
       return {
         tableName: target.tablename,
@@ -6271,7 +6295,8 @@ export const adminRouter = createTRPCRouter({
         }
 
         return { count: backupFiles.length, latest: latestBackup };
-      } catch {
+      } catch (err) {
+        console.warn("[ADMIN] Failed to read backup summary:", err instanceof Error ? err.message : err);
         return { count: 0, latest: null };
       }
     })();

@@ -1472,7 +1472,9 @@ export const walletRouter = createTRPCRouter({
         await prisma.empowermentPackage.update({
           where: { id: waiverPkgId },
           data: { cspWaiverUsed: true },
-        }).catch(() => {});
+        }).catch((err) => {
+          console.error(`[WALLET] Failed to mark CSP waiver ${waiverPkgId} as used:`, err instanceof Error ? err.message : err);
+        });
         // Audit log for CSP waiver-triggered transfer
         await prisma.empowermentTransaction.create({
           data: {
@@ -1485,7 +1487,9 @@ export const walletRouter = createTRPCRouter({
             description: `CSP waiver education→${toWallet} transfer (₦${amount.toLocaleString()})`,
             performedBy: userId,
           },
-        }).catch(() => {});
+        }).catch((err) => {
+          console.error(`[WALLET] Failed to create CSP waiver audit log for ${waiverPkgId}:`, err instanceof Error ? err.message : err);
+        });
       }
 
       // EMAIL NOTIFICATION: Send transfer confirmation to user

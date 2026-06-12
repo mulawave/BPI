@@ -2592,7 +2592,9 @@ export const packageRouter = createTRPCRouter({
           reference: `CFG-${Date.now()}`,
           walletType: "main",
         },
-      }).catch(() => {});
+      }).catch((err) => {
+        console.error("[PACKAGE] Failed to write config change audit log:", err instanceof Error ? err.message : err);
+      });
 
       return { success: true, updated: updates.length };
     }),

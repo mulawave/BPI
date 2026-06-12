@@ -500,7 +500,9 @@ export const cspRouter = createTRPCRouter({
         await prisma.empowermentPackage.update({
           where: { id: cspWaiverPkg.id },
           data: { cspWaiverUsed: true },
-        }).catch(() => {});
+        }).catch((err) => {
+          console.error(`[CSP] Failed to mark waiver ${cspWaiverPkg.id} as used:`, err instanceof Error ? err.message : err);
+        });
         // Audit log the CSP waiver usage
         await prisma.empowermentTransaction.create({
           data: {
@@ -513,7 +515,9 @@ export const cspRouter = createTRPCRouter({
             description: `CSP waiver applied on ${input.category} request (₦${thresholdAmount.toLocaleString()})`,
             performedBy: userId,
           },
-        }).catch(() => {});
+        }).catch((err) => {
+          console.error(`[CSP] Failed to create waiver audit log for ${cspWaiverPkg.id}:`, err instanceof Error ? err.message : err);
+        });
       }
 
       return { requestId: request.id, status: request.status, requestedAmount, thresholdAmount };

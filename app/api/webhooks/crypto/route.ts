@@ -78,9 +78,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ status: "success" }, { status: 200 });
   } catch (error) {
-    console.error("[CryptoWebhook] Error:", error);
-    // Return 200 to prevent retries for unrecoverable errors
-    return NextResponse.json({ status: "error" }, { status: 200 });
+    console.error("[CryptoWebhook] Error:", error instanceof Error ? error.message : error);
+    console.error("[CryptoWebhook] Stack:", error instanceof Error ? error.stack : "N/A");
+    // Return 500 for transient errors so the provider retries delivery;
+    // signature/parse failures are already handled above with specific 4xx returns.
+    return NextResponse.json(
+      { status: "error", message: error instanceof Error ? error.message : "Internal webhook processing error" },
+      { status: 500 }
+    );
   }
 }
 
