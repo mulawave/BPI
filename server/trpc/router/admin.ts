@@ -5142,8 +5142,10 @@ export const adminRouter = createTRPCRouter({
         ORDER BY ordinal_position
       `;
 
+      const safeLimit = Math.max(1, Math.min(100, Math.floor(input.limit)));
       const rows = await prisma.$queryRawUnsafe<any[]>(
-        `SELECT * FROM ${tableIdent} ORDER BY 1 LIMIT ${input.limit};`
+        `SELECT * FROM ${tableIdent} ORDER BY 1 LIMIT $1;`,
+        safeLimit
       );
 
       return {
@@ -5151,7 +5153,7 @@ export const adminRouter = createTRPCRouter({
         rows,
         table: target.tablename,
         schema: target.schemaname,
-        limit: input.limit,
+        limit: safeLimit,
       };
     }),
 

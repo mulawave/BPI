@@ -81,7 +81,7 @@ async function seedSuperAdmin() {
 
   console.log("✅ Super Admin created successfully!\n");
   console.log("📧 Email:", email);
-  console.log("🔑 Password:", password);
+  console.log("🔑 Password: [use the value set in this script]");
   console.log("🆔 ID:", admin.id);
   console.log("\n⚠️  IMPORTANT: Change this password after first login!\n");
 }

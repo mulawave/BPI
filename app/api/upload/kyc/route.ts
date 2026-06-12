@@ -55,7 +55,9 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    const fileExtension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+    const SAFE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "pdf"]);
+    const rawExt = (file.name.split(".").pop() || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const fileExtension = SAFE_EXTENSIONS.has(rawExt) ? rawExt : "bin";
     const randomName = randomBytes(16).toString("hex");
     const uniqueFilename = `${docType}_${randomName}.${fileExtension}`;
 

@@ -21,7 +21,7 @@ async function createAdminUser() {
     if (existing) {
       console.log("❌ Admin user already exists:", email);
       console.log("📧 Email:", email);
-      console.log("🔑 Password:", password);
+      console.log("🔑 Password: [use the value set in this script]");
       return;
     }
 
@@ -46,7 +46,7 @@ async function createAdminUser() {
     console.log("✅ Admin user created successfully!");
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("📧 Email:", email);
-    console.log("🔑 Password:", password);
+    console.log("🔑 Password: [use the value set in this script]");
     console.log("👤 Name:", name);
     console.log("🎭 Role:", admin.role);
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
