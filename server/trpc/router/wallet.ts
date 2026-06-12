@@ -12,6 +12,7 @@ import { assertMockPaymentsAllowed } from "@/lib/mockPayments";
 import { PAYMENT_FULFILLMENT_TYPES } from "@/server/services/payment/paymentMetadata";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { initiateBasqetUsdtPayout } from "@/server/services/payment/BasqetClient";
+import { processWalletAutoDebit } from "@/server/services/walletAutoDebit.service";
 
 // Default admin settings (will be overridden by DB settings)
 const DEFAULT_CASH_WITHDRAWAL_FEE = 100;
@@ -580,6 +581,9 @@ export const walletRouter = createTRPCRouter({
 
           // Send success notification with receipt
           await notifyDepositStatus(userId, "completed", amount, txReference, receiptUrl);
+
+          // Auto-debit to community wallet if configured
+          await processWalletAutoDebit({ prisma, userId, creditAmount: amount, trigger: "deposit" });
 
           return {
             success: true,
@@ -1468,7 +1472,9 @@ export const walletRouter = createTRPCRouter({
         await prisma.empowermentPackage.update({
           where: { id: waiverPkgId },
           data: { cspWaiverUsed: true },
-        }).catch(() => {});
+        }).catch((err) => {
+          console.error(`[WALLET] Failed to mark CSP waiver ${waiverPkgId} as used:`, err instanceof Error ? err.message : err);
+        });
         // Audit log for CSP waiver-triggered transfer
         await prisma.empowermentTransaction.create({
           data: {
@@ -1481,7 +1487,9 @@ export const walletRouter = createTRPCRouter({
             description: `CSP waiver education→${toWallet} transfer (₦${amount.toLocaleString()})`,
             performedBy: userId,
           },
-        }).catch(() => {});
+        }).catch((err) => {
+          console.error(`[WALLET] Failed to create CSP waiver audit log for ${waiverPkgId}:`, err instanceof Error ? err.message : err);
+        });
       }
 
       // EMAIL NOTIFICATION: Send transfer confirmation to user
@@ -1838,6 +1846,9 @@ export const walletRouter = createTRPCRouter({
       // Send success notification
       await notifyDepositStatus(userId, "completed", transaction.amount, reference, receiptUrl);
 
+      // Auto-debit to community wallet if configured
+      await processWalletAutoDebit({ prisma, userId, creditAmount: transaction.amount, trigger: "deposit" });
+
       return {
         success: true,
         message: `Deposit of ₦${transaction.amount.toLocaleString()} successful!`,
@@ -1927,4 +1938,54 @@ export const walletRouter = createTRPCRouter({
     const minWithdrawal = await getAdminSetting('USD_MIN_WITHDRAWAL', DEFAULT_USD_MIN_WITHDRAWAL);
     return { feeUsd: fee, minWithdrawalUsd: minWithdrawal };
   }),
+
+  // ============================================
+  // WALLET AUTO-DEBIT SETTINGS
+  // ============================================
+  getAutoDebitSettings: protectedProcedure.query(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id as string;
+    if (!userId) throw new Error("UNAUTHORIZED");
+
+    const setting = await prisma.walletAutoDebitSetting.findUnique({
+      where: { userId },
+    });
+
+    return setting ?? {
+      isEnabled: false,
+      percentage: 10,
+      applyToRewards: true,
+      applyToDeposits: false,
+    };
+  }),
+
+  saveAutoDebitSettings: protectedProcedure
+    .input(z.object({
+      isEnabled: z.boolean(),
+      percentage: z.number().min(1).max(100),
+      applyToRewards: z.boolean(),
+      applyToDeposits: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id as string;
+      if (!userId) throw new Error("UNAUTHORIZED");
+
+      const setting = await prisma.walletAutoDebitSetting.upsert({
+        where: { userId },
+        create: {
+          userId,
+          isEnabled: input.isEnabled,
+          percentage: input.percentage,
+          applyToRewards: input.applyToRewards,
+          applyToDeposits: input.applyToDeposits,
+        },
+        update: {
+          isEnabled: input.isEnabled,
+          percentage: input.percentage,
+          applyToRewards: input.applyToRewards,
+          applyToDeposits: input.applyToDeposits,
+        },
+      });
+
+      return { success: true, setting };
+    }),
 });

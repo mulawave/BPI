@@ -185,6 +185,7 @@ export async function claimPromoActivation(
     paymentReference: promoReference,
     paymentMethodLabel: `Promo Campaign: ${campaign.name}`,
     activatorName: "Promo System",
+    skipRewards: true,
   });
 
   if (!result.success) {

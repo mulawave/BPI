@@ -13,6 +13,11 @@ import {
 } from "./seed-data/system";
 import { youtubePlansSeedData } from "./seed-data/youtubePlans";
 
+if (process.env.NODE_ENV === "production") {
+  console.error("FATAL: seed.ts must not run in production. Aborting.");
+  process.exit(1);
+}
+
 const prisma = new PrismaClient();
 
 async function main() {
@@ -38,7 +43,7 @@ async function main() {
         },
       });
       console.log("Seed: created test user:", user.email);
-      console.log("Seed: login with email:", email, "password:", password);
+      console.log("Seed: login with email:", email, "password: [set via SEED_CREATE_TEST_USER]");
     } else {
       console.log("Seed: test user already exists:", email);
     }

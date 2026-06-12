@@ -8,6 +8,7 @@ import {
   notifyMembershipActivation,
   notifyReferralReward,
 } from "@/server/services/notification.service";
+import { processWalletAutoDebit } from "@/server/services/walletAutoDebit.service";
 
 const MYNGUL_PACKAGES = [
   "Gold Plus",
@@ -43,6 +44,7 @@ export async function activateMembershipAfterExternalPayment(params: {
   paymentReference: string;
   paymentMethodLabel: string;
   activatorName?: string;
+  skipRewards?: boolean;
 }) {
   const {
     prisma,
@@ -52,6 +54,7 @@ export async function activateMembershipAfterExternalPayment(params: {
     paymentReference,
     paymentMethodLabel,
     activatorName,
+    skipRewards = false,
   } = params;
 
   const existingActivation = await prisma.transaction.findFirst({
@@ -140,8 +143,8 @@ export async function activateMembershipAfterExternalPayment(params: {
       cashback: number;
     }> = [];
 
-    // ── Referral chain wallet credits ──
-    for (let i = 0; i < referralChain.length; i++) {
+    // ── Referral chain wallet credits (skipped for free promo activations) ──
+    for (let i = 0; i < (skipRewards ? 0 : referralChain.length); i++) {
       const referrer = referralChain[i];
       const level = (i + 1) as 1 | 2 | 3 | 4;
 
@@ -174,6 +177,11 @@ export async function activateMembershipAfterExternalPayment(params: {
 
       if (Object.keys(updateData).length > 0) {
         await tx.user.update({ where: { id: referrer.id }, data: updateData });
+      }
+
+      // Auto-debit referral cash reward to community wallet if configured
+      if (cashReward > 0) {
+        await processWalletAutoDebit({ prisma: tx, userId: referrer.id, creditAmount: cashReward, trigger: "reward" });
       }
 
       if (cashReward > 0) {
@@ -228,9 +236,9 @@ export async function activateMembershipAfterExternalPayment(params: {
       });
     }
 
-    // ── Myngul credit ──
+    // ── Myngul credit (skipped for free promo activations) ──
     let activationPin: string | null = null;
-    if (includesMyngul) {
+    if (includesMyngul && !skipRewards) {
       activationPin = `BPI-${Date.now().toString().slice(-8)}`;
 
       await tx.user.update({
@@ -320,7 +328,7 @@ export async function activateMembershipAfterExternalPayment(params: {
   }, { maxWait: MEMBERSHIP_TX_MAX_WAIT_MS, timeout: MEMBERSHIP_TX_TIMEOUT_MS });
 
   // ── Post-commit: BPT distribution (best-effort, uses its own transaction) ──
-  for (let i = 0; i < referralChain.length; i++) {
+  for (let i = 0; i < (skipRewards ? 0 : referralChain.length); i++) {
     const referrer = referralChain[i];
     const level = (i + 1) as 1 | 2 | 3 | 4;
     const bptReward = (membershipPackage as any)[`bpt_l${level}`] || 0;
@@ -353,8 +361,8 @@ export async function activateMembershipAfterExternalPayment(params: {
     }
   }
 
-  // ── Post-commit: Notifications (best-effort) ──
-  for (let i = 0; i < referralChain.length; i++) {
+  // ── Post-commit: Notifications (best-effort, skipped for free promo) ──
+  for (let i = 0; i < (skipRewards ? 0 : referralChain.length); i++) {
     const referrer = referralChain[i];
     const level = (i + 1) as 1 | 2 | 3 | 4;
     const cashReward = (membershipPackage as any)[`cash_l${level}`] || 0;

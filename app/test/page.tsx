@@ -1,7 +1,11 @@
 "use client";
 import { api } from "@/client/trpc";
+import { notFound } from "next/navigation";
+
+const IS_DEV = process.env.NODE_ENV === "development";
 
 export default function TestPage() {
+  if (!IS_DEV) return notFound();
   const healthQuery = api.health.check.useQuery();
 
   return (
