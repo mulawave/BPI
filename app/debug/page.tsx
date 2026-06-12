@@ -3,8 +3,12 @@ import { signOut, useSession } from "next-auth/react";
 import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 import { api } from "@/client/trpc";
 import { useState } from "react";
+import { notFound } from "next/navigation";
+
+const IS_DEV = process.env.NODE_ENV === "development";
 
 export default function DebugPage() {
+  if (!IS_DEV) return notFound();
   const { data: session, status } = useSession();
   const [backfillResult, setBackfillResult] = useState<any>(null);
   const [isBackfilling, setIsBackfilling] = useState(false);

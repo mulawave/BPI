@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authConfig } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -43,6 +45,12 @@ export async function GET() {
 
 // Allow the middleware to invalidate the cache immediately after an admin toggle.
 export async function POST() {
+  const session = await getServerSession(authConfig);
+  const role = (session?.user as any)?.role;
+  if (!session?.user || (role !== "admin" && role !== "super_admin")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   cache = null;
   return NextResponse.json(
     { ok: true },

@@ -49,7 +49,9 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes);
 
     // Generate unique filename using crypto
-    const fileExtension = file.name.split('.').pop();
+    const SAFE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
+    const rawExt = (file.name.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const fileExtension = SAFE_EXTENSIONS.has(rawExt) ? rawExt : 'bin';
     const randomName = randomBytes(16).toString('hex');
     const uniqueFilename = `${randomName}.${fileExtension}`;
     

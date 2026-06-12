@@ -15,6 +15,9 @@ import {
   FiSave
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { notFound } from "next/navigation";
+
+const IS_DEV = process.env.NODE_ENV === "development";
 
 interface TestResult {
   status: 'not-tested' | 'passed' | 'partial' | 'failed';
@@ -30,6 +33,7 @@ interface FeatureStatus {
 }
 
 export default function TestingDashboard() {
+  if (!IS_DEV) return notFound();
   const [activeTab, setActiveTab] = useState<'status' | 'tests' | 'recommendations'>('status');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['auth']));
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
