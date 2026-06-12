@@ -13,7 +13,7 @@ import {
   activateMembershipAfterExternalPayment,
   upgradeMembershipAfterExternalPayment,
 } from "@/server/services/membershipPayments.service";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure, adminProcedure, superAdminProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { initiateBankTransfer } from "@/lib/flutterwave";
@@ -27,28 +27,6 @@ import { impersonationCreationLimiter } from "@/lib/rateLimit";
 import { executeAdminPaymentReview } from "@/server/services/payment/adminPaymentReview";
 import { executeReferralSync } from "@/server/services/referralSync.service";
 import { deriveMembershipExpiry } from "@/lib/membershipAccess";
-
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  if (!ctx.session?.user) {
-    throw new Error("UNAUTHORIZED: You must be logged in to perform this action.");
-  }
-  const userRole = (ctx.session.user as any).role;
-  if (userRole !== "admin" && userRole !== "super_admin") {
-    throw new Error("UNAUTHORIZED: You must be an admin to perform this action.");
-  }
-  return next();
-});
-
-const superAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  if (!ctx.session?.user) {
-    throw new Error("UNAUTHORIZED: You must be logged in to perform this action.");
-  }
-  const userRole = (ctx.session.user as any).role;
-  if (userRole !== "super_admin") {
-    throw new Error("UNAUTHORIZED: You must be a super admin to perform this action.");
-  }
-  return next();
-});
 
 function generateSscCode(): string {
   const segment = (length: number) =>

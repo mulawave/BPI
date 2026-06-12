@@ -1,21 +1,10 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { createTRPCRouter, adminProcedure } from "../trpc";
 import {
   placeUserInThirdPartyMatrix,
   reconcileThirdPartyMatrixPlacementsForSubmittedLinks,
 } from "@/server/services/thirdPartyMatrix.service";
-
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  const role = (ctx.session?.user as any)?.role;
-  if (role !== "admin" && role !== "super_admin") {
-    throw new TRPCError({
-      code: "UNAUTHORIZED",
-      message: "Admin access required",
-    });
-  }
-  return next();
-});
 
 export const thirdPartyMatrixAdminRouter = createTRPCRouter({
   getSettings: adminProcedure.query(async ({ ctx }) => {

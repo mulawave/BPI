@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure, publicProcedure, adminProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { verifyChannelCode } from "@/lib/youtubeApi";
@@ -24,16 +24,6 @@ function clearYoutubeUserCache(userId: string) {
   userChannelInFlight.delete(userId);
   draftStatusInFlight.delete(userId);
 }
-
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  const role = (ctx.session?.user as { role?: string | null } | undefined)?.role;
-
-  if (role !== "admin" && role !== "super_admin") {
-    throw new Error("Admin access required");
-  }
-
-  return next();
-});
 
 export const youtubeRouter = createTRPCRouter({
   // Get available YouTube subscription plans from database

@@ -46,6 +46,18 @@ export function generateTxReferenceBatch(prefix: string, count: number): string[
 }
 
 /**
+ * Convert a string to a URL-friendly slug.
+ */
+export function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
+
+/**
  * Sort items by a string field in ascending, locale-aware order.
  */
 export function sortByStringKey<T extends Record<string, unknown>>(

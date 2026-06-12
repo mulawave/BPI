@@ -1,28 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { createTRPCRouter, adminProcedure } from "../trpc";
 import { getPaystackBanks } from "@/lib/paystack";
 import { getFlutterwaveBanks } from "@/lib/flutterwave";
-
-// Admin middleware
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  if (!ctx.session?.user) {
-    throw new TRPCError({
-      code: "UNAUTHORIZED",
-      message: "You must be logged in to access this resource",
-    });
-  }
-
-  const userRole = (ctx.session.user as any).role;
-  if (userRole !== "admin" && userRole !== "super_admin") {
-    throw new TRPCError({
-      code: "UNAUTHORIZED",
-      message: "You must be an admin to access this resource",
-    });
-  }
-
-  return next();
-});
 
 async function realignBankIdSequence(prismaLike: any) {
   try {

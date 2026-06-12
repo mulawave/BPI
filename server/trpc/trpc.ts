@@ -54,3 +54,21 @@ export const passwordResetProcedure = t.procedure.use(async ({ ctx, next }) => {
   }
   return next();
 });
+
+/** Procedure that requires admin or super_admin role. */
+export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const role = (ctx.session?.user as any)?.role;
+  if (role !== "admin" && role !== "super_admin") {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Admin access required." });
+  }
+  return next();
+});
+
+/** Procedure that requires super_admin role. */
+export const superAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const role = (ctx.session?.user as any)?.role;
+  if (role !== "super_admin") {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Super admin access required." });
+  }
+  return next();
+});

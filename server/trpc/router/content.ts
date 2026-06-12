@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
+import { createTRPCRouter, publicProcedure, adminProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 
 const FOOTER_CACHE_TTL_MS = 60_000;
@@ -20,14 +20,6 @@ function clearPublicContentCache() {
   pageBySlugCache.clear();
   pageBySlugInFlight.clear();
 }
-
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  const userRole = (ctx.session?.user as any)?.role;
-  if (userRole !== "admin" && userRole !== "super_admin") {
-    throw new Error("UNAUTHORIZED: Admin only");
-  }
-  return next();
-});
 
 export const contentRouter = createTRPCRouter({
   // Public: fetch a published page by slug

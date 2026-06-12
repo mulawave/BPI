@@ -3,8 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { verifyBasqetUsdtPayout } from "@/server/services/payment/BasqetClient";
 import { notifyWithdrawalStatus } from "@/server/services/notification.service";
 import { generateReceiptLink } from "@/server/services/receipt.service";
+import { verifyCronAuth } from "@/lib/cron";
 
-const CRON_SECRET = process.env.CRON_SECRET;
 const BATCH_SIZE = 25;
 
 export async function GET(req: NextRequest) {
@@ -16,19 +16,8 @@ export async function POST(req: NextRequest) {
 }
 
 async function handleCron(req: NextRequest) {
-  if (!CRON_SECRET) {
-    return NextResponse.json({ error: "CRON_SECRET is not configured" }, { status: 503 });
-  }
-
-  const authHeader = req.headers.get("authorization");
-  const querySecret = req.nextUrl.searchParams.get("secret");
-  const isAuthorized =
-    authHeader === `Bearer ${CRON_SECRET}` ||
-    querySecret === CRON_SECRET;
-
-  if (!isAuthorized) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authError = verifyCronAuth(req);
+  if (authError) return authError;
 
   const cryptoConfig = await prisma.paymentGatewayConfig.findFirst({
     where: { gatewayName: "crypto", isActive: true },

@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { createTRPCRouter, adminProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
-import { TRPCError } from "@trpc/server";
 
 const ADMIN_CURRENCY_CACHE_TTL_MS = 30_000;
 let adminCurrencyCache: { value: any[]; expiresAt: number } | null = null;
@@ -43,22 +42,7 @@ function invalidateAdminCurrencyCache() {
   adminCurrencyCache = null;
 }
 
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  if (!ctx.session?.user) {
-    throw new TRPCError({
-      code: "UNAUTHORIZED",
-      message: "You must be logged in to perform this action.",
-    });
-  }
-  const userRole = (ctx.session.user as any).role;
-  if (userRole !== "admin" && userRole !== "super_admin") {
-    throw new TRPCError({
-      code: "UNAUTHORIZED",
-      message: "Admin access required.",
-    });
-  }
-  return next({ ctx });
-});
+
 
 export const adminCurrencyRouter = createTRPCRouter({
   // Get all currencies with details

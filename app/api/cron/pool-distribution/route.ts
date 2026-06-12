@@ -13,8 +13,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-const CRON_SECRET = process.env.CRON_SECRET;
+import { verifyCronAuth } from "@/lib/cron";
 
 export async function POST(req: NextRequest) {
   return handleCron(req);
@@ -25,15 +24,8 @@ export async function GET(req: NextRequest) {
 }
 
 async function handleCron(req: NextRequest) {
-  // --- Auth ---
-  if (!CRON_SECRET) {
-    return NextResponse.json({ error: "CRON_SECRET is not configured" }, { status: 503 });
-  }
-
-  const authHeader = req.headers.get("authorization");
-  if (!authHeader || authHeader !== `Bearer ${CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authError = verifyCronAuth(req);
+  if (authError) return authError;
 
   const now = new Date();
 

@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authConfig } from "@/server/auth";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
-import { randomBytes } from "crypto";
 import { authLimiter, applyRateLimit } from "@/lib/rateLimit";
+import { validateFile, saveUploadedFile, IMAGE_AND_PDF_TYPES } from "@/lib/upload";
 
 export async function POST(request: NextRequest) {
   // Rate limit: 10 uploads per minute per IP
@@ -25,52 +23,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    const validTypes = [
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "image/gif",
-      "image/webp",
-      "application/pdf",
-    ];
+    const validation = await validateFile(file, {
+      allowedTypes: IMAGE_AND_PDF_TYPES,
+      maxSizeBytes: 10 * 1024 * 1024,
+      maxSizeLabel: "10MB",
+    });
 
-    if (!validTypes.includes(file.type)) {
-      return NextResponse.json(
-        {
-          error:
-            "Invalid file type. Please upload an image (JPEG/PNG/GIF/WEBP) or PDF",
-        },
-        { status: 400 },
-      );
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
-      return NextResponse.json(
-        { error: "File too large. Maximum size is 10MB" },
-        { status: 400 },
-      );
-    }
-
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    const fileExtension = file.name.split(".").pop() || "bin";
-    const randomName = randomBytes(16).toString("hex");
-    const uniqueFilename = `${randomName}.${fileExtension}`;
-
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "payment-proofs");
-
-    try {
-      await mkdir(uploadDir, { recursive: true });
-    } catch {
-      // Directory might already exist
-    }
-
-    const filePath = path.join(uploadDir, uniqueFilename);
-    await writeFile(filePath, buffer);
-
-    const proofUrl = `/uploads/payment-proofs/${uniqueFilename}`;
+    const { url: proofUrl } = await saveUploadedFile(
+      validation.buffer,
+      file.name,
+      { subDir: "payment-proofs" },
+    );
 
     return NextResponse.json({
       success: true,

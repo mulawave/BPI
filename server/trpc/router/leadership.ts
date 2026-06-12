@@ -3,13 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
-
-function requireAdmin(ctx: { session: any }) {
-  const role = (ctx.session?.user as any)?.role;
-  if (role !== "admin" && role !== "super_admin") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
-  }
-}
+import { requireAdmin } from "@/server/utils/adminAuth";
 
 // Helper function to send leadership notifications
 async function sendLeadershipNotification(

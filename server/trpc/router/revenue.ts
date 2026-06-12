@@ -6,6 +6,7 @@ import {
 } from "../trpc";
 import { randomUUID } from "crypto";
 import type { RevenueSource } from "@prisma/client";
+import { requireAdmin as requireAdminShared } from "@/server/utils/adminAuth";
 
 const REVENUE_POOL_START_DATE = new Date("2026-05-01T00:00:00.000Z");
 const REVENUE_SOURCE_CUTS_SETTING_KEY = "revenue_source_pool_cuts_v1";
@@ -188,15 +189,8 @@ function withRevenuePoolCutoff(startDate?: Date) {
  * Handles all revenue tracking, allocation (50/30/20), and distribution
  */
 
-// Helper to check if user is admin
-function requireAdmin(session: any) {
-  const userRole = (session?.user as any)?.role;
-  if (userRole !== "admin") {
-    throw new TRPCError({ 
-      code: "FORBIDDEN", 
-      message: "Admin access required" 
-    });
-  }
+function requireAdmin(ctx: { session: any }) {
+  return requireAdminShared(ctx);
 }
 
 const revenueAnalyticsFiltersSchema = z
@@ -254,7 +248,7 @@ export const revenueRouter = createTRPCRouter({
    * Get revenue split settings (Company/Executive/Strategic)
    */
   getProfitSplitSettings: protectedProcedure.query(async ({ ctx }) => {
-    requireAdmin(ctx.session);
+    requireAdmin(ctx);
 
     const activeVersion = await (ctx.prisma as any).profitPoolConfigVersion.findFirst({
       where: { isActive: true },
@@ -327,7 +321,7 @@ export const revenueRouter = createTRPCRouter({
         )
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const rows = [
         {
@@ -396,7 +390,7 @@ export const revenueRouter = createTRPCRouter({
    * Get approved source-specific allocation cuts and effective values.
    */
   getSourceCutSettings: protectedProcedure.query(async ({ ctx }) => {
-    requireAdmin(ctx.session);
+    requireAdmin(ctx);
 
     const { baseSplit, overrides, updatedAt } = await getRevenueSourceCutSettings(ctx.prisma as any);
 
@@ -429,7 +423,7 @@ export const revenueRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const normalized: Record<string, SourceSplitConfig> = {};
       for (const row of input.sources) {
@@ -502,7 +496,7 @@ export const revenueRouter = createTRPCRouter({
         .optional(),
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const dynamicStart = new Date();
       dynamicStart.setDate(dynamicStart.getDate() - (input?.days ?? 30));
@@ -627,7 +621,7 @@ export const revenueRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const dynamicStart = new Date();
       dynamicStart.setDate(dynamicStart.getDate() - 30);
@@ -915,7 +909,7 @@ export const revenueRouter = createTRPCRouter({
    * Get executive shareholders with their assignments
    */
   getExecutiveShareholders: protectedProcedure.query(async ({ ctx }) => {
-    requireAdmin(ctx.session);
+    requireAdmin(ctx);
 
     return ctx.prisma.executiveShareholder.findMany({
       include: {
@@ -943,7 +937,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const roleKey = normalizeRoleName(input.role);
       const normalizedRole = roleKey;
@@ -1184,7 +1178,7 @@ export const revenueRouter = createTRPCRouter({
       }).optional()
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
       const { limit = 10, offset = 0 } = input || {};
 
       return ctx.prisma.strategyPool.findMany({
@@ -1228,7 +1222,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       // Check if user is already in this pool
       const pool = await ctx.prisma.strategyPool.findUnique({
@@ -1314,7 +1308,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const member = await ctx.prisma.poolMember.findUnique({
         where: { id: input.memberId },
@@ -1367,7 +1361,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
       const { poolType, ...rest } = input;
       const data: Record<string, unknown> = {};
       if (rest.distributionFrequency !== undefined) data.distributionFrequency = rest.distributionFrequency;
@@ -1405,7 +1399,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
       const { memberId, ...fields } = input;
       const data: Record<string, unknown> = {};
       if (fields.eligibilityCriteria !== undefined) data.eligibilityCriteria = fields.eligibilityCriteria;
@@ -1438,7 +1432,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
       const techPool = await ctx.prisma.strategyPool.findUnique({ where: { type: "TECHNOLOGY" } });
       if (!techPool) throw new TRPCError({ code: "NOT_FOUND", message: "Technology pool not found" });
       const project = await (ctx.prisma as any).techPoolProject.create({
@@ -1470,7 +1464,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
       const statusMap: Record<string, string> = { APPROVE: "APPROVED", REJECT: "REJECTED", ON_HOLD: "ON_HOLD" };
       const project = await (ctx.prisma as any).techPoolProject.update({
         where: { id: input.projectId },
@@ -1497,7 +1491,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
       const project = await (ctx.prisma as any).techPoolProject.findUnique({ where: { id: input.projectId } });
       if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       if (project.status !== "APPROVED" && project.status !== "IN_PROGRESS") {
@@ -1536,7 +1530,7 @@ export const revenueRouter = createTRPCRouter({
       status: z.enum(["PROPOSED", "APPROVED", "IN_PROGRESS", "COMPLETED", "REJECTED", "ON_HOLD"]).optional(),
     }).optional())
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
       const projects = await (ctx.prisma as any).techPoolProject.findMany({
         where: input?.status ? { status: input.status } : undefined,
         orderBy: { createdAt: "desc" },
@@ -1563,7 +1557,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
       const data: Record<string, unknown> = {};
       if (input.roiNotes !== undefined) data.roiNotes = input.roiNotes;
       if (input.milestones !== undefined) data.milestones = JSON.stringify(input.milestones);
@@ -1588,7 +1582,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const pool = await ctx.prisma.strategyPool.findUnique({
         where: { type: input.poolType },
@@ -1841,7 +1835,7 @@ export const revenueRouter = createTRPCRouter({
    * Get revenue dashboard stats
    */
   getDashboardStats: protectedProcedure.query(async ({ ctx }) => {
-    requireAdmin(ctx.session);
+    requireAdmin(ctx);
 
     const [totalRevenue, companyReserve, executivePool, strategicPools, recentTransactions, recentDistributions] =
       await Promise.all([
@@ -1928,7 +1922,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const where: any = {
         allocationStatus: "ALLOCATED",
@@ -1970,7 +1964,7 @@ export const revenueRouter = createTRPCRouter({
       }).optional()
     )
     .query(async ({ ctx, input }): Promise<any> => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
       const { includeTransactions = false, limit = 50 } = input || {};
 
       if (includeTransactions) {
@@ -2018,7 +2012,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const reserve = await ctx.prisma.companyReserve.findFirst({
         orderBy: { updatedAt: "desc" },
@@ -2087,7 +2081,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       return ctx.prisma.user.findMany({
         where: {
@@ -2117,7 +2111,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       return ctx.prisma.revenueAdminAction.findMany({
         include: {
@@ -2145,7 +2139,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const dynamicStartDate = new Date();
       dynamicStartDate.setDate(dynamicStartDate.getDate() - input.days);
@@ -2187,7 +2181,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const dynamicStartDate = new Date();
       dynamicStartDate.setDate(dynamicStartDate.getDate() - input.days);
@@ -2294,7 +2288,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       // Get allocations with transaction info
       const allocations = await ctx.prisma.revenueAllocation.findMany({
@@ -2363,7 +2357,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       // Check if snapshot already exists
       const existing = await ctx.prisma.revenueSnapshot.findUnique({
@@ -2527,7 +2521,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       return ctx.prisma.revenueSnapshot.findMany({
         orderBy: [{ year: "desc" }, { month: "desc" }],
@@ -2559,7 +2553,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const dynamicStartDate = new Date();
       dynamicStartDate.setDate(dynamicStartDate.getDate() - input.days);
@@ -2627,7 +2621,7 @@ export const revenueRouter = createTRPCRouter({
         .optional(),
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const dateFrom = withRevenuePoolCutoff(input?.dateFrom);
       const dateTo = input?.dateTo ?? new Date();
@@ -2866,7 +2860,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const userId = (ctx.session?.user as any)?.id;
 
@@ -2940,7 +2934,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const userId = (ctx.session?.user as any)?.id;
 
@@ -3017,7 +3011,7 @@ export const revenueRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const userId = (ctx.session?.user as any)?.id;
 
@@ -3174,7 +3168,7 @@ export const revenueRouter = createTRPCRouter({
    * Get pools with overdue scheduled distributions (nextDistributionAt <= now)
    */
   getOverduePools: protectedProcedure.query(async ({ ctx }) => {
-    requireAdmin(ctx.session);
+    requireAdmin(ctx);
     const now = new Date();
     // Cast to any because nextDistributionAt / distributionFrequency are new schema fields
     // not yet reflected in generated Prisma TS types
@@ -3204,7 +3198,7 @@ export const revenueRouter = createTRPCRouter({
    * Activates members whose isQualified=true and deactivates those with isQualified=false.
    */
   syncLeadershipQualifications: protectedProcedure.mutation(async ({ ctx }) => {
-    requireAdmin(ctx.session);
+    requireAdmin(ctx);
 
     const pool = await ctx.prisma.strategyPool.findUnique({
       where: { type: "LEADERSHIP" },
@@ -3323,7 +3317,7 @@ export const revenueRouter = createTRPCRouter({
       }).optional()
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx.session);
+      requireAdmin(ctx);
 
       const dateFrom = withRevenuePoolCutoff(input?.dateFrom);
       const dateTo = input?.dateTo ?? new Date();
