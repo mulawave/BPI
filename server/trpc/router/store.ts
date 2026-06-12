@@ -1117,7 +1117,7 @@ export const storeRouter = createTRPCRouter({
 
       return {
         intentId: order.id,
-        redirectUrl: `/store/${product.id}?checkout=1&intent=${order.id}`,
+        redirectUrl: `/checkout?intent=${order.id}&productId=${product.id}&quantity=${quantity}`,
         orderId: order.id,
         productId: product.id,
         quantity,
