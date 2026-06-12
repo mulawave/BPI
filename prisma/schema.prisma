@@ -2066,6 +2066,11 @@ model User {
   KycSubmissions                                                       KycSubmission[]              @relation("KycSubmissions")
   KycReviewed                                                          KycSubmission[]              @relation("KycReviewer")
 
+  // Wallet Auto-Debit & CSP Auto-Contribute
+  WalletAutoDebitSetting                                               WalletAutoDebitSetting?
+  CspAutoContributeSetting                                             CspAutoContributeSetting?
+  CspAutoContributeLogs                                                CspAutoContributeLog[]
+
   @@index([cityId])
   @@index([stateId])
   @@index([countryId])
@@ -2393,6 +2398,7 @@ model CspSupportRequest {
   Contributions      CspContribution[]
   Extensions         CspBroadcastExtension[]
   WaitReductions     CspWaitReductionLog[]
+  AutoContributeLogs CspAutoContributeLog[]
 
   @@index([userId, status])
   @@index([status, broadcastExpiresAt])
@@ -4099,4 +4105,48 @@ model PromoActivationClaim {
 
   @@index([campaignId])
   @@index([claimedAt])
+}
+
+/// User settings for auto-debiting cash/main wallet to community wallet.
+model WalletAutoDebitSetting {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  isEnabled       Boolean  @default(false)
+  percentage      Float    @default(10) // 1-100
+  applyToRewards  Boolean  @default(true)  // auto-debit on referral/reward credits
+  applyToDeposits Boolean  @default(false) // also auto-debit on deposits/top-ups
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// User settings for CSP auto-contribute from community wallet.
+model CspAutoContributeSetting {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  isEnabled            Boolean  @default(false)
+  minAmountPerRequest  Int      @default(500)   // minimum per single contribution
+  maxAmountPerRequest  Int      @default(1000)  // cap per request from this user
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Log of each auto-contribution made on behalf of a user.
+model CspAutoContributeLog {
+  id          String   @id @default(cuid())
+  userId      String
+  requestId   String
+  amount      Int
+  balanceBefore Float
+  balanceAfter  Float
+  createdAt   DateTime @default(now())
+
+  User    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Request CspSupportRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([requestId])
 }
