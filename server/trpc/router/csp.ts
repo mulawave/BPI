@@ -1517,5 +1517,212 @@ export const cspRouter = createTRPCRouter({
       );
       return { success: true, updatedKeys: entries.map(([k]) => k) };
     }),
+
+  // ============================================
+  // CSP AUTO-CONTRIBUTE USER SETTINGS
+  // ============================================
+  getAutoContributeSettings: protectedProcedure.query(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id as string;
+    if (!userId) throw new Error("UNAUTHORIZED");
+
+    const setting = await prisma.cspAutoContributeSetting.findUnique({
+      where: { userId },
+    });
+
+    return setting ?? {
+      isEnabled: false,
+      minAmountPerRequest: 500,
+      maxAmountPerRequest: 1000,
+    };
+  }),
+
+  saveAutoContributeSettings: protectedProcedure
+    .input(z.object({
+      isEnabled: z.boolean(),
+      minAmountPerRequest: z.number().int().min(100),
+      maxAmountPerRequest: z.number().int().min(100),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id as string;
+      if (!userId) throw new Error("UNAUTHORIZED");
+
+      if (input.maxAmountPerRequest < input.minAmountPerRequest) {
+        throw new Error("Maximum amount per request must be greater than or equal to minimum.");
+      }
+
+      // If enabling, check community wallet balance
+      if (input.isEnabled) {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { community: true },
+        });
+        if (!user || user.community < input.minAmountPerRequest) {
+          throw new Error("Insufficient community wallet balance to enable auto-contribute. Please fund your community wallet first.");
+        }
+      }
+
+      const setting = await prisma.cspAutoContributeSetting.upsert({
+        where: { userId },
+        create: {
+          userId,
+          isEnabled: input.isEnabled,
+          minAmountPerRequest: input.minAmountPerRequest,
+          maxAmountPerRequest: input.maxAmountPerRequest,
+        },
+        update: {
+          isEnabled: input.isEnabled,
+          minAmountPerRequest: input.minAmountPerRequest,
+          maxAmountPerRequest: input.maxAmountPerRequest,
+        },
+      });
+
+      // If just enabled, trigger an immediate auto-contribute run
+      if (input.isEnabled) {
+        const { runCspAutoContribute } = await import("@/server/services/cspAutoContribute.service");
+        // Fire and forget — don't block the response
+        runCspAutoContribute({ prisma, userId }).catch((err) => {
+          console.error(`[CSP_AUTO_CONTRIBUTE] Error for user ${userId}:`, err);
+        });
+      }
+
+      return { success: true, setting };
+    }),
+
+  getAutoContributeLogs: protectedProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(100).default(20) }))
+    .query(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id as string;
+      if (!userId) throw new Error("UNAUTHORIZED");
+
+      const logs = await prisma.cspAutoContributeLog.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take: input.limit,
+        include: {
+          Request: { select: { id: true, purpose: true, amount: true } },
+        },
+      });
+
+      return logs;
+    }),
+
+  // ============================================
+  // ADMIN: CSP AUTO-CONTRIBUTE MANAGEMENT
+  // ============================================
+  adminGetAutoContributeUsers: protectedProcedure
+    .input(z.object({
+      page: z.number().int().min(1).default(1),
+      limit: z.number().int().min(1).max(100).default(20),
+      enabledOnly: z.boolean().default(false),
+    }))
+    .query(async ({ ctx, input }) => {
+      const adminId = (ctx.session?.user as any)?.id as string;
+      if (!adminId) throw new Error("UNAUTHORIZED");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
+      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+
+      const where = input.enabledOnly ? { isEnabled: true } : {};
+      const [settings, total] = await Promise.all([
+        prisma.cspAutoContributeSetting.findMany({
+          where,
+          orderBy: { updatedAt: "desc" },
+          skip: (input.page - 1) * input.limit,
+          take: input.limit,
+          include: {
+            User: { select: { id: true, name: true, email: true, community: true, firstname: true, lastname: true } },
+          },
+        }),
+        prisma.cspAutoContributeSetting.count({ where }),
+      ]);
+
+      // Get global disable status
+      const globalSetting = await prisma.adminSettings.findUnique({
+        where: { settingKey: "csp_auto_contribute_disabled" },
+      });
+
+      return {
+        settings,
+        total,
+        page: input.page,
+        totalPages: Math.ceil(total / input.limit),
+        globalDisabled: globalSetting?.settingValue === "true",
+      };
+    }),
+
+  adminToggleAutoContributeGlobal: protectedProcedure
+    .input(z.object({ disabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const adminId = (ctx.session?.user as any)?.id as string;
+      if (!adminId) throw new Error("UNAUTHORIZED");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
+      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+
+      await prisma.adminSettings.upsert({
+        where: { settingKey: "csp_auto_contribute_disabled" },
+        update: { settingValue: input.disabled ? "true" : "false", updatedAt: new Date() },
+        create: { id: randomUUID(), settingKey: "csp_auto_contribute_disabled", settingValue: input.disabled ? "true" : "false", updatedAt: new Date() },
+      });
+
+      return { success: true, globalDisabled: input.disabled };
+    }),
+
+  adminToggleAutoContributeUser: protectedProcedure
+    .input(z.object({ userId: z.string(), disabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const adminId = (ctx.session?.user as any)?.id as string;
+      if (!adminId) throw new Error("UNAUTHORIZED");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
+      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+
+      if (input.disabled) {
+        // Disable this user's auto-contribute
+        await prisma.cspAutoContributeSetting.updateMany({
+          where: { userId: input.userId },
+          data: { isEnabled: false },
+        });
+        await prisma.adminSettings.upsert({
+          where: { settingKey: `csp_auto_contribute_disabled_${input.userId}` },
+          update: { settingValue: "true", updatedAt: new Date() },
+          create: { id: randomUUID(), settingKey: `csp_auto_contribute_disabled_${input.userId}`, settingValue: "true", updatedAt: new Date() },
+        });
+      } else {
+        // Remove per-user disable flag
+        await prisma.adminSettings.deleteMany({
+          where: { settingKey: `csp_auto_contribute_disabled_${input.userId}` },
+        });
+      }
+
+      return { success: true };
+    }),
+
+  adminGetAutoContributeLogs: protectedProcedure
+    .input(z.object({
+      userId: z.string().optional(),
+      page: z.number().int().min(1).default(1),
+      limit: z.number().int().min(1).max(100).default(50),
+    }))
+    .query(async ({ ctx, input }) => {
+      const adminId = (ctx.session?.user as any)?.id as string;
+      if (!adminId) throw new Error("UNAUTHORIZED");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
+      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+
+      const where = input.userId ? { userId: input.userId } : {};
+      const [logs, total] = await Promise.all([
+        prisma.cspAutoContributeLog.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip: (input.page - 1) * input.limit,
+          take: input.limit,
+          include: {
+            User: { select: { id: true, name: true, email: true, firstname: true, lastname: true } },
+            Request: { select: { id: true, purpose: true, amount: true, userId: true } },
+          },
+        }),
+        prisma.cspAutoContributeLog.count({ where }),
+      ]);
+
+      return { logs, total, page: input.page, totalPages: Math.ceil(total / input.limit) };
+    }),
 });
 

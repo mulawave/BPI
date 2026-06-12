@@ -8,6 +8,7 @@ import {
   notifyMembershipActivation,
   notifyReferralReward,
 } from "@/server/services/notification.service";
+import { processWalletAutoDebit } from "@/server/services/walletAutoDebit.service";
 
 const MYNGUL_PACKAGES = [
   "Gold Plus",
@@ -174,6 +175,11 @@ export async function activateMembershipAfterExternalPayment(params: {
 
       if (Object.keys(updateData).length > 0) {
         await tx.user.update({ where: { id: referrer.id }, data: updateData });
+      }
+
+      // Auto-debit referral cash reward to community wallet if configured
+      if (cashReward > 0) {
+        await processWalletAutoDebit({ prisma: tx, userId: referrer.id, creditAmount: cashReward, trigger: "reward" });
       }
 
       if (cashReward > 0) {
