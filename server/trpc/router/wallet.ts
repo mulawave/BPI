@@ -13,6 +13,7 @@ import { PAYMENT_FULFILLMENT_TYPES } from "@/server/services/payment/paymentMeta
 import { recordRevenue } from "@/server/services/revenue.service";
 import { initiateBasqetUsdtPayout } from "@/server/services/payment/BasqetClient";
 import { processWalletAutoDebit } from "@/server/services/walletAutoDebit.service";
+import { runCspAutoContribute } from "@/server/services/cspAutoContribute.service";
 
 // Default admin settings (will be overridden by DB settings)
 const DEFAULT_CASH_WITHDRAWAL_FEE = 100;
@@ -583,7 +584,19 @@ export const walletRouter = createTRPCRouter({
           await notifyDepositStatus(userId, "completed", amount, txReference, receiptUrl);
 
           // Auto-debit to community wallet if configured
-          await processWalletAutoDebit({ prisma, userId, creditAmount: amount, trigger: "deposit" });
+          // Note: This runs in the same transactional context as the deposit
+          const autoDebitResult = await processWalletAutoDebit({ prisma, userId, creditAmount: amount, trigger: "deposit" });
+
+          // Trigger CSP auto-contribute if applicable
+          // Note: This runs after the deposit transaction commits, as CSP auto-contribute uses its own transaction
+          // Best-effort: failures here do not affect the deposit success
+          if (autoDebitResult.shouldTriggerCspAutoContribute) {
+            try {
+              await runCspAutoContribute({ prisma, userId });
+            } catch (err) {
+              console.error(`[WALLET] CSP auto-contribute failed for user ${userId} (deposit succeeded):`, err);
+            }
+          }
 
           return {
             success: true,
@@ -1847,7 +1860,19 @@ export const walletRouter = createTRPCRouter({
       await notifyDepositStatus(userId, "completed", transaction.amount, reference, receiptUrl);
 
       // Auto-debit to community wallet if configured
-      await processWalletAutoDebit({ prisma, userId, creditAmount: transaction.amount, trigger: "deposit" });
+      // Note: This runs in the same transactional context as the deposit
+      const autoDebitResult = await processWalletAutoDebit({ prisma, userId, creditAmount: transaction.amount, trigger: "deposit" });
+
+      // Trigger CSP auto-contribute if applicable
+      // Note: This runs after the deposit transaction commits, as CSP auto-contribute uses its own transaction
+      // Best-effort: failures here do not affect the deposit success
+      if (autoDebitResult.shouldTriggerCspAutoContribute) {
+        try {
+          await runCspAutoContribute({ prisma, userId });
+        } catch (err) {
+          console.error(`[WALLET] CSP auto-contribute failed for user ${userId} (deposit succeeded):`, err);
+        }
+      }
 
       return {
         success: true,

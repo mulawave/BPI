@@ -9,6 +9,7 @@ import {
   notifyReferralReward,
 } from "@/server/services/notification.service";
 import { processWalletAutoDebit } from "@/server/services/walletAutoDebit.service";
+import { runCspAutoContribute } from "@/server/services/cspAutoContribute.service";
 
 const MYNGUL_PACKAGES = [
   "Gold Plus",
@@ -133,6 +134,9 @@ export async function activateMembershipAfterExternalPayment(params: {
   }
 
   // ── Atomic transaction: all financial writes ──
+  // Note: cspTriggerUserIds is declared outside the transaction to collect user IDs during the transaction.
+  // This Set is only used post-commit (after successful transaction), so IDs are only processed if the transaction succeeds.
+  const cspTriggerUserIds = new Set<string>();
   const txResult = await runAtomically(prisma, async (tx) => {
     const distributions: Array<{
       referrerId: string;
@@ -181,7 +185,10 @@ export async function activateMembershipAfterExternalPayment(params: {
 
       // Auto-debit referral cash reward to community wallet if configured
       if (cashReward > 0) {
-        await processWalletAutoDebit({ prisma: tx, userId: referrer.id, creditAmount: cashReward, trigger: "reward" });
+        const autoDebitResult = await processWalletAutoDebit({ prisma: tx, userId: referrer.id, creditAmount: cashReward, trigger: "reward" });
+        if (autoDebitResult.shouldTriggerCspAutoContribute) {
+          cspTriggerUserIds.add(referrer.id);
+        }
       }
 
       if (cashReward > 0) {
@@ -327,6 +334,15 @@ export async function activateMembershipAfterExternalPayment(params: {
     return { distributions, activationPin };
   }, { maxWait: MEMBERSHIP_TX_MAX_WAIT_MS, timeout: MEMBERSHIP_TX_TIMEOUT_MS });
 
+  // ── Post-commit: CSP auto-contribute trigger (best-effort) ──
+  for (const referrerId of cspTriggerUserIds) {
+    try {
+      await runCspAutoContribute({ prisma, userId: referrerId });
+    } catch (err) {
+      console.error(`[MEMBERSHIP] CSP auto-contribute failed for referrer ${referrerId} (core activation succeeded):`, err);
+    }
+  }
+
   // ── Post-commit: BPT distribution (best-effort, uses its own transaction) ──
   for (let i = 0; i < (skipRewards ? 0 : referralChain.length); i++) {
     const referrer = referralChain[i];
@@ -358,6 +374,15 @@ export async function activateMembershipAfterExternalPayment(params: {
       } catch (err) {
         console.error(`[MEMBERSHIP] BPT distribution failed for referrer ${referrer.id} L${level} (core activation succeeded):`, err);
       }
+    }
+  }
+
+  // ── Post-commit: CSP auto-contribute trigger (best-effort) ──
+  for (const userId of cspTriggerUserIds) {
+    try {
+      await runCspAutoContribute({ prisma, userId });
+    } catch (err) {
+      console.error(`[MEMBERSHIP] CSP auto-contribute failed for user ${userId} (core activation succeeded):`, err);
     }
   }
 

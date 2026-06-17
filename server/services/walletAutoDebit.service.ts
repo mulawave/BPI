@@ -19,32 +19,32 @@ export type AutoDebitTrigger = "reward" | "deposit";
 
 /**
  * Attempts to auto-debit from cash wallet to community wallet.
- * Returns the amount transferred (0 if skipped or disabled).
+ * Returns the amount transferred and whether CSP auto-contribute should be triggered.
  */
 export async function processWalletAutoDebit(params: {
   prisma: TxClient;
   userId: string;
   creditAmount: number;
   trigger: AutoDebitTrigger;
-}): Promise<{ transferred: number }> {
+}): Promise<{ transferred: number; shouldTriggerCspAutoContribute: boolean }> {
   const { prisma, userId, creditAmount, trigger } = params;
 
-  if (creditAmount <= 0) return { transferred: 0 };
+  if (creditAmount <= 0) return { transferred: 0, shouldTriggerCspAutoContribute: false };
 
   const setting = await prisma.walletAutoDebitSetting.findUnique({
     where: { userId },
   });
 
-  if (!setting || !setting.isEnabled) return { transferred: 0 };
+  if (!setting || !setting.isEnabled) return { transferred: 0, shouldTriggerCspAutoContribute: false };
 
   // Check if the trigger type is applicable
-  if (trigger === "deposit" && !setting.applyToDeposits) return { transferred: 0 };
-  if (trigger === "reward" && !setting.applyToRewards) return { transferred: 0 };
+  if (trigger === "deposit" && !setting.applyToDeposits) return { transferred: 0, shouldTriggerCspAutoContribute: false };
+  if (trigger === "reward" && !setting.applyToRewards) return { transferred: 0, shouldTriggerCspAutoContribute: false };
 
   const percentage = Math.min(Math.max(setting.percentage, 1), 100);
   const debitAmount = Math.floor(creditAmount * (percentage / 100));
 
-  if (debitAmount <= 0) return { transferred: 0 };
+  if (debitAmount <= 0) return { transferred: 0, shouldTriggerCspAutoContribute: false };
 
   // Check if user has sufficient balance in main wallet
   const user = await prisma.user.findUnique({
@@ -52,7 +52,7 @@ export async function processWalletAutoDebit(params: {
     select: { wallet: true },
   });
 
-  if (!user || user.wallet < debitAmount) return { transferred: 0 };
+  if (!user || user.wallet < debitAmount) return { transferred: 0, shouldTriggerCspAutoContribute: false };
 
   // Debit main wallet, credit community wallet
   await prisma.user.update({
@@ -88,5 +88,37 @@ export async function processWalletAutoDebit(params: {
     },
   });
 
-  return { transferred: debitAmount };
+  // Check if CSP auto-contribute should be triggered
+  let shouldTriggerCspAutoContribute = false;
+  const cspSetting = await prisma.cspAutoContributeSetting.findUnique({
+    where: { userId },
+  });
+
+  if (cspSetting) {
+    // Fetch updated community wallet balance
+    const updatedUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { community: true },
+    });
+
+    if (updatedUser) {
+      const communityBalance = updatedUser.community;
+
+      // Case 1: Already enabled and balance meets minimum
+      if (cspSetting.isEnabled && communityBalance >= (cspSetting.minAmountPerRequest ?? 500)) {
+        shouldTriggerCspAutoContribute = true;
+      }
+      // Case 2: Disabled but minAmountPerRequest is set (previously configured, disabled due to no funds)
+      else if (!cspSetting.isEnabled && (cspSetting.minAmountPerRequest ?? 0) > 0 && communityBalance >= (cspSetting.minAmountPerRequest ?? 500)) {
+        // Re-enable the setting
+        await prisma.cspAutoContributeSetting.update({
+          where: { userId },
+          data: { isEnabled: true },
+        });
+        shouldTriggerCspAutoContribute = true;
+      }
+    }
+  }
+
+  return { transferred: debitAmount, shouldTriggerCspAutoContribute };
 }
