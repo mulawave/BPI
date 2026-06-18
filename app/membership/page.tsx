@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { api } from "@/client/trpc";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import LoadingScreen from "@/components/LoadingScreen";
 import KycWarningBanner from "@/components/kyc/KycWarningBanner";
 import MembershipRenewalPanel from "@/components/membership/MembershipRenewalPanel";
 import toast from "react-hot-toast";
+import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 
 export default function MembershipPage() {
   const { data: packages, isLoading } = api.package.getPackages.useQuery();
@@ -22,12 +23,14 @@ export default function MembershipPage() {
   const { formatAmount, selectedCurrency, currencies, setSelectedCurrencyId } = useCurrency();
   const selectedCurrencyId = selectedCurrency?.id || '';
   const router = useRouter();
+  const utils = api.useUtils();
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [expandedPackages, setExpandedPackages] = useState<Record<string, boolean>>({});
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [claimingPromo, setClaimingPromo] = useState<string | null>(null);
   const [promoClaimSuccess, setPromoClaimSuccess] = useState<{ packageName: string; expiresAt: Date } | null>(null);
-  const [promoJustActivated, setPromoJustActivated] = useState(false);
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const { data: promoData } = api.promoCampaign.getActivePromo.useQuery(undefined, {
     enabled: !activeMembership,
@@ -44,14 +47,40 @@ export default function MembershipPage() {
         packageId,
       });
       toast.dismiss(tid);
+      // Invalidate membership query first to ensure UI state is updated before showing modal
+      await utils.package.getUserActiveMembership.invalidate();
       const claimedPkg = packages?.find((p: any) => p.id === packageId);
       setPromoClaimSuccess({ packageName: claimedPkg?.name || 'Membership', expiresAt: result.expiresAt });
-      setPromoJustActivated(true);
       setClaimingPromo(null);
+      // Start countdown for automatic redirect
+      setRedirectCountdown(5);
     } catch (err: any) {
       toast.error(err.message || 'Failed to claim promo activation.', { id: tid });
       setClaimingPromo(null);
     }
+  };
+
+  // Handle automatic redirect countdown
+  useEffect(() => {
+    if (redirectCountdown === null) return;
+
+    if (redirectCountdown === 0) {
+      setIsRedirecting(true);
+      router.push('/dashboard');
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setRedirectCountdown(redirectCountdown - 1);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [redirectCountdown, router]);
+
+  // Cancel redirect if user manually closes modal
+  const handleManualClose = () => {
+    setRedirectCountdown(null);
+    setPromoClaimSuccess(null);
   };
 
   const togglePackageDetails = (packageId: string) => {
@@ -483,8 +512,8 @@ export default function MembershipPage() {
 
       {/* ── Promo Claim Success Overlay ────────────────────────────────────── */}
       {promoClaimSuccess && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md">
-          <div className="relative w-full max-w-lg mx-4 rounded-3xl overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.6)]">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
+          <div className="relative w-full max-w-lg rounded-3xl overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.6)]">
             {/* Ambient glow layers */}
             <div className="absolute inset-0 bg-gradient-to-br from-[#011f10] via-[#013820] to-[#021c0c]" />
             <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full bg-yellow-400/10 blur-3xl pointer-events-none" />
@@ -493,59 +522,79 @@ export default function MembershipPage() {
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-yellow-400 via-amber-400 to-green-400" />
 
             {/* Main content */}
-            <div className="relative z-10 px-8 pt-10 pb-8 text-center">
+            <div className="relative z-10 px-6 pt-8 pb-6 text-center sm:px-8 sm:pt-10 sm:pb-8">
               {/* Success badge */}
               <div className="mb-1 flex justify-center">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-400/15 border border-green-400/30 px-4 py-1 text-xs font-black uppercase tracking-widest text-green-300">
-                  <Check className="h-3.5 w-3.5 stroke-[3]" /> Activation Successful
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-400/15 border border-green-400/30 px-3 py-1 text-[10px] sm:px-4 sm:py-1 sm:text-xs font-black uppercase tracking-widest text-green-300">
+                  <Check className="h-3 w-3 sm:h-3.5 sm:w-3.5 stroke-[3]" /> Activation Successful
                 </span>
               </div>
 
               {/* Big checkmark */}
-              <div className="mx-auto my-6 relative flex h-24 w-24 items-center justify-center">
+              <div className="mx-auto my-4 sm:my-6 relative flex h-20 w-20 sm:h-24 sm:w-24 items-center justify-center">
                 <div className="absolute inset-0 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 opacity-20 blur-xl" />
-                <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-green-400 to-emerald-500 shadow-xl shadow-green-500/40">
-                  <Check className="h-12 w-12 text-white stroke-[3]" />
+                <div className="relative flex h-20 w-20 sm:h-24 sm:w-24 items-center justify-center rounded-full bg-gradient-to-br from-green-400 to-emerald-500 shadow-xl shadow-green-500/40">
+                  <Check className="h-10 w-10 sm:h-12 sm:w-12 text-white stroke-[3]" />
                 </div>
               </div>
 
               {/* Heading */}
-              <h2 className="text-4xl font-black text-white mb-1">You&apos;re In!</h2>
-              <p className="text-white/50 text-sm mb-3">Your free membership is now active</p>
+              <h2 className="text-3xl sm:text-4xl font-black text-white mb-1">You&apos;re In!</h2>
+              <p className="text-white/50 text-xs sm:text-sm mb-3">Your free membership is now active</p>
 
               {/* Package info pill */}
-              <div className="inline-flex items-center gap-2 rounded-2xl bg-white/5 border border-white/10 px-5 py-3 mb-6">
-                <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
+              <div className="inline-flex items-center gap-2 rounded-2xl bg-white/5 border border-white/10 px-4 py-2.5 sm:px-5 sm:py-3 mb-6">
+                <Star className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-yellow-400 fill-yellow-400" />
                 <div className="text-left">
-                  <p className="text-xs text-white/40 font-medium uppercase tracking-wider">Active Plan</p>
-                  <p className="text-base font-black text-white leading-tight">{promoClaimSuccess.packageName}</p>
+                  <p className="text-[10px] sm:text-xs text-white/40 font-medium uppercase tracking-wider">Active Plan</p>
+                  <p className="text-sm sm:text-base font-black text-white leading-tight">{promoClaimSuccess.packageName}</p>
                 </div>
-                <div className="w-px h-8 bg-white/10 mx-1" />
+                <div className="w-px h-6 sm:h-8 bg-white/10 mx-1" />
                 <div className="text-left">
-                  <p className="text-xs text-white/40 font-medium uppercase tracking-wider">Expires</p>
-                  <p className="text-sm font-semibold text-white/80 leading-tight">
+                  <p className="text-[10px] sm:text-xs text-white/40 font-medium uppercase tracking-wider">Expires</p>
+                  <p className="text-xs sm:text-sm font-semibold text-white/80 leading-tight">
                     {new Date(promoClaimSuccess.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </p>
                 </div>
               </div>
 
               {/* Features row */}
-              <div className="flex flex-wrap justify-center gap-3 mb-8">
+              <div className="flex flex-wrap justify-center gap-2 sm:gap-3 mb-6 sm:mb-8">
                 {['Referral Rewards Active', 'Full Dashboard Access', 'Community Unlocked'].map((f) => (
-                  <span key={f} className="inline-flex items-center gap-1.5 text-xs text-white/50">
-                    <Check className="h-3 w-3 text-green-400 stroke-[3]" /> {f}
+                  <span key={f} className="inline-flex items-center gap-1.5 text-[10px] sm:text-xs text-white/50">
+                    <Check className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-green-400 stroke-[3]" /> {f}
                   </span>
                 ))}
               </div>
 
+              {/* Countdown display */}
+              {redirectCountdown !== null && (
+                <div className="mb-4 sm:mb-6">
+                  <p className="text-white/60 text-xs sm:text-sm mb-2">
+                    {isRedirecting ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Redirecting to dashboard...
+                      </span>
+                    ) : (
+                      `Redirecting to dashboard in ${redirectCountdown} second${redirectCountdown !== 1 ? 's' : ''}...`
+                    )}
+                  </p>
+                </div>
+              )}
+
               {/* PRIMARY CTA — close modal so user reads renewal info below */}
               <button
-                onClick={() => setPromoClaimSuccess(null)}
-                className="group w-full inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 px-8 py-5 text-lg font-black uppercase tracking-widest text-black shadow-2xl shadow-amber-500/25 transition-all duration-200 hover:from-yellow-300 hover:to-amber-400 hover:scale-[1.02] active:scale-[0.98]"
+                onClick={handleManualClose}
+                disabled={isRedirecting}
+                className="group w-full inline-flex items-center justify-center gap-2 sm:gap-3 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 px-6 py-4 sm:px-8 sm:py-5 text-base sm:text-lg font-black uppercase tracking-widest text-black shadow-2xl shadow-amber-500/25 transition-all duration-200 hover:from-yellow-300 hover:to-amber-400 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
-                <Check className="h-5 w-5" />
-                Got it — View My Plan Details
-                <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+                {isRedirecting ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5" />
+                )}
+                {isRedirecting ? 'Redirecting...' : 'Go to Dashboard Now'}
+                {!isRedirecting && <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 transition-transform group-hover:translate-x-1" />}
               </button>
 
               <p className="mt-4 text-[11px] text-white/25 leading-relaxed">
@@ -663,20 +712,6 @@ export default function MembershipPage() {
         {activeMembership?.package && (
           <div className="mb-8">
             <MembershipRenewalPanel />
-          </div>
-        )}
-
-        {/* Post-promo CTA — shown after user closes the success modal and reads their plan info */}
-        {promoJustActivated && promoClaimSuccess === null && (
-          <div className="mb-12 flex justify-center">
-            <a
-              href="/dashboard"
-              className="group inline-flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 px-10 py-5 text-lg font-black uppercase tracking-widest text-black shadow-2xl shadow-amber-500/25 transition-all duration-200 hover:from-yellow-300 hover:to-amber-400 hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <Sparkles className="h-5 w-5" />
-              Proceed to Dashboard
-              <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-            </a>
           </div>
         )}
 
