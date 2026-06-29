@@ -159,8 +159,9 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     minPerContribution: eligibilityQuery.data?.minPerContribution ?? 500,
     requestsContributed: eligibilityQuery.data?.requestsContributed ?? 0,
     minDistinctRequests: eligibilityQuery.data?.minDistinctRequests ?? 10,
-    hasCooldown: eligibilityQuery.data?.cooldown?.isActive ?? false,
-    cooldownEndsAt: eligibilityQuery.data?.cooldown?.cooldownEndsAt ?? null,
+    hasCooldown: waitStatusQuery.data?.hasCooldown ?? eligibilityQuery.data?.cooldown?.isActive ?? false,
+    cooldownEndsAt: waitStatusQuery.data?.cooldownEndsAt ?? eligibilityQuery.data?.cooldown?.cooldownEndsAt ?? null,
+    sponsorProgress: waitStatusQuery.data?.sponsorProgress ?? eligibilityQuery.data?.sponsorProgress ?? null,
   };
 
   const tierProfile = eligibilityQuery.data
@@ -399,29 +400,38 @@ export function CspDashboard({ userName }: CspDashboardProps) {
       )}
 
       {/* Cooldown / wait-period status — visible only when active */}
-      {waitStatusQuery.data?.hasCooldown && waitStatusQuery.data.cooldownEndsAt && (
+      {(waitStatusQuery.data?.hasCooldown || waitStatusQuery.data?.sponsorProgress) && (
         <Card className="p-5 border-l-4 border-l-amber-500 bg-amber-50/60 dark:bg-amber-900/10 dark:border-amber-400">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-start gap-3">
               <TimerReset className="w-6 h-6 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
               <div>
-                <p className="font-semibold text-foreground">Collection Cooldown Active</p>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  You cannot submit a new request until{" "}
-                  <span className="font-medium text-foreground">
-                    {new Date(waitStatusQuery.data.cooldownEndsAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
-                  </span>
-                  {waitStatusQuery.data.cooldownMonths && (
-                    <> ({waitStatusQuery.data.cooldownMonths}-month cooldown)</>
-                  )}
-                  .
+                <p className="font-semibold text-foreground">
+                  {waitStatusQuery.data?.hasCooldown ? "Collection Cooldown Active" : "Sponsor Reduction Progress"}
                 </p>
+                {waitStatusQuery.data?.cooldownEndsAt ? (
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    You cannot submit a new request until{" "}
+                    <span className="font-medium text-foreground">
+                      {new Date(waitStatusQuery.data.cooldownEndsAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                    </span>
+                    {waitStatusQuery.data.cooldownMonths && (
+                      <> ({waitStatusQuery.data.cooldownMonths}-month cooldown)</>
+                    )}
+                    .
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Your sponsor progress is being tracked toward a shorter cooling period.
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* Monthly reduction progress */}
-            {waitStatusQuery.data.monthlyProgress && (
-              <div className="sm:min-w-[220px] space-y-1.5">
+            <div className="sm:min-w-[240px] space-y-3">
+              {/* Monthly reduction progress */}
+              {waitStatusQuery.data?.monthlyProgress && (
+                <div className="space-y-1.5">
                 <div className="flex items-center gap-2">
                   <TrendingDown className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                   <p className="text-xs font-semibold text-foreground">
@@ -443,7 +453,42 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                   )}
                 </p>
               </div>
-            )}
+              )}
+
+              {waitStatusQuery.data?.sponsorProgress && (
+                <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-white/70 dark:bg-amber-950/20 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-semibold text-foreground">Sponsor reduction</span>
+                    <span className="text-muted-foreground">
+                      {waitStatusQuery.data.sponsorProgress.directSponsorCount}/{waitStatusQuery.data.sponsorProgress.requiredCount}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-amber-200 dark:bg-amber-900/40 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-amber-500 transition-all duration-500"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.round((waitStatusQuery.data.sponsorProgress.directSponsorCount / Math.max(1, waitStatusQuery.data.sponsorProgress.requiredCount)) * 100)
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground flex items-center justify-between gap-2">
+                    <span>
+                      {waitStatusQuery.data.sponsorProgress.qualifies
+                        ? `Qualifies for ${waitStatusQuery.data.sponsorProgress.reducedCoolingMonths}-month cooling`
+                        : `Need ${Math.max(0, waitStatusQuery.data.sponsorProgress.requiredCount - waitStatusQuery.data.sponsorProgress.directSponsorCount)} more sponsor(s)`}
+                    </span>
+                    {waitStatusQuery.data.sponsorProgress.reducedCoolingEndsAt && (
+                      <span className="text-foreground font-medium">
+                        Target ends {new Date(waitStatusQuery.data.sponsorProgress.reducedCoolingEndsAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </Card>
       )}
