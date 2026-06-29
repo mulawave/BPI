@@ -31,7 +31,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
   };
 
   return (
-    <footer className="relative bg-gradient-to-br from-green-950 via-bpi-dark-card to-emerald-950 text-gray-300 mt-16">
+    <footer className="site-footer relative bg-gradient-to-br from-green-950 via-bpi-dark-card to-emerald-950 text-gray-300 mt-16">
       {/* Decorative Top Wave */}
       <div className="absolute top-0 left-0 w-full overflow-hidden leading-none">
         <svg className="relative block w-full h-12" viewBox="0 0 1200 120" preserveAspectRatio="none">
@@ -50,7 +50,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-4">
               <img src="/img/logo.png" alt="BPI" className="h-11 w-11 rounded-xl border border-border object-cover flex-shrink-0" />
-              <h3 className="text-2xl font-bold text-white">BeepAgro Palliative Initiative</h3>
+              <h3 className="emerald-display text-2xl font-bold text-white">BeepAgro Palliative Initiative</h3>
             </div>
             <p className="text-gray-400 text-sm leading-relaxed">
               BeepAgro Palliative Initiative - Empowering agricultural communities through innovation, sustainability, and shared prosperity.
@@ -71,7 +71,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={label}
-                  className="w-10 h-10 bg-green-900/30 hover:bg-bpi-primary rounded-lg flex items-center justify-center transition-all duration-300 hover:scale-110 group"
+                  className="site-footer__social w-10 h-10 bg-green-900/30 hover:bg-bpi-primary rounded-lg flex items-center justify-center transition-all duration-300 hover:scale-110 group"
                 >
                   <Icon className="w-5 h-5 text-gray-400 group-hover:text-white transition-colors" />
                 </a>
@@ -161,7 +161,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
       {/* Scroll to Top Button */}
       <button
         onClick={scrollToTop}
-        className="fixed bottom-24 md:bottom-8 right-4 md:right-8 w-12 h-12 bg-gradient-to-br from-bpi-primary to-emerald-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 flex items-center justify-center z-50 group"
+        className="site-footer__totop fixed bottom-24 md:bottom-8 right-4 md:right-8 w-12 h-12 bg-gradient-to-br from-bpi-primary to-emerald-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 flex items-center justify-center z-50 group"
         aria-label="Scroll to top"
       >
         <ChevronUp className="w-6 h-6 group-hover:animate-bounce" />
