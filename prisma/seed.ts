@@ -7,6 +7,10 @@ import { randomUUID } from "crypto";
 import { membershipPackagesSeedData } from "./seed-data/membershipPackages";
 import { adminSettingsSeedData } from "./seed-data/adminSettings";
 import {
+  cspDonationBadgeCategorySeedData,
+  cspTierSeedData,
+} from "./seed-data/cspTiers";
+import {
   initialBptConversionRateSeedData,
   initialBPTokenPriceSeedData,
   systemWalletSeedData,
@@ -105,6 +109,24 @@ async function main() {
       create: settingData,
     });
     console.log(`Seed: ensured admin setting: ${settingData.settingKey}`);
+  }
+
+  for (const tierData of cspTierSeedData) {
+    await prisma.cspTier.upsert({
+      where: { tierNumber: tierData.tierNumber },
+      update: tierData,
+      create: tierData,
+    });
+    console.log(`Seed: ensured CSP tier: ${tierData.tierNumber}`);
+  }
+
+  for (const categoryData of cspDonationBadgeCategorySeedData) {
+    await prisma.cspDonationBadgeCategory.upsert({
+      where: { name: categoryData.name },
+      update: categoryData,
+      create: categoryData,
+    });
+    console.log(`Seed: ensured CSP badge category: ${categoryData.name}`);
   }
 
   // Seed system wallets
