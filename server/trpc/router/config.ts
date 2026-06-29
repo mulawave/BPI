@@ -13,6 +13,20 @@ let publicSettingsInFlight: Promise<Record<string, any>> | null = null;
 let firebaseConfigCache: { value: FirebaseConfigResponse; expiresAt: number } | null = null;
 let firebaseConfigInFlight: Promise<FirebaseConfigResponse> | null = null;
 
+let activeThemeCache: { value: ActiveThemeResponse; expiresAt: number } | null = null;
+let activeThemeInFlight: Promise<ActiveThemeResponse> | null = null;
+
+export const ACTIVE_SITE_THEME_KEY = "active_site_theme";
+export const SUPPORTED_SITE_THEMES = ["default", "emerald"] as const;
+export type SiteTheme = (typeof SUPPORTED_SITE_THEMES)[number];
+type ActiveThemeResponse = { theme: SiteTheme };
+
+function normalizeSiteTheme(value: string | null | undefined): SiteTheme {
+  return (SUPPORTED_SITE_THEMES as readonly string[]).includes(value ?? "")
+    ? (value as SiteTheme)
+    : "default";
+}
+
 function isFresh(expiresAt: number) {
   return expiresAt > Date.now();
 }
@@ -96,6 +110,27 @@ export const configRouter = createTRPCRouter({
       enablePromotionalMaterials: settingsMap.enablePromotionalMaterials ?? true,
       enableLatestUpdates: settingsMap.enableLatestUpdates ?? true,
     };
+  }),
+  getActiveTheme: publicProcedure.query(async (): Promise<ActiveThemeResponse> => {
+    if (activeThemeCache && isFresh(activeThemeCache.expiresAt)) {
+      return activeThemeCache.value;
+    }
+
+    if (!activeThemeInFlight) {
+      activeThemeInFlight = (async (): Promise<ActiveThemeResponse> => {
+        const setting = await prisma.adminSettings.findUnique({
+          where: { settingKey: ACTIVE_SITE_THEME_KEY },
+          select: { settingValue: true },
+        });
+        const value: ActiveThemeResponse = { theme: normalizeSiteTheme(setting?.settingValue) };
+        activeThemeCache = { value, expiresAt: Date.now() + CONFIG_CACHE_TTL_MS };
+        return value;
+      })().finally(() => {
+        activeThemeInFlight = null;
+      });
+    }
+
+    return activeThemeInFlight;
   }),
   getPublicSettings: publicProcedure.query(async () => {
     if (publicSettingsCache && isFresh(publicSettingsCache.expiresAt)) {

@@ -1,0 +1,208 @@
+/*
+ * Emerald Dynasty — luxury premium theme layer.
+ *
+ * Activated site-wide only when <html data-brand="emerald"> is present
+ * (driven by the `active_site_theme` AdminSetting via BrandThemeApplier).
+ * When absent, the default BPI brand is preserved untouched.
+ *
+ * Strategy: remap the existing ShadCN design-token CSS variables so every
+ * component that already consumes `--background`, `--primary`, etc. inherits
+ * the Emerald Dynasty palette automatically. Bespoke chrome/dashboard styling
+ * is layered on top in later phases via the `.emerald-*` utility classes.
+ *
+ * Palette (from the brand board):
+ *   Emerald Palace   #0A5E4E   168 81% 20%
+ *   Forest Depth     #093B33   170 73% 13%
+ *   Champagne Gold   #D8C08A    41 50% 69%
+ *   Ivory Silk       #F2EDE1    42 40% 92%
+ *   Royal Teal       #103F46   188 63% 17%
+ *   Dynasty Shade    #071B1E   188 63%  7%
+ */
+
+/* ---- Light (default mode) ---- */
+html[data-brand="emerald"],
+html[data-brand="emerald"][data-theme="light"] {
+  --background: 42 40% 92%;
+  --foreground: 188 63% 9%;
+  --card: 42 44% 96%;
+  --card-foreground: 188 63% 9%;
+  --popover: 42 44% 96%;
+  --popover-foreground: 188 63% 9%;
+  --primary: 168 81% 20%;
+  --primary-foreground: 42 44% 96%;
+  --secondary: 41 50% 69%;
+  --secondary-foreground: 170 73% 13%;
+  --muted: 168 24% 88%;
+  --muted-foreground: 188 28% 30%;
+  --accent: 41 52% 84%;
+  --accent-foreground: 170 73% 13%;
+  --destructive: 0 72% 46%;
+  --destructive-foreground: 42 44% 96%;
+  --border: 41 28% 80%;
+  --input: 41 28% 80%;
+  --ring: 41 50% 52%;
+  --radius: 0.9rem;
+
+  /* Emerald Dynasty brand tokens (consumed by .emerald-* utilities) */
+  --emerald-palace: 168 81% 20%;
+  --forest-depth: 170 73% 13%;
+  --champagne-gold: 41 50% 69%;
+  --ivory-silk: 42 40% 92%;
+  --royal-teal: 188 63% 17%;
+  --dynasty-shade: 188 63% 7%;
+  --gold-soft: 41 56% 78%;
+}
+
+/* ---- Dark mode ---- */
+html[data-brand="emerald"][data-theme="dark"] {
+  --background: 188 63% 7%;
+  --foreground: 42 40% 92%;
+  --card: 172 58% 11%;
+  --card-foreground: 42 40% 92%;
+  --popover: 172 58% 11%;
+  --popover-foreground: 42 40% 92%;
+  --primary: 168 64% 34%;
+  --primary-foreground: 42 44% 96%;
+  --secondary: 41 50% 69%;
+  --secondary-foreground: 188 63% 9%;
+  --muted: 172 38% 16%;
+  --muted-foreground: 41 24% 72%;
+  --accent: 188 48% 18%;
+  --accent-foreground: 41 52% 76%;
+  --destructive: 0 62% 42%;
+  --destructive-foreground: 42 44% 96%;
+  --border: 172 34% 20%;
+  --input: 172 34% 20%;
+  --ring: 41 50% 58%;
+  --radius: 0.9rem;
+}
+
+/* Keep the nested `.dark` wrapper in sync with the dark palette so legacy
+   `dark:` utilities and `.dark`-scoped variables match the emerald dark theme. */
+html[data-brand="emerald"] .dark {
+  --background: 188 63% 7%;
+  --foreground: 42 40% 92%;
+  --card: 172 58% 11%;
+  --card-foreground: 42 40% 92%;
+  --popover: 172 58% 11%;
+  --popover-foreground: 42 40% 92%;
+  --primary: 168 64% 34%;
+  --primary-foreground: 42 44% 96%;
+  --secondary: 41 50% 69%;
+  --secondary-foreground: 188 63% 9%;
+  --muted: 172 38% 16%;
+  --muted-foreground: 41 24% 72%;
+  --accent: 188 48% 18%;
+  --accent-foreground: 41 52% 76%;
+  --border: 172 34% 20%;
+  --input: 172 34% 20%;
+  --ring: 41 50% 58%;
+}
+
+/* ============================================================
+ * Premium utility layer — only meaningful under the emerald brand.
+ * ============================================================ */
+html[data-brand="emerald"] {
+  --emerald-gradient-royal: linear-gradient(135deg, hsl(188 63% 7%) 0%, hsl(170 73% 13%) 45%, hsl(168 81% 20%) 100%);
+  --emerald-gradient-gold: linear-gradient(135deg, hsl(41 56% 80%) 0%, hsl(41 50% 69%) 50%, hsl(38 45% 55%) 100%);
+  --emerald-shadow-luxe: 0 18px 50px -18px hsl(188 63% 7% / 0.55);
+  --emerald-shadow-gold: 0 10px 30px -12px hsl(41 50% 45% / 0.45);
+}
+
+/* Display serif for headings under the luxury theme */
+html[data-brand="emerald"] .emerald-display,
+html[data-brand="emerald"] h1.emerald-display,
+html[data-brand="emerald"] h2.emerald-display {
+  font-family: var(--font-display, "Playfair Display"), Georgia, serif;
+  letter-spacing: 0.01em;
+}
+
+/* Gold foil text */
+html[data-brand="emerald"] .emerald-gold-text {
+  background: var(--emerald-gradient-gold);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Luxe surface card */
+html[data-brand="emerald"] .emerald-card {
+  background-color: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  box-shadow: var(--emerald-shadow-luxe);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Hairline gold top accent for premium panels */
+html[data-brand="emerald"] .emerald-accent-top::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--emerald-gradient-gold);
+  opacity: 0.85;
+}
+
+/* Royal gradient surface (headers/hero) */
+html[data-brand="emerald"] .emerald-royal-surface {
+  background: var(--emerald-gradient-royal);
+  color: hsl(var(--ivory-silk, 42 40% 92%));
+}
+
+/* Stateful gold button accent */
+html[data-brand="emerald"] .emerald-gold-btn {
+  background: var(--emerald-gradient-gold);
+  color: hsl(170 73% 13%);
+  border: 1px solid hsl(41 45% 60%);
+  box-shadow: var(--emerald-shadow-gold);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+html[data-brand="emerald"] .emerald-gold-btn:hover {
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px -12px hsl(41 50% 40% / 0.55);
+}
+html[data-brand="emerald"] .emerald-gold-btn:active {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+html[data-brand="emerald"] .emerald-gold-btn:disabled {
+  opacity: 0.55;
+  filter: grayscale(0.3);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Subtle gold ring on focusable interactive elements */
+html[data-brand="emerald"] .emerald-focusable:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(41 50% 58%);
+}
+
+/* Shimmering gold sweep for premium emphasis */
+@keyframes emerald-sheen {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+html[data-brand="emerald"] .emerald-sheen {
+  position: relative;
+  overflow: hidden;
+}
+html[data-brand="emerald"] .emerald-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, hsl(41 60% 85% / 0.35) 50%, transparent 70%);
+  transform: translateX(-120%);
+  animation: emerald-sheen 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-brand="emerald"] .emerald-sheen::after {
+    animation: none;
+  }
+}
