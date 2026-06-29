@@ -163,6 +163,19 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     cooldownEndsAt: eligibilityQuery.data?.cooldown?.cooldownEndsAt ?? null,
   };
 
+  const tierProfile = eligibilityQuery.data
+    ? {
+        contributionRight: eligibilityQuery.data.contributionRight ?? 0,
+        currentTier: eligibilityQuery.data.currentTier ?? null,
+        maxSupportCap: eligibilityQuery.data.maxSupportCap ?? 0,
+        amountToNextTier: eligibilityQuery.data.amountToNextTier ?? null,
+        kycApproved: eligibilityQuery.data.kycApproved ?? false,
+        autoDebitEnabled: eligibilityQuery.data.autoDebitEnabled ?? false,
+        autoContributeEnabled: eligibilityQuery.data.autoContributeEnabled ?? false,
+        contributionMultiplier: eligibilityQuery.data.contributionMultiplier ?? 20,
+      }
+    : null;
+
   // Use userDetails wallet as primary source — it's already cached by DashboardContent
   // so balances appear instantly without waiting for the slow getEligibility response.
   const balances = {
@@ -336,6 +349,54 @@ export function CspDashboard({ userName }: CspDashboardProps) {
           <Users className="w-6 h-6 text-blue-600" />
         </Card>
       </div>
+
+      {tierProfile && (
+        <Card className="p-5 bg-white dark:bg-bpi-dark-card space-y-4">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-emerald-600" />
+            <h4 className="font-semibold text-foreground">Contribution Right</h4>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
+              <p className="text-xs text-muted-foreground">Contribution Right</p>
+              <p className="text-xl font-bold text-foreground">{formatAmount(tierProfile.contributionRight)}</p>
+            </div>
+            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
+              <p className="text-xs text-muted-foreground">Current Tier</p>
+              <p className="text-xl font-bold text-foreground">
+                {tierProfile.currentTier ? `${tierProfile.currentTier.name} (#${tierProfile.currentTier.tierNumber})` : "No tier yet"}
+              </p>
+            </div>
+            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
+              <p className="text-xs text-muted-foreground">Max Support Cap</p>
+              <p className="text-xl font-bold text-foreground">{formatAmount(tierProfile.maxSupportCap)}</p>
+            </div>
+            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
+              <p className="text-xs text-muted-foreground">To Next Tier</p>
+              <p className="text-xl font-bold text-foreground">
+                {tierProfile.amountToNextTier == null ? "--" : formatAmount(Math.max(0, tierProfile.amountToNextTier))}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 text-xs font-medium">
+            <span className={`px-2 py-1 rounded-full ${tierProfile.kycApproved ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
+              {tierProfile.kycApproved ? "KYC approved" : "KYC pending"}
+            </span>
+            <span className={`px-2 py-1 rounded-full ${tierProfile.autoDebitEnabled ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
+              {tierProfile.autoDebitEnabled ? "Auto-Debit enabled" : "Auto-Debit off"}
+            </span>
+            <span className={`px-2 py-1 rounded-full ${tierProfile.autoContributeEnabled ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
+              {tierProfile.autoContributeEnabled ? "Auto-Contribute enabled" : "Auto-Contribute off"}
+            </span>
+          </div>
+
+          <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/70 dark:bg-emerald-900/10 px-4 py-3 text-sm text-foreground">
+            <span className="font-semibold">Tier calculator: </span>
+            Contribution Right × {tierProfile.contributionMultiplier} = {formatAmount(tierProfile.contributionRight * tierProfile.contributionMultiplier)}
+          </div>
+        </Card>
+      )}
 
       {/* Cooldown / wait-period status — visible only when active */}
       {waitStatusQuery.data?.hasCooldown && waitStatusQuery.data.cooldownEndsAt && (

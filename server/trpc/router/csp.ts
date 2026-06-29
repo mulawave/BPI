@@ -12,6 +12,13 @@ import {
   notifyCspRequestRejected,
   notifyCspRequestSubmitted,
 } from "@/server/services/notification.service";
+import {
+  buildTierSnapshot,
+  ensureMemberStanding,
+  loadActiveTiers,
+  reconcileMemberStandingContributionRight,
+  validateTierSupportRequest,
+} from "@/server/services/csp-tier.service";
 
 // Hardcoded fallback defaults – overridden by AdminSettings when set
 const DEFAULTS = {
@@ -305,8 +312,9 @@ export const cspRouter = createTRPCRouter({
     if (!userId) throw new Error("UNAUTHORIZED");
 
     // ── Phase 1: fetch config + user profile in parallel ─────────────────────
-    const [config, user] = await Promise.all([
+    const [config, tierConfig, user] = await Promise.all([
       loadEligibilityConfig(prisma),
+      loadTierConfig(prisma),
       prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -331,6 +339,11 @@ export const cspRouter = createTRPCRouter({
       userCountryRecord,
       anyActivatedCountry,
       latestReleased,
+      memberStanding,
+      activeTiers,
+      latestKycSubmission,
+      autoDebitSetting,
+      autoContributeSetting,
     ] = await Promise.all([
       // Membership name lookup (null-safe)
       user?.activeMembershipPackageId
@@ -373,6 +386,22 @@ export const cspRouter = createTRPCRouter({
         orderBy: { releasedAt: "desc" },
         select: { id: true, cooldownEndsAt: true, cooldownMonths: true, releasedAt: true },
       }),
+
+      ensureMemberStanding(prisma, userId),
+      loadActiveTiers(prisma),
+      prisma.kycSubmission.findFirst({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        select: { status: true },
+      }),
+      prisma.walletAutoDebitSetting.findUnique({
+        where: { userId },
+        select: { isEnabled: true },
+      }),
+      prisma.cspAutoContributeSetting.findUnique({
+        where: { userId },
+        select: { isEnabled: true },
+      }),
     ]);
 
     const membershipName = membershipRow?.name ?? null;
@@ -387,6 +416,17 @@ export const cspRouter = createTRPCRouter({
 
     const userCountryIsActivated = userCountryRecord?.isNationalActive ?? false;
     const hasAnyActivatedCountry = anyActivatedCountry !== null;
+    const kycApproved = latestKycSubmission?.status === "approved";
+    const autoDebitEnabled = autoDebitSetting?.isEnabled ?? false;
+    const autoContributeEnabled = autoContributeSetting?.isEnabled ?? false;
+    const tierSnapshot = buildTierSnapshot(activeTiers, memberStanding.contributionRight);
+    const tierEligibility = !tierConfig.tierModelEnabled || (
+      (!tierConfig.requireKyc || kycApproved) &&
+      (!tierConfig.requireAutoDebit || autoDebitEnabled) &&
+      (!tierConfig.requireAutoContribute || autoContributeEnabled) &&
+      memberStanding.contributionRight >= tierConfig.minContributionRight &&
+      tierSnapshot.tier !== null
+    );
 
     // ── Phase 3: qualified-directs count (depends on referredIds + pkg IDs) ───
     let qualifiedDirects = 0;
@@ -408,6 +448,13 @@ export const cspRouter = createTRPCRouter({
       global: computeEligibilityFlags({ category: "global", membership, membershipActive, qualifiedDirects, cumulativeContributions, requestsContributed, hasAnyActivatedCountry, userCountryIsActivated, config }),
     } as const;
 
+    const tierAdjustedCategories = tierConfig.tierModelEnabled
+      ? {
+          national: { ...categories.national, eligible: categories.national.eligible && tierEligibility },
+          global: { ...categories.global, eligible: categories.global.eligible && tierEligibility },
+        }
+      : categories;
+
     const cooldownActive = latestReleased?.cooldownEndsAt ? latestReleased.cooldownEndsAt > new Date() : false;
 
     return {
@@ -421,7 +468,16 @@ export const cspRouter = createTRPCRouter({
       minDistinctRequests: config.national.minDistinctRequests,
       minPerContribution: config.minPerContribution,
       requestsContributed,
-      categories,
+      categories: tierAdjustedCategories,
+      contributionRight: memberStanding.contributionRight,
+      currentTier: tierSnapshot.currentTier,
+      maxSupportCap: tierSnapshot.maxSupportCap,
+      amountToNextTier: tierSnapshot.amountToNextTier,
+      contributionMultiplier: tierConfig.contributionMultiplier,
+      tierModelEnabled: tierConfig.tierModelEnabled,
+      kycApproved,
+      autoDebitEnabled,
+      autoContributeEnabled,
       walletBalance: (user as any)?.wallet ?? 0,
       communityBalance: (user as any)?.community ?? 0,
       userCountryCode,
@@ -466,8 +522,9 @@ export const cspRouter = createTRPCRouter({
       const userId = (ctx.session?.user as any)?.id as string | undefined;
       if (!userId) throw new Error("UNAUTHORIZED");
 
-      const [config, user] = await Promise.all([
+      const [config, tierConfig, user] = await Promise.all([
         loadEligibilityConfig(prisma),
+        loadTierConfig(prisma),
         prisma.user.findUnique({
           where: { id: userId },
           select: { activeMembershipPackageId: true, membershipActivatedAt: true, country: true, community: true },
@@ -566,6 +623,53 @@ export const cspRouter = createTRPCRouter({
       });
       if (existingActive) throw new Error("You already have an active or pending support request.");
 
+      let tierStanding: Awaited<ReturnType<typeof ensureMemberStanding>> | null = null;
+      let tierResult: ReturnType<typeof validateTierSupportRequest> | null = null;
+      if (tierConfig.tierModelEnabled) {
+        const [standing, tiers, latestKyc, autoDebit, autoContribute] = await Promise.all([
+          ensureMemberStanding(prisma, userId),
+          loadActiveTiers(prisma),
+          prisma.kycSubmission.findFirst({
+            where: { userId },
+            orderBy: { createdAt: "desc" },
+            select: { status: true },
+          }),
+          prisma.walletAutoDebitSetting.findUnique({
+            where: { userId },
+            select: { isEnabled: true },
+          }),
+          prisma.cspAutoContributeSetting.findUnique({
+            where: { userId },
+            select: { isEnabled: true },
+          }),
+        ]);
+
+        tierStanding = standing;
+        tierResult = validateTierSupportRequest(tiers, standing.contributionRight, requestedAmount);
+
+        const kycApproved = latestKyc?.status === "approved";
+        const autoDebitEnabled = autoDebit?.isEnabled ?? false;
+        const autoContributeEnabled = autoContribute?.isEnabled ?? false;
+
+        if (!hasCspWaiver) {
+          if (tierConfig.requireKyc && !kycApproved) {
+            throw new Error("KYC approval is required for tier-based CSP requests.");
+          }
+          if (tierConfig.requireAutoDebit && !autoDebitEnabled) {
+            throw new Error("Auto-Debit must be enabled for tier-based CSP requests.");
+          }
+          if (tierConfig.requireAutoContribute && !autoContributeEnabled) {
+            throw new Error("Auto-Contribute must be enabled for tier-based CSP requests.");
+          }
+          if (standing.contributionRight < tierConfig.minContributionRight) {
+            throw new Error(`You need at least ₦${tierConfig.minContributionRight.toLocaleString()} in Contribution Right to request support.`);
+          }
+          if (!tierResult?.ok) {
+            throw new Error(tierResult?.reason ?? "You are not yet eligible for a tier-based support request.");
+          }
+        }
+      }
+
       // Apply 20% markup: the broadcast target is 120% of the requested amount
       const rules = config[input.category];
       const requestedAmount = input.amount;
@@ -585,6 +689,13 @@ export const cspRouter = createTRPCRouter({
           raisedAmount: 0,
           contributorsCount: 0,
           countryCode: userCountryCode,
+          ...(tierResult?.currentTier
+            ? {
+                tierNumber: tierResult.currentTier.tierNumber,
+                tierContributionRight: tierStanding?.contributionRight ?? null,
+                minFulfilmentPct: tierResult.tier?.minFulfilmentPct ?? null,
+              }
+            : {}),
         },
       });
 
@@ -862,6 +973,8 @@ export const cspRouter = createTRPCRouter({
             walletType: input.walletType,
           },
         });
+
+        await reconcileMemberStandingContributionRight(tx, contributorId);
 
         const newStatus = newRaisedAmount >= request.thresholdAmount ? "ready_for_release" : request.status;
 
@@ -1900,4 +2013,3 @@ export const cspRouter = createTRPCRouter({
       return { logs, total, page: input.page, totalPages: Math.ceil(total / input.limit) };
     }),
 });
-
