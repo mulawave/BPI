@@ -124,7 +124,7 @@ async function loadEligibilityConfig(db: typeof prisma): Promise<EligibilityConf
 }
 
 const TIER_CONFIG_DEFAULTS: TierConfig = {
-  tierModelEnabled: false,
+  tierModelEnabled: true,
   contributionMultiplier: 20,
   minContributionRight: 10000,
   requireKyc: false,

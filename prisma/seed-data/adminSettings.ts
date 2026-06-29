@@ -34,7 +34,7 @@ export const adminSettingsSeedData: Prisma.AdminSettingsCreateInput[] = [
     id: randomUUID(),
     updatedAt: new Date(),
     settingKey: "csp_tier_model_enabled",
-    settingValue: "false",
+    settingValue: "true",
     description: "Enable CSP tier model",
   },
   {

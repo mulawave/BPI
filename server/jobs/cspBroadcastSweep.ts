@@ -69,7 +69,7 @@ export async function loadTierConfig(db = prisma): Promise<TierConfig> {
   const values = new Map(rows.map((row) => [row.settingKey, row.settingValue]));
 
   return {
-    tierModelEnabled: parseBoolSetting(values.get("csp_tier_model_enabled"), false),
+    tierModelEnabled: parseBoolSetting(values.get("csp_tier_model_enabled"), true),
     autoExtensionHours: parseIntSetting(values.get("csp_auto_extension_hours"), 48),
     maxAutoExtensions: parseIntSetting(values.get("csp_max_auto_extensions"), 3),
     defaultCoolingMonthsMin: parseIntSetting(values.get("csp_default_cooling_months_min"), 12),
