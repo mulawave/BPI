@@ -12,6 +12,17 @@ import {
   notifyCspRequestRejected,
   notifyCspRequestSubmitted,
 } from "@/server/services/notification.service";
+import {
+  buildTierSnapshot,
+  ensureMemberStanding,
+  loadActiveTiers,
+  reconcileMemberStandingContributionRight,
+  validateTierSupportRequest,
+} from "@/server/services/csp-tier.service";
+import {
+  reconcileSponsorCoolingProgress,
+  selectEffectiveCoolingState,
+} from "@/server/services/csp-cooling.service";
 
 // Hardcoded fallback defaults – overridden by AdminSettings when set
 const DEFAULTS = {
@@ -305,8 +316,9 @@ export const cspRouter = createTRPCRouter({
     if (!userId) throw new Error("UNAUTHORIZED");
 
     // ── Phase 1: fetch config + user profile in parallel ─────────────────────
-    const [config, user] = await Promise.all([
+    const [config, tierConfig, user] = await Promise.all([
       loadEligibilityConfig(prisma),
+      loadTierConfig(prisma),
       prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -331,6 +343,11 @@ export const cspRouter = createTRPCRouter({
       userCountryRecord,
       anyActivatedCountry,
       latestReleased,
+      memberStanding,
+      activeTiers,
+      latestKycSubmission,
+      autoDebitSetting,
+      autoContributeSetting,
     ] = await Promise.all([
       // Membership name lookup (null-safe)
       user?.activeMembershipPackageId
@@ -373,6 +390,22 @@ export const cspRouter = createTRPCRouter({
         orderBy: { releasedAt: "desc" },
         select: { id: true, cooldownEndsAt: true, cooldownMonths: true, releasedAt: true },
       }),
+
+      ensureMemberStanding(prisma, userId),
+      loadActiveTiers(prisma),
+      prisma.kycSubmission.findFirst({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        select: { status: true },
+      }),
+      prisma.walletAutoDebitSetting.findUnique({
+        where: { userId },
+        select: { isEnabled: true },
+      }),
+      prisma.cspAutoContributeSetting.findUnique({
+        where: { userId },
+        select: { isEnabled: true },
+      }),
     ]);
 
     const membershipName = membershipRow?.name ?? null;
@@ -387,6 +420,44 @@ export const cspRouter = createTRPCRouter({
 
     const userCountryIsActivated = userCountryRecord?.isNationalActive ?? false;
     const hasAnyActivatedCountry = anyActivatedCountry !== null;
+    const kycApproved = latestKycSubmission?.status === "approved";
+    const autoDebitEnabled = autoDebitSetting?.isEnabled ?? false;
+    const autoContributeEnabled = autoContributeSetting?.isEnabled ?? false;
+    const tierSnapshot = buildTierSnapshot(activeTiers, memberStanding.contributionRight);
+    const sponsorProgress = tierConfig.tierModelEnabled
+      ? await prisma.$transaction((tx) =>
+          reconcileSponsorCoolingProgress(
+            tx,
+            userId,
+            {
+              sponsorshipRequiredCount: tierConfig.sponsorshipRequiredCount,
+              sponsorshipReducedCoolingMonths: tierConfig.sponsorshipReducedCoolingMonths,
+              sponsorshipRequiresKyc: tierConfig.sponsorshipRequiresKyc,
+              sponsorshipRequiresRegularPlus: tierConfig.sponsorshipRequiresRegularPlus,
+              sponsorshipAutoApply: tierConfig.sponsorshipAutoApply,
+            },
+            { autoApply: tierConfig.sponsorshipAutoApply }
+          )
+        )
+      : null;
+    const cooling = selectEffectiveCoolingState({
+      tierModelEnabled: tierConfig.tierModelEnabled,
+      releasedCooldownEndsAt: latestReleased?.cooldownEndsAt ?? null,
+      releasedCooldownMonths: latestReleased?.cooldownMonths ?? null,
+      standingCoolingEndsAt: sponsorProgress?.standing.coolingEndsAt ?? memberStanding.coolingEndsAt ?? null,
+      standingCoolingMonthsBase: sponsorProgress?.standing.coolingMonthsBase ?? memberStanding.coolingMonthsBase ?? null,
+      standingLastSupportReleasedAt: sponsorProgress?.standing.lastSupportReleasedAt ?? memberStanding.lastSupportReleasedAt ?? null,
+      now: new Date(),
+    });
+    const tierStanding = sponsorProgress?.standing ?? memberStanding;
+    const tierEligibility = !tierConfig.tierModelEnabled || (
+      (!tierConfig.requireKyc || kycApproved) &&
+      (!tierConfig.requireAutoDebit || autoDebitEnabled) &&
+      (!tierConfig.requireAutoContribute || autoContributeEnabled) &&
+      tierStanding.contributionRight >= tierConfig.minContributionRight &&
+      tierSnapshot.tier !== null &&
+      !cooling.isActive
+    );
 
     // ── Phase 3: qualified-directs count (depends on referredIds + pkg IDs) ───
     let qualifiedDirects = 0;
@@ -408,7 +479,12 @@ export const cspRouter = createTRPCRouter({
       global: computeEligibilityFlags({ category: "global", membership, membershipActive, qualifiedDirects, cumulativeContributions, requestsContributed, hasAnyActivatedCountry, userCountryIsActivated, config }),
     } as const;
 
-    const cooldownActive = latestReleased?.cooldownEndsAt ? latestReleased.cooldownEndsAt > new Date() : false;
+    const tierAdjustedCategories = tierConfig.tierModelEnabled
+      ? {
+          national: { ...categories.national, eligible: categories.national.eligible && tierEligibility },
+          global: { ...categories.global, eligible: categories.global.eligible && tierEligibility },
+        }
+      : categories;
 
     return {
       membershipName,
@@ -421,19 +497,50 @@ export const cspRouter = createTRPCRouter({
       minDistinctRequests: config.national.minDistinctRequests,
       minPerContribution: config.minPerContribution,
       requestsContributed,
-      categories,
+      categories: tierAdjustedCategories,
+      contributionRight: memberStanding.contributionRight,
+      currentTier: tierSnapshot.currentTier,
+      maxSupportCap: tierSnapshot.maxSupportCap,
+      amountToNextTier: tierSnapshot.amountToNextTier,
+      contributionMultiplier: tierConfig.contributionMultiplier,
+      tierModelEnabled: tierConfig.tierModelEnabled,
+      kycApproved,
+      autoDebitEnabled,
+      autoContributeEnabled,
       walletBalance: (user as any)?.wallet ?? 0,
       communityBalance: (user as any)?.community ?? 0,
       userCountryCode,
       userCountryIsActivated,
       hasAnyActivatedCountry,
-      cooldown: latestReleased ? {
-        requestId: latestReleased.id,
-        cooldownMonths: latestReleased.cooldownMonths,
-        cooldownEndsAt: latestReleased.cooldownEndsAt,
-        releasedAt: latestReleased.releasedAt,
-        isActive: cooldownActive,
-      } : null,
+      cooldown: tierConfig.tierModelEnabled
+        ? (cooling.cooldownEndsAt
+            ? {
+                source: cooling.source,
+                requestId: latestReleased?.id ?? null,
+                cooldownMonths: cooling.cooldownMonths,
+                cooldownEndsAt: cooling.cooldownEndsAt,
+                releasedAt: cooling.lastSupportReleasedAt,
+                isActive: cooling.isActive,
+              }
+            : null)
+        : (latestReleased ? {
+            requestId: latestReleased.id,
+            cooldownMonths: latestReleased.cooldownMonths,
+            cooldownEndsAt: latestReleased.cooldownEndsAt,
+            releasedAt: latestReleased.releasedAt,
+            isActive: cooling.isActive,
+          } : null),
+      sponsorProgress: tierConfig.tierModelEnabled
+        ? {
+            directSponsorCount: tierStanding.directSponsorCount,
+            requiredCount: tierConfig.sponsorshipRequiredCount,
+            reducedCoolingMonths: tierConfig.sponsorshipReducedCoolingMonths,
+            reducedCoolingEndsAt: sponsorProgress?.decision.reducedCoolingEndsAt ?? null,
+            qualifies: sponsorProgress?.decision.qualifies ?? false,
+            shouldShorten: sponsorProgress?.decision.shouldShorten ?? false,
+            applied: sponsorProgress?.applied ?? false,
+          }
+        : null,
       categoryConfig: {
         national: {
           label: "National",
@@ -466,8 +573,9 @@ export const cspRouter = createTRPCRouter({
       const userId = (ctx.session?.user as any)?.id as string | undefined;
       if (!userId) throw new Error("UNAUTHORIZED");
 
-      const [config, user] = await Promise.all([
+      const [config, tierConfig, user] = await Promise.all([
         loadEligibilityConfig(prisma),
+        loadTierConfig(prisma),
         prisma.user.findUnique({
           where: { id: userId },
           select: { activeMembershipPackageId: true, membershipActivatedAt: true, country: true, community: true },
@@ -551,20 +659,81 @@ export const cspRouter = createTRPCRouter({
         }
       }
 
-      // Enforce cooldown from last released request
-      const latestReleased = await prisma.cspSupportRequest.findFirst({
-        where: { userId, status: "released", cooldownEndsAt: { not: null } },
-        orderBy: { releasedAt: "desc" },
-        select: { cooldownEndsAt: true },
-      });
-      if (latestReleased?.cooldownEndsAt && latestReleased.cooldownEndsAt > new Date()) {
-        throw new Error(`You are in a cooldown period. Your earliest next request date is ${latestReleased.cooldownEndsAt.toLocaleDateString()}.`);
+      // Enforce cooldown from the active source for the current mode
+      if (tierConfig.tierModelEnabled) {
+        const standing = await ensureMemberStanding(prisma, userId);
+        const cooling = selectEffectiveCoolingState({
+          tierModelEnabled: true,
+          releasedCooldownEndsAt: null,
+          standingCoolingEndsAt: standing.coolingEndsAt ?? null,
+          standingCoolingMonthsBase: standing.coolingMonthsBase ?? null,
+          standingLastSupportReleasedAt: standing.lastSupportReleasedAt ?? null,
+        });
+        if (cooling.isActive && cooling.cooldownEndsAt) {
+          throw new Error(`You are in a cooldown period. Your earliest next request date is ${cooling.cooldownEndsAt.toLocaleDateString()}.`);
+        }
+      } else {
+        const latestReleased = await prisma.cspSupportRequest.findFirst({
+          where: { userId, status: "released", cooldownEndsAt: { not: null } },
+          orderBy: { releasedAt: "desc" },
+          select: { cooldownEndsAt: true },
+        });
+        if (latestReleased?.cooldownEndsAt && latestReleased.cooldownEndsAt > new Date()) {
+          throw new Error(`You are in a cooldown period. Your earliest next request date is ${latestReleased.cooldownEndsAt.toLocaleDateString()}.`);
+        }
       }
 
       const existingActive = await prisma.cspSupportRequest.findFirst({
         where: { userId, status: { in: ["pending", "broadcasting", "approved"] } },
       });
       if (existingActive) throw new Error("You already have an active or pending support request.");
+
+      let tierStanding: Awaited<ReturnType<typeof ensureMemberStanding>> | null = null;
+      let tierResult: ReturnType<typeof validateTierSupportRequest> | null = null;
+      if (tierConfig.tierModelEnabled) {
+        const [standing, tiers, latestKyc, autoDebit, autoContribute] = await Promise.all([
+          ensureMemberStanding(prisma, userId),
+          loadActiveTiers(prisma),
+          prisma.kycSubmission.findFirst({
+            where: { userId },
+            orderBy: { createdAt: "desc" },
+            select: { status: true },
+          }),
+          prisma.walletAutoDebitSetting.findUnique({
+            where: { userId },
+            select: { isEnabled: true },
+          }),
+          prisma.cspAutoContributeSetting.findUnique({
+            where: { userId },
+            select: { isEnabled: true },
+          }),
+        ]);
+
+        tierStanding = standing;
+        tierResult = validateTierSupportRequest(tiers, standing.contributionRight, requestedAmount);
+
+        const kycApproved = latestKyc?.status === "approved";
+        const autoDebitEnabled = autoDebit?.isEnabled ?? false;
+        const autoContributeEnabled = autoContribute?.isEnabled ?? false;
+
+        if (!hasCspWaiver) {
+          if (tierConfig.requireKyc && !kycApproved) {
+            throw new Error("KYC approval is required for tier-based CSP requests.");
+          }
+          if (tierConfig.requireAutoDebit && !autoDebitEnabled) {
+            throw new Error("Auto-Debit must be enabled for tier-based CSP requests.");
+          }
+          if (tierConfig.requireAutoContribute && !autoContributeEnabled) {
+            throw new Error("Auto-Contribute must be enabled for tier-based CSP requests.");
+          }
+          if (standing.contributionRight < tierConfig.minContributionRight) {
+            throw new Error(`You need at least ₦${tierConfig.minContributionRight.toLocaleString()} in Contribution Right to request support.`);
+          }
+          if (!tierResult?.ok) {
+            throw new Error(tierResult?.reason ?? "You are not yet eligible for a tier-based support request.");
+          }
+        }
+      }
 
       // Apply 20% markup: the broadcast target is 120% of the requested amount
       const rules = config[input.category];
@@ -585,6 +754,13 @@ export const cspRouter = createTRPCRouter({
           raisedAmount: 0,
           contributorsCount: 0,
           countryCode: userCountryCode,
+          ...(tierResult?.currentTier
+            ? {
+                tierNumber: tierResult.currentTier.tierNumber,
+                tierContributionRight: tierStanding?.contributionRight ?? null,
+                minFulfilmentPct: tierResult.tier?.minFulfilmentPct ?? null,
+              }
+            : {}),
         },
       });
 
@@ -630,7 +806,10 @@ export const cspRouter = createTRPCRouter({
       const request = await prisma.cspSupportRequest.findUnique({ where: { id: input.requestId } });
       if (!request) throw new Error("Request not found");
 
-      const config = await loadEligibilityConfig(prisma);
+      const [config, tierConfig] = await Promise.all([
+        loadEligibilityConfig(prisma),
+        loadTierConfig(prisma),
+      ]);
       const rules = config[request.category as CategoryKey] ?? config.national;
       const hours = input.broadcastHours ?? rules.broadcastHours;
       const broadcastExpiresAt = new Date(Date.now() + hours * 60 * 60 * 1000);
@@ -793,7 +972,10 @@ export const cspRouter = createTRPCRouter({
       const contributorId = (ctx.session?.user as any)?.id as string | undefined;
       if (!contributorId) throw new Error("UNAUTHORIZED");
 
-      const config = await loadEligibilityConfig(prisma);
+      const [config, tierConfig] = await Promise.all([
+        loadEligibilityConfig(prisma),
+        loadTierConfig(prisma),
+      ]);
 
       if (input.amount < config.minPerContribution) {
         throw new Error(`Minimum contribution is ₦${config.minPerContribution.toLocaleString()}`);
@@ -863,6 +1045,8 @@ export const cspRouter = createTRPCRouter({
           },
         });
 
+        await reconcileMemberStandingContributionRight(tx, contributorId);
+
         const newStatus = newRaisedAmount >= request.thresholdAmount ? "ready_for_release" : request.status;
 
         // Auto-extend broadcast if a contribution threshold is crossed
@@ -919,52 +1103,91 @@ export const cspRouter = createTRPCRouter({
 
       // --- Post-release wait-period reduction ---
       // If this contributor has an active cooldown, track their monthly contribution for wait reduction
-      const activeCooldown = await prisma.cspSupportRequest.findFirst({
-        where: {
-          userId: contributorId,
-          status: "released",
-          cooldownEndsAt: { gt: new Date() },
-        },
-        orderBy: { releasedAt: "desc" },
-        select: { id: true, cooldownEndsAt: true, cooldownMonths: true },
-      });
+      const tierStanding = tierConfig.tierModelEnabled
+        ? await ensureMemberStanding(prisma, contributorId)
+        : null;
+      const activeCooldown = tierConfig.tierModelEnabled
+        ? tierStanding
+        : await prisma.cspSupportRequest.findFirst({
+            where: {
+              userId: contributorId,
+              status: "released",
+              cooldownEndsAt: { gt: new Date() },
+            },
+            orderBy: { releasedAt: "desc" },
+            select: { id: true, cooldownEndsAt: true, cooldownMonths: true },
+          });
 
-      if (activeCooldown) {
+      const cooldownActive = tierConfig.tierModelEnabled
+        ? Boolean(activeCooldown?.coolingEndsAt && activeCooldown.coolingEndsAt > new Date())
+        : Boolean(activeCooldown && activeCooldown.cooldownEndsAt && activeCooldown.cooldownEndsAt > new Date());
+
+      if (cooldownActive) {
         const now = new Date();
         const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
         const MONTHLY_CAP = config.waitReductionMonthlyTarget; // ₦10,000
 
-        // Upsert the log for this month
-        const existing = await prisma.cspWaitReductionLog.findUnique({
-          where: { userId_requestId_monthKey: { userId: contributorId, requestId: activeCooldown.id, monthKey } },
-        });
+        const activeCooldownRequest = tierConfig.tierModelEnabled
+          ? await prisma.cspSupportRequest.findFirst({
+              where: {
+                userId: contributorId,
+                status: "closed",
+                fulfilledAt: { not: null },
+              },
+              orderBy: { fulfilledAt: "desc" },
+              select: { id: true, fulfilledAt: true },
+            })
+          : null;
 
-        const prevAmount = existing?.amountContrib ?? 0;
-        const newAmount = Math.min(prevAmount + input.amount, MONTHLY_CAP);
+        const cooldownRequestId = tierConfig.tierModelEnabled
+          ? activeCooldownRequest?.id ?? null
+          : activeCooldown.id;
+        const activeCooldownEndsAt = tierConfig.tierModelEnabled
+          ? (activeCooldown.coolingEndsAt ?? null)
+          : activeCooldown.cooldownEndsAt;
 
-        const alreadyReduced = existing?.monthReduced ?? false;
-        const justHitCap = !alreadyReduced && newAmount >= MONTHLY_CAP;
-
-        await prisma.cspWaitReductionLog.upsert({
-          where: { userId_requestId_monthKey: { userId: contributorId, requestId: activeCooldown.id, monthKey } },
-          update: { amountContrib: newAmount, monthReduced: alreadyReduced || justHitCap, updatedAt: new Date() },
-          create: {
-            userId: contributorId,
-            requestId: activeCooldown.id,
-            monthKey,
-            amountContrib: newAmount,
-            monthReduced: justHitCap,
-          },
-        });
-
-        // If threshold just hit, deduct 1 month from cooldownEndsAt
-        if (justHitCap && activeCooldown.cooldownEndsAt) {
-          const newCooldownEnd = new Date(activeCooldown.cooldownEndsAt);
-          newCooldownEnd.setMonth(newCooldownEnd.getMonth() - 1);
-          await prisma.cspSupportRequest.update({
-            where: { id: activeCooldown.id },
-            data: { cooldownEndsAt: newCooldownEnd },
+        if (!cooldownRequestId || !activeCooldownEndsAt) {
+          // No request to anchor the monthly reduction log to.
+        } else {
+          // Upsert the log for this month
+          const existing = await prisma.cspWaitReductionLog.findUnique({
+            where: { userId_requestId_monthKey: { userId: contributorId, requestId: cooldownRequestId, monthKey } },
           });
+
+          const prevAmount = existing?.amountContrib ?? 0;
+          const newAmount = Math.min(prevAmount + input.amount, MONTHLY_CAP);
+
+          const alreadyReduced = existing?.monthReduced ?? false;
+          const justHitCap = !alreadyReduced && newAmount >= MONTHLY_CAP;
+
+          await prisma.cspWaitReductionLog.upsert({
+            where: { userId_requestId_monthKey: { userId: contributorId, requestId: cooldownRequestId, monthKey } },
+            update: { amountContrib: newAmount, monthReduced: alreadyReduced || justHitCap, updatedAt: new Date() },
+            create: {
+              userId: contributorId,
+              requestId: cooldownRequestId,
+              monthKey,
+              amountContrib: newAmount,
+              monthReduced: justHitCap,
+            },
+          });
+
+          // If threshold just hit, deduct 1 month from cooldownEndsAt
+          if (justHitCap && activeCooldownEndsAt) {
+            const newCooldownEnd = new Date(activeCooldownEndsAt);
+            newCooldownEnd.setMonth(newCooldownEnd.getMonth() - 1);
+            if (tierConfig.tierModelEnabled) {
+              await prisma.cspMemberStanding.update({
+                where: { userId: contributorId },
+                data: { coolingEndsAt: newCooldownEnd },
+              });
+            } else {
+              await prisma.cspSupportRequest.update({
+                where: { id: cooldownRequestId },
+                data: { cooldownEndsAt: newCooldownEnd },
+              });
+            }
+          }
         }
       }
 
@@ -1406,38 +1629,121 @@ export const cspRouter = createTRPCRouter({
     const userId = (ctx.session?.user as any)?.id as string | undefined;
     if (!userId) throw new Error("UNAUTHORIZED");
 
-    const config = await loadEligibilityConfig(prisma);
+    const [config, tierConfig] = await Promise.all([
+      loadEligibilityConfig(prisma),
+      loadTierConfig(prisma),
+    ]);
     const now = new Date();
 
-    const activeRequest = await prisma.cspSupportRequest.findFirst({
-      where: { userId, status: "released", cooldownEndsAt: { not: null } },
-      orderBy: { releasedAt: "desc" },
-      select: { id: true, cooldownMonths: true, cooldownEndsAt: true, releasedAt: true },
-    });
+    const [activeRequest, sponsorProgress] = tierConfig.tierModelEnabled
+      ? await Promise.all([
+          prisma.cspMemberStanding.findUnique({
+            where: { userId },
+            select: { coolingEndsAt: true, coolingMonthsBase: true, lastSupportReleasedAt: true, directSponsorCount: true },
+          }),
+          prisma.$transaction((tx) =>
+            reconcileSponsorCoolingProgress(
+              tx,
+              userId,
+              {
+                sponsorshipRequiredCount: tierConfig.sponsorshipRequiredCount,
+                sponsorshipReducedCoolingMonths: tierConfig.sponsorshipReducedCoolingMonths,
+                sponsorshipRequiresKyc: tierConfig.sponsorshipRequiresKyc,
+                sponsorshipRequiresRegularPlus: tierConfig.sponsorshipRequiresRegularPlus,
+                sponsorshipAutoApply: tierConfig.sponsorshipAutoApply,
+              },
+              { autoApply: false }
+            )
+          ),
+        ])
+      : [
+          await prisma.cspSupportRequest.findFirst({
+            where: { userId, status: "released", cooldownEndsAt: { not: null } },
+            orderBy: { releasedAt: "desc" },
+            select: { id: true, cooldownMonths: true, cooldownEndsAt: true, releasedAt: true },
+          }),
+          null,
+        ];
 
-    if (!activeRequest || !activeRequest.cooldownEndsAt) {
-      return { hasCooldown: false, cooldownEndsAt: null, cooldownMonths: null, monthlyProgress: null };
+    if (!tierConfig.tierModelEnabled) {
+      if (!activeRequest || !activeRequest.cooldownEndsAt) {
+        return { hasCooldown: false, cooldownEndsAt: null, cooldownMonths: null, monthlyProgress: null };
+      }
+
+      const isActive = activeRequest.cooldownEndsAt > now;
+      const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+      const thisMonth = await prisma.cspWaitReductionLog.findUnique({
+        where: { userId_requestId_monthKey: { userId, requestId: activeRequest.id, monthKey } },
+      });
+
+      return {
+        hasCooldown: isActive,
+        cooldownEndsAt: activeRequest.cooldownEndsAt,
+        cooldownMonths: activeRequest.cooldownMonths,
+        releasedAt: activeRequest.releasedAt,
+        monthlyProgress: {
+          monthKey,
+          contributed: thisMonth?.amountContrib ?? 0,
+          target: config.waitReductionMonthlyTarget,
+          pct: Math.min(100, Math.round(((thisMonth?.amountContrib ?? 0) / config.waitReductionMonthlyTarget) * 100)),
+          reduced: thisMonth?.monthReduced ?? false,
+        },
+      };
     }
 
-    const isActive = activeRequest.cooldownEndsAt > now;
-    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-    const thisMonth = await prisma.cspWaitReductionLog.findUnique({
-      where: { userId_requestId_monthKey: { userId, requestId: activeRequest.id, monthKey } },
+    const cooling = selectEffectiveCoolingState({
+      tierModelEnabled: true,
+      releasedCooldownEndsAt: null,
+      standingCoolingEndsAt: activeRequest?.coolingEndsAt ?? null,
+      standingCoolingMonthsBase: activeRequest?.coolingMonthsBase ?? null,
+      standingLastSupportReleasedAt: activeRequest?.lastSupportReleasedAt ?? null,
+      now,
     });
 
-    return {
-      hasCooldown: isActive,
-      cooldownEndsAt: activeRequest.cooldownEndsAt,
-      cooldownMonths: activeRequest.cooldownMonths,
-      releasedAt: activeRequest.releasedAt,
-      monthlyProgress: {
-        monthKey,
-        contributed: thisMonth?.amountContrib ?? 0,
-        target: config.waitReductionMonthlyTarget,
-        pct: Math.min(100, Math.round(((thisMonth?.amountContrib ?? 0) / config.waitReductionMonthlyTarget) * 100)),
-        reduced: thisMonth?.monthReduced ?? false,
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    const activeCooldownRequest = await prisma.cspSupportRequest.findFirst({
+      where: {
+        userId,
+        status: "closed",
+        fulfilledAt: { not: null },
       },
+      orderBy: { fulfilledAt: "desc" },
+      select: { id: true },
+    });
+    const thisMonth = activeCooldownRequest
+      ? await prisma.cspWaitReductionLog.findUnique({
+          where: { userId_requestId_monthKey: { userId, requestId: activeCooldownRequest.id, monthKey } },
+        })
+      : null;
+
+    return {
+      hasCooldown: cooling.isActive,
+      cooldownEndsAt: cooling.cooldownEndsAt,
+      cooldownMonths: cooling.cooldownMonths,
+      releasedAt: cooling.lastSupportReleasedAt,
+      source: cooling.source,
+      sponsorProgress: sponsorProgress
+        ? {
+            directSponsorCount: sponsorProgress.standing.directSponsorCount,
+            requiredCount: sponsorProgress.decision.requiredCount,
+            reducedCoolingMonths: sponsorProgress.decision.reducedCoolingMonths,
+            reducedCoolingEndsAt: sponsorProgress.decision.reducedCoolingEndsAt,
+            qualifies: sponsorProgress.decision.qualifies,
+            shouldShorten: sponsorProgress.decision.shouldShorten,
+            applied: sponsorProgress.applied,
+          }
+        : null,
+      monthlyProgress: cooling.isActive
+        ? {
+            monthKey,
+            contributed: thisMonth?.amountContrib ?? 0,
+            target: config.waitReductionMonthlyTarget,
+            pct: Math.min(100, Math.round(((thisMonth?.amountContrib ?? 0) / config.waitReductionMonthlyTarget) * 100)),
+            reduced: thisMonth?.monthReduced ?? false,
+          }
+        : null,
     };
   }),
 
@@ -1693,6 +1999,51 @@ export const cspRouter = createTRPCRouter({
       return { success: true, updatedKeys: changedEntries.map(([k]) => k) };
     }),
 
+  /** Apply the sponsor-based cooling reduction for a member (admin) */
+  applyCspSponsorCoolingReduction: protectedProcedure
+    .input(z.object({
+      userId: z.string(),
+      reason: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const adminUserId = (ctx.session?.user as any)?.id as string | undefined;
+      if (!adminUserId) throw new Error("UNAUTHORIZED");
+
+      const tierConfig = await loadTierConfig(prisma);
+      if (!tierConfig.tierModelEnabled) {
+        throw new Error("Tier model is disabled.");
+      }
+
+      const result = await prisma.$transaction((tx) =>
+        reconcileSponsorCoolingProgress(
+          tx,
+          input.userId,
+          {
+            sponsorshipRequiredCount: tierConfig.sponsorshipRequiredCount,
+            sponsorshipReducedCoolingMonths: tierConfig.sponsorshipReducedCoolingMonths,
+            sponsorshipRequiresKyc: tierConfig.sponsorshipRequiresKyc,
+            sponsorshipRequiresRegularPlus: tierConfig.sponsorshipRequiresRegularPlus,
+            sponsorshipAutoApply: tierConfig.sponsorshipAutoApply,
+          },
+          {
+            forceApply: true,
+            adminUserId,
+            reason: input.reason?.trim() || null,
+          }
+        )
+      );
+
+      return {
+        success: true,
+        applied: result.applied,
+        directSponsorCount: result.standing.directSponsorCount,
+        requiredCount: result.decision.requiredCount,
+        reducedCoolingEndsAt: result.decision.reducedCoolingEndsAt,
+        currentCoolingEndsAt: result.decision.currentCoolingEndsAt,
+      };
+    }),
+
   // ============================================
   // CSP AUTO-CONTRIBUTE USER SETTINGS
   // ============================================
@@ -1900,4 +2251,3 @@ export const cspRouter = createTRPCRouter({
       return { logs, total, page: input.page, totalPages: Math.ceil(total / input.limit) };
     }),
 });
-
