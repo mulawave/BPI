@@ -31,6 +31,8 @@ import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type AdminQueue = RouterOutputs["csp"]["adminListRequests"];
+type TierConfig = RouterOutputs["csp"]["getCspTierConfig"];
+type TierRuleChangeLogPage = RouterOutputs["csp"]["adminListCspRuleChangeLogs"];
 type QueueItem = {
   id: string;
   userId: string;
@@ -107,6 +109,10 @@ export default function CspAdminQueuePage() {
 
   // Eligibility config state
   const [showConfigPanel, setShowConfigPanel] = useState(false);
+  const [showTierPanel, setShowTierPanel] = useState(false);
+  const [showAuditPanel, setShowAuditPanel] = useState(false);
+  const [ruleLogPage, setRuleLogPage] = useState(1);
+  const [ruleLogFilter, setRuleLogFilter] = useState("");
   const [defaultForm, setDefaultForm] = useState({
     category: "national" as "national" | "global",
     amount: 10000,
@@ -124,6 +130,12 @@ export default function CspAdminQueuePage() {
 
   const { data: cspCountries, refetch: refetchCountries } = api.csp.listCspCountries.useQuery();
   const { data: eligibilityConfig, refetch: refetchEligibilityConfig } = api.csp.getCspEligibilityConfig.useQuery();
+  const { data: tierConfig, refetch: refetchTierConfig } = api.csp.getCspTierConfig.useQuery();
+  const { data: ruleChangeLogs, refetch: refetchRuleChangeLogs, isFetching: isRuleChangeLogsFetching } = api.csp.adminListCspRuleChangeLogs.useQuery({
+    page: ruleLogPage,
+    pageSize: 10,
+    ruleKey: ruleLogFilter.trim() || undefined,
+  });
 
   const { data: searchedUsers } = api.user.searchUsers.useQuery(
     { term: userSearchTerm },
@@ -216,6 +228,15 @@ export default function CspAdminQueuePage() {
 
   const updateEligibilityConfigMutation = api.csp.updateCspEligibilityConfig.useMutation({
     onSuccess: () => { toast.success("Eligibility config updated"); refetchEligibilityConfig(); },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const updateTierConfigMutation = api.csp.updateCspTierConfig.useMutation({
+    onSuccess: () => {
+      toast.success("Tier rules updated");
+      refetchTierConfig();
+      refetchRuleChangeLogs();
+    },
     onError: (err) => toast.error(err.message),
   });
 
@@ -757,6 +778,67 @@ export default function CspAdminQueuePage() {
         )}
         {showConfigPanel && !eligibilityConfig && (
           <p className="mt-4 text-sm text-muted-foreground">Loading config...</p>
+        )}
+      </div>
+
+      {/* ─── CSP Tier Rules & Audit Log ────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card/70 p-6 shadow-sm">
+        <button
+          onClick={() => setShowTierPanel((v) => !v)}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <div className="flex items-center gap-3">
+            <Sparkles className="h-5 w-5 text-emerald-600" />
+            <div>
+              <h2 className="text-lg font-bold text-foreground">CSP Tier Rules</h2>
+              <p className="text-sm text-muted-foreground">Manage the tier model, badge permanence, and sponsor-based cooling settings.</p>
+            </div>
+          </div>
+          {showTierPanel ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+
+        {showTierPanel && tierConfig && (
+          <TierConfigForm
+            config={tierConfig}
+            onSave={(data) => updateTierConfigMutation.mutate(data)}
+            isPending={updateTierConfigMutation.isPending}
+          />
+        )}
+        {showTierPanel && !tierConfig && (
+          <p className="mt-4 text-sm text-muted-foreground">Loading tier config...</p>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card/70 p-6 shadow-sm">
+        <button
+          onClick={() => setShowAuditPanel((v) => !v)}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-purple-600" />
+            <div>
+              <h2 className="text-lg font-bold text-foreground">CSP Rule Audit Log</h2>
+              <p className="text-sm text-muted-foreground">Review who changed tier settings and why.</p>
+            </div>
+          </div>
+          {showAuditPanel ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+
+        {showAuditPanel && (
+          <RuleChangeLogViewer
+            pageData={ruleChangeLogs}
+            page={ruleLogPage}
+            filter={ruleLogFilter}
+            onFilterChange={(value) => {
+              setRuleLogFilter(value);
+              setRuleLogPage(1);
+            }}
+            onPageChange={setRuleLogPage}
+            onRefresh={() => {
+              void refetchRuleChangeLogs();
+            }}
+            isFetching={isRuleChangeLogsFetching}
+          />
         )}
       </div>
 
@@ -1403,6 +1485,279 @@ function EligibilityConfigForm({ config, onSave, isPending }: { config: any; onS
         className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50">
         {isPending ? "Saving..." : "Save Eligibility Config"}
       </button>
+    </div>
+  );
+}
+
+function TierConfigForm({ config, onSave, isPending }: { config: TierConfig | undefined; onSave: (data: any) => void; isPending: boolean }) {
+  const [form, setForm] = useState({
+    tierModelEnabled: config?.tierModelEnabled ?? false,
+    contributionMultiplier: config?.contributionMultiplier ?? 20,
+    minContributionRight: config?.minContributionRight ?? 10000,
+    requireKyc: config?.requireKyc ?? false,
+    requireAutoDebit: config?.requireAutoDebit ?? false,
+    requireAutoContribute: config?.requireAutoContribute ?? false,
+    defaultBroadcastHours: config?.defaultBroadcastHours ?? 48,
+    autoExtensionHours: config?.autoExtensionHours ?? 48,
+    maxAutoExtensions: config?.maxAutoExtensions ?? 3,
+    defaultCoolingMonthsMin: config?.defaultCoolingMonthsMin ?? 12,
+    defaultCoolingMonthsMax: config?.defaultCoolingMonthsMax ?? 24,
+    sponsorshipRequiredCount: config?.sponsorshipRequiredCount ?? 100,
+    sponsorshipReducedCoolingMonths: config?.sponsorshipReducedCoolingMonths ?? 6,
+    sponsorshipRequiresKyc: config?.sponsorshipRequiresKyc ?? false,
+    sponsorshipRequiresRegularPlus: config?.sponsorshipRequiresRegularPlus ?? false,
+    sponsorshipAutoApply: config?.sponsorshipAutoApply ?? false,
+    badgeGiftingEnabled: config?.badgeGiftingEnabled ?? true,
+    reason: "",
+  });
+
+  React.useEffect(() => {
+    if (!config) return;
+    setForm({
+      tierModelEnabled: config.tierModelEnabled,
+      contributionMultiplier: config.contributionMultiplier,
+      minContributionRight: config.minContributionRight,
+      requireKyc: config.requireKyc,
+      requireAutoDebit: config.requireAutoDebit,
+      requireAutoContribute: config.requireAutoContribute,
+      defaultBroadcastHours: config.defaultBroadcastHours,
+      autoExtensionHours: config.autoExtensionHours,
+      maxAutoExtensions: config.maxAutoExtensions,
+      defaultCoolingMonthsMin: config.defaultCoolingMonthsMin,
+      defaultCoolingMonthsMax: config.defaultCoolingMonthsMax,
+      sponsorshipRequiredCount: config.sponsorshipRequiredCount,
+      sponsorshipReducedCoolingMonths: config.sponsorshipReducedCoolingMonths,
+      sponsorshipRequiresKyc: config.sponsorshipRequiresKyc,
+      sponsorshipRequiresRegularPlus: config.sponsorshipRequiresRegularPlus,
+      sponsorshipAutoApply: config.sponsorshipAutoApply,
+      badgeGiftingEnabled: config.badgeGiftingEnabled,
+      reason: "",
+    });
+  }, [config]);
+
+  const setNumber = (key: keyof typeof form) => (value: string) => {
+    setForm((current) => ({
+      ...current,
+      [key]: parseInt(value, 10) || 0,
+    }));
+  };
+
+  const setBool = (key: keyof typeof form) => (value: boolean) => {
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  const numberField = (key: keyof typeof form, label: string) => (
+    <div>
+      <label className="text-xs font-semibold text-muted-foreground">{label}</label>
+      <input
+        type="number"
+        value={String((form as any)[key])}
+        onChange={(e) => setNumber(key)(e.target.value)}
+        className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+      />
+    </div>
+  );
+
+  const boolField = (key: keyof typeof form, label: string) => (
+    <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2 text-sm">
+      <span className="font-medium text-foreground">{label}</span>
+      <input
+        type="checkbox"
+        checked={Boolean((form as any)[key])}
+        onChange={(e) => setBool(key)(e.target.checked)}
+        className="h-4 w-4 rounded border-border"
+      />
+    </label>
+  );
+
+  return (
+    <div className="mt-6 space-y-5">
+      <div>
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
+          <Sparkles className="h-4 w-4 text-emerald-600" />
+          Core tier controls
+        </h3>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {boolField("tierModelEnabled", "Enable tier model")}
+          {boolField("requireKyc", "Require KYC")}
+          {boolField("requireAutoDebit", "Require Auto-Debit")}
+          {boolField("requireAutoContribute", "Require Auto-Contribute")}
+          {numberField("contributionMultiplier", "Contribution multiplier")}
+          {numberField("minContributionRight", "Minimum Contribution Right")}
+          {numberField("defaultBroadcastHours", "Default broadcast hours")}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
+          <TimerReset className="h-4 w-4 text-amber-600" />
+          Cooling & extension rules
+        </h3>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {numberField("autoExtensionHours", "Auto-extension hours")}
+          {numberField("maxAutoExtensions", "Maximum auto-extensions")}
+          {numberField("defaultCoolingMonthsMin", "Default cooling min (months)")}
+          {numberField("defaultCoolingMonthsMax", "Default cooling max (months)")}
+          {numberField("sponsorshipRequiredCount", "Sponsor count for reduction")}
+          {numberField("sponsorshipReducedCoolingMonths", "Reduced cooling months")}
+          {boolField("sponsorshipRequiresKyc", "Sponsor reduction requires KYC")}
+          {boolField("sponsorshipRequiresRegularPlus", "Sponsor reduction requires Regular Plus")}
+          {boolField("sponsorshipAutoApply", "Auto-apply sponsor reduction")}
+          {boolField("badgeGiftingEnabled", "Enable badge gifting")}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-semibold text-muted-foreground">Change reason</label>
+        <textarea
+          value={form.reason}
+          onChange={(e) => setForm((current) => ({ ...current, reason: e.target.value }))}
+          rows={3}
+          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          placeholder="Optional note for the audit log"
+        />
+      </div>
+
+      <button
+        onClick={() => onSave(form)}
+        disabled={isPending || !config}
+        className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
+      >
+        {isPending ? "Saving..." : "Save CSP Tier Rules"}
+      </button>
+    </div>
+  );
+}
+
+function RuleChangeLogViewer({
+  pageData,
+  page,
+  filter,
+  onFilterChange,
+  onPageChange,
+  onRefresh,
+  isFetching,
+}: {
+  pageData: TierRuleChangeLogPage | undefined;
+  page: number;
+  filter: string;
+  onFilterChange: (value: string) => void;
+  onPageChange: (page: number) => void;
+  onRefresh: () => void;
+  isFetching: boolean;
+}) {
+  const logs = pageData?.logs ?? [];
+  const total = pageData?.total ?? 0;
+  const totalPages = pageData?.totalPages ?? 1;
+
+  const formatValue = (value: string | null) => {
+    if (value == null || value === "") return "—";
+    return value;
+  };
+
+  return (
+    <div className="mt-6 space-y-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,320px)_auto]">
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground">Rule key filter</label>
+            <input
+              value={filter}
+              onChange={(e) => onFilterChange(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+              placeholder="e.g. csp_default_broadcast_hours"
+            />
+          </div>
+          <button
+            onClick={onRefresh}
+            disabled={isFetching}
+            className="mt-6 inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+          >
+            <RefreshCw className={isFetching ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+            Refresh
+          </button>
+        </div>
+        <div className="text-sm text-muted-foreground">
+          {total} change{total === 1 ? "" : "s"} total
+        </div>
+      </div>
+
+      {logs.length === 0 ? (
+        <div className="rounded-xl border border-border bg-background px-4 py-6 text-sm text-muted-foreground">
+          No rule changes found.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {logs.map((log) => (
+            <div key={log.id} className="rounded-xl border border-border bg-background p-4">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-200">
+                      {log.ruleKey}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {format(new Date(log.createdAt), "PPpp")}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    by <span className="font-medium text-foreground">{log.AdminUser?.name ?? log.AdminUser?.email ?? "Unknown admin"}</span>
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
+                </p>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Previous</p>
+                  <p className="mt-1 rounded-lg bg-muted px-3 py-2 text-sm font-mono text-foreground break-words">
+                    {formatValue(log.previousValue)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current</p>
+                  <p className="mt-1 rounded-lg bg-muted px-3 py-2 text-sm font-mono text-foreground break-words">
+                    {formatValue(log.newValue)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reason</p>
+                  <p className="mt-1 rounded-lg bg-muted px-3 py-2 text-sm text-foreground break-words">
+                    {formatValue(log.reason)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3">
+          <button
+            onClick={() => onPageChange(Math.max(1, page - 1))}
+            disabled={page <= 1}
+            className="rounded-lg border border-border px-3 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-muted-foreground">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
+            className="rounded-lg border border-border px-3 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }
