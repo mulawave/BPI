@@ -2091,6 +2091,44 @@ export const cspRouter = createTRPCRouter({
     return loadTierConfig(prisma);
   }),
 
+  /** List CSP tier rule change logs (admin) */
+  adminListCspRuleChangeLogs: protectedProcedure
+    .input(z.object({
+      page: z.number().int().min(1).default(1),
+      pageSize: z.number().int().min(1).max(100).default(10),
+      ruleKey: z.string().trim().min(1).max(120).optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+
+      const where = input.ruleKey
+        ? { ruleKey: { contains: input.ruleKey, mode: "insensitive" as const } }
+        : {};
+
+      const [logs, total] = await prisma.$transaction([
+        prisma.cspRuleChangeLog.findMany({
+          where,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          skip: (input.page - 1) * input.pageSize,
+          take: input.pageSize,
+          include: {
+            AdminUser: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+        }),
+        prisma.cspRuleChangeLog.count({ where }),
+      ]);
+
+      return {
+        logs,
+        total,
+        page: input.page,
+        pageSize: input.pageSize,
+        totalPages: Math.max(1, Math.ceil(total / input.pageSize)),
+      };
+    }),
+
   /** Update CSP tier model configuration (admin) */
   updateCspTierConfig: protectedProcedure
     .input(z.object({
