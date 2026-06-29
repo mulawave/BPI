@@ -2014,6 +2014,12 @@ model User {
   CspSupportRequests                                                   CspSupportRequest[]
   CspContributions                                                     CspContribution[]
   CspWaitReductionLogs                                                 CspWaitReductionLog[]
+  CspMemberStanding                                                    CspMemberStanding?   @relation("CspMemberStanding_user")
+  CspDonations                                                         CspDonation[]        @relation("CspDonation_donorUser")
+  CspTimeReductionBadges                                               CspTimeReductionBadge[] @relation("CspTimeReductionBadge_ownerUser")
+  CspBadgeTransfersSent                                                CspBadgeTransfer[]      @relation("CspBadgeTransfer_fromUser")
+  CspBadgeTransfersReceived                                            CspBadgeTransfer[]      @relation("CspBadgeTransfer_toUser")
+  CspRuleChangeLogs                                                    CspRuleChangeLog[]      @relation("CspRuleChangeLog_adminUser")
   FarmPlots                                                            FarmPlot[]
   ImpersonationTokensAsAdmin                                           ImpersonationToken[]         @relation("ImpersonationTokenAdmin")
   ImpersonationTokensAsTarget                                          ImpersonationToken[]         @relation("ImpersonationTokenTarget")
@@ -2389,6 +2395,11 @@ model CspSupportRequest {
   rejectionReason    String?
   cooldownMonths     Int?      // set at approval: 6 | 12 | 24 | 36
   cooldownEndsAt     DateTime? // computed at release time
+  tierNumber         Int?
+  tierContributionRight Int?
+  minFulfilmentPct   Int?
+  autoExtendCount    Int       @default(0)
+  fulfilledAt        DateTime?
   countryCode        String?   // ISO country code for national geo-scoping
   isAdminDefault     Boolean   @default(false) // Admin-created base requests
   isActive           Boolean   @default(true)  // Admin can turn off default requests
@@ -2404,6 +2415,128 @@ model CspSupportRequest {
   @@index([status, broadcastExpiresAt])
   @@index([isAdminDefault, isActive])
   @@index([countryCode, status])
+  @@index([tierNumber])
+}
+
+model CspTier {
+  id                 String   @id @default(cuid())
+  tierNumber         Int      @unique
+  name               String
+  contributionRight  Int
+  maxSupportCap      Int
+  minFulfilmentPct   Int      @default(30)
+  isActive           Boolean  @default(true)
+  isSpecial          Boolean  @default(false)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+model CspMemberStanding {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  contributionRight     Int       @default(0)
+  currentTierNumber     Int?
+  directSponsorCount    Int       @default(0)
+  lastSupportReleasedAt DateTime?
+  coolingEndsAt         DateTime?
+  coolingMonthsBase     Int?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  User User @relation("CspMemberStanding_user", fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CspDonationBadgeCategory {
+  id                    String   @id @default(cuid())
+  name                  String   @unique
+  minAmount             Int
+  maxAmount             Int?
+  badgeType             String
+  coolingReductionMonths Int
+  isActive              Boolean  @default(true)
+  sortOrder             Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  TimeReductionBadges   CspTimeReductionBadge[]
+
+  @@index([isActive, sortOrder])
+}
+
+model CspDonation {
+  id                String   @id @default(cuid())
+  donorUserId       String?
+  donorName         String
+  donorEmail        String?
+  organization      String?
+  amount            Int
+  category          String?
+  badgeAwardedId    String?
+  recognitionPref   String   @default("public")
+  status            String   @default("pending")
+  certificateUrl    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  Donor User? @relation("CspDonation_donorUser", fields: [donorUserId], references: [id], onDelete: SetNull)
+
+  @@index([donorUserId, status])
+}
+
+model CspTimeReductionBadge {
+  id                  String   @id @default(cuid())
+  categoryId          String
+  ownerUserId         String?
+  sourceDonationId     String?
+  reductionMonths     Int
+  status              String   @default("available")
+  expiresAt           DateTime?
+  usageLimit          Int      @default(1)
+  redeemedOnRequestId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  Category CspDonationBadgeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  Owner    User?                   @relation("CspTimeReductionBadge_ownerUser", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  BadgeTransfers CspBadgeTransfer[]
+
+  @@index([ownerUserId, status, categoryId])
+}
+
+model CspBadgeTransfer {
+  id           String   @id @default(cuid())
+  badgeId      String
+  fromUserId   String?
+  toUserId     String?
+  type         String
+  approvedBy   String?
+  status       String   @default("completed")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  Badge     CspTimeReductionBadge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  FromUser  User?                 @relation("CspBadgeTransfer_fromUser", fields: [fromUserId], references: [id], onDelete: SetNull)
+  ToUser    User?                 @relation("CspBadgeTransfer_toUser", fields: [toUserId], references: [id], onDelete: SetNull)
+
+  @@index([badgeId])
+}
+
+model CspRuleChangeLog {
+  id            String   @id @default(cuid())
+  adminUserId   String
+  ruleKey       String
+  previousValue String?
+  newValue      String?
+  reason        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  AdminUser User @relation("CspRuleChangeLog_adminUser", fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([ruleKey, createdAt])
 }
 
 /// Tracks monthly contributions made after a CSP release, used to reduce the cooldown wait period.

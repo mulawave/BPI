@@ -44,6 +44,26 @@ interface EligibilityConfig {
   waitReductionMonthlyTarget: number;
 }
 
+interface TierConfig {
+  tierModelEnabled: boolean;
+  contributionMultiplier: number;
+  minContributionRight: number;
+  requireKyc: boolean;
+  requireAutoDebit: boolean;
+  requireAutoContribute: boolean;
+  defaultBroadcastHours: number;
+  autoExtensionHours: number;
+  maxAutoExtensions: number;
+  defaultCoolingMonthsMin: number;
+  defaultCoolingMonthsMax: number;
+  sponsorshipRequiredCount: number;
+  sponsorshipReducedCoolingMonths: number;
+  sponsorshipRequiresKyc: boolean;
+  sponsorshipRequiresRegularPlus: boolean;
+  sponsorshipAutoApply: boolean;
+  badgeGiftingEnabled: boolean;
+}
+
 async function loadEligibilityConfig(db: typeof prisma): Promise<EligibilityConfig> {
   const keys = [
     "csp_min_per_contribution",
@@ -84,6 +104,81 @@ async function loadEligibilityConfig(db: typeof prisma): Promise<EligibilityConf
       minThreshold: n("csp_global_min_threshold", DEFAULTS.global.minThreshold),
     },
     waitReductionMonthlyTarget: n("csp_wait_reduction_monthly_target", DEFAULTS.waitReductionMonthlyTarget),
+  };
+}
+
+const TIER_CONFIG_DEFAULTS: TierConfig = {
+  tierModelEnabled: false,
+  contributionMultiplier: 20,
+  minContributionRight: 10000,
+  requireKyc: false,
+  requireAutoDebit: false,
+  requireAutoContribute: false,
+  defaultBroadcastHours: 48,
+  autoExtensionHours: 48,
+  maxAutoExtensions: 3,
+  defaultCoolingMonthsMin: 12,
+  defaultCoolingMonthsMax: 24,
+  sponsorshipRequiredCount: 100,
+  sponsorshipReducedCoolingMonths: 6,
+  sponsorshipRequiresKyc: false,
+  sponsorshipRequiresRegularPlus: false,
+  sponsorshipAutoApply: false,
+  badgeGiftingEnabled: true,
+};
+
+async function loadTierConfig(db: typeof prisma): Promise<TierConfig> {
+  const keys = [
+    "csp_tier_model_enabled",
+    "csp_contribution_multiplier",
+    "csp_min_contribution_right",
+    "csp_require_kyc",
+    "csp_require_auto_debit",
+    "csp_require_auto_contribute",
+    "csp_default_broadcast_hours",
+    "csp_auto_extension_hours",
+    "csp_max_auto_extensions",
+    "csp_default_cooling_months_min",
+    "csp_default_cooling_months_max",
+    "csp_sponsorship_required_count",
+    "csp_sponsorship_reduced_cooling_months",
+    "csp_sponsorship_requires_kyc",
+    "csp_sponsorship_requires_regular_plus",
+    "csp_sponsorship_auto_apply",
+    "csp_badge_gifting_enabled",
+  ];
+  const rows = await db.adminSettings.findMany({ where: { settingKey: { in: keys } } });
+  const m = new Map(rows.map((r: any) => [r.settingKey, r.settingValue]));
+  const n = (key: string, def: number) => {
+    const v = parseInt(m.get(key) ?? "", 10);
+    return Number.isFinite(v) ? v : def;
+  };
+  const b = (key: string, def: boolean) => {
+    const raw = m.get(key);
+    if (raw == null || raw === "") return def;
+    const normalized = String(raw).trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "off"].includes(normalized)) return false;
+    return def;
+  };
+  return {
+    tierModelEnabled: b("csp_tier_model_enabled", TIER_CONFIG_DEFAULTS.tierModelEnabled),
+    contributionMultiplier: n("csp_contribution_multiplier", TIER_CONFIG_DEFAULTS.contributionMultiplier),
+    minContributionRight: n("csp_min_contribution_right", TIER_CONFIG_DEFAULTS.minContributionRight),
+    requireKyc: b("csp_require_kyc", TIER_CONFIG_DEFAULTS.requireKyc),
+    requireAutoDebit: b("csp_require_auto_debit", TIER_CONFIG_DEFAULTS.requireAutoDebit),
+    requireAutoContribute: b("csp_require_auto_contribute", TIER_CONFIG_DEFAULTS.requireAutoContribute),
+    defaultBroadcastHours: n("csp_default_broadcast_hours", TIER_CONFIG_DEFAULTS.defaultBroadcastHours),
+    autoExtensionHours: n("csp_auto_extension_hours", TIER_CONFIG_DEFAULTS.autoExtensionHours),
+    maxAutoExtensions: n("csp_max_auto_extensions", TIER_CONFIG_DEFAULTS.maxAutoExtensions),
+    defaultCoolingMonthsMin: n("csp_default_cooling_months_min", TIER_CONFIG_DEFAULTS.defaultCoolingMonthsMin),
+    defaultCoolingMonthsMax: n("csp_default_cooling_months_max", TIER_CONFIG_DEFAULTS.defaultCoolingMonthsMax),
+    sponsorshipRequiredCount: n("csp_sponsorship_required_count", TIER_CONFIG_DEFAULTS.sponsorshipRequiredCount),
+    sponsorshipReducedCoolingMonths: n("csp_sponsorship_reduced_cooling_months", TIER_CONFIG_DEFAULTS.sponsorshipReducedCoolingMonths),
+    sponsorshipRequiresKyc: b("csp_sponsorship_requires_kyc", TIER_CONFIG_DEFAULTS.sponsorshipRequiresKyc),
+    sponsorshipRequiresRegularPlus: b("csp_sponsorship_requires_regular_plus", TIER_CONFIG_DEFAULTS.sponsorshipRequiresRegularPlus),
+    sponsorshipAutoApply: b("csp_sponsorship_auto_apply", TIER_CONFIG_DEFAULTS.sponsorshipAutoApply),
+    badgeGiftingEnabled: b("csp_badge_gifting_enabled", TIER_CONFIG_DEFAULTS.badgeGiftingEnabled),
   };
 }
 
@@ -1520,6 +1615,82 @@ export const cspRouter = createTRPCRouter({
         }))
       );
       return { success: true, updatedKeys: entries.map(([k]) => k) };
+    }),
+
+  /** Get current CSP tier model configuration (admin) */
+  getCspTierConfig: protectedProcedure.query(async ({ ctx }) => {
+    assertAdmin(ctx.session);
+    return loadTierConfig(prisma);
+  }),
+
+  /** Update CSP tier model configuration (admin) */
+  updateCspTierConfig: protectedProcedure
+    .input(z.object({
+      tierModelEnabled: z.boolean().optional(),
+      contributionMultiplier: z.number().int().positive().optional(),
+      minContributionRight: z.number().int().positive().optional(),
+      requireKyc: z.boolean().optional(),
+      requireAutoDebit: z.boolean().optional(),
+      requireAutoContribute: z.boolean().optional(),
+      defaultBroadcastHours: z.number().int().positive().optional(),
+      autoExtensionHours: z.number().int().positive().optional(),
+      maxAutoExtensions: z.number().int().min(0).optional(),
+      defaultCoolingMonthsMin: z.number().int().positive().optional(),
+      defaultCoolingMonthsMax: z.number().int().positive().optional(),
+      sponsorshipRequiredCount: z.number().int().positive().optional(),
+      sponsorshipReducedCoolingMonths: z.number().int().positive().optional(),
+      sponsorshipRequiresKyc: z.boolean().optional(),
+      sponsorshipRequiresRegularPlus: z.boolean().optional(),
+      sponsorshipAutoApply: z.boolean().optional(),
+      badgeGiftingEnabled: z.boolean().optional(),
+      reason: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const adminUserId = (ctx.session?.user as any)?.id as string;
+      if (!adminUserId) throw new Error("UNAUTHORIZED");
+      const reason = input.reason?.trim() || null;
+      const mapping: Record<string, string | number | boolean | undefined> = {
+        csp_tier_model_enabled: input.tierModelEnabled,
+        csp_contribution_multiplier: input.contributionMultiplier,
+        csp_min_contribution_right: input.minContributionRight,
+        csp_require_kyc: input.requireKyc,
+        csp_require_auto_debit: input.requireAutoDebit,
+        csp_require_auto_contribute: input.requireAutoContribute,
+        csp_default_broadcast_hours: input.defaultBroadcastHours,
+        csp_auto_extension_hours: input.autoExtensionHours,
+        csp_max_auto_extensions: input.maxAutoExtensions,
+        csp_default_cooling_months_min: input.defaultCoolingMonthsMin,
+        csp_default_cooling_months_max: input.defaultCoolingMonthsMax,
+        csp_sponsorship_required_count: input.sponsorshipRequiredCount,
+        csp_sponsorship_reduced_cooling_months: input.sponsorshipReducedCoolingMonths,
+        csp_sponsorship_requires_kyc: input.sponsorshipRequiresKyc,
+        csp_sponsorship_requires_regular_plus: input.sponsorshipRequiresRegularPlus,
+        csp_sponsorship_auto_apply: input.sponsorshipAutoApply,
+        csp_badge_gifting_enabled: input.badgeGiftingEnabled,
+      };
+      const entries = Object.entries(mapping).filter(([, v]) => v !== undefined);
+      const currentRows = await prisma.adminSettings.findMany({ where: { settingKey: { in: entries.map(([key]) => key) } } });
+      const previousByKey = new Map(currentRows.map((row) => [row.settingKey, row.settingValue]));
+      const changedEntries = entries.filter(([key, value]) => previousByKey.get(key) !== String(value));
+      await prisma.$transaction([
+        ...changedEntries.map(([key, val]) => prisma.adminSettings.upsert({
+          where: { settingKey: key },
+          update: { settingValue: String(val), updatedAt: new Date() },
+          create: { id: randomUUID(), settingKey: key, settingValue: String(val), updatedAt: new Date() },
+        })),
+        ...changedEntries.map(([key, val]) => prisma.cspRuleChangeLog.create({
+          data: {
+            id: randomUUID(),
+            adminUserId,
+            ruleKey: key,
+            previousValue: previousByKey.get(key) ?? null,
+            newValue: String(val),
+            reason,
+          },
+        })),
+      ]);
+      return { success: true, updatedKeys: changedEntries.map(([k]) => k) };
     }),
 
   // ============================================
