@@ -33,6 +33,13 @@ export const adminSettingsSeedData: Prisma.AdminSettingsCreateInput[] = [
   {
     id: randomUUID(),
     updatedAt: new Date(),
+    settingKey: "active_site_theme",
+    settingValue: "default",
+    description: "Active site-wide brand theme (default | emerald)",
+  },
+  {
+    id: randomUUID(),
+    updatedAt: new Date(),
     settingKey: "csp_tier_model_enabled",
     settingValue: "false",
     description: "Enable CSP tier model",

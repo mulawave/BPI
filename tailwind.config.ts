@@ -64,6 +64,15 @@ const config: Config = {
           charcoal: '#1F1F1F',
           sand: '#D8CBB7',
         },
+        // Emerald Dynasty luxury palette (selectable premium theme).
+        // Namespaced as `dynasty-*` to avoid clobbering Tailwind's built-in
+        // `emerald-*` numeric scale already used across the app.
+        'dynasty-palace': '#0A5E4E',
+        'dynasty-forest': '#093B33',
+        'dynasty-gold': '#D8C08A',
+        'dynasty-ivory': '#F2EDE1',
+        'dynasty-teal': '#103F46',
+        'dynasty-shade': '#071B1E',
       },
       backgroundImage: {
         // BPI gradients with lighter, more balanced green dominance
@@ -80,7 +89,8 @@ const config: Config = {
         sm: "calc(var(--radius) - 4px)"
       },
       fontFamily: {
-        sans: ["Inter", ...fontFamily.sans]
+        sans: ["Inter", ...fontFamily.sans],
+        display: ["var(--font-display)", "Playfair Display", "Georgia", "serif"]
       },
       keyframes: {
         shimmer: {

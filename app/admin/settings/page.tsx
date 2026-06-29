@@ -28,6 +28,7 @@ import SecuritySettingsPanel from "@/components/admin/SecuritySettingsPanel";
 import CommunityFeaturesPanel from "@/components/admin/CommunityFeaturesPanel";
 import StatsCard from "@/components/admin/StatsCard";
 import AdminPageGuide from "@/components/admin/AdminPageGuide";
+import SiteThemePanel from "@/components/admin/SiteThemePanel";
 
 type TabType = "general" | "payments" | "notifications" | "security" | "integrations" | "backup";
 
@@ -545,6 +546,9 @@ export default function SettingsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
+            {/* ── Site Appearance (Brand Theme) ── */}
+            <SiteThemePanel />
+
             {/* ── Site Status (Maintenance Mode) ── */}
             <div className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-xl transition-all duration-500">
               {/* Left accent stripe — status color only here, not the whole card */}
