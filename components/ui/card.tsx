@@ -2,7 +2,7 @@ import * as React from "react";
 import { cn } from "@/styles/utils";
 
 export const Card = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("rounded-xl border bg-card text-card-foreground shadow", className)} {...props} />
+  <div className={cn("brand-card rounded-xl border bg-card text-card-foreground shadow", className)} {...props} />
 );
 export const CardHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("flex flex-col space-y-1.5 p-6", className)} {...props} />
