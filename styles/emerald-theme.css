@@ -206,3 +206,80 @@ html[data-brand="emerald"] .emerald-sheen::after {
     animation: none;
   }
 }
+
+/* ============================================================
+ * Premium chrome — header / nav / footer (phase 2).
+ * Scoped to the emerald brand so the default theme is untouched.
+ * Specificity (html[data-brand] .hook = 0,2,x) intentionally beats
+ * the single-class Tailwind utilities already on these elements.
+ * ============================================================ */
+
+/* ---- Header ---- */
+html[data-brand="emerald"] .app-header {
+  background-color: hsl(var(--card) / 0.82);
+  border-bottom: 1px solid hsl(var(--secondary) / 0.45);
+  box-shadow: 0 10px 34px -22px hsl(188 63% 7% / 0.55);
+}
+html[data-brand="emerald"] .app-header__inner {
+  background: linear-gradient(to right, hsl(var(--card) / 0) 0%, hsl(var(--secondary) / 0.07) 100%);
+}
+html[data-brand="emerald"] .app-header__logo {
+  border-color: hsl(var(--secondary) / 0.65);
+  box-shadow: 0 0 0 1px hsl(var(--secondary) / 0.4), var(--emerald-shadow-gold);
+}
+html[data-brand="emerald"] .app-header__avatar {
+  background-image: var(--emerald-gradient-gold);
+  box-shadow: 0 0 0 2px hsl(var(--card)), 0 0 0 3px hsl(var(--secondary) / 0.75);
+}
+html[data-brand="emerald"] .app-header__control {
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--secondary) / 0.5);
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+html[data-brand="emerald"] .app-header__control:hover {
+  background-color: hsl(var(--accent));
+  border-color: hsl(var(--secondary));
+}
+
+/* ---- Nav ---- */
+html[data-brand="emerald"] .app-nav {
+  background-color: hsl(var(--background) / 0.9);
+  border-bottom-color: hsl(var(--secondary) / 0.35);
+}
+html[data-brand="emerald"] .app-nav__item {
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+html[data-brand="emerald"] .app-nav__item:hover {
+  border-color: hsl(var(--secondary));
+  background-color: hsl(var(--secondary) / 0.14);
+  color: hsl(var(--foreground));
+}
+html[data-brand="emerald"] .app-nav__item[data-active="true"] {
+  border-color: hsl(var(--secondary));
+  color: hsl(var(--primary-foreground));
+  background-image: var(--emerald-gradient-royal);
+  background-color: transparent;
+  box-shadow: var(--emerald-shadow-gold);
+}
+
+/* ---- Footer ---- */
+html[data-brand="emerald"] .site-footer {
+  background: var(--emerald-gradient-royal);
+  color: hsl(42 30% 82%);
+}
+html[data-brand="emerald"] .site-footer__social {
+  background-color: hsl(var(--card) / 0.35);
+  border: 1px solid hsl(var(--secondary) / 0.25);
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+html[data-brand="emerald"] .site-footer__social:hover {
+  background-color: hsl(var(--secondary));
+  border-color: hsl(var(--secondary));
+}
+html[data-brand="emerald"] .site-footer__totop {
+  background-image: var(--emerald-gradient-gold);
+  color: hsl(170 73% 13%);
+  box-shadow: var(--emerald-shadow-gold);
+}
