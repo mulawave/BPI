@@ -277,7 +277,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const readOnlyProfile = !!customContent;
   const isStorePage = pathname?.startsWith("/store");
-  const containerClass = `min-h-screen w-full ${isStorePage
+  const containerClass = `dashboard-premium min-h-screen w-full ${isStorePage
     ? "bg-gradient-to-br from-amber-100 via-orange-200 to-amber-300 dark:from-amber-200 dark:via-orange-300 dark:to-amber-400"
     : "bg-bpi-gradient-light dark:bg-bpi-gradient-dark"}`;
 
@@ -2129,7 +2129,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
             >
 
             {/* Account Statistics */}
-            <div className="bg-white dark:bg-bpi-dark-card rounded-2xl p-4 sm:p-6 shadow-lg dark:shadow-none mb-3">
+            <div className="dashboard-surface bg-white dark:bg-bpi-dark-card rounded-2xl p-4 sm:p-6 shadow-lg dark:shadow-none mb-3">
               <h3 className="text-base font-semibold text-foreground mb-3">Account Statistics</h3>
               <hr className="border-gray-200 dark:border-bpi-dark-accent mb-4" />
               <h3 className="font-semibold text-foreground mb-4 p-4 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/10 dark:to-emerald-900/10 rounded-t-xl">Account Activity</h3>
@@ -3537,7 +3537,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
               <hr className="border-gray-200 dark:border-bpi-dark-accent mb-4" />
             {showAnnouncement && (
               <div className={`my-6 transform transition-all duration-300 ${isClosing ? 'opacity-0 -translate-y-4' : 'opacity-100 translate-y-0'}`}>
-                <div className="relative bg-bpi-gradient-light dark:bg-bpi-gradient-dark text-foreground dark:text-bpi-dark-text rounded-2xl shadow-lg p-6 border border-bpi-border dark:border-bpi-dark-accent">
+                <div className="dashboard-hero relative bg-bpi-gradient-light dark:bg-bpi-gradient-dark text-foreground dark:text-bpi-dark-text rounded-2xl shadow-lg p-6 border border-bpi-border dark:border-bpi-dark-accent">
                   <button
                     className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center bg-white/20 dark:bg-green-800/30 text-foreground hover:opacity-90"
                     onClick={() => {
