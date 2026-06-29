@@ -88,6 +88,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     return () => {
       void utilsRef.current.csp.getEligibility.cancel();
       void utilsRef.current.csp.getWaitStatus.cancel();
+      void utilsRef.current.csp.getMyCspRecognition.cancel();
       void utilsRef.current.csp.getLiveStatus.cancel();
       void utilsRef.current.csp.listHistory.cancel();
       void utilsRef.current.csp.listBroadcasts.cancel();
@@ -99,6 +100,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   // used as reliable fallback when eligibility cache predates a membership activation
   const { data: userDetails } = api.user.getDetails.useQuery(undefined, { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false });
   const waitStatusQuery = api.csp.getWaitStatus.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 2 * 60 * 1000 });
+  const recognitionQuery = api.csp.getMyCspRecognition.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 2 * 60 * 1000 });
   const liveStatusQuery = api.csp.getLiveStatus.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 60 * 1000 });
   const historyQuery = api.csp.listHistory.useQuery({ pageSize: 5 }, { refetchOnWindowFocus: false, retry: false, staleTime: 2 * 60 * 1000 });
   const broadcastsQuery = api.csp.listBroadcasts.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 60 * 1000 });
@@ -488,6 +490,65 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                   </p>
                 </div>
               )}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {recognitionQuery.data && (
+        <Card className="p-5 border-l-4 border-l-emerald-500 bg-emerald-50/60 dark:bg-emerald-900/10 dark:border-emerald-400">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div>
+                <p className="font-semibold text-foreground">Donor Recognition</p>
+                <p className="text-sm text-muted-foreground">
+                  {recognitionQuery.data.donationCount
+                    ? `${recognitionQuery.data.donationCount} donation${recognitionQuery.data.donationCount === 1 ? "" : "s"} recorded with ${formatAmount(recognitionQuery.data.totalDonatedAmount)} total support.`
+                    : "No donation record has been issued yet."}
+                </p>
+              </div>
+
+              {recognitionQuery.data.latestDonation?.certificateUrl && (
+                <Button asChild variant="outline" className="self-start border-emerald-200 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-900/20">
+                  <a href={recognitionQuery.data.latestDonation.certificateUrl} target="_blank" rel="noreferrer">
+                    Download PDF certificate
+                  </a>
+                </Button>
+              )}
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-white/80 dark:bg-slate-950/40 px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Latest support</p>
+                <p className="mt-1 font-semibold text-foreground">
+                  {recognitionQuery.data.latestDonation
+                    ? `${formatAmount(recognitionQuery.data.latestDonation.amount)} • ${recognitionQuery.data.latestDonation.category ?? "Uncategorised"}`
+                    : "No donation yet"}
+                </p>
+                {recognitionQuery.data.latestDonation?.organization && (
+                  <p className="text-sm text-muted-foreground">{recognitionQuery.data.latestDonation.organization}</p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-white/80 dark:bg-slate-950/40 px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Latest badge</p>
+                <p className="mt-1 font-semibold text-foreground">
+                  {recognitionQuery.data.badges[0]?.category?.badgeType ?? "No badge issued yet"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {recognitionQuery.data.badges[0]?.category
+                    ? `${recognitionQuery.data.badges[0].category.coolingReductionMonths} month reduction • never expires`
+                    : "Recognition badges do not expire once issued."}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-white/80 dark:bg-slate-950/40 px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Certificate status</p>
+                <p className="mt-1 font-semibold text-foreground">PDF download available</p>
+                <p className="text-sm text-muted-foreground">
+                  Time Reduction Badges are permanent and can be gifted later when badge gifting is enabled.
+                </p>
+              </div>
             </div>
           </div>
         </Card>

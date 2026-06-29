@@ -23,6 +23,11 @@ import {
   reconcileSponsorCoolingProgress,
   selectEffectiveCoolingState,
 } from "@/server/services/csp-cooling.service";
+import {
+  buildCspDonationCertificateUrl,
+  loadActiveCspDonationBadgeCategories,
+  resolveCspDonationBadgeCategory,
+} from "@/server/services/csp-donations.service";
 
 // Hardcoded fallback defaults – overridden by AdminSettings when set
 const DEFAULTS = {
@@ -561,6 +566,163 @@ export const cspRouter = createTRPCRouter({
       },
     };
   }),
+
+  /** Get the current user's CSP donation recognition records */
+  getMyCspRecognition: protectedProcedure.query(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id as string | undefined;
+    if (!userId) throw new Error("UNAUTHORIZED");
+
+    const [donations, badges] = await Promise.all([
+      prisma.cspDonation.findMany({
+        where: { donorUserId: userId },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
+      prisma.cspTimeReductionBadge.findMany({
+        where: { ownerUserId: userId },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: {
+          Category: {
+            select: {
+              id: true,
+              name: true,
+              badgeType: true,
+              coolingReductionMonths: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const totalDonatedAmount = donations.reduce((sum, donation) => sum + donation.amount, 0);
+
+    return {
+      totalDonatedAmount,
+      donationCount: donations.length,
+      badgeCount: badges.length,
+      latestDonation: donations[0]
+        ? {
+            ...donations[0],
+            certificateUrl:
+              donations[0].certificateUrl ?? buildCspDonationCertificateUrl(donations[0].id),
+          }
+        : null,
+      donations: donations.map((donation) => ({
+        ...donation,
+        certificateUrl:
+          donation.certificateUrl ?? buildCspDonationCertificateUrl(donation.id),
+      })),
+      badges: badges.map(({ Category, ...badge }) => ({
+        ...badge,
+        category: Category
+          ? {
+              id: Category.id,
+              name: Category.name,
+              badgeType: Category.badgeType,
+              coolingReductionMonths: Category.coolingReductionMonths,
+            }
+          : null,
+      })),
+    };
+  }),
+
+  /** Record a CSP donation and issue the permanent recognition badge */
+  recordCspDonation: protectedProcedure
+    .input(z.object({
+      donorName: z.string().min(2).max(120),
+      amount: z.number().int().positive(),
+      donorEmail: z.string().email().optional().nullable(),
+      organization: z.string().min(2).max(160).optional().nullable(),
+      donorUserId: z.string().optional().nullable(),
+      recognitionPref: z.enum(["public", "private", "anonymous"]).default("public"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const adminUserId = (ctx.session?.user as any)?.id as string;
+      if (!adminUserId) throw new Error("UNAUTHORIZED");
+
+      if (input.donorUserId) {
+        const donor = await prisma.user.findUnique({
+          where: { id: input.donorUserId },
+          select: { id: true },
+        });
+        if (!donor) throw new Error("Donor user not found");
+      }
+
+      const categories = await loadActiveCspDonationBadgeCategories(prisma);
+      const badgeCategory = resolveCspDonationBadgeCategory(categories, input.amount);
+      const donationId = randomUUID();
+
+      const result = await prisma.$transaction(async (tx) => {
+        const donation = await tx.cspDonation.create({
+          data: {
+            id: donationId,
+            donorUserId: input.donorUserId ?? null,
+            donorName: input.donorName,
+            donorEmail: input.donorEmail ?? null,
+            organization: input.organization ?? null,
+            amount: input.amount,
+            category: badgeCategory?.name ?? null,
+            recognitionPref: input.recognitionPref,
+            status: "completed",
+            certificateUrl: buildCspDonationCertificateUrl(donationId),
+          },
+        });
+
+        if (!badgeCategory) {
+          return { donation, badge: null, badgeCategory: null };
+        }
+
+        const badgeId = randomUUID();
+        const badge = await tx.cspTimeReductionBadge.create({
+          data: {
+            id: badgeId,
+            categoryId: badgeCategory.id,
+            ownerUserId: input.donorUserId ?? null,
+            sourceDonationId: donation.id,
+            reductionMonths: badgeCategory.coolingReductionMonths,
+            status: "available",
+            expiresAt: null,
+            usageLimit: 1,
+          },
+        });
+
+        const updatedDonation = await tx.cspDonation.update({
+          where: { id: donation.id },
+          data: {
+            badgeAwardedId: badge.id,
+          },
+        });
+
+        return { donation: updatedDonation, badge, badgeCategory };
+      });
+
+      await prisma.cspRuleChangeLog.create({
+        data: {
+          id: randomUUID(),
+          adminUserId,
+          ruleKey: "csp_donation_recorded",
+          previousValue: null,
+          newValue: JSON.stringify({
+            donationId: result.donation.id,
+            amount: result.donation.amount,
+            badgeCategory: result.badgeCategory?.name ?? null,
+          }),
+          reason: "Recorded CSP donation and issued recognition badge",
+        },
+      });
+
+      return {
+        success: true,
+        donation: {
+          ...result.donation,
+          certificateUrl: buildCspDonationCertificateUrl(result.donation.id),
+        },
+        badge: result.badge,
+        badgeCategory: result.badgeCategory,
+      };
+    }),
 
   submitRequest: protectedProcedure
     .input(z.object({
