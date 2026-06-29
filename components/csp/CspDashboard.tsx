@@ -353,6 +353,20 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </Card>
       </div>
 
+      {eligibilityQuery.data?.tierModelEnabled && (
+        <Card className="p-4 border-l-4 border-l-emerald-500 bg-emerald-50/70 dark:bg-emerald-900/10">
+          <div className="flex items-start gap-3">
+            <Sparkles className="mt-0.5 w-5 h-5 text-emerald-600" />
+            <div>
+              <p className="font-semibold text-foreground">CSP tier model is live</p>
+              <p className="text-sm text-muted-foreground">
+                Contribution Right, cooldowns, and certificate recognition now follow the upgraded CSP rules.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {tierProfile && (
         <Card className="p-5 bg-white dark:bg-bpi-dark-card space-y-4">
           <div className="flex items-center gap-2">
