@@ -5,6 +5,7 @@ import { sendEmail } from "@/lib/email";
 import { PAYMENT_FULFILLMENT_TYPES } from "@/server/services/payment/paymentMetadata";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { randomUUID } from "crypto";
+import { canActOnCenter, resolvePickupAccess } from "@/server/services/pickup-access.service";
 
 async function getAdminSettingNumber(prisma: any, key: string, defaultValue: number): Promise<number> {
   try {
@@ -307,6 +308,25 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
     } catch (e2) {
       console.error("[store.settleStoreReferralRewards] Failed to mark FAILED", e2);
     }
+  }
+}
+
+async function sendPickupCompletionEmails(order: any) {
+  const pickupEmail = order.pickupCenter?.contactEmail;
+  if (pickupEmail) {
+    await sendEmail({
+      to: pickupEmail,
+      subject: "Pickup completed",
+      html: `<p>The order for ${order.product?.name ?? "item"} (claim code ${order.claimCode ?? ""}) has been marked completed.</p>`,
+    });
+  }
+
+  if (order.user?.email) {
+    await sendEmail({
+      to: order.user.email,
+      subject: "Thanks for confirming pickup — please rate",
+      html: `<p>Hello ${order.user.name ?? ""},</p><p>Thanks for confirming your pickup for <strong>${order.product?.name ?? "your item"}</strong>.</p><p>Please share a quick rating of your pickup experience:</p><p><a href="${process.env.NEXTAUTH_URL ?? ""}/store/orders" target="_blank" rel="noreferrer">Rate pickup</a></p>`,
+    });
   }
 }
 
@@ -916,6 +936,47 @@ export const storeRouter = createTRPCRouter({
   listPickupCentersPublic: publicProcedure.query(async ({ ctx }) => {
     const centers = await (ctx.prisma as any).pickupCenter.findMany({ where: { isActive: true }, orderBy: [{ createdAt: "desc" }] });
     return resolvePickupCenterLocations(centers, ctx.prisma as any);
+  }),
+
+  getPickupAccess: protectedProcedure.query(async ({ ctx }) => {
+    const access = await resolvePickupAccess(ctx.prisma as any, ctx.user);
+    return {
+      isAdmin: access.isAdmin,
+      isOperator: access.isOperator,
+      centers: access.centers,
+    };
+  }),
+
+  listPickupQueue: protectedProcedure.query(async ({ ctx }) => {
+    const access = await resolvePickupAccess(ctx.prisma as any, ctx.user);
+    if (!access.isAdmin && !access.isOperator) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "You are not authorized for this pickup center" });
+    }
+
+    const where = access.isAdmin
+      ? { claimStatus: { in: ["CODE_ISSUED", "VERIFIED"] } }
+      : {
+          claimStatus: { in: ["CODE_ISSUED", "VERIFIED"] },
+          pickupCenterId: { in: access.centerIds ?? [] },
+        };
+
+    const orders = await (ctx.prisma as any).order.findMany({
+      where,
+      include: { product: true, user: true, pickupCenter: true },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+
+    return orders.map((order: any) => ({
+      ...mapOrder(order),
+      customer: order.user
+        ? {
+            id: order.user.id,
+            name: order.user.name ?? null,
+            email: order.user.email ?? null,
+          }
+        : null,
+    }));
   }),
 
   listRewardCenters: protectedProcedure.query(async ({ ctx }) => {
@@ -1735,6 +1796,11 @@ export const storeRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Claim code is invalid" });
       }
 
+      const access = await resolvePickupAccess(ctx.prisma as any, ctx.user);
+      if (!canActOnCenter(access, order.pickupCenterId ?? null)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "You are not authorized for this pickup center" });
+      }
+
       if (order.claimStatus === "VERIFIED" || order.claimStatus === "COMPLETED") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Claim code already verified" });
       }
@@ -1816,22 +1882,55 @@ export const storeRouter = createTRPCRouter({
         include: { product: true, pickupCenter: true, user: true },
       });
 
-      const pickupEmail = (refreshed ?? updated).pickupCenter?.contactEmail;
-      if (pickupEmail) {
-        await sendEmail({
-          to: pickupEmail,
-          subject: "Pickup completed",
-          html: `<p>The order for ${updated.product?.name ?? "item"} (claim code ${updated.claimCode ?? ""}) has been marked completed by the customer.</p>`,
-        });
+      await sendPickupCompletionEmails(refreshed ?? updated);
+
+      return mapOrder(refreshed ?? updated);
+    }),
+
+  staffCompletePickup: protectedProcedure
+    .input(z.object({ orderId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const order = await (ctx.prisma as any).order.findUnique({
+        where: { id: input.orderId },
+        include: { product: true, user: true, pickupCenter: true },
+      });
+
+      if (!order) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
       }
 
-      if ((refreshed ?? updated).user?.email) {
-        await sendEmail({
-          to: (refreshed ?? updated).user.email,
-          subject: "Thanks for confirming pickup — please rate",
-          html: `<p>Hello ${updated.user.name ?? ""},</p><p>Thanks for confirming your pickup for <strong>${updated.product?.name ?? "your item"}</strong>.</p><p>Please share a quick rating of your pickup experience:</p><p><a href="${process.env.NEXTAUTH_URL ?? ""}/store/orders" target="_blank" rel="noreferrer">Rate pickup</a></p>`,
-        });
+      const access = await resolvePickupAccess(ctx.prisma as any, ctx.user);
+      if (!canActOnCenter(access, order.pickupCenterId ?? null)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "You are not authorized for this pickup center" });
       }
+
+      if (order.claimStatus !== "VERIFIED") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Verify the claim code before completing" });
+      }
+
+      const now = new Date();
+      const updated = await (ctx.prisma as any).order.update({
+        where: { id: order.id },
+        data: {
+          claimStatus: "COMPLETED",
+          status: "COMPLETED",
+          pickupCompletionConfirmedAt: now,
+          pickupCompletionConfirmedBy: ctx.user.id,
+          feedbackInvitationSentAt: order.feedbackInvitationSentAt ?? now,
+        },
+        include: { product: true, user: true, pickupCenter: true },
+      });
+
+      if (updated.rewardSettlementState === "PENDING") {
+        await settleStoreReferralRewards(ctx.prisma, updated.id);
+      }
+
+      const refreshed = await (ctx.prisma as any).order.findUnique({
+        where: { id: updated.id },
+        include: { product: true, pickupCenter: true, user: true },
+      });
+
+      await sendPickupCompletionEmails(refreshed ?? updated);
 
       return mapOrder(refreshed ?? updated);
     }),
