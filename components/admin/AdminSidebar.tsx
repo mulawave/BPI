@@ -120,6 +120,12 @@ const navigation = [
     description: "Approve & extend CSP requests"
   },
   { 
+    name: "CSP Donations", 
+    href: "/admin/csp-donations", 
+    icon: Award,
+    description: "Record donations & badge tiers"
+  },
+  { 
     name: "Packages", 
     href: "/admin/packages", 
     icon: Package,

@@ -724,6 +724,234 @@ export const cspRouter = createTRPCRouter({
       };
     }),
 
+  /** Gift one of my available Time Reduction Badges to another CSP member. */
+  giftTimeReductionBadge: protectedProcedure
+    .input(z.object({
+      badgeId: z.string(),
+      recipient: z.string().trim().min(2).max(160), // email or SSC
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id as string | undefined;
+      if (!userId) throw new Error("UNAUTHORIZED");
+
+      const badge = await prisma.cspTimeReductionBadge.findUnique({
+        where: { id: input.badgeId },
+        include: { Category: { select: { badgeType: true, coolingReductionMonths: true } } },
+      });
+      if (!badge || badge.ownerUserId !== userId) {
+        throw new Error("Badge not found or you do not own it.");
+      }
+      if (badge.status !== "available") {
+        throw new Error("Only available badges can be gifted.");
+      }
+
+      const query = input.recipient.trim();
+      const recipient = await prisma.user.findFirst({
+        where: { OR: [{ email: query }, { ssc: query }] },
+        select: { id: true, name: true, firstname: true, lastname: true, email: true },
+      });
+      if (!recipient) throw new Error("Recipient not found. Use their registered email or SSC.");
+      if (recipient.id === userId) throw new Error("You cannot gift a badge to yourself.");
+
+      await prisma.$transaction([
+        prisma.cspTimeReductionBadge.update({
+          where: { id: badge.id },
+          data: { ownerUserId: recipient.id },
+        }),
+        prisma.cspBadgeTransfer.create({
+          data: {
+            id: randomUUID(),
+            badgeId: badge.id,
+            fromUserId: userId,
+            toUserId: recipient.id,
+            type: "gift",
+            status: "completed",
+          },
+        }),
+        prisma.notification.create({
+          data: {
+            id: randomUUID(),
+            userId: recipient.id,
+            title: "You received a Time Reduction Badge",
+            message: `A CSP member gifted you a ${badge.Category?.badgeType ?? "Time Reduction"} badge worth ${badge.reductionMonths} month(s) of cooling reduction. Redeem it from your CSP dashboard.`,
+            type: "csp",
+            isRead: false,
+          },
+        }),
+      ]);
+
+      return { success: true, recipientName: recipient.firstname || recipient.name || recipient.email };
+    }),
+
+  /** Redeem one of my available Time Reduction Badges to shorten my active cooling period. */
+  redeemTimeReductionBadge: protectedProcedure
+    .input(z.object({ badgeId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id as string | undefined;
+      if (!userId) throw new Error("UNAUTHORIZED");
+
+      const badge = await prisma.cspTimeReductionBadge.findUnique({
+        where: { id: input.badgeId },
+      });
+      if (!badge || badge.ownerUserId !== userId) {
+        throw new Error("Badge not found or you do not own it.");
+      }
+      if (badge.status !== "available") {
+        throw new Error("This badge has already been used.");
+      }
+
+      const standing = await ensureMemberStanding(prisma, userId);
+      const now = new Date();
+      const currentEnds = standing.coolingEndsAt;
+      if (!currentEnds || currentEnds <= now) {
+        throw new Error("You have no active cooling period to reduce right now.");
+      }
+
+      const reduced = new Date(currentEnds);
+      reduced.setMonth(reduced.getMonth() - badge.reductionMonths);
+      const newEnds = reduced <= now ? null : reduced;
+
+      // Also shorten the most recent released request's cooldown (legacy path).
+      const latestReleased = await prisma.cspSupportRequest.findFirst({
+        where: { userId, status: "released", cooldownEndsAt: { gt: now } },
+        orderBy: { releasedAt: "desc" },
+        select: { id: true, cooldownEndsAt: true },
+      });
+
+      const ops: any[] = [
+        prisma.cspTimeReductionBadge.update({
+          where: { id: badge.id },
+          data: { status: "redeemed" },
+        }),
+        prisma.cspMemberStanding.update({
+          where: { userId },
+          data: { coolingEndsAt: newEnds },
+        }),
+        prisma.cspBadgeTransfer.create({
+          data: {
+            id: randomUUID(),
+            badgeId: badge.id,
+            fromUserId: userId,
+            toUserId: userId,
+            type: "redeem",
+            status: "completed",
+          },
+        }),
+        prisma.notification.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            title: "Cooling period reduced",
+            message: `You redeemed a Time Reduction Badge and shortened your cooling period by ${badge.reductionMonths} month(s).`,
+            type: "csp",
+            isRead: false,
+          },
+        }),
+      ];
+
+      if (latestReleased?.cooldownEndsAt) {
+        const legacyReduced = new Date(latestReleased.cooldownEndsAt);
+        legacyReduced.setMonth(legacyReduced.getMonth() - badge.reductionMonths);
+        ops.push(prisma.cspSupportRequest.update({
+          where: { id: latestReleased.id },
+          data: { cooldownEndsAt: legacyReduced <= now ? now : legacyReduced },
+        }));
+      }
+
+      await prisma.$transaction(ops);
+
+      return { success: true, reducedMonths: badge.reductionMonths, coolingEndsAt: newEnds };
+    }),
+
+  /** Admin: list recorded CSP donations (paginated). */
+  adminListCspDonations: protectedProcedure
+    .input(z.object({ page: z.number().int().min(1).default(1), limit: z.number().int().min(1).max(100).default(20) }).optional())
+    .query(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const page = input?.page ?? 1;
+      const limit = input?.limit ?? 20;
+      const [donations, total] = await Promise.all([
+        prisma.cspDonation.findMany({
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * limit,
+          take: limit,
+          include: { Donor: { select: { id: true, name: true, firstname: true, lastname: true, email: true } } },
+        }),
+        prisma.cspDonation.count(),
+      ]);
+      return {
+        donations: donations.map((d) => ({ ...d, certificateUrl: d.certificateUrl ?? buildCspDonationCertificateUrl(d.id) })),
+        total,
+        page,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      };
+    }),
+
+  /** Admin: list every donation badge category (includes inactive). */
+  adminListDonationBadgeCategories: protectedProcedure.query(async ({ ctx }) => {
+    assertAdmin(ctx.session);
+    return prisma.cspDonationBadgeCategory.findMany({
+      orderBy: [{ minAmount: "asc" }, { sortOrder: "asc" }],
+      select: {
+        id: true, name: true, minAmount: true, maxAmount: true,
+        badgeType: true, coolingReductionMonths: true, isActive: true, sortOrder: true,
+      },
+    });
+  }),
+
+  /** Admin: create/update donation badge categories. Zero values allowed. */
+  adminUpsertDonationBadgeCategories: protectedProcedure
+    .input(z.object({
+      categories: z.array(z.object({
+        id: z.string().optional(),
+        name: z.string().trim().min(1).max(120),
+        minAmount: z.number().int().min(0),
+        maxAmount: z.number().int().min(0).nullable(),
+        badgeType: z.string().trim().min(1).max(120),
+        coolingReductionMonths: z.number().int().min(0),
+        isActive: z.boolean(),
+        sortOrder: z.number().int().optional(),
+      })).min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const adminUserId = (ctx.session?.user as any)?.id as string;
+      if (!adminUserId) throw new Error("UNAUTHORIZED");
+
+      const ops = input.categories.map((c) => {
+        const data = {
+          name: c.name,
+          minAmount: c.minAmount,
+          maxAmount: c.maxAmount,
+          badgeType: c.badgeType,
+          coolingReductionMonths: c.coolingReductionMonths,
+          isActive: c.isActive,
+          ...(c.sortOrder !== undefined ? { sortOrder: c.sortOrder } : {}),
+        };
+        return prisma.cspDonationBadgeCategory.upsert({
+          where: { name: c.name },
+          update: data,
+          create: { id: c.id ?? randomUUID(), ...data },
+        });
+      });
+
+      await prisma.$transaction([
+        ...ops,
+        prisma.cspRuleChangeLog.create({
+          data: {
+            id: randomUUID(),
+            adminUserId,
+            ruleKey: "csp_donation_badge_categories",
+            previousValue: null,
+            newValue: JSON.stringify(input.categories.map((c) => ({ name: c.name, minAmount: c.minAmount, reduction: c.coolingReductionMonths }))),
+            reason: "Updated CSP donation badge categories",
+          },
+        }),
+      ]);
+
+      return { success: true, updated: input.categories.length };
+    }),
+
   submitRequest: protectedProcedure
     .input(z.object({
       category: z.enum(["national", "global"]),
