@@ -74,6 +74,8 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   const [contributionWallet, setContributionWallet] = useState<"community" | "wallet" | "crypto">("wallet");
   const [cryptoTxHash, setCryptoTxHash] = useState("");
   const [shuffledBroadcasts, setShuffledBroadcasts] = useState<typeof broadcastsQuery.data>([]);
+  const [giftBadgeId, setGiftBadgeId] = useState<string | null>(null);
+  const [giftRecipient, setGiftRecipient] = useState("");
 
   const categoryRulesFallback = {
     national: { label: "National", minDirects: 10, minThreshold: 10000, broadcastHours: 48, minCumulativeContrib: 10000, minDistinctRequests: 10 },
@@ -149,6 +151,26 @@ export function CspDashboard({ userName }: CspDashboardProps) {
       setContributionAmount("");
       setCryptoTxHash("");
       broadcastsQuery.refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const giftBadgeMutation = api.csp.giftTimeReductionBadge.useMutation({
+    onSuccess: (r: any) => {
+      toast.success(`Badge gifted to ${r.recipientName}`);
+      setGiftBadgeId(null);
+      setGiftRecipient("");
+      recognitionQuery.refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const redeemBadgeMutation = api.csp.redeemTimeReductionBadge.useMutation({
+    onSuccess: (r: any) => {
+      toast.success(`Cooling reduced by ${r.reducedMonths} month(s)`);
+      recognitionQuery.refetch();
+      eligibilityQuery.refetch();
+      waitStatusQuery.refetch();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -666,7 +688,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                   label: "Certificate",
                   primary: "PDF Available",
                   secondary: "Permanent record",
-                  tertiary: "Giftable when enabled",
+                  tertiary: "Gift or redeem badges below",
                 },
               ].map((c, i) => (
                 <div key={i} className="rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/70 backdrop-blur px-4 py-4 hover:border-amber-300/60 dark:hover:border-amber-600/30 transition-colors">
@@ -677,6 +699,98 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                 </div>
               ))}
             </div>
+
+            {/* ── Time Reduction Badges: gift or redeem ── */}
+            {recognitionQuery.data.badges.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700/90 dark:text-amber-300/80">My Time Reduction Badges</p>
+                <div className="space-y-2">
+                  {recognitionQuery.data.badges.map((badge: any) => (
+                    <div key={badge.id} className="rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/70 backdrop-blur px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <Gem className="h-4 w-4 text-amber-500" />
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                              {badge.category?.badgeType ?? "Time Reduction Badge"}
+                              <span className="ml-2 text-xs font-normal text-slate-500">{badge.reductionMonths} month{badge.reductionMonths === 1 ? "" : "s"}</span>
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {badge.status === "available" ? "Available to redeem or gift" : badge.status === "redeemed" ? "Redeemed" : badge.status}
+                            </p>
+                          </div>
+                        </div>
+                        {badge.status === "available" && (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={redeemBadgeMutation.isPending}
+                              onClick={() => redeemBadgeMutation.mutate({ badgeId: badge.id })}
+                              className="border-emerald-400/40 text-emerald-800 hover:bg-emerald-50 dark:border-emerald-700/50 dark:text-emerald-300 dark:hover:bg-emerald-900/20"
+                            >
+                              <TimerReset className="h-3.5 w-3.5 mr-1" /> Redeem
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => { setGiftBadgeId(giftBadgeId === badge.id ? null : badge.id); setGiftRecipient(""); }}
+                              className="border-amber-400/40 text-amber-800 hover:bg-amber-50 dark:border-amber-700/50 dark:text-amber-300 dark:hover:bg-amber-900/20"
+                            >
+                              <ArrowUpRight className="h-3.5 w-3.5 mr-1" /> Gift
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      {giftBadgeId === badge.id && (
+                        <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                          <Input
+                            value={giftRecipient}
+                            onChange={(e) => setGiftRecipient(e.target.value)}
+                            placeholder="Recipient email or SSC"
+                            className="flex-1"
+                          />
+                          <Button
+                            size="sm"
+                            disabled={giftBadgeMutation.isPending || giftRecipient.trim().length < 2}
+                            onClick={() => giftBadgeMutation.mutate({ badgeId: badge.id, recipient: giftRecipient.trim() })}
+                          >
+                            {giftBadgeMutation.isPending ? "Gifting..." : "Send Gift"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Donation history + certificates ── */}
+            {recognitionQuery.data.donations.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700/90 dark:text-amber-300/80">Donation History</p>
+                <div className="space-y-2">
+                  {recognitionQuery.data.donations.map((donation: any) => (
+                    <div key={donation.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/70 backdrop-blur px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                          {formatAmount(donation.amount)}
+                          {donation.category && <span className="ml-2 text-xs font-normal text-slate-500">{donation.category}</span>}
+                        </p>
+                        <p className="text-xs text-slate-500">{new Date(donation.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}</p>
+                      </div>
+                      {donation.certificateUrl && (
+                        <Button asChild size="sm" variant="outline" className="border-amber-400/40 text-amber-800 hover:bg-amber-50 dark:border-amber-700/50 dark:text-amber-300 dark:hover:bg-amber-900/20">
+                          <a href={donation.certificateUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5">
+                            <ScrollText className="h-3.5 w-3.5" /> Certificate
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
