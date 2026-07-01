@@ -26,6 +26,7 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
+  Layers,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import AdminPageGuide from "@/components/admin/AdminPageGuide";
@@ -111,6 +112,7 @@ export default function CspAdminQueuePage() {
   // Eligibility config state
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const [showTierPanel, setShowTierPanel] = useState(false);
+  const [showTiersPanel, setShowTiersPanel] = useState(false);
   const [showAuditPanel, setShowAuditPanel] = useState(false);
   const [ruleLogPage, setRuleLogPage] = useState(1);
   const [ruleLogFilter, setRuleLogFilter] = useState("");
@@ -132,6 +134,7 @@ export default function CspAdminQueuePage() {
   const { data: cspCountries, refetch: refetchCountries } = api.csp.listCspCountries.useQuery();
   const { data: eligibilityConfig, refetch: refetchEligibilityConfig } = api.csp.getCspEligibilityConfig.useQuery();
   const { data: tierConfig, refetch: refetchTierConfig } = api.csp.getCspTierConfig.useQuery();
+  const { data: cspTiers, refetch: refetchCspTiers } = api.csp.adminListCspTiers.useQuery();
   const { data: ruleChangeLogs, refetch: refetchRuleChangeLogs, isFetching: isRuleChangeLogsFetching } = api.csp.adminListCspRuleChangeLogs.useQuery({
     page: ruleLogPage,
     pageSize: 10,
@@ -236,6 +239,15 @@ export default function CspAdminQueuePage() {
     onSuccess: () => {
       toast.success("Tier rules updated");
       refetchTierConfig();
+      refetchRuleChangeLogs();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const upsertTiersMutation = api.csp.adminUpsertCspTiers.useMutation({
+    onSuccess: () => {
+      toast.success("Tiers updated");
+      refetchCspTiers();
       refetchRuleChangeLogs();
     },
     onError: (err) => toast.error(err.message),
@@ -810,6 +822,34 @@ export default function CspAdminQueuePage() {
         )}
         {showTierPanel && !tierConfig && (
           <p className="mt-4 text-sm text-muted-foreground">Loading tier config...</p>
+        )}
+      </div>
+
+      {/* ─── CSP Tier Table (per-tier values) ─────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card/70 p-6 shadow-sm">
+        <button
+          onClick={() => setShowTiersPanel((v) => !v)}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <div className="flex items-center gap-3">
+            <Layers className="h-5 w-5 text-emerald-600" />
+            <div>
+              <h2 className="text-lg font-bold text-foreground">CSP Tiers</h2>
+              <p className="text-sm text-muted-foreground">Edit each tier&apos;s contribution-right threshold, support cap, minimum fulfilment %, and activation.</p>
+            </div>
+          </div>
+          {showTiersPanel ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </button>
+
+        {showTiersPanel && cspTiers && (
+          <TiersManager
+            tiers={cspTiers}
+            onSave={(tiers, reason) => upsertTiersMutation.mutate({ tiers, reason })}
+            isPending={upsertTiersMutation.isPending}
+          />
+        )}
+        {showTiersPanel && !cspTiers && (
+          <p className="mt-4 text-sm text-muted-foreground">Loading tiers...</p>
         )}
       </div>
 
@@ -1553,6 +1593,106 @@ function EligibilityConfigForm({ config, onSave, isPending }: { config: any; onS
       <button onClick={() => onSave(form)} disabled={isPending}
         className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50">
         {isPending ? "Saving..." : "Save Eligibility Config"}
+      </button>
+    </div>
+  );
+}
+
+type CspTierRow = RouterOutputs["csp"]["adminListCspTiers"][number];
+
+function TiersManager({ tiers, onSave, isPending }: { tiers: CspTierRow[]; onSave: (tiers: any[], reason?: string) => void; isPending: boolean }) {
+  const [rows, setRows] = useState<CspTierRow[]>(tiers);
+  const [reason, setReason] = useState("");
+
+  React.useEffect(() => { setRows(tiers); }, [tiers]);
+
+  const update = (tierNumber: number, patch: Partial<CspTierRow>) =>
+    setRows((prev) => prev.map((r) => (r.tierNumber === tierNumber ? { ...r, ...patch } : r)));
+
+  const numeric = (v: string) => (v === "" ? 0 : Math.max(0, parseInt(v, 10) || 0));
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <th className="px-3 py-2">#</th>
+              <th className="px-3 py-2">Name</th>
+              <th className="px-3 py-2">Contribution Right (₦)</th>
+              <th className="px-3 py-2">Max Support Cap (₦)</th>
+              <th className="px-3 py-2">Min Fulfilment %</th>
+              <th className="px-3 py-2 text-center">Active</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.tierNumber} className="border-t border-border">
+                <td className="px-3 py-2 font-semibold text-muted-foreground">{row.tierNumber}</td>
+                <td className="px-3 py-2">
+                  <input
+                    type="text"
+                    value={row.name}
+                    onChange={(e) => update(row.tierNumber, { name: e.target.value })}
+                    className="w-40 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                  />
+                </td>
+                <td className="px-3 py-2">
+                  <input
+                    type="number" min={0}
+                    value={String(row.contributionRight)}
+                    onChange={(e) => update(row.tierNumber, { contributionRight: numeric(e.target.value) })}
+                    className="w-32 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                  />
+                </td>
+                <td className="px-3 py-2">
+                  <input
+                    type="number" min={0}
+                    value={String(row.maxSupportCap)}
+                    onChange={(e) => update(row.tierNumber, { maxSupportCap: numeric(e.target.value) })}
+                    className="w-32 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                  />
+                </td>
+                <td className="px-3 py-2">
+                  <input
+                    type="number" min={0} max={100}
+                    value={String(row.minFulfilmentPct)}
+                    onChange={(e) => update(row.tierNumber, { minFulfilmentPct: Math.min(100, numeric(e.target.value)) })}
+                    className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                  />
+                </td>
+                <td className="px-3 py-2 text-center">
+                  <input
+                    type="checkbox"
+                    checked={row.isActive}
+                    onChange={(e) => update(row.tierNumber, { isActive: e.target.checked })}
+                    className="h-4 w-4 rounded border-border"
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <label className="text-xs font-semibold text-muted-foreground">Reason for change (optional, logged)</label>
+        <input
+          type="text"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="e.g. Adjusted caps for 2026 program"
+          className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+        />
+      </div>
+
+      <button
+        onClick={() => onSave(rows.map(({ id: _id, createdAt: _c, updatedAt: _u, ...rest }: any) => rest), reason.trim() || undefined)}
+        disabled={isPending}
+        className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+      >
+        <Layers className="h-4 w-4" />
+        {isPending ? "Saving..." : "Save Tiers"}
       </button>
     </div>
   );

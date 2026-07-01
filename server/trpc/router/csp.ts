@@ -2231,6 +2231,107 @@ export const cspRouter = createTRPCRouter({
       return { success: true, updatedKeys: changedEntries.map(([k]) => k) };
     }),
 
+  /** List every CSP tier row for admin management (includes inactive) */
+  adminListCspTiers: protectedProcedure.query(async ({ ctx }) => {
+    assertAdmin(ctx.session);
+    return prisma.cspTier.findMany({
+      orderBy: [{ sortOrder: "asc" }, { tierNumber: "asc" }],
+      select: {
+        id: true,
+        tierNumber: true,
+        name: true,
+        contributionRight: true,
+        maxSupportCap: true,
+        minFulfilmentPct: true,
+        isActive: true,
+        isSpecial: true,
+        sortOrder: true,
+      },
+    });
+  }),
+
+  /** Create or update CSP tier rows (admin). Zero values are allowed. */
+  adminUpsertCspTiers: protectedProcedure
+    .input(z.object({
+      tiers: z.array(z.object({
+        id: z.string().optional(),
+        tierNumber: z.number().int().min(0),
+        name: z.string().trim().min(1).max(120),
+        contributionRight: z.number().int().min(0),
+        maxSupportCap: z.number().int().min(0),
+        minFulfilmentPct: z.number().int().min(0).max(100),
+        isActive: z.boolean(),
+        isSpecial: z.boolean().optional(),
+        sortOrder: z.number().int().min(0).optional(),
+      })).min(1),
+      reason: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const adminUserId = (ctx.session?.user as any)?.id as string;
+      if (!adminUserId) throw new Error("UNAUTHORIZED");
+      const reason = input.reason?.trim() || null;
+
+      const existing = await prisma.cspTier.findMany({
+        select: {
+          id: true, tierNumber: true, name: true, contributionRight: true,
+          maxSupportCap: true, minFulfilmentPct: true, isActive: true, isSpecial: true, sortOrder: true,
+        },
+      });
+      const byNumber = new Map(existing.map((t) => [t.tierNumber, t]));
+
+      const ops: any[] = [];
+      const logs: any[] = [];
+      for (const tier of input.tiers) {
+        const prev = byNumber.get(tier.tierNumber) ?? null;
+        const data = {
+          name: tier.name,
+          contributionRight: tier.contributionRight,
+          maxSupportCap: tier.maxSupportCap,
+          minFulfilmentPct: tier.minFulfilmentPct,
+          isActive: tier.isActive,
+          ...(tier.isSpecial !== undefined ? { isSpecial: tier.isSpecial } : {}),
+          ...(tier.sortOrder !== undefined ? { sortOrder: tier.sortOrder } : {}),
+        };
+        ops.push(prisma.cspTier.upsert({
+          where: { tierNumber: tier.tierNumber },
+          update: data,
+          create: {
+            tierNumber: tier.tierNumber,
+            isSpecial: tier.isSpecial ?? false,
+            sortOrder: tier.sortOrder ?? tier.tierNumber,
+            ...data,
+          },
+        }));
+
+        // Audit each changed field via the shared rule-change log.
+        const trackedFields: Array<[string, string | number | boolean, string | number | boolean | null]> = [
+          ["name", tier.name, prev?.name ?? null],
+          ["contributionRight", tier.contributionRight, prev?.contributionRight ?? null],
+          ["maxSupportCap", tier.maxSupportCap, prev?.maxSupportCap ?? null],
+          ["minFulfilmentPct", tier.minFulfilmentPct, prev?.minFulfilmentPct ?? null],
+          ["isActive", tier.isActive, prev?.isActive ?? null],
+        ];
+        for (const [field, next, previous] of trackedFields) {
+          if (previous === null || String(previous) !== String(next)) {
+            logs.push(prisma.cspRuleChangeLog.create({
+              data: {
+                id: randomUUID(),
+                adminUserId,
+                ruleKey: `csp_tier_${tier.tierNumber}_${field}`,
+                previousValue: previous === null ? null : String(previous),
+                newValue: String(next),
+                reason,
+              },
+            }));
+          }
+        }
+      }
+
+      await prisma.$transaction([...ops, ...logs]);
+      return { success: true, updated: input.tiers.length };
+    }),
+
   /** Apply the sponsor-based cooling reduction for a member (admin) */
   applyCspSponsorCoolingReduction: protectedProcedure
     .input(z.object({
