@@ -99,7 +99,7 @@ async function loadEligibilityConfig(db: typeof prisma): Promise<EligibilityConf
   ];
   const rows = await db.adminSettings.findMany({ where: { settingKey: { in: keys } } });
   const m = new Map(rows.map((r: any) => [r.settingKey, r.settingValue]));
-  const n = (key: string, def: number) => { const v = parseFloat(m.get(key) ?? ""); return isFinite(v) && v > 0 ? v : def; };
+  const n = (key: string, def: number) => { const v = parseFloat(m.get(key) ?? ""); return isFinite(v) && v >= 0 ? v : def; };
   const s = (key: string, def: string) => m.get(key) ?? def;
   return {
     minPerContribution: n("csp_min_per_contribution", DEFAULTS.minPerContribution),
@@ -223,10 +223,47 @@ function meetsMembership(current: MembershipOrder | null, required: string) {
   return currentIndex >= requiredIndex;
 }
 
+type MembershipPackagePriceRow = {
+  id: string;
+  name: string;
+  price: number | null;
+};
+
+function buildMembershipPriceLookup(packages: MembershipPackagePriceRow[]) {
+  const byId = new Map<string, number | null>();
+  const byName = new Map<string, number | null>();
+  for (const pkg of packages) {
+    byId.set(pkg.id, pkg.price);
+    byName.set(pkg.name.trim().toLowerCase(), pkg.price);
+  }
+  return { byId, byName };
+}
+
+function resolveMembershipPrice(
+  lookup: ReturnType<typeof buildMembershipPriceLookup>,
+  required: string,
+) {
+  return lookup.byName.get(required.trim().toLowerCase()) ?? null;
+}
+
+function evaluateMembershipRequirement(params: {
+  membershipActive: boolean;
+  membership: MembershipOrder | null;
+  userPrice: number | null;
+  requiredMembership: string;
+  requiredPrice: number | null;
+}) {
+  const { membershipActive, membership, userPrice, requiredMembership, requiredPrice } = params;
+  if (membershipActive && userPrice != null && requiredPrice != null) {
+    return userPrice >= requiredPrice;
+  }
+  return meetsMembership(membership, requiredMembership);
+}
+
 function computeEligibilityFlags(params: {
   category: CategoryKey;
-  membership: MembershipOrder | null;
-  membershipActive: boolean;
+  membershipMeets: boolean;
+  membershipMeetsRegularPlus: boolean;
   qualifiedDirects: number; // directs with at least Regular membership
   cumulativeContributions: number;
   requestsContributed: number;
@@ -235,13 +272,13 @@ function computeEligibilityFlags(params: {
   config: EligibilityConfig;
 }) {
   const {
-    category, membership, membershipActive,
+    category, membershipMeets, membershipMeetsRegularPlus,
     qualifiedDirects, cumulativeContributions, requestsContributed,
     hasAnyActivatedCountry, userCountryIsActivated, config,
   } = params;
 
   const rules = config[category];
-  const hasMembership = membershipActive && meetsMembership(membership, rules.minMembership);
+  const hasMembership = membershipMeets;
   const hasDistinct = requestsContributed >= rules.minDistinctRequests;
   const hasContrib = cumulativeContributions >= rules.minCumulativeContrib;
 
@@ -252,13 +289,13 @@ function computeEligibilityFlags(params: {
   }
 
   // Global — two paths
-  // Path A: Regular Plus, 10 qualified directs, ₦20k contrib, at least one active country globally
-  const pathAMembership = membershipActive && meetsMembership(membership, "regular plus");
-  const pathADirects = qualifiedDirects >= 10;
+  // Path A: Regular Plus, admin-configured directs, ₦20k contrib, at least one active country globally
+  const pathAMembership = membershipMeetsRegularPlus;
+  const pathADirects = qualifiedDirects >= config.global.minDirects;
   const pathAEligible = pathAMembership && pathADirects && hasContrib && hasDistinct && hasAnyActivatedCountry;
 
-  // Path B: user's own country activated, 20 qualified directs, ₦20k contrib
-  const pathBDirects = qualifiedDirects >= 20;
+  // Path B: user's own country activated, admin-configured directs, ₦20k contrib
+  const pathBDirects = qualifiedDirects >= config.global.minDirects;
   const pathBEligible = pathBDirects && hasContrib && hasDistinct && userCountryIsActivated;
 
   const eligible = pathAEligible || pathBEligible;
@@ -341,10 +378,9 @@ export const cspRouter = createTRPCRouter({
 
     // ── Phase 2: fire all remaining independent queries in parallel ───────────
     const [
-      membershipRow,
+      membershipPackages,
       allReferrals,
       contributionGroups,
-      regularPkgIds,
       userCountryRecord,
       anyActivatedCountry,
       latestReleased,
@@ -354,13 +390,9 @@ export const cspRouter = createTRPCRouter({
       autoDebitSetting,
       autoContributeSetting,
     ] = await Promise.all([
-      // Membership name lookup (null-safe)
-      user?.activeMembershipPackageId
-        ? prisma.membershipPackage.findUnique({
-            where: { id: user.activeMembershipPackageId },
-            select: { name: true },
-          })
-        : Promise.resolve(null),
+      prisma.membershipPackage.findMany({
+        select: { id: true, name: true, price: true },
+      }),
 
       // Direct referrals
       prisma.referral.findMany({
@@ -373,12 +405,6 @@ export const cspRouter = createTRPCRouter({
         by: ["requestId"],
         where: { contributorId: userId },
         _sum: { amount: true },
-      }),
-
-      // Qualified membership package IDs (used to count qualified directs)
-      prisma.membershipPackage.findMany({
-        where: { name: { in: ["Regular", "Regular Plus", "Gold", "Gold Plus", "Platinum", "Platinum Plus"] } },
-        select: { id: true },
       }),
 
       // User's country activation record
@@ -413,11 +439,41 @@ export const cspRouter = createTRPCRouter({
       }),
     ]);
 
-    const membershipName = membershipRow?.name ?? null;
+    const membershipLookup = buildMembershipPriceLookup(membershipPackages);
+    const membershipName = user?.activeMembershipPackageId
+      ? membershipPackages.find((pkg) => pkg.id === user.activeMembershipPackageId)?.name ?? null
+      : null;
     const membership = normalizeMembership(membershipName);
     // Use activeMembershipPackageId as the source of truth (same as user.getDetails),
     // NOT membershipActivatedAt which may be null for some activated members.
     const membershipActive = Boolean(user?.activeMembershipPackageId && membershipName);
+    const membershipPrice = user?.activeMembershipPackageId
+      ? membershipLookup.byId.get(user.activeMembershipPackageId) ?? null
+      : null;
+    const requiredNationalMembershipPrice = resolveMembershipPrice(membershipLookup, config.national.minMembership);
+    const requiredGlobalMembershipPrice = resolveMembershipPrice(membershipLookup, config.global.minMembership);
+    const requiredRegularPlusPrice = resolveMembershipPrice(membershipLookup, "regular plus");
+    const membershipMeetsNational = evaluateMembershipRequirement({
+      membershipActive,
+      membership,
+      userPrice: membershipPrice,
+      requiredMembership: config.national.minMembership,
+      requiredPrice: requiredNationalMembershipPrice,
+    });
+    const membershipMeetsGlobal = evaluateMembershipRequirement({
+      membershipActive,
+      membership,
+      userPrice: membershipPrice,
+      requiredMembership: config.global.minMembership,
+      requiredPrice: requiredGlobalMembershipPrice,
+    });
+    const membershipMeetsRegularPlus = evaluateMembershipRequirement({
+      membershipActive,
+      membership,
+      userPrice: membershipPrice,
+      requiredMembership: "regular plus",
+      requiredPrice: requiredRegularPlusPrice,
+    });
 
     const referredIds = allReferrals.map((r: any) => r.referredId);
     const cumulativeContributions = contributionGroups.reduce((sum: number, row: any) => sum + (row._sum.amount ?? 0), 0);
@@ -467,7 +523,11 @@ export const cspRouter = createTRPCRouter({
     // ── Phase 3: qualified-directs count (depends on referredIds + pkg IDs) ───
     let qualifiedDirects = 0;
     if (referredIds.length > 0) {
-      const regularPkgIdSet = new Set(regularPkgIds.map((p: any) => p.id));
+      const regularPkgIdSet = new Set(
+        membershipPackages
+          .filter((pkg) => ["regular", "regular plus", "gold", "gold plus", "platinum", "platinum plus"].includes(pkg.name.trim().toLowerCase()))
+          .map((pkg) => pkg.id)
+      );
       const qualifiedUsers = await prisma.user.findMany({
         where: {
           id: { in: referredIds },
@@ -480,8 +540,8 @@ export const cspRouter = createTRPCRouter({
     }
 
     const categories = {
-      national: computeEligibilityFlags({ category: "national", membership, membershipActive, qualifiedDirects, cumulativeContributions, requestsContributed, hasAnyActivatedCountry, userCountryIsActivated, config }),
-      global: computeEligibilityFlags({ category: "global", membership, membershipActive, qualifiedDirects, cumulativeContributions, requestsContributed, hasAnyActivatedCountry, userCountryIsActivated, config }),
+      national: computeEligibilityFlags({ category: "national", membershipMeets: membershipMeetsNational, membershipMeetsRegularPlus, qualifiedDirects, cumulativeContributions, requestsContributed, hasAnyActivatedCountry, userCountryIsActivated, config }),
+      global: computeEligibilityFlags({ category: "global", membershipMeets: membershipMeetsGlobal, membershipMeetsRegularPlus, qualifiedDirects, cumulativeContributions, requestsContributed, hasAnyActivatedCountry, userCountryIsActivated, config }),
     } as const;
 
     const tierAdjustedCategories = tierConfig.tierModelEnabled
@@ -963,31 +1023,62 @@ export const cspRouter = createTRPCRouter({
       const userId = (ctx.session?.user as any)?.id as string | undefined;
       if (!userId) throw new Error("UNAUTHORIZED");
 
-      const [config, tierConfig, user] = await Promise.all([
+      const [config, tierConfig, user, membershipPackages] = await Promise.all([
         loadEligibilityConfig(prisma),
         loadTierConfig(prisma),
         prisma.user.findUnique({
           where: { id: userId },
           select: { activeMembershipPackageId: true, membershipActivatedAt: true, country: true, community: true },
         }),
+        prisma.membershipPackage.findMany({
+          select: { id: true, name: true, price: true },
+        }),
       ]);
 
+      const membershipLookup = buildMembershipPriceLookup(membershipPackages);
       const membershipName = user?.activeMembershipPackageId
-        ? (await prisma.membershipPackage.findUnique({ where: { id: user.activeMembershipPackageId }, select: { name: true } }))?.name ?? null
+        ? membershipPackages.find((pkg) => pkg.id === user.activeMembershipPackageId)?.name ?? null
         : null;
       const membership = normalizeMembership(membershipName);
       const membershipActive = Boolean(user?.membershipActivatedAt && membershipName);
+      const membershipPrice = user?.activeMembershipPackageId
+        ? membershipLookup.byId.get(user.activeMembershipPackageId) ?? null
+        : null;
+      const requiredNationalMembershipPrice = resolveMembershipPrice(membershipLookup, config.national.minMembership);
+      const requiredGlobalMembershipPrice = resolveMembershipPrice(membershipLookup, config.global.minMembership);
+      const requiredRegularPlusPrice = resolveMembershipPrice(membershipLookup, "regular plus");
+      const membershipMeetsNational = evaluateMembershipRequirement({
+        membershipActive,
+        membership,
+        userPrice: membershipPrice,
+        requiredMembership: config.national.minMembership,
+        requiredPrice: requiredNationalMembershipPrice,
+      });
+      const membershipMeetsGlobal = evaluateMembershipRequirement({
+        membershipActive,
+        membership,
+        userPrice: membershipPrice,
+        requiredMembership: config.global.minMembership,
+        requiredPrice: requiredGlobalMembershipPrice,
+      });
+      const membershipMeetsRegularPlus = evaluateMembershipRequirement({
+        membershipActive,
+        membership,
+        userPrice: membershipPrice,
+        requiredMembership: "regular plus",
+        requiredPrice: requiredRegularPlusPrice,
+      });
 
       // Qualified directs
       const allReferrals = await prisma.referral.findMany({ where: { referrerId: userId }, select: { referredId: true } });
       const referredIds = allReferrals.map((r: any) => r.referredId);
       let qualifiedDirects = 0;
       if (referredIds.length > 0) {
-        const regularPkgIds = await prisma.membershipPackage.findMany({
-          where: { name: { in: ["Regular", "Regular Plus", "Gold", "Gold Plus", "Platinum", "Platinum Plus"] } },
-          select: { id: true },
-        });
-        const regularPkgIdSet = new Set(regularPkgIds.map((p: any) => p.id));
+        const regularPkgIdSet = new Set(
+          membershipPackages
+            .filter((pkg) => ["regular", "regular plus", "gold", "gold plus", "platinum", "platinum plus"].includes(pkg.name.trim().toLowerCase()))
+            .map((pkg) => pkg.id)
+        );
         const qualifiedUsers = await prisma.user.findMany({
           where: { id: { in: referredIds }, membershipActivatedAt: { not: null }, activeMembershipPackageId: { in: [...regularPkgIdSet] } },
           select: { id: true },
@@ -1013,8 +1104,8 @@ export const cspRouter = createTRPCRouter({
 
       const eligibilityFlags = computeEligibilityFlags({
         category: input.category,
-        membership,
-        membershipActive,
+        membershipMeets: input.category === "national" ? membershipMeetsNational : membershipMeetsGlobal,
+        membershipMeetsRegularPlus,
         qualifiedDirects,
         cumulativeContributions,
         requestsContributed,

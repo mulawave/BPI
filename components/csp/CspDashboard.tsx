@@ -78,7 +78,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   const [giftRecipient, setGiftRecipient] = useState("");
 
   const categoryRulesFallback = {
-    national: { label: "National", minDirects: 10, minThreshold: 10000, broadcastHours: 48, minCumulativeContrib: 10000, minDistinctRequests: 10 },
+    national: { label: "National", minDirects: 2, minThreshold: 10000, broadcastHours: 48, minCumulativeContrib: 10000, minDistinctRequests: 10 },
     global: { label: "Global", minDirects: 10, minThreshold: 20000, broadcastHours: 48, minCumulativeContrib: 20000, minDistinctRequests: 10 },
   };
 
@@ -116,6 +116,11 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     national: eligibilityQuery.data?.categoryConfig?.national ?? categoryRulesFallback.national,
     global: eligibilityQuery.data?.categoryConfig?.global ?? categoryRulesFallback.global,
   };
+  const effectiveCategoryRules = categoryRules[supportCategory];
+  const effectiveMinDirects = effectiveCategoryRules?.minDirects ?? 10;
+  const directsRequirementLabel = effectiveMinDirects === 0
+    ? "No directs required"
+    : `${effectiveMinDirects}+ directs needed`;
 
   const submitRequest = api.csp.submitRequest.useMutation({
     onSuccess: () => {
@@ -815,8 +820,10 @@ export function CspDashboard({ userName }: CspDashboardProps) {
               icon: Target,
               label: "Qualified Directs",
               value: String(profile.qualifiedDirects),
-              sub: `Need ${categoryRules[supportCategory]?.minDirects ?? 10}+ for ${categoryRules[supportCategory]?.label ?? supportCategory}`,
-              ok: profile.qualifiedDirects >= (categoryRules[supportCategory]?.minDirects ?? 10),
+              sub: effectiveMinDirects === 0
+                ? "No directs required"
+                : `Need ${effectiveMinDirects}+ for ${effectiveCategoryRules?.label ?? supportCategory}`,
+              ok: effectiveMinDirects === 0 || profile.qualifiedDirects >= effectiveMinDirects,
             },
             {
               icon: Wallet,
@@ -902,7 +909,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                         <Globe className={`w-4 h-4 ${active ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`} />
                       </div>
                       <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                        {rules?.minDirects ?? 10}+ directs · {formatAmount(rules?.minThreshold ?? 10000)}
+                        {rules?.minDirects === 0 ? "No directs required" : `${rules?.minDirects ?? 10}+ directs`} · {formatAmount(rules?.minThreshold ?? 10000)}
                       </p>
                     </button>
                   );
@@ -954,7 +961,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             <div className="flex flex-wrap gap-2">
               {[
                 { ok: eligibility.hasMembership, on: "Membership OK", off: "Upgrade membership" },
-                { ok: eligibility.hasDirects, on: "Directs OK", off: `${categoryRules[supportCategory]?.minDirects ?? 10}+ directs needed` },
+                { ok: effectiveMinDirects === 0 || eligibility.hasDirects, on: "Directs OK", off: directsRequirementLabel },
                 { ok: eligibility.hasContrib, on: "Contribution OK", off: `${formatAmount(categoryRules[supportCategory]?.minCumulativeContrib ?? 10000)} cumulative` },
                 { ok: eligibility.hasDistinct, on: "10 requests met", off: `${profile.minDistinctRequests} distinct requests needed` },
               ].map((s, i) => (
@@ -1011,33 +1018,39 @@ export function CspDashboard({ userName }: CspDashboardProps) {
               </div>
             </div>
 
-            {/* Countdown pill */}
-            <div className="rounded-xl bg-white/[0.06] backdrop-blur border border-amber-200/20 p-4">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-xs text-emerald-100/70">Broadcast window</p>
-                <div className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="font-mono text-sm font-bold text-amber-200">{formatCountdown(liveStatus?.remainingSeconds)}</span>
+            {liveStatus ? (
+              <div className="rounded-xl bg-white/[0.06] backdrop-blur border border-amber-200/20 p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs text-emerald-100/70">Broadcast window</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="font-mono text-sm font-bold text-amber-200">{formatCountdown(liveStatus.remainingSeconds)}</span>
+                  </div>
                 </div>
-              </div>
-              <p className="text-[11px] text-emerald-100/50">Auto-closes when time or threshold reached</p>
+                <p className="text-[11px] text-emerald-100/50">Auto-closes when time or threshold reached</p>
 
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <div className="rounded-lg bg-black/20 border border-emerald-500/20 px-3 py-2.5">
-                  <p className="text-[10px] uppercase tracking-wider text-emerald-100/60">Raised</p>
-                  <p className="mt-1 font-serif text-sm font-bold text-white leading-tight">
-                    {formatAmount(liveStatus?.raisedAmount ?? 0)}
-                  </p>
-                  <p className="text-[10px] text-emerald-100/50 mt-0.5">
-                    of {formatAmount(liveStatus?.thresholdAmount ?? categoryRules[supportCategory]?.minThreshold ?? 10000)}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-black/20 border border-emerald-500/20 px-3 py-2.5">
-                  <p className="text-[10px] uppercase tracking-wider text-emerald-100/60">Patrons</p>
-                  <p className="mt-1 font-serif text-lg font-bold text-white">{liveStatus?.contributorsCount ?? 0}</p>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div className="rounded-lg bg-black/20 border border-emerald-500/20 px-3 py-2.5">
+                    <p className="text-[10px] uppercase tracking-wider text-emerald-100/60">Raised</p>
+                    <p className="mt-1 font-serif text-sm font-bold text-white leading-tight">
+                      {formatAmount(liveStatus.raisedAmount)}
+                    </p>
+                    <p className="text-[10px] text-emerald-100/50 mt-0.5">
+                      of {formatAmount(liveStatus.thresholdAmount)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-black/20 border border-emerald-500/20 px-3 py-2.5">
+                    <p className="text-[10px] uppercase tracking-wider text-emerald-100/60">Patrons</p>
+                    <p className="mt-1 font-serif text-lg font-bold text-white">{liveStatus.contributorsCount}</p>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="rounded-xl bg-white/[0.06] backdrop-blur border border-amber-200/20 p-5 text-center space-y-2">
+                <p className="font-serif text-lg font-bold text-white">No active broadcast</p>
+                <p className="text-sm text-emerald-100/70">Submit a request to go live</p>
+              </div>
+            )}
 
             <div className="space-y-2.5 text-xs">
               <div className="flex items-start gap-2.5 text-emerald-100/70">
