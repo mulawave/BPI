@@ -25,6 +25,7 @@ import {
   Building2,
   ChevronDown,
   ChevronUp,
+  Info,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import AdminPageGuide from "@/components/admin/AdminPageGuide";
@@ -725,8 +726,11 @@ export default function CspAdminQueuePage() {
                     className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="Nigeria" />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-muted-foreground">Activation Threshold</label>
-                  <input type="number" value={countryForm.activationThreshold} onChange={(e) => setCountryForm((f) => ({ ...f, activationThreshold: parseInt(e.target.value) || 10000 }))}
+                  <label className="flex items-center text-xs font-semibold text-muted-foreground">
+                    Activation Threshold
+                    <FieldInfo text="Number of Regular activations in this country before National broadcasts auto-activate. Set 0 to activate immediately." recommended="10,000" />
+                  </label>
+                  <input type="number" min={0} value={countryForm.activationThreshold} onChange={(e) => setCountryForm((f) => ({ ...f, activationThreshold: parseInt(e.target.value) || 0 }))}
                     className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
                 </div>
                 <div>
@@ -1426,6 +1430,68 @@ export default function CspAdminQueuePage() {
   );
 }
 
+type FieldHint = { text: string; recommended?: string };
+
+const ELIGIBILITY_FIELD_INFO: Record<string, FieldHint> = {
+  minPerContribution: { text: "Smallest amount (₦) a member may contribute to any CSP request. Set 0 to allow any amount.", recommended: "500" },
+  waitReductionMonthlyTarget: { text: "Monthly contribution amount (₦) that qualifies a member for wait-time reduction. Set 0 to disable.", recommended: "10,000" },
+  national_minMembership: { text: "Lowest membership tier allowed to raise a National broadcast.", recommended: "regular plus" },
+  national_minDirects: { text: "Minimum qualifying direct invites needed for National eligibility. Set 0 to require none.", recommended: "0 (no requirement)" },
+  national_minCumulativeContrib: { text: "Minimum lifetime CSP contribution (₦) needed for National eligibility. Set 0 to disable.", recommended: "10,000" },
+  national_minDistinctRequests: { text: "Minimum number of distinct members the applicant must have supported. Set 0 to disable.", recommended: "10" },
+  national_broadcastHours: { text: "How long (hours) a National request stays on broadcast before auto-handling. Set 0 to disable timed broadcast.", recommended: "48" },
+  national_minThreshold: { text: "Minimum requested amount (₦) for a National request. Set 0 to disable.", recommended: "10,000" },
+  global_minMembership: { text: "Lowest membership tier allowed to raise a Global broadcast.", recommended: "regular plus" },
+  global_minDirects: { text: "Minimum qualifying direct invites (Path A) needed for Global eligibility. Set 0 to require none.", recommended: "0 (no requirement)" },
+  global_minCumulativeContrib: { text: "Minimum lifetime CSP contribution (₦) needed for Global eligibility. Set 0 to disable.", recommended: "20,000" },
+  global_minDistinctRequests: { text: "Minimum number of distinct members the applicant must have supported. Set 0 to disable.", recommended: "100" },
+  global_broadcastHours: { text: "How long (hours) a Global request stays on broadcast before auto-handling. Set 0 to disable timed broadcast.", recommended: "48" },
+  global_minThreshold: { text: "Minimum requested amount (₦) for a Global request. Set 0 to disable.", recommended: "20,000" },
+};
+
+const TIER_FIELD_INFO: Record<string, FieldHint> = {
+  tierModelEnabled: { text: "Master switch for the 20-tier Contribution-Right model. When off, the classic flat flow is used.", recommended: "On" },
+  requireKyc: { text: "Require members to complete KYC before raising a CSP request.", recommended: "On" },
+  requireAutoDebit: { text: "Require Auto-Debit to be enabled before raising a request.", recommended: "On" },
+  requireAutoContribute: { text: "Require Auto-Contribute to be enabled before raising a request.", recommended: "On" },
+  contributionMultiplier: { text: "Multiplier applied to a member's Contribution Right to compute their request cap (Right × multiplier). Set 0 to disable capping.", recommended: "20" },
+  minContributionRight: { text: "Minimum Contribution Right a member needs before they can raise a request. Set 0 to disable.", recommended: "10,000" },
+  defaultBroadcastHours: { text: "Default broadcast duration (hours) for new requests. Set 0 to disable timed broadcast.", recommended: "48" },
+  autoExtensionHours: { text: "Hours added each time an under-fulfilled broadcast is auto-extended. Set 0 to disable.", recommended: "48" },
+  maxAutoExtensions: { text: "Maximum number of automatic extensions before a request is closed. Set 0 to disable auto-extension.", recommended: "3" },
+  defaultCoolingMonthsMin: { text: "Minimum cooling period (months) before a member can raise again. Set 0 for no minimum.", recommended: "12" },
+  defaultCoolingMonthsMax: { text: "Maximum cooling period (months) between requests.", recommended: "24" },
+  sponsorshipRequiredCount: { text: "Number of sponsored members required to earn reduced cooling. Set 0 to disable.", recommended: "100" },
+  sponsorshipReducedCoolingMonths: { text: "Cooling period (months) applied once the sponsor count is met.", recommended: "6" },
+  sponsorshipRequiresKyc: { text: "Require KYC for the sponsor-based cooling reduction to apply.", recommended: "Off" },
+  sponsorshipRequiresRegularPlus: { text: "Require Regular Plus tier for the sponsor-based cooling reduction.", recommended: "Off" },
+  sponsorshipAutoApply: { text: "Automatically apply the reduced cooling period once a member is eligible.", recommended: "Off" },
+  badgeGiftingEnabled: { text: "Allow members to gift their Time Reduction Badges to other members.", recommended: "On" },
+};
+
+function FieldInfo({ text, recommended }: FieldHint) {
+  return (
+    <span className="group relative inline-flex items-center align-middle">
+      <button
+        type="button"
+        aria-label="Field information"
+        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground/60 hover:text-foreground focus:text-foreground focus:outline-none"
+      >
+        <Info className="h-3.5 w-3.5" />
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-6 z-50 w-64 rounded-lg border border-border bg-card p-3 text-xs leading-relaxed opacity-0 shadow-xl transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        <span className="block text-muted-foreground">{text}</span>
+        {recommended && (
+          <span className="mt-1.5 block font-semibold text-emerald-600 dark:text-emerald-400">Recommended: {recommended}</span>
+        )}
+      </span>
+    </span>
+  );
+}
+
 function EligibilityConfigForm({ config, onSave, isPending }: { config: any; onSave: (data: any) => void; isPending: boolean }) {
   const [form, setForm] = useState({
     minPerContribution: config.minPerContribution,
@@ -1445,8 +1511,11 @@ function EligibilityConfigForm({ config, onSave, isPending }: { config: any; onS
   });
   const field = (key: string, label: string, type: "number" | "text" = "number") => (
     <div>
-      <label className="text-xs font-semibold text-muted-foreground">{label}</label>
-      <input type={type} value={(form as any)[key]} onChange={(e) => setForm((f) => ({ ...f, [key]: type === "number" ? (parseInt(e.target.value) || 0) : e.target.value }))}
+      <label className="flex items-center text-xs font-semibold text-muted-foreground">
+        {label}
+        {ELIGIBILITY_FIELD_INFO[key] && <FieldInfo {...ELIGIBILITY_FIELD_INFO[key]} />}
+      </label>
+      <input type={type} min={type === "number" ? 0 : undefined} value={(form as any)[key]} onChange={(e) => setForm((f) => ({ ...f, [key]: type === "number" ? (parseInt(e.target.value) || 0) : e.target.value }))}
         className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
     </div>
   );
@@ -1551,9 +1620,13 @@ function TierConfigForm({ config, onSave, isPending }: { config: TierConfig | un
 
   const numberField = (key: keyof typeof form, label: string) => (
     <div>
-      <label className="text-xs font-semibold text-muted-foreground">{label}</label>
+      <label className="flex items-center text-xs font-semibold text-muted-foreground">
+        {label}
+        {TIER_FIELD_INFO[key as string] && <FieldInfo {...TIER_FIELD_INFO[key as string]} />}
+      </label>
       <input
         type="number"
+        min={0}
         value={String((form as any)[key])}
         onChange={(e) => setNumber(key)(e.target.value)}
         className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
@@ -1563,7 +1636,10 @@ function TierConfigForm({ config, onSave, isPending }: { config: TierConfig | un
 
   const boolField = (key: keyof typeof form, label: string) => (
     <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2 text-sm">
-      <span className="font-medium text-foreground">{label}</span>
+      <span className="flex items-center font-medium text-foreground">
+        {label}
+        {TIER_FIELD_INFO[key as string] && <FieldInfo {...TIER_FIELD_INFO[key as string]} />}
+      </span>
       <input
         type="checkbox"
         checked={Boolean((form as any)[key])}
