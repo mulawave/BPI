@@ -1371,6 +1371,7 @@ export const cspRouter = createTRPCRouter({
     .input(z.object({ requestId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       assertAdmin(ctx.session);
+      const adminUserId = (ctx.session?.user as any)?.id as string | undefined;
 
       const request = await prisma.cspSupportRequest.findUnique({
         where: { id: input.requestId },
@@ -1480,13 +1481,15 @@ export const cspRouter = createTRPCRouter({
         const reserveWallet = await ensureSystemWallet(tx, "CSP Reserve Wallet", "CSP_RESERVE");
         await tx.systemWallet.update({ where: { id: reserveWallet.id }, data: { balanceNgn: { increment: shares.reserve } } });
 
+        // Recipient share is credited to the member's Main (cash) Wallet —
+        // the `wallet` field, which is the withdrawable balance.
         await tx.transaction.create({
           data: {
             id: randomUUID(),
             userId: request.userId,
             transactionType: "CSP_PAYOUT",
             amount: shares.recipient,
-            description: `CSP payout for request ${request.id}`,
+            description: `CSP support released to your Main Cash Wallet (request ${request.id})`,
             status: "completed",
             walletType: "wallet",
           },
@@ -1520,6 +1523,35 @@ export const cspRouter = createTRPCRouter({
             status: "released",
             releasedAt,
             cooldownEndsAt,
+            // Remove the request from the broadcast entirely so members no
+            // longer see it (covers admin-default requests kept alive by isActive).
+            isActive: false,
+            broadcastExpiresAt: null,
+          },
+        });
+
+        // Full audit trail for the admin action.
+        await tx.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: adminUserId ?? request.userId,
+            action: "CSP_RELEASE_FUNDS",
+            entity: "CSP_SUPPORT_REQUEST",
+            entityId: request.id,
+            metadata: {
+              beneficiaryUserId: request.userId,
+              category: request.category,
+              totalReleased: total,
+              recipientCredited: shares.recipient,
+              creditedWallet: "wallet",
+              creditedWalletLabel: "Main Cash Wallet",
+              fullyFunded,
+              shares,
+              cooldownMonths: request.cooldownMonths ?? null,
+              cooldownEndsAt,
+            },
+            ipAddress: "",
+            userAgent: "",
           },
         });
       });
@@ -1924,7 +1956,7 @@ export const cspRouter = createTRPCRouter({
       countryName: z.string().min(1),
       isNationalActive: z.boolean().optional(),
       isGlobalActive: z.boolean().optional(),
-      activationThreshold: z.number().int().positive().optional(),
+      activationThreshold: z.number().int().min(0).optional(),
       notes: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -2041,20 +2073,20 @@ export const cspRouter = createTRPCRouter({
   /** Update CSP eligibility thresholds (admin) */
   updateCspEligibilityConfig: protectedProcedure
     .input(z.object({
-      minPerContribution:                z.number().int().positive().optional(),
+      minPerContribution:                z.number().int().min(0).optional(),
       national_minMembership:            z.string().optional(),
-      national_minDirects:               z.number().int().min(1).optional(),
-      national_minCumulativeContrib:     z.number().int().positive().optional(),
-      national_minDistinctRequests:      z.number().int().positive().optional(),
-      national_broadcastHours:           z.number().int().positive().optional(),
-      national_minThreshold:             z.number().int().positive().optional(),
+      national_minDirects:               z.number().int().min(0).optional(),
+      national_minCumulativeContrib:     z.number().int().min(0).optional(),
+      national_minDistinctRequests:      z.number().int().min(0).optional(),
+      national_broadcastHours:           z.number().int().min(0).optional(),
+      national_minThreshold:             z.number().int().min(0).optional(),
       global_minMembership:              z.string().optional(),
-      global_minDirects:                 z.number().int().min(1).optional(),
-      global_minCumulativeContrib:       z.number().int().positive().optional(),
-      global_minDistinctRequests:        z.number().int().positive().optional(),
-      global_broadcastHours:             z.number().int().positive().optional(),
-      global_minThreshold:               z.number().int().positive().optional(),
-      waitReductionMonthlyTarget:        z.number().int().positive().optional(),
+      global_minDirects:                 z.number().int().min(0).optional(),
+      global_minCumulativeContrib:       z.number().int().min(0).optional(),
+      global_minDistinctRequests:        z.number().int().min(0).optional(),
+      global_broadcastHours:             z.number().int().min(0).optional(),
+      global_minThreshold:               z.number().int().min(0).optional(),
+      waitReductionMonthlyTarget:        z.number().int().min(0).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       assertAdmin(ctx.session);
@@ -2133,18 +2165,18 @@ export const cspRouter = createTRPCRouter({
   updateCspTierConfig: protectedProcedure
     .input(z.object({
       tierModelEnabled: z.boolean().optional(),
-      contributionMultiplier: z.number().int().positive().optional(),
-      minContributionRight: z.number().int().positive().optional(),
+      contributionMultiplier: z.number().int().min(0).optional(),
+      minContributionRight: z.number().int().min(0).optional(),
       requireKyc: z.boolean().optional(),
       requireAutoDebit: z.boolean().optional(),
       requireAutoContribute: z.boolean().optional(),
-      defaultBroadcastHours: z.number().int().positive().optional(),
-      autoExtensionHours: z.number().int().positive().optional(),
+      defaultBroadcastHours: z.number().int().min(0).optional(),
+      autoExtensionHours: z.number().int().min(0).optional(),
       maxAutoExtensions: z.number().int().min(0).optional(),
-      defaultCoolingMonthsMin: z.number().int().positive().optional(),
-      defaultCoolingMonthsMax: z.number().int().positive().optional(),
-      sponsorshipRequiredCount: z.number().int().positive().optional(),
-      sponsorshipReducedCoolingMonths: z.number().int().positive().optional(),
+      defaultCoolingMonthsMin: z.number().int().min(0).optional(),
+      defaultCoolingMonthsMax: z.number().int().min(0).optional(),
+      sponsorshipRequiredCount: z.number().int().min(0).optional(),
+      sponsorshipReducedCoolingMonths: z.number().int().min(0).optional(),
       sponsorshipRequiresKyc: z.boolean().optional(),
       sponsorshipRequiresRegularPlus: z.boolean().optional(),
       sponsorshipAutoApply: z.boolean().optional(),
