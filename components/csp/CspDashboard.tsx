@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   Clock,
-  Users,
   Target,
   RadioTower,
   Wallet,
@@ -24,10 +23,15 @@ import {
   Shield,
   Zap,
   Globe,
-  HeadphonesIcon,
   ChevronRight,
   TimerReset,
   TrendingDown,
+  Crown,
+  Gem,
+  Award,
+  Landmark,
+  ScrollText,
+  Lock,
 } from "lucide-react";
 
 interface CspDashboardProps {
@@ -301,173 +305,283 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Hero */}
-      <Card className="relative overflow-hidden bg-gradient-to-br from-emerald-500 via-emerald-600 to-emerald-700 text-white p-6 sm:p-8 shadow-xl">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.12),transparent_40%)]" />
-        <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <p className="text-sm uppercase tracking-wide text-white/80">Community Support Program</p>
-            <h1 className="text-2xl sm:text-3xl font-bold mt-2">Request & Track Support</h1>
-            <p className="text-white/80 mt-2 max-w-2xl">
-              Check eligibility, request support, and monitor anonymous broadcasts in one place.
-            </p>
-          </div>
-          <div className="flex items-center gap-3 bg-white/10 rounded-xl px-4 py-3 backdrop-blur border border-white/20">
-            {profile.hasCooldown ? (
-              <TimerReset className="w-6 h-6 text-amber-200" />
-            ) : eligibility.eligible ? (
-              <CheckCircle2 className="w-6 h-6 text-white" />
-            ) : (
-              <AlertTriangle className="w-6 h-6 text-amber-200" />
-            )}
-            <div>
-              <p className="text-sm font-semibold">Status</p>
-              <p className="text-white/80 text-sm">
-                {profile.hasCooldown
-                  ? "Cooldown active — next request locked"
-                  : eligibility.eligible
-                  ? "Eligible to request support"
-                  : "Complete requirements to unlock"}
+    <div className="space-y-8 pb-4">
+      {/* ═══════════════════════ ROYAL HERO ═══════════════════════ */}
+      <div className="relative overflow-hidden rounded-3xl shadow-[0_30px_80px_-20px_rgba(4,47,32,0.55)] ring-1 ring-amber-300/20">
+        {/* Base gradient */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#04231a] via-[#0a3d2b] to-[#062818]" />
+        {/* Radial glow layers */}
+        <div className="absolute -top-32 -left-24 w-[28rem] h-[28rem] rounded-full bg-emerald-500/25 blur-3xl" />
+        <div className="absolute -bottom-24 -right-16 w-[26rem] h-[26rem] rounded-full bg-amber-400/15 blur-3xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(255,215,140,0.10),transparent_50%),radial-gradient(ellipse_at_bottom_right,rgba(16,185,129,0.18),transparent_55%)]" />
+        {/* Ornamental gold top-line */}
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-300/70 to-transparent" />
+        <div className="absolute top-1.5 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-300/25 to-transparent" />
+
+        <div className="relative px-6 py-8 sm:px-10 sm:py-12">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
+            <div className="max-w-2xl">
+              {/* Eyebrow with monogram */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex items-center justify-center h-9 w-9 rounded-full bg-gradient-to-br from-amber-300 via-amber-500 to-amber-700 shadow-[0_0_20px_rgba(251,191,36,0.35)] ring-1 ring-amber-200/50">
+                  <Crown className="h-4 w-4 text-[#2a1a05]" />
+                </div>
+                <div className="h-px flex-1 max-w-[3rem] bg-gradient-to-r from-amber-300/60 to-transparent" />
+                <span className="text-[11px] uppercase tracking-[0.35em] font-semibold text-amber-200/90">
+                  Community Support Program
+                </span>
+              </div>
+
+              <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold leading-[1.05] text-white tracking-tight">
+                Request &amp; Steward
+                <span className="block bg-gradient-to-r from-amber-200 via-amber-300 to-amber-500 bg-clip-text text-transparent">
+                  Community Support
+                </span>
+              </h1>
+              <p className="mt-5 text-emerald-50/70 text-base sm:text-lg leading-relaxed max-w-xl">
+                Verify your standing, submit a request, and follow live anonymous broadcasts — all in one refined chamber.
               </p>
+            </div>
+
+            {/* Status seal */}
+            <div className="relative">
+              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-amber-300/40 via-amber-500/20 to-transparent blur-xl" />
+              <div className="relative rounded-2xl bg-white/[0.06] backdrop-blur-xl border border-amber-200/25 px-6 py-5 min-w-[280px] shadow-inner shadow-black/30">
+                <div className="flex items-center gap-4">
+                  <div className={`flex items-center justify-center h-14 w-14 rounded-xl ring-1 ${
+                    profile.hasCooldown
+                      ? "bg-amber-500/15 ring-amber-300/40 text-amber-200"
+                      : eligibility.eligible
+                      ? "bg-emerald-500/20 ring-emerald-300/40 text-emerald-200"
+                      : "bg-amber-500/15 ring-amber-300/40 text-amber-200"
+                  }`}>
+                    {profile.hasCooldown ? (
+                      <TimerReset className="w-6 h-6" />
+                    ) : eligibility.eligible ? (
+                      <CheckCircle2 className="w-6 h-6" />
+                    ) : (
+                      <AlertTriangle className="w-6 h-6" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-amber-200/70 font-semibold">Standing</p>
+                    <p className="text-white font-serif text-lg leading-tight mt-0.5">
+                      {profile.hasCooldown
+                        ? "Cooldown Active"
+                        : eligibility.eligible
+                        ? "Eligible to Request"
+                        : "Requirements Pending"}
+                    </p>
+                    <p className="text-emerald-50/60 text-xs mt-1 max-w-[180px]">
+                      {profile.hasCooldown
+                        ? "Next request temporarily locked"
+                        : eligibility.eligible
+                        ? "Your seal is verified"
+                        : "Complete rites to unlock"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Ornamental bottom divider */}
+          <div className="mt-10 flex items-center gap-3 text-amber-200/40">
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-300/40 to-transparent" />
+            <Gem className="h-3 w-3 text-amber-300/70" />
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-300/40 to-transparent" />
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════ TREASURY BALANCES ═══════════════════════ */}
+      <div className="grid sm:grid-cols-2 gap-4">
+        {/* Cash Wallet */}
+        <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-emerald-50/40 dark:from-slate-950 dark:via-emerald-950/40 dark:to-slate-950 border border-emerald-200/60 dark:border-emerald-800/40 shadow-lg shadow-emerald-900/[0.04] hover:shadow-emerald-900/[0.10] transition-shadow duration-300">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent" />
+          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-emerald-400/10 blur-2xl group-hover:bg-emerald-400/20 transition-colors" />
+          <div className="relative p-5 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.28em] font-semibold text-emerald-700/70 dark:text-emerald-300/60">Cash Treasury</p>
+              <p className="mt-2 font-serif text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
+                {formatAmount(balances.cash)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Available for contribution</p>
+            </div>
+            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-lg shadow-emerald-900/30 ring-1 ring-emerald-300/40">
+              <Wallet className="w-5 h-5 text-white" />
             </div>
           </div>
         </div>
-      </Card>
 
-      {/* Wallet balances */}
-      <div className="grid sm:grid-cols-2 gap-3">
-        <Card className="p-4 border-l-4 border-l-emerald-500 bg-white dark:bg-bpi-dark-card flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">Cash Wallet</p>
-            <p className="text-xl font-bold text-foreground">{formatAmount(balances.cash)}</p>
+        {/* Community Wallet */}
+        <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-amber-50/40 dark:from-slate-950 dark:via-amber-950/20 dark:to-slate-950 border border-amber-200/60 dark:border-amber-800/40 shadow-lg shadow-amber-900/[0.04] hover:shadow-amber-900/[0.10] transition-shadow duration-300">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
+          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-amber-400/10 blur-2xl group-hover:bg-amber-400/20 transition-colors" />
+          <div className="relative p-5 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.28em] font-semibold text-amber-700/80 dark:text-amber-300/70">Community Coffers</p>
+              <p className="mt-2 font-serif text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
+                {formatAmount(balances.community)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Reserved for CSP</p>
+            </div>
+            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-900/30 ring-1 ring-amber-300/50">
+              <Landmark className="w-5 h-5 text-white" />
+            </div>
           </div>
-          <Wallet className="w-6 h-6 text-emerald-600" />
-        </Card>
-        <Card className="p-4 border-l-4 border-l-blue-500 bg-white dark:bg-bpi-dark-card flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground">Community Wallet</p>
-            <p className="text-xl font-bold text-foreground">{formatAmount(balances.community)}</p>
-          </div>
-          <Users className="w-6 h-6 text-blue-600" />
-        </Card>
+        </div>
       </div>
 
       {tierProfile && (
-        <Card className="p-5 bg-white dark:bg-bpi-dark-card space-y-4">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-emerald-600" />
-            <h4 className="font-semibold text-foreground">Contribution Right</h4>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
-              <p className="text-xs text-muted-foreground">Contribution Right</p>
-              <p className="text-xl font-bold text-foreground">{formatAmount(tierProfile.contributionRight)}</p>
-            </div>
-            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
-              <p className="text-xs text-muted-foreground">Current Tier</p>
-              <p className="text-xl font-bold text-foreground">
-                {tierProfile.currentTier ? `${tierProfile.currentTier.name} (#${tierProfile.currentTier.tierNumber})` : "No tier yet"}
-              </p>
-            </div>
-            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
-              <p className="text-xs text-muted-foreground">Max Support Cap</p>
-              <p className="text-xl font-bold text-foreground">{formatAmount(tierProfile.maxSupportCap)}</p>
-            </div>
-            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
-              <p className="text-xs text-muted-foreground">To Next Tier</p>
-              <p className="text-xl font-bold text-foreground">
-                {tierProfile.amountToNextTier == null ? "--" : formatAmount(Math.max(0, tierProfile.amountToNextTier))}
-              </p>
-            </div>
-          </div>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-slate-50 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/30 border border-slate-200/70 dark:border-slate-800/70 shadow-xl shadow-slate-900/[0.04]">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
+          <div className="absolute -top-20 -right-24 w-80 h-80 rounded-full bg-emerald-500/[0.04] blur-3xl" />
 
-          <div className="flex flex-wrap gap-2 text-xs font-medium">
-            <span className={`px-2 py-1 rounded-full ${tierProfile.kycApproved ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
-              {tierProfile.kycApproved ? "KYC approved" : "KYC pending"}
-            </span>
-            <span className={`px-2 py-1 rounded-full ${tierProfile.autoDebitEnabled ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
-              {tierProfile.autoDebitEnabled ? "Auto-Debit enabled" : "Auto-Debit off"}
-            </span>
-            <span className={`px-2 py-1 rounded-full ${tierProfile.autoContributeEnabled ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
-              {tierProfile.autoContributeEnabled ? "Auto-Contribute enabled" : "Auto-Contribute off"}
-            </span>
-          </div>
+          <div className="relative p-6 sm:p-8 space-y-6">
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-amber-300 via-amber-500 to-amber-600 shadow-lg shadow-amber-900/25 ring-1 ring-amber-200/60">
+                <Gem className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700/80 dark:text-amber-300/70">Order of Contribution</p>
+                <h4 className="font-serif text-xl font-bold text-slate-900 dark:text-white">Your Tier Standing</h4>
+              </div>
+            </div>
 
-          <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/70 dark:bg-emerald-900/10 px-4 py-3 text-sm text-foreground">
-            <span className="font-semibold">Tier calculator: </span>
-            Contribution Right × {tierProfile.contributionMultiplier} = {formatAmount(tierProfile.contributionRight * tierProfile.contributionMultiplier)}
+            {/* Metrics grid */}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { label: "Contribution Right", value: formatAmount(tierProfile.contributionRight), icon: Sparkles, tint: "emerald" },
+                { label: "Current Tier", value: tierProfile.currentTier ? `${tierProfile.currentTier.name}` : "No tier yet", sub: tierProfile.currentTier ? `#${tierProfile.currentTier.tierNumber}` : null, icon: Crown, tint: "amber" },
+                { label: "Max Support Cap", value: formatAmount(tierProfile.maxSupportCap), icon: Shield, tint: "emerald" },
+                { label: "To Next Tier", value: tierProfile.amountToNextTier == null ? "—" : formatAmount(Math.max(0, tierProfile.amountToNextTier)), icon: ArrowUpRight, tint: "amber" },
+              ].map((stat, idx) => (
+                <div key={idx} className="group relative rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-gradient-to-br from-slate-50/70 via-white to-white dark:from-slate-900/50 dark:via-slate-950 dark:to-slate-950 p-4 hover:border-amber-300/50 dark:hover:border-amber-500/30 transition-colors">
+                  <div className="flex items-start justify-between mb-2">
+                    <p className="text-[10px] uppercase tracking-[0.2em] font-semibold text-slate-500 dark:text-slate-400">{stat.label}</p>
+                    <stat.icon className={`h-3.5 w-3.5 ${stat.tint === "amber" ? "text-amber-500/70" : "text-emerald-600/70"}`} />
+                  </div>
+                  <p className="font-serif text-xl font-bold text-slate-900 dark:text-white leading-tight">{stat.value}</p>
+                  {stat.sub && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 font-mono">{stat.sub}</p>}
+                </div>
+              ))}
+            </div>
+
+            {/* Status seals */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                { ok: tierProfile.kycApproved, on: "KYC Approved", off: "KYC Pending" },
+                { ok: tierProfile.autoDebitEnabled, on: "Auto-Debit Enabled", off: "Auto-Debit Off" },
+                { ok: tierProfile.autoContributeEnabled, on: "Auto-Contribute Enabled", off: "Auto-Contribute Off" },
+              ].map((s, i) => (
+                <span key={i} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 ${
+                  s.ok
+                    ? "bg-emerald-50 text-emerald-800 ring-emerald-200/70 dark:bg-emerald-900/25 dark:text-emerald-200 dark:ring-emerald-800/50"
+                    : "bg-amber-50 text-amber-800 ring-amber-200/70 dark:bg-amber-900/20 dark:text-amber-200 dark:ring-amber-800/50"
+                }`}>
+                  {s.ok ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                  {s.ok ? s.on : s.off}
+                </span>
+              ))}
+            </div>
+
+            {/* Calculator ribbon */}
+            <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-emerald-900 via-emerald-800 to-emerald-900 p-4 sm:p-5 ring-1 ring-amber-300/25 shadow-inner shadow-black/25">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_left_center,rgba(251,191,36,0.12),transparent_60%)]" />
+              <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <ScrollText className="h-5 w-5 text-amber-300" />
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-amber-200/80">Tier Calculator</p>
+                    <p className="text-sm text-emerald-50/80 mt-0.5">Contribution Right × {tierProfile.contributionMultiplier}</p>
+                  </div>
+                </div>
+                <p className="font-serif text-2xl font-bold bg-gradient-to-r from-amber-200 via-amber-300 to-amber-400 bg-clip-text text-transparent">
+                  {formatAmount(tierProfile.contributionRight * tierProfile.contributionMultiplier)}
+                </p>
+              </div>
+            </div>
           </div>
-        </Card>
+        </div>
       )}
 
-      {/* Cooldown / wait-period status — visible only when active */}
+      {/* ═══════════════════════ COOLDOWN / SPONSOR PROGRESS ═══════════════════════ */}
       {(waitStatusQuery.data?.hasCooldown || waitStatusQuery.data?.sponsorProgress) && (
-        <Card className="p-5 border-l-4 border-l-amber-500 bg-amber-50/60 dark:bg-amber-900/10 dark:border-amber-400">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <TimerReset className="w-6 h-6 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50/80 via-white to-amber-50/50 dark:from-amber-950/25 dark:via-slate-950 dark:to-amber-950/15 border border-amber-300/50 dark:border-amber-700/40 shadow-lg shadow-amber-900/[0.05]">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-500/60 to-transparent" />
+          <div className="absolute -top-16 -left-16 w-48 h-48 rounded-full bg-amber-400/10 blur-3xl" />
+
+          <div className="relative p-6 sm:p-7 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+            <div className="flex items-start gap-4">
+              <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-900/25 ring-1 ring-amber-300/50 shrink-0">
+                <TimerReset className="w-5 h-5 text-white" />
+              </div>
               <div>
-                <p className="font-semibold text-foreground">
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700 dark:text-amber-300/80">Restricted Period</p>
+                <p className="font-serif text-xl font-bold text-slate-900 dark:text-white mt-0.5">
                   {waitStatusQuery.data?.hasCooldown ? "Collection Cooldown Active" : "Sponsor Reduction Progress"}
                 </p>
                 {waitStatusQuery.data?.cooldownEndsAt ? (
-                  <p className="text-sm text-muted-foreground mt-0.5">
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 max-w-md">
                     You cannot submit a new request until{" "}
-                    <span className="font-medium text-foreground">
+                    <span className="font-semibold text-amber-800 dark:text-amber-200">
                       {new Date(waitStatusQuery.data.cooldownEndsAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
                     </span>
                     {waitStatusQuery.data.cooldownMonths && (
-                      <> ({waitStatusQuery.data.cooldownMonths}-month cooldown)</>
+                      <> · <span className="font-medium">{waitStatusQuery.data.cooldownMonths}-month cooldown</span></>
                     )}
                     .
                   </p>
                 ) : (
-                  <p className="text-sm text-muted-foreground mt-0.5">
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 max-w-md">
                     Your sponsor progress is being tracked toward a shorter cooling period.
                   </p>
                 )}
               </div>
             </div>
 
-            <div className="sm:min-w-[240px] space-y-3">
+            <div className="lg:min-w-[320px] space-y-3">
               {/* Monthly reduction progress */}
               {waitStatusQuery.data?.monthlyProgress && (
-                <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <TrendingDown className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                  <p className="text-xs font-semibold text-foreground">
-                    Reduce wait by contributing {formatAmount(waitStatusQuery.data.monthlyProgress.target)}/mo
+                <div className="rounded-xl border border-amber-200/70 dark:border-amber-800/40 bg-white/80 dark:bg-slate-950/60 backdrop-blur p-4 space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <TrendingDown className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <p className="text-xs font-semibold text-slate-900 dark:text-white">
+                      Reduce wait by contributing {formatAmount(waitStatusQuery.data.monthlyProgress.target)}/mo
+                    </p>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-amber-100 dark:bg-amber-950/50 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-500 shadow-[0_0_10px_rgba(251,191,36,0.5)]"
+                      style={{ width: `${waitStatusQuery.data.monthlyProgress.pct}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center justify-between gap-2">
+                    <span>{formatAmount(waitStatusQuery.data.monthlyProgress.contributed)} contributed this month</span>
+                    {waitStatusQuery.data.monthlyProgress.reduced ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-300 font-semibold">
+                        <CheckCircle2 className="h-3 w-3" /> 1 month deducted
+                      </span>
+                    ) : (
+                      <span>{formatAmount(Math.max(0, waitStatusQuery.data.monthlyProgress.target - waitStatusQuery.data.monthlyProgress.contributed))} to next reduction</span>
+                    )}
                   </p>
                 </div>
-                <div className="h-2 w-full rounded-full bg-amber-200 dark:bg-amber-900/40 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-amber-500 transition-all duration-500"
-                    style={{ width: `${waitStatusQuery.data.monthlyProgress.pct}%` }}
-                  />
-                </div>
-                <p className="text-[11px] text-muted-foreground flex items-center justify-between">
-                  <span>{formatAmount(waitStatusQuery.data.monthlyProgress.contributed)} contributed this month</span>
-                  {waitStatusQuery.data.monthlyProgress.reduced ? (
-                    <span className="text-emerald-600 font-medium">1 month deducted ✓</span>
-                  ) : (
-                    <span>{formatAmount(Math.max(0, waitStatusQuery.data.monthlyProgress.target - waitStatusQuery.data.monthlyProgress.contributed))} more to reduce by 1 month</span>
-                  )}
-                </p>
-              </div>
               )}
 
               {waitStatusQuery.data?.sponsorProgress && (
-                <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-white/70 dark:bg-amber-950/20 p-3 space-y-2">
+                <div className="rounded-xl border border-amber-200/70 dark:border-amber-800/40 bg-white/80 dark:bg-slate-950/60 backdrop-blur p-4 space-y-2.5">
                   <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="font-semibold text-foreground">Sponsor reduction</span>
-                    <span className="text-muted-foreground">
+                    <span className="font-semibold text-slate-900 dark:text-white">Sponsor Reduction</span>
+                    <span className="font-mono text-slate-600 dark:text-slate-400">
                       {waitStatusQuery.data.sponsorProgress.directSponsorCount}/{waitStatusQuery.data.sponsorProgress.requiredCount}
                     </span>
                   </div>
-                  <div className="h-2 w-full rounded-full bg-amber-200 dark:bg-amber-900/40 overflow-hidden">
+                  <div className="h-2 w-full rounded-full bg-amber-100 dark:bg-amber-950/50 overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-amber-500 transition-all duration-500"
+                      className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-500 shadow-[0_0_10px_rgba(251,191,36,0.5)]"
                       style={{
                         width: `${Math.min(
                           100,
@@ -476,15 +590,15 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                       }}
                     />
                   </div>
-                  <p className="text-[11px] text-muted-foreground flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center justify-between gap-2">
                     <span>
                       {waitStatusQuery.data.sponsorProgress.qualifies
                         ? `Qualifies for ${waitStatusQuery.data.sponsorProgress.reducedCoolingMonths}-month cooling`
                         : `Need ${Math.max(0, waitStatusQuery.data.sponsorProgress.requiredCount - waitStatusQuery.data.sponsorProgress.directSponsorCount)} more sponsor(s)`}
                     </span>
                     {waitStatusQuery.data.sponsorProgress.reducedCoolingEndsAt && (
-                      <span className="text-foreground font-medium">
-                        Target ends {new Date(waitStatusQuery.data.sponsorProgress.reducedCoolingEndsAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                      <span className="text-slate-900 dark:text-white font-medium">
+                        {new Date(waitStatusQuery.data.sponsorProgress.reducedCoolingEndsAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                       </span>
                     )}
                   </p>
@@ -492,129 +606,169 @@ export function CspDashboard({ userName }: CspDashboardProps) {
               )}
             </div>
           </div>
-        </Card>
+        </div>
       )}
 
+      {/* ═══════════════════════ DONOR RECOGNITION ═══════════════════════ */}
       {recognitionQuery.data && (
-        <Card className="p-5 border-l-4 border-l-emerald-500 bg-emerald-50/60 dark:bg-emerald-900/10 dark:border-emerald-400">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-              <div>
-                <p className="font-semibold text-foreground">Donor Recognition</p>
-                <p className="text-sm text-muted-foreground">
-                  {recognitionQuery.data.donationCount
-                    ? `${recognitionQuery.data.donationCount} donation${recognitionQuery.data.donationCount === 1 ? "" : "s"} recorded with ${formatAmount(recognitionQuery.data.totalDonatedAmount)} total support.`
-                    : "No donation record has been issued yet."}
-                </p>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-50/70 via-white to-amber-50/40 dark:from-emerald-950/25 dark:via-slate-950 dark:to-amber-950/15 border border-emerald-200/60 dark:border-emerald-800/40 shadow-lg">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
+          <div className="absolute -top-24 -right-16 w-80 h-80 rounded-full bg-emerald-400/[0.06] blur-3xl" />
+
+          <div className="relative p-6 sm:p-8 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-amber-300 via-amber-500 to-amber-700 shadow-lg shadow-amber-900/25 ring-1 ring-amber-200/60">
+                  <Award className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700/90 dark:text-amber-300/80">Order of Merit</p>
+                  <p className="font-serif text-xl font-bold text-slate-900 dark:text-white mt-0.5">Donor Recognition</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 max-w-xl">
+                    {recognitionQuery.data.donationCount
+                      ? `${recognitionQuery.data.donationCount} donation${recognitionQuery.data.donationCount === 1 ? "" : "s"} recorded — ${formatAmount(recognitionQuery.data.totalDonatedAmount)} of stewardship inscribed.`
+                      : "No donation record has been issued yet."}
+                  </p>
+                </div>
               </div>
 
               {recognitionQuery.data.latestDonation?.certificateUrl && (
-                <Button asChild variant="outline" className="self-start border-emerald-200 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-900/20">
-                  <a href={recognitionQuery.data.latestDonation.certificateUrl} target="_blank" rel="noreferrer">
-                    Download PDF certificate
+                <Button asChild variant="outline" className="self-start border-amber-400/40 text-amber-800 hover:bg-amber-50 hover:border-amber-500 dark:border-amber-700/50 dark:text-amber-300 dark:hover:bg-amber-900/20">
+                  <a href={recognitionQuery.data.latestDonation.certificateUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2">
+                    <ScrollText className="h-4 w-4" />
+                    Certificate
                   </a>
                 </Button>
               )}
             </div>
 
             <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-white/80 dark:bg-slate-950/40 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Latest support</p>
-                <p className="mt-1 font-semibold text-foreground">
-                  {recognitionQuery.data.latestDonation
-                    ? `${formatAmount(recognitionQuery.data.latestDonation.amount)} • ${recognitionQuery.data.latestDonation.category ?? "Uncategorised"}`
-                    : "No donation yet"}
-                </p>
-                {recognitionQuery.data.latestDonation?.organization && (
-                  <p className="text-sm text-muted-foreground">{recognitionQuery.data.latestDonation.organization}</p>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-white/80 dark:bg-slate-950/40 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Latest badge</p>
-                <p className="mt-1 font-semibold text-foreground">
-                  {recognitionQuery.data.badges[0]?.category?.badgeType ?? "No badge issued yet"}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {recognitionQuery.data.badges[0]?.category
-                    ? `${recognitionQuery.data.badges[0].category.coolingReductionMonths} month reduction • never expires`
-                    : "Recognition badges do not expire once issued."}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-white/80 dark:bg-slate-950/40 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Certificate status</p>
-                <p className="mt-1 font-semibold text-foreground">PDF download available</p>
-                <p className="text-sm text-muted-foreground">
-                  Time Reduction Badges are permanent and can be gifted later when badge gifting is enabled.
-                </p>
-              </div>
+              {[
+                {
+                  label: "Latest Support",
+                  primary: recognitionQuery.data.latestDonation
+                    ? `${formatAmount(recognitionQuery.data.latestDonation.amount)}`
+                    : "No donation yet",
+                  secondary: recognitionQuery.data.latestDonation
+                    ? (recognitionQuery.data.latestDonation.category ?? "Uncategorised")
+                    : null,
+                  tertiary: recognitionQuery.data.latestDonation?.organization ?? null,
+                },
+                {
+                  label: "Latest Badge",
+                  primary: recognitionQuery.data.badges[0]?.category?.badgeType ?? "No badge issued",
+                  secondary: recognitionQuery.data.badges[0]?.category
+                    ? `${recognitionQuery.data.badges[0].category.coolingReductionMonths} month reduction`
+                    : null,
+                  tertiary: "Never expires once issued",
+                },
+                {
+                  label: "Certificate",
+                  primary: "PDF Available",
+                  secondary: "Permanent record",
+                  tertiary: "Giftable when enabled",
+                },
+              ].map((c, i) => (
+                <div key={i} className="rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/70 backdrop-blur px-4 py-4 hover:border-amber-300/60 dark:hover:border-amber-600/30 transition-colors">
+                  <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-amber-700/80 dark:text-amber-300/60">{c.label}</p>
+                  <p className="mt-2 font-serif text-lg font-bold text-slate-900 dark:text-white leading-tight">{c.primary}</p>
+                  {c.secondary && <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">{c.secondary}</p>}
+                  {c.tertiary && <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">{c.tertiary}</p>}
+                </div>
+              ))}
             </div>
           </div>
-        </Card>
+        </div>
       )}
 
-      {/* Eligibility overview */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="p-4 border-l-4 border-l-emerald-500 bg-white dark:bg-bpi-dark-card">
-          <div className="flex items-center gap-3">
-            <Shield className="w-5 h-5 text-emerald-600" />
-            <div>
-              <p className="text-xs text-muted-foreground">Membership</p>
-              <p className="font-semibold text-foreground">{profile.membershipLabel}</p>
-              <p className="text-[11px] text-muted-foreground">{profile.membershipActive ? "Active" : "Inactive"}</p>
+      {/* ═══════════════════════ ELIGIBILITY OVERVIEW ═══════════════════════ */}
+      <div>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-300 dark:via-slate-700 to-transparent" />
+          <p className="text-[10px] uppercase tracking-[0.35em] font-semibold text-slate-500 dark:text-slate-400">Standing at a Glance</p>
+          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-300 dark:via-slate-700 to-transparent" />
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            {
+              icon: Shield,
+              label: "Membership",
+              value: profile.membershipLabel,
+              sub: profile.membershipActive ? "Active" : "Inactive",
+              ok: profile.membershipActive,
+            },
+            {
+              icon: Target,
+              label: "Qualified Directs",
+              value: String(profile.qualifiedDirects),
+              sub: `Need ${categoryRules[supportCategory]?.minDirects ?? 10}+ for ${categoryRules[supportCategory]?.label ?? supportCategory}`,
+              ok: profile.qualifiedDirects >= (categoryRules[supportCategory]?.minDirects ?? 10),
+            },
+            {
+              icon: Wallet,
+              label: "Contributions",
+              value: formatAmount(profile.contributionsMade),
+              sub: `Min ${formatAmount(profile.minContributionRequired)}`,
+              ok: profile.contributionsMade >= profile.minContributionRequired,
+            },
+            {
+              icon: Clock,
+              label: "Broadcast Window",
+              value: `${categoryRules[supportCategory]?.broadcastHours ?? 48} hrs`,
+              sub: "Extendable via payments or directs",
+              ok: true,
+            },
+          ].map((s, i) => (
+            <div key={i} className="group relative overflow-hidden rounded-xl bg-white dark:bg-slate-950/70 border border-slate-200/70 dark:border-slate-800/70 hover:border-emerald-300/70 dark:hover:border-emerald-700/50 hover:shadow-lg hover:shadow-emerald-900/[0.06] transition-all">
+              <div className={`absolute top-0 left-0 right-0 h-0.5 ${s.ok ? "bg-gradient-to-r from-emerald-400 to-emerald-600" : "bg-gradient-to-r from-amber-400 to-amber-600"}`} />
+              <div className="p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <div className={`flex items-center justify-center h-9 w-9 rounded-lg ring-1 ${s.ok ? "bg-emerald-50 ring-emerald-200/70 text-emerald-700 dark:bg-emerald-900/20 dark:ring-emerald-800/40 dark:text-emerald-300" : "bg-amber-50 ring-amber-200/70 text-amber-700 dark:bg-amber-900/20 dark:ring-amber-800/40 dark:text-amber-300"}`}>
+                    <s.icon className="w-4 h-4" />
+                  </div>
+                  {s.ok && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
+                </div>
+                <p className="text-[10px] uppercase tracking-[0.22em] font-semibold text-slate-500 dark:text-slate-400">{s.label}</p>
+                <p className="mt-1 font-serif text-lg font-bold text-slate-900 dark:text-white leading-tight">{s.value}</p>
+                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{s.sub}</p>
+              </div>
             </div>
-          </div>
-        </Card>
-        <Card className="p-4 border-l-4 border-l-emerald-500 bg-white dark:bg-bpi-dark-card">
-          <div className="flex items-center gap-3">
-            <Target className="w-5 h-5 text-emerald-600" />
-            <div>
-              <p className="text-xs text-muted-foreground">Qualified directs</p>
-              <p className="font-semibold text-foreground">{profile.qualifiedDirects}</p>
-              <p className="text-[11px] text-muted-foreground">Need {categoryRules[supportCategory]?.minDirects ?? 10}+ for {categoryRules[supportCategory]?.label ?? supportCategory}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4 border-l-4 border-l-emerald-500 bg-white dark:bg-bpi-dark-card">
-          <div className="flex items-center gap-3">
-            <Wallet className="w-5 h-5 text-emerald-600" />
-            <div>
-              <p className="text-xs text-muted-foreground">Contributions made</p>
-              <p className="font-semibold text-foreground">{formatAmount(profile.contributionsMade)}</p>
-              <p className="text-[11px] text-muted-foreground">Min {formatAmount(profile.minContributionRequired)} to qualify</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4 border-l-4 border-l-emerald-500 bg-white dark:bg-bpi-dark-card">
-          <div className="flex items-center gap-3">
-            <Clock className="w-5 h-5 text-emerald-600" />
-            <div>
-              <p className="text-xs text-muted-foreground">Broadcast window</p>
-              <p className="font-semibold text-foreground">{categoryRules[supportCategory]?.broadcastHours ?? 48} hrs</p>
-              <p className="text-[11px] text-muted-foreground">Extendable via payments or directs</p>
-            </div>
-          </div>
-        </Card>
+          ))}
+        </div>
       </div>
 
-      {/* Request + rules */}
-      <div className="grid lg:grid-cols-3 gap-4 items-start">
-        <Card className="p-5 bg-white dark:bg-bpi-dark-card lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Support Request</p>
-              <h3 className="text-lg font-semibold text-foreground">Submit a request</h3>
-            </div>
-            <span className={`px-3 py-1 text-xs font-semibold rounded-full ${eligibility.eligible ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200"}`}>
-              {eligibility.eligible ? "Eligible" : "Locked"}
-            </span>
-          </div>
+      {/* ═══════════════════════ REQUEST + LIVE STATUS ═══════════════════════ */}
+      <div className="grid lg:grid-cols-3 gap-5 items-start">
+        {/* Request form */}
+        <div className="lg:col-span-2 relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-xl shadow-slate-900/[0.05]">
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-500 via-amber-400 to-emerald-500" />
+          <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-emerald-500/[0.04] blur-3xl" />
 
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="relative p-6 sm:p-8 space-y-6">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex items-center justify-center h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 shadow-lg shadow-emerald-900/25 ring-1 ring-emerald-400/40">
+                  <ScrollText className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">Petition of Support</p>
+                  <h3 className="font-serif text-2xl font-bold text-slate-900 dark:text-white">Submit a Request</h3>
+                </div>
+              </div>
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-full ring-1 ${
+                eligibility.eligible
+                  ? "bg-emerald-50 text-emerald-800 ring-emerald-300/60 dark:bg-emerald-900/25 dark:text-emerald-200 dark:ring-emerald-700/40"
+                  : "bg-amber-50 text-amber-800 ring-amber-300/60 dark:bg-amber-900/25 dark:text-amber-200 dark:ring-amber-700/40"
+              }`}>
+                {eligibility.eligible ? <CheckCircle2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                {eligibility.eligible ? "Eligible" : "Locked"}
+              </span>
+            </div>
+
+            {/* Category selector */}
             <div>
-              <label className="text-sm font-medium text-foreground">Support category</label>
-              <div className="mt-1 grid grid-cols-2 gap-2">
+              <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Support Category</label>
+              <div className="mt-2 grid grid-cols-2 gap-2.5">
                 {(["national", "global"] as SupportCategory[]).map((cat) => {
                   const active = supportCategory === cat;
                   const rules = categoryRules[cat];
@@ -622,429 +776,628 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                     <button
                       key={cat}
                       onClick={() => setSupportCategory(cat)}
-                      className={`w-full rounded-lg border px-3 py-2 text-left transition ${active ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "border-gray-200 dark:border-bpi-dark-accent"}`}
+                      className={`group relative overflow-hidden rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                        active
+                          ? "border-emerald-500 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 dark:from-emerald-950/40 dark:via-slate-950 dark:to-emerald-950/20 shadow-lg shadow-emerald-900/[0.08]"
+                          : "border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 bg-white dark:bg-slate-950/50"
+                      }`}
                     >
+                      {active && <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-400 to-amber-400" />}
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-foreground">{rules?.label ?? cat}</span>
-                        <Globe className="w-4 h-4 text-muted-foreground" />
+                        <span className="font-serif text-base font-bold text-slate-900 dark:text-white">{rules?.label ?? cat}</span>
+                        <Globe className={`w-4 h-4 ${active ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`} />
                       </div>
-                      <p className="text-xs text-muted-foreground">Directs {rules?.minDirects ?? 10}+ • Threshold {formatAmount(rules?.minThreshold ?? 10000)}</p>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        {rules?.minDirects ?? 10}+ directs · {formatAmount(rules?.minThreshold ?? 10000)}
+                      </p>
                     </button>
                   );
                 })}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+
+            {/* Amount + Purpose */}
+            <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium text-foreground">Requested amount</label>
+                <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Requested Amount</label>
                 <input
                   type="number"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-background px-3 py-2 text-sm"
+                  className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/70 px-4 py-3 text-base font-serif font-bold text-slate-900 dark:text-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition"
                   min={categoryRules[supportCategory]?.minThreshold ?? 10000}
                 />
                 {amount && !Number.isNaN(Number(amount)) && Number(amount) > 0 && (
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    Broadcast target: {formatAmount(Math.ceil(Number(amount) * 1.2))} <span className="text-amber-600">(+20% service markup)</span>
+                  <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                    Broadcast target: <span className="font-semibold text-slate-700 dark:text-slate-300">{formatAmount(Math.ceil(Number(amount) * 1.2))}</span> <span className="text-amber-600 dark:text-amber-400">(+20% markup)</span>
                   </p>
                 )}
               </div>
               <div>
-                <label className="text-sm font-medium text-foreground">Purpose</label>
+                <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Purpose</label>
                 <input
                   type="text"
                   value={purpose}
                   onChange={(e) => setPurpose(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-background px-3 py-2 text-sm"
-                  placeholder="E.g. medical, rent"
+                  className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/70 px-4 py-3 text-sm text-slate-900 dark:text-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition"
+                  placeholder="E.g. medical, rent, education"
                 />
               </div>
             </div>
-          </div>
 
-          <div>
-            <label className="text-sm font-medium text-foreground">Additional details</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              className="mt-1 w-full rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-background px-3 py-2 text-sm"
-              placeholder="Add context for management approval"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span className={`px-2 py-1 rounded-full ${eligibility.hasMembership ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
-              {eligibility.hasMembership ? "Membership ok" : "Upgrade membership"}
-            </span>
-            <span className={`px-2 py-1 rounded-full ${eligibility.hasDirects ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
-              {eligibility.hasDirects ? "Directs ok" : `Need ${categoryRules[supportCategory]?.minDirects ?? 10}+ qualified directs`}
-            </span>
-            <span className={`px-2 py-1 rounded-full ${eligibility.hasContrib ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
-              {eligibility.hasContrib ? "Contribution ok" : `Contribute ${formatAmount(categoryRules[supportCategory]?.minCumulativeContrib ?? 10000)} cumulative`}
-            </span>
-            <span className={`px-2 py-1 rounded-full ${eligibility.hasDistinct ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
-              {eligibility.hasDistinct ? "10 requests met" : `${profile.minDistinctRequests} distinct requests needed`}
-            </span>
-            {supportCategory === "global" && eligibility.globalPath && (
-              <span className="px-2 py-1 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-                Qualifies via Path {eligibility.globalPath}
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="text-xs text-muted-foreground flex items-center gap-2">
-              <Mail className="w-4 h-4" />
-              Confirmation email and broadcast will be sent after approval.
+            <div>
+              <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Additional Details</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/70 px-4 py-3 text-sm text-slate-900 dark:text-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition resize-none"
+                placeholder="Add context for management approval"
+              />
             </div>
-            <Button
-              onClick={handleSubmit}
-              disabled={!eligibility.eligible || profile.hasCooldown || submitRequest.isPending}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
-            >
-              <Sparkles className="w-4 h-4 mr-2" />
-              {profile.hasCooldown ? "Cooldown active" : "Submit for approval"}
-            </Button>
-          </div>
-        </Card>
 
-        <Card className="p-5 bg-white dark:bg-bpi-dark-card space-y-3">
-          <div className="flex items-center gap-2">
-            <HeadphonesIcon className="w-5 h-5 text-emerald-600" />
-            <h4 className="font-semibold text-foreground">Live status</h4>
-          </div>
-          <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-900/10 p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-foreground">Broadcast window</p>
-              <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-200">{formatCountdown(liveStatus?.remainingSeconds)}</span>
+            {/* Requirements chips */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                { ok: eligibility.hasMembership, on: "Membership OK", off: "Upgrade membership" },
+                { ok: eligibility.hasDirects, on: "Directs OK", off: `${categoryRules[supportCategory]?.minDirects ?? 10}+ directs needed` },
+                { ok: eligibility.hasContrib, on: "Contribution OK", off: `${formatAmount(categoryRules[supportCategory]?.minCumulativeContrib ?? 10000)} cumulative` },
+                { ok: eligibility.hasDistinct, on: "10 requests met", off: `${profile.minDistinctRequests} distinct requests needed` },
+              ].map((s, i) => (
+                <span key={i} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 ${
+                  s.ok
+                    ? "bg-emerald-50 text-emerald-800 ring-emerald-200/70 dark:bg-emerald-900/20 dark:text-emerald-200 dark:ring-emerald-800/40"
+                    : "bg-amber-50 text-amber-800 ring-amber-200/70 dark:bg-amber-900/20 dark:text-amber-200 dark:ring-amber-800/40"
+                }`}>
+                  {s.ok ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                  {s.ok ? s.on : s.off}
+                </span>
+              ))}
+              {supportCategory === "global" && eligibility.globalPath && (
+                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 bg-blue-50 text-blue-800 ring-blue-200/70 dark:bg-blue-900/20 dark:text-blue-200 dark:ring-blue-800/40">
+                  <Sparkles className="h-3 w-3" />
+                  Qualifies via Path {eligibility.globalPath}
+                </span>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">Auto-closes when time or threshold reached.</p>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-              <div className="p-3 rounded-lg bg-white dark:bg-bpi-dark-card border border-gray-100 dark:border-bpi-dark-accent">
-                <p className="text-muted-foreground">Raised</p>
-                <p className="font-semibold text-foreground">{formatAmount(liveStatus?.raisedAmount ?? 0)} / {formatAmount(liveStatus?.thresholdAmount ?? categoryRules[supportCategory]?.minThreshold ?? 10000)}</p>
+
+            {/* Submit */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <Mail className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                Confirmation &amp; broadcast sent after approval
               </div>
-              <div className="p-3 rounded-lg bg-white dark:bg-bpi-dark-card border border-gray-100 dark:border-bpi-dark-accent">
-                <p className="text-muted-foreground">Contributors</p>
-                <p className="font-semibold text-foreground">{liveStatus?.contributorsCount ?? 0}</p>
+              <button
+                onClick={handleSubmit}
+                disabled={!eligibility.eligible || profile.hasCooldown || submitRequest.isPending}
+                className="group relative inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-700 to-emerald-800 px-6 py-3 text-sm font-semibold uppercase tracking-wider text-white shadow-lg shadow-emerald-900/30 ring-1 ring-emerald-400/30 hover:shadow-xl hover:shadow-emerald-900/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-lg"
+              >
+                <span className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-amber-300/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <Sparkles className="w-4 h-4 relative" />
+                <span className="relative">{profile.hasCooldown ? "Cooldown Active" : "Submit for Approval"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Live status */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-900 via-emerald-950 to-slate-950 border border-emerald-700/40 shadow-2xl shadow-emerald-900/40">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
+          <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-emerald-500/20 blur-3xl" />
+          <div className="absolute -bottom-20 -left-16 w-48 h-48 rounded-full bg-amber-400/10 blur-3xl" />
+
+          <div className="relative p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-amber-300 via-amber-500 to-amber-600 shadow-lg shadow-amber-900/40 ring-1 ring-amber-200/50">
+                <RadioTower className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-200/80">Broadcast Chamber</p>
+                <h4 className="font-serif text-lg font-bold text-white">Live Status</h4>
+              </div>
+            </div>
+
+            {/* Countdown pill */}
+            <div className="rounded-xl bg-white/[0.06] backdrop-blur border border-amber-200/20 p-4">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs text-emerald-100/70">Broadcast window</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="font-mono text-sm font-bold text-amber-200">{formatCountdown(liveStatus?.remainingSeconds)}</span>
+                </div>
+              </div>
+              <p className="text-[11px] text-emerald-100/50">Auto-closes when time or threshold reached</p>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-black/20 border border-emerald-500/20 px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wider text-emerald-100/60">Raised</p>
+                  <p className="mt-1 font-serif text-sm font-bold text-white leading-tight">
+                    {formatAmount(liveStatus?.raisedAmount ?? 0)}
+                  </p>
+                  <p className="text-[10px] text-emerald-100/50 mt-0.5">
+                    of {formatAmount(liveStatus?.thresholdAmount ?? categoryRules[supportCategory]?.minThreshold ?? 10000)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-black/20 border border-emerald-500/20 px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-wider text-emerald-100/60">Patrons</p>
+                  <p className="mt-1 font-serif text-lg font-bold text-white">{liveStatus?.contributorsCount ?? 0}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2.5 text-xs">
+              <div className="flex items-start gap-2.5 text-emerald-100/70">
+                <Bell className="w-3.5 h-3.5 mt-0.5 text-amber-300 shrink-0" />
+                <span>Broadcasts reach email, dashboard, Telegram &amp; WhatsApp</span>
+              </div>
+              <div className="flex items-start gap-2.5 text-emerald-100/70">
+                <RadioTower className="w-3.5 h-3.5 mt-0.5 text-amber-300 shrink-0" />
+                <span>Management approval required before going live</span>
               </div>
             </div>
           </div>
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Bell className="w-4 h-4" />
-              Broadcast will notify email, dashboard, Telegram, WhatsApp bots.
-            </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <RadioTower className="w-4 h-4" />
-              Management approval required before going live.
-            </div>
-          </div>
-        </Card>
+        </div>
       </div>
 
-      {/* Extensions and split */}
-      <div className="grid lg:grid-cols-2 gap-4">
-        <Card className="p-5 bg-white dark:bg-bpi-dark-card space-y-4">
-          <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-emerald-600" />
-            <h4 className="font-semibold text-foreground">Time extensions</h4>
+      {/* ═══════════════════════ EXTENSIONS + ANALYTICS ═══════════════════════ */}
+      <div className="grid lg:grid-cols-2 gap-5">
+        {/* Time extensions */}
+        <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-lg shadow-slate-900/[0.03]">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent" />
+          <div className="relative p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 shadow-lg shadow-emerald-900/25 ring-1 ring-emerald-400/40">
+                <Clock className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">Chronicle</p>
+                <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Time Extensions</h4>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                Pay for Extra Time
+                <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+              </p>
+              <div className="grid grid-cols-2 gap-2.5">
+                {extensionPaid.map((row) => (
+                  <div key={row.amount} className="group rounded-xl border border-emerald-200/60 dark:border-emerald-800/40 bg-gradient-to-br from-emerald-50/60 via-white to-white dark:from-emerald-950/30 dark:via-slate-950 dark:to-slate-950 p-3.5 hover:border-emerald-400 dark:hover:border-emerald-600 transition-colors">
+                    <p className="font-serif text-xl font-bold text-emerald-700 dark:text-emerald-300">+{row.hours}h</p>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">Pay {formatAmount(row.amount)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                Earn Time via Directs
+                <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+              </p>
+              <div className="grid grid-cols-2 gap-2.5">
+                {extensionReferrals.map((row) => (
+                  <div key={row.directs} className="group rounded-xl border border-amber-200/60 dark:border-amber-800/40 bg-gradient-to-br from-amber-50/60 via-white to-white dark:from-amber-950/25 dark:via-slate-950 dark:to-slate-950 p-3.5 hover:border-amber-400 dark:hover:border-amber-600 transition-colors">
+                    <p className="font-serif text-xl font-bold text-amber-700 dark:text-amber-300">+{row.hours}h</p>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">Add {row.directs} directs</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase">Pay for extra time</p>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              {extensionPaid.map((row) => (
-                <div key={row.amount} className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gradient-to-r from-emerald-50 to-emerald-50/50 dark:from-emerald-900/10 dark:to-emerald-900/5">
-                  <p className="font-semibold text-foreground">+{row.hours} hrs</p>
-                  <p className="text-xs text-muted-foreground">Pay {formatAmount(row.amount)}</p>
+        </div>
+
+        {/* Live analytics */}
+        <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-lg shadow-slate-900/[0.03]">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
+          <div className="relative p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-900/25 ring-1 ring-amber-300/50">
+                <Zap className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700/80 dark:text-amber-300/70">Realm Metrics</p>
+                <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Live Analytics</h4>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "Active Broadcasts", value: broadcastMetrics.total, tint: "emerald" },
+                { label: "Targets Met", value: broadcastMetrics.targetMetCount, tint: "amber" },
+                { label: "Total Raised", value: formatAmount(broadcastMetrics.totalRaised), tint: "emerald" },
+                { label: "Avg. Progress", value: `${broadcastMetrics.avgProgress}%`, tint: "amber" },
+              ].map((s, i) => (
+                <div key={i} className="relative overflow-hidden rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-gradient-to-br from-slate-50/60 to-white dark:from-slate-900/40 dark:to-slate-950 p-4">
+                  <div className={`absolute top-0 left-0 h-full w-0.5 ${s.tint === "amber" ? "bg-gradient-to-b from-amber-400 to-amber-600" : "bg-gradient-to-b from-emerald-400 to-emerald-600"}`} />
+                  <p className="text-[10px] uppercase tracking-[0.2em] font-semibold text-slate-500 dark:text-slate-400">{s.label}</p>
+                  <p className="mt-1.5 font-serif text-2xl font-bold text-slate-900 dark:text-white leading-none">{s.value}</p>
                 </div>
               ))}
             </div>
           </div>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase">Earn extra time via directs</p>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              {extensionReferrals.map((row) => (
-                <div key={row.directs} className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gradient-to-r from-blue-50 to-blue-50/50 dark:from-blue-900/10 dark:to-blue-900/5">
-                  <p className="font-semibold text-foreground">+{row.hours} hrs</p>
-                  <p className="text-xs text-muted-foreground">Add {row.directs} directs</p>
+        </div>
+
+        {/* Active broadcasts */}
+        <div className="lg:col-span-2 relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-xl shadow-slate-900/[0.04]">
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-500 via-amber-400 to-emerald-500" />
+          <div className="relative p-6 sm:p-8 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-700 to-emerald-900 shadow-lg shadow-emerald-900/30 ring-1 ring-amber-300/30">
+                  <RadioTower className="w-5 h-5 text-amber-300" />
                 </div>
-              ))}
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">The Assembly</p>
+                  <h4 className="font-serif text-xl font-bold text-slate-900 dark:text-white">Active Broadcasts</h4>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => broadcastsQuery.refetch()} className="border-slate-300 dark:border-slate-700 hover:border-emerald-400 dark:hover:border-emerald-600 text-slate-700 dark:text-slate-200">
+                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                Refresh
+              </Button>
             </div>
-          </div>
-        </Card>
 
-        <Card className="p-5 bg-white dark:bg-bpi-dark-card space-y-3">
-          <div className="flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-emerald-600" />
-            <h4 className="font-semibold text-foreground">Live analytics</h4>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
-              <p className="text-xs text-muted-foreground">Active broadcasts</p>
-              <p className="text-xl font-bold text-foreground">{broadcastMetrics.total}</p>
-            </div>
-            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
-              <p className="text-xs text-muted-foreground">Targets met</p>
-              <p className="text-xl font-bold text-foreground">{broadcastMetrics.targetMetCount}</p>
-            </div>
-            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
-              <p className="text-xs text-muted-foreground">Total raised</p>
-              <p className="text-xl font-bold text-foreground">{formatAmount(broadcastMetrics.totalRaised)}</p>
-            </div>
-            <div className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
-              <p className="text-xs text-muted-foreground">Avg. progress</p>
-              <p className="text-xl font-bold text-foreground">{broadcastMetrics.avgProgress}%</p>
-            </div>
-          </div>
-        </Card>
+            {broadcastsQuery.data && broadcastsQuery.data.length === 0 && (
+              <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/30 py-10 text-center">
+                <RadioTower className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-3" />
+                <p className="text-sm text-slate-500 dark:text-slate-400">No active broadcasts at this moment.</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">The chamber is quiet. Check back soon.</p>
+              </div>
+            )}
 
-        <Card className="p-5 bg-white dark:bg-bpi-dark-card space-y-3 lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <RadioTower className="w-5 h-5 text-emerald-600" />
-              <h4 className="font-semibold text-foreground">Active broadcasts</h4>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => broadcastsQuery.refetch()}>
-              Refresh
-            </Button>
-          </div>
+            <div className="grid lg:grid-cols-2 gap-3">
+              {broadcastColumns.map((col = [], idx) => (
+                <div key={idx} className="space-y-3">
+                  {col.map((item) => {
+                    const percent = Math.min(100, Math.floor((item.raisedAmount / item.thresholdAmount) * 100));
+                    const remaining = item.broadcastExpiresAt ? formatCountdown(Math.floor((new Date(item.broadcastExpiresAt).getTime() - Date.now()) / 1000)) : "--";
+                    const targetMet = item.raisedAmount >= item.thresholdAmount;
+                    const anonLabel = hashRequestId(item.id);
+                    return (
+                      <div key={item.id} className="group relative overflow-hidden rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-gradient-to-br from-white via-white to-slate-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/10 p-4 hover:border-emerald-400/60 dark:hover:border-emerald-600/40 hover:shadow-lg hover:shadow-emerald-900/[0.06] transition-all">
+                        <div className={`absolute top-0 left-0 right-0 h-0.5 ${targetMet ? "bg-gradient-to-r from-emerald-400 to-emerald-600" : "bg-gradient-to-r from-amber-400 to-amber-500"}`} />
 
-          {broadcastsQuery.data && broadcastsQuery.data.length === 0 && (
-            <p className="text-sm text-muted-foreground">No active broadcasts right now.</p>
-          )}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="relative flex items-center justify-center h-11 w-11 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 ring-1 ring-slate-200 dark:ring-slate-700">
+                              <Lock className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                              <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-white dark:ring-slate-950 animate-pulse" />
+                            </div>
+                            <div>
+                              <p className="font-mono text-sm font-bold text-slate-900 dark:text-white">{anonLabel}</p>
+                              <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Anonymous · {item.category}</p>
+                            </div>
+                          </div>
+                          {targetMet ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 text-emerald-800 ring-1 ring-emerald-300/60 px-2.5 py-1 text-[10px] font-semibold dark:bg-emerald-900/25 dark:text-emerald-200 dark:ring-emerald-700/40">
+                              <CheckCircle2 className="h-3 w-3" /> Target Met
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setSelectedBroadcast(item)}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white text-xs font-semibold px-3 py-1.5 shadow-md shadow-emerald-900/25 ring-1 ring-emerald-400/30 transition"
+                            >
+                              <Sparkles className="h-3 w-3" />
+                              Contribute
+                            </button>
+                          )}
+                        </div>
 
-          <div className="grid lg:grid-cols-2 gap-3">
-            {broadcastColumns.map((col = [], idx) => (
-              <div key={idx} className="space-y-3">
-                {col.map((item) => {
-                  const percent = Math.min(100, Math.floor((item.raisedAmount / item.thresholdAmount) * 100));
-                  const remaining = item.broadcastExpiresAt ? formatCountdown(Math.floor((new Date(item.broadcastExpiresAt).getTime() - Date.now()) / 1000)) : "--";
-                  const targetMet = item.raisedAmount >= item.thresholdAmount;
-                  const anonLabel = hashRequestId(item.id);
-                  return (
-                    <div key={item.id} className="rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-800 flex items-center justify-center font-semibold">🔒</div>
+                        <div className="mt-3.5 flex items-center justify-between">
                           <div>
-                            <p className="font-semibold text-foreground text-sm">{anonLabel}</p>
-                            <p className="text-xs text-muted-foreground">Anonymous request</p>
+                            <p className="font-serif text-lg font-bold text-slate-900 dark:text-white">{formatAmount(item.thresholdAmount)}</p>
+                            <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Requested</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-serif text-lg font-bold text-emerald-700 dark:text-emerald-300">{formatAmount(item.raisedAmount)}</p>
+                            <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Raised</p>
                           </div>
                         </div>
-                        {targetMet ? (
-                          <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 border border-blue-100">
-                            <CheckCircle2 className="h-4 w-4" /> Target met
+
+                        <div className="mt-2.5 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 shadow-[0_0_8px_rgba(16,185,129,0.5)] transition-all duration-700"
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                        <div className="mt-1.5 flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-emerald-700 dark:text-emerald-300">{percent}% funded</span>
+                          <span className="text-slate-500 dark:text-slate-400 font-mono">
+                            {item.isAdminDefault ? "No expiry" : remaining}
                           </span>
-                        ) : (
-                          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => setSelectedBroadcast(item)}>
-                            Contribute
-                          </Button>
-                        )}
-                      </div>
-                      <div className="mt-2 flex items-center justify-between text-sm">
-                        <div>
-                          <p className="font-semibold text-foreground">{formatAmount(item.thresholdAmount)}</p>
-                          <p className="text-xs text-muted-foreground">Requested • {item.category}</p>
                         </div>
-                        <div className="text-right">
-                          <p className="font-semibold text-foreground">{formatAmount(item.raisedAmount)}</p>
-                          <p className="text-xs text-muted-foreground">Raised</p>
-                        </div>
+
+                        <p className="mt-2.5 text-xs text-slate-600 dark:text-slate-400 truncate">
+                          <span className="text-slate-500 dark:text-slate-500">Purpose: </span>{item.purpose}
+                        </p>
                       </div>
-                      <div className="mt-2 h-2 rounded-full bg-gray-200 dark:bg-bpi-dark-accent overflow-hidden">
-                        <div className="h-full bg-emerald-500" style={{ width: `${percent}%` }} />
-                      </div>
-                      <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{percent}% funded</span>
-                        <span>{item.isAdminDefault ? "No expiry" : `Time left: ${remaining}`}</span>
-                      </div>
-                      <p className="mt-2 text-sm text-foreground">Purpose: {item.purpose}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
           </div>
-        </Card>
+        </div>
       </div>
 
-      {/* History & notifications */}
-      <div className="grid lg:grid-cols-3 gap-4">
-        <Card className="p-5 bg-white dark:bg-bpi-dark-card lg:col-span-2">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-emerald-600" />
-              <h4 className="font-semibold text-foreground">Recent requests</h4>
+      {/* ═══════════════════════ HISTORY + NOTIFICATIONS ═══════════════════════ */}
+      <div className="grid lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2 relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-lg shadow-slate-900/[0.03]">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent" />
+          <div className="relative p-6 sm:p-7">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 shadow-lg shadow-slate-900/30 ring-1 ring-amber-300/20">
+                  <ScrollText className="w-4 h-4 text-amber-300" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-slate-500 dark:text-slate-400">Chronicle</p>
+                  <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Recent Petitions</h4>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" className="gap-1 border-slate-300 dark:border-slate-700">
+                View all
+                <ChevronRight className="w-4 h-4" />
+              </Button>
             </div>
-            <Button variant="outline" size="sm" className="gap-1">
-              View all
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
-          <div className="divide-y divide-gray-200 dark:divide-bpi-dark-accent">
-                {history.map((item: { id: string; category: string; date: string; amount: number; status: string }) => (
-                  <div key={item.id} className="py-3 flex items-center justify-between text-sm">
-                    <div>
-                      <p className="font-semibold text-foreground">{item.id}</p>
-                      <p className="text-xs text-muted-foreground">{item.category} • {item.date}</p>
+            <div className="divide-y divide-slate-100 dark:divide-slate-800/70">
+              {history.map((item: { id: string; category: string; date: string; amount: number; status: string }) => {
+                const ok = ["approved", "broadcasting", "closed"].includes(item.status.toLowerCase());
+                return (
+                  <div key={item.id} className="py-3.5 flex items-center justify-between text-sm hover:bg-slate-50/60 dark:hover:bg-slate-900/40 rounded-lg px-2 -mx-2 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`h-9 w-9 rounded-lg flex items-center justify-center ring-1 shrink-0 ${
+                        ok
+                          ? "bg-emerald-50 ring-emerald-200/60 text-emerald-700 dark:bg-emerald-900/20 dark:ring-emerald-800/40 dark:text-emerald-300"
+                          : "bg-amber-50 ring-amber-200/60 text-amber-700 dark:bg-amber-900/20 dark:ring-amber-800/40 dark:text-amber-300"
+                      }`}>
+                        {ok ? <CheckCircle2 className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-bold text-slate-900 dark:text-white truncate">{item.id}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 capitalize">{item.category} · {item.date}</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-foreground">{formatAmount(Number(item.amount))}</p>
-                      <span className={`text-[11px] px-2 py-1 rounded-full ${["approved", "broadcasting", "closed"].includes(item.status.toLowerCase()) ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200"}`}>
+                    <div className="text-right shrink-0 ml-3">
+                      <p className="font-serif text-base font-bold text-slate-900 dark:text-white">{formatAmount(Number(item.amount))}</p>
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider mt-0.5 px-2 py-0.5 rounded-full ring-1 ${
+                        ok
+                          ? "bg-emerald-50 text-emerald-800 ring-emerald-200/70 dark:bg-emerald-900/25 dark:text-emerald-200 dark:ring-emerald-800/40"
+                          : "bg-amber-50 text-amber-800 ring-amber-200/70 dark:bg-amber-900/25 dark:text-amber-200 dark:ring-amber-800/40"
+                      }`}>
                         {item.status}
                       </span>
                     </div>
                   </div>
-                ))}
-          </div>
-        </Card>
-
-        <Card className="p-5 bg-white dark:bg-bpi-dark-card space-y-3">
-          <div className="flex items-center gap-2">
-            <Bell className="w-5 h-5 text-emerald-600" />
-            <h4 className="font-semibold text-foreground">Notifications</h4>
-          </div>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Qualification notice</li>
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Request submitted</li>
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Approval + broadcast</li>
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Contribution confirmation</li>
-            <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" /> Countdown expiry alerts</li>
-          </ul>
-        </Card>
-      </div>
-
-      <Card className="p-5 bg-white dark:bg-bpi-dark-card">
-        <div className="flex items-center gap-2 mb-3">
-          <RadioTower className="w-5 h-5 text-emerald-600" />
-          <h4 className="font-semibold text-foreground">What happens next?</h4>
-        </div>
-        <div className="grid md:grid-cols-4 gap-3 text-sm">
-          {[
-            { title: "Submit", desc: "Send request with purpose and amount." },
-            { title: "Approval", desc: "Management reviews and approves." },
-            { title: "Broadcast", desc: "48h window to raise threshold." },
-            { title: "Payout", desc: "Admin releases held funds to the recipient." },
-          ].map((step, idx) => (
-            <div key={step.title} className="p-3 rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-gray-50 dark:bg-bpi-dark-accent/30">
-              <p className="text-xs text-muted-foreground">Step {idx + 1}</p>
-              <p className="font-semibold text-foreground">{step.title}</p>
-              <p className="text-xs text-muted-foreground mt-1">{step.desc}</p>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {selectedBroadcast && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="absolute inset-0" onClick={() => setSelectedBroadcast(null)} />
-          <div className="relative w-full max-w-lg rounded-2xl bg-white dark:bg-bpi-dark-card border border-border p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Contribute to</p>
-                <h3 className="text-lg font-semibold text-foreground">{hashRequestId(selectedBroadcast.id)}</h3>
-                <p className="text-xs text-muted-foreground">{selectedBroadcast.purpose}</p>
-              </div>
-              <button className="text-muted-foreground" onClick={() => setSelectedBroadcast(null)}>✕</button>
-            </div>
-
-            <div className="grid gap-3">
-              <div>
-                <label className="text-sm font-medium text-foreground">Amount (min {formatAmount(500)})</label>
-                <input
-                  type="number"
-                  min={500}
-                  value={contributionAmount}
-                  onChange={(e) => setContributionAmount(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 dark:border-bpi-dark-accent bg-background px-3 py-2 text-sm"
-                  placeholder="Enter amount"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-foreground">Payment Method</label>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {(["wallet", "community", "crypto"] as const).map((w) => (
-                    <button
-                      key={w}
-                      onClick={() => setContributionWallet(w)}
-                      className={`rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition ${contributionWallet === w ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "border-gray-200 dark:border-bpi-dark-accent"}`}
-                    >
-                      {w === "wallet"
-                        ? `Cash Wallet • ${formatAmount(balances.cash)}`
-                        : w === "community"
-                          ? `Community • ${formatAmount(balances.community)}`
-                          : "Crypto (USDT)"}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {contributionWallet === "crypto"
-                    ? "Send USDT and paste the transaction hash below."
-                    : "Only Cash or Community wallets are accepted. Balances refresh after each contribution."}
-                </p>
-              </div>
-
-              {contributionWallet === "crypto" && (
-                <div className="space-y-3 pt-2">
-                  <CryptoTransferDetails className="space-y-3" />
-                  <div>
-                    <label className="text-sm font-medium text-foreground">Transaction Hash *</label>
-                    <Input
-                      type="text"
-                      value={cryptoTxHash}
-                      onChange={(e) => setCryptoTxHash(e.target.value)}
-                      placeholder="Paste your transaction hash here"
-                      className="mt-1 font-mono text-sm"
-                    />
-                  </div>
-                </div>
+                );
+              })}
+              {history.length === 0 && (
+                <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">No petitions recorded yet.</p>
               )}
             </div>
+          </div>
+        </div>
 
-            <Button
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-              disabled={
-                (contributionWallet === "crypto" ? cryptoContributeMutation.isPending : contributeMutation.isPending)
-                || !contributionAmount
-                || (contributionWallet === "crypto" && !cryptoTxHash.trim())
-              }
-              onClick={() => {
-                const amt = Number(contributionAmount);
-                if (Number.isNaN(amt) || amt < 500) {
-                  toast.error(`Minimum contribution is ${formatAmount(500)}`);
-                  return;
-                }
-                if (contributionWallet === "crypto") {
-                  if (!cryptoTxHash.trim()) {
-                    toast.error("Please enter the transaction hash");
-                    return;
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-slate-50 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/20 border border-slate-200/70 dark:border-slate-800/70 shadow-lg shadow-slate-900/[0.03]">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
+          <div className="relative p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-900/25 ring-1 ring-amber-300/50">
+                <Bell className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700/80 dark:text-amber-300/70">Herald</p>
+                <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Notifications</h4>
+              </div>
+            </div>
+            <ul className="space-y-2.5">
+              {[
+                "Qualification notice",
+                "Request submitted",
+                "Approval + broadcast",
+                "Contribution confirmation",
+                "Countdown expiry alerts",
+              ].map((t, i) => (
+                <li key={i} className="flex items-center gap-2.5 text-sm text-slate-700 dark:text-slate-300 rounded-lg hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10 px-2 -mx-2 py-1 transition-colors">
+                  <div className="flex items-center justify-center h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 ring-1 ring-emerald-200/70 dark:ring-emerald-800/40 shrink-0">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-700 dark:text-emerald-300" />
+                  </div>
+                  <span>{t}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════ WHAT HAPPENS NEXT ═══════════════════════ */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-white to-emerald-50/40 dark:from-slate-900/40 dark:via-slate-950 dark:to-emerald-950/20 border border-slate-200/70 dark:border-slate-800/70 shadow-lg">
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
+        <div className="relative p-6 sm:p-8">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-700 to-emerald-900 shadow-lg shadow-emerald-900/30 ring-1 ring-amber-300/25">
+              <ScrollText className="w-4 h-4 text-amber-300" />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">The Rite</p>
+              <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white">What Happens Next</h4>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-4 gap-3">
+            {[
+              { title: "Submit", desc: "Send request with purpose and amount." },
+              { title: "Approval", desc: "Management reviews and approves." },
+              { title: "Broadcast", desc: "48h window to raise threshold." },
+              { title: "Payout", desc: "Admin releases held funds to the recipient." },
+            ].map((step, idx) => (
+              <div key={step.title} className="group relative overflow-hidden rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/80 p-4 hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors">
+                <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-400 to-amber-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-gradient-to-br from-emerald-600 to-emerald-800 text-white text-[11px] font-bold shadow-md shadow-emerald-900/25 ring-1 ring-amber-300/30">
+                    {idx + 1}
+                  </span>
+                  <p className="text-[10px] uppercase tracking-[0.22em] font-semibold text-slate-500 dark:text-slate-400">Step</p>
+                </div>
+                <p className="font-serif text-lg font-bold text-slate-900 dark:text-white">{step.title}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">{step.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════ CONTRIBUTE MODAL ═══════════════════════ */}
+      {selectedBroadcast && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md px-4 py-6 overflow-y-auto">
+          <div className="absolute inset-0" onClick={() => setSelectedBroadcast(null)} />
+
+          <div className="relative w-full max-w-lg my-auto">
+            {/* Ambient gold glow */}
+            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-amber-400/30 via-emerald-500/20 to-amber-400/20 blur-2xl" />
+
+            <div className="relative rounded-2xl bg-gradient-to-br from-white via-white to-emerald-50/30 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/30 border border-amber-300/40 dark:border-amber-700/40 shadow-[0_25px_80px_-10px_rgba(0,0,0,0.5)] overflow-hidden">
+              {/* Top ornamental bar */}
+              <div className="h-1 bg-gradient-to-r from-emerald-500 via-amber-400 to-emerald-500" />
+
+              <div className="p-6 sm:p-7 space-y-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex items-center justify-center h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-700 to-emerald-900 shadow-lg shadow-emerald-900/30 ring-1 ring-amber-300/30 shrink-0">
+                      <Gem className="w-4 h-4 text-amber-300" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">Contribute to</p>
+                      <h3 className="font-serif text-xl font-bold text-slate-900 dark:text-white mt-0.5">{hashRequestId(selectedBroadcast.id)}</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs">{selectedBroadcast.purpose}</p>
+                    </div>
+                  </div>
+                  <button
+                    className="flex items-center justify-center h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
+                    onClick={() => setSelectedBroadcast(null)}
+                    aria-label="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Amount (min {formatAmount(500)})</label>
+                    <input
+                      type="number"
+                      min={500}
+                      value={contributionAmount}
+                      onChange={(e) => setContributionAmount(e.target.value)}
+                      className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/70 px-4 py-3 text-base font-serif font-bold text-slate-900 dark:text-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition"
+                      placeholder="Enter amount"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Payment Method</label>
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {(["wallet", "community", "crypto"] as const).map((w) => {
+                        const active = contributionWallet === w;
+                        return (
+                          <button
+                            key={w}
+                            onClick={() => setContributionWallet(w)}
+                            className={`relative overflow-hidden rounded-xl border-2 px-3 py-2.5 text-xs font-semibold capitalize transition-all ${
+                              active
+                                ? "border-emerald-500 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/40 dark:to-slate-950 shadow-md shadow-emerald-900/[0.08]"
+                                : "border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 bg-white dark:bg-slate-950/50"
+                            }`}
+                          >
+                            {active && <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-400 to-amber-400" />}
+                            <div className="text-slate-900 dark:text-white text-xs font-serif font-bold">
+                              {w === "wallet" ? "Cash" : w === "community" ? "Community" : "Crypto"}
+                            </div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 normal-case font-normal">
+                              {w === "wallet"
+                                ? formatAmount(balances.cash)
+                                : w === "community"
+                                  ? formatAmount(balances.community)
+                                  : "USDT"}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+                      {contributionWallet === "crypto"
+                        ? "Send USDT and paste the transaction hash below."
+                        : "Balances refresh after each contribution."}
+                    </p>
+                  </div>
+
+                  {contributionWallet === "crypto" && (
+                    <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <CryptoTransferDetails className="space-y-3" />
+                      <div>
+                        <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Transaction Hash *</label>
+                        <Input
+                          type="text"
+                          value={cryptoTxHash}
+                          onChange={(e) => setCryptoTxHash(e.target.value)}
+                          placeholder="Paste your transaction hash here"
+                          className="mt-2 font-mono text-xs"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  className="group relative w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-700 to-emerald-800 px-6 py-3.5 text-sm font-semibold uppercase tracking-wider text-white shadow-lg shadow-emerald-900/30 ring-1 ring-emerald-400/30 hover:shadow-xl hover:shadow-emerald-900/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={
+                    (contributionWallet === "crypto" ? cryptoContributeMutation.isPending : contributeMutation.isPending)
+                    || !contributionAmount
+                    || (contributionWallet === "crypto" && !cryptoTxHash.trim())
                   }
-                  cryptoContributeMutation.mutate({
-                    amount: amt,
-                    currency: "USDT",
-                    purpose: PaymentPurpose.CSP_CONTRIBUTION,
-                    txHash: cryptoTxHash.trim(),
-                    metadata: { cspRequestId: selectedBroadcast.id },
-                  });
-                  return;
-                }
-                contributeMutation.mutate({
-                  requestId: selectedBroadcast.id,
-                  amount: amt,
-                  walletType: contributionWallet,
-                });
-              }}
-            >
-              {contributeMutation.isPending ? "Processing..." : "Submit contribution"}
-            </Button>
+                  onClick={() => {
+                    const amt = Number(contributionAmount);
+                    if (Number.isNaN(amt) || amt < 500) {
+                      toast.error(`Minimum contribution is ${formatAmount(500)}`);
+                      return;
+                    }
+                    if (contributionWallet === "crypto") {
+                      if (!cryptoTxHash.trim()) {
+                        toast.error("Please enter the transaction hash");
+                        return;
+                      }
+                      cryptoContributeMutation.mutate({
+                        amount: amt,
+                        currency: "USDT",
+                        purpose: PaymentPurpose.CSP_CONTRIBUTION,
+                        txHash: cryptoTxHash.trim(),
+                        metadata: { cspRequestId: selectedBroadcast.id },
+                      });
+                      return;
+                    }
+                    contributeMutation.mutate({
+                      requestId: selectedBroadcast.id,
+                      amount: amt,
+                      walletType: contributionWallet,
+                    });
+                  }}
+                >
+                  <span className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-amber-300/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <Sparkles className="w-4 h-4 relative" />
+                  <span className="relative">
+                    {(contributionWallet === "crypto" ? cryptoContributeMutation.isPending : contributeMutation.isPending)
+                      ? "Processing…"
+                      : "Submit Contribution"}
+                  </span>
+                </button>
 
-            <p className="text-xs text-muted-foreground">
-              Funds are held until the requester hits the threshold or admin releases the payout after review.
-            </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center leading-relaxed">
+                  Funds are held until the threshold is met or admin releases payout after review.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}
