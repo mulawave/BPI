@@ -11,6 +11,8 @@
 import cron from "node-cron";
 import { prisma } from "@/lib/prisma";
 import { startNewsletterRuntime } from "@/server/trpc/router/admin";
+import { runCspAutoContributeSweep } from "@/server/jobs/cspAutoContributeSweep";
+import { runCspBroadcastSweep } from "@/server/jobs/cspBroadcastSweep";
 import fs from "fs";
 import path from "path";
 
@@ -378,8 +380,40 @@ function startCronJobs() {
     timezone: "Africa/Lagos"
   });
 
+  // CSP Auto-Contribute Sweep — every 15 minutes.
+  // Autonomously contributes from each enabled user's community wallet so the
+  // feature keeps running at intervals instead of only firing once on an event.
+  cron.schedule("*/15 * * * *", async () => {
+    console.log("\n⏰ [CRON] Triggered: CSP Auto-Contribute Sweep");
+    try {
+      const result = await runCspAutoContributeSweep();
+      console.log(`✅ [CSP-AUTO-CONTRIBUTE] ${result.summary}`);
+    } catch (error) {
+      console.error("❌ [CRON] CSP auto-contribute sweep failed:", error);
+      await notifyAdminOfError(error, "CSP Auto-Contribute Sweep");
+    }
+  }, {
+    timezone: "Africa/Lagos"
+  });
+
+  // CSP Broadcast Sweep — every 10 minutes (auto-extend / close expiring broadcasts).
+  cron.schedule("*/10 * * * *", async () => {
+    console.log("\n⏰ [CRON] Triggered: CSP Broadcast Sweep");
+    try {
+      const result = await runCspBroadcastSweep();
+      console.log(`✅ [CSP-BROADCAST-SWEEP] ${result.summary}`);
+    } catch (error) {
+      console.error("❌ [CRON] CSP broadcast sweep failed:", error);
+      await notifyAdminOfError(error, "CSP Broadcast Sweep");
+    }
+  }, {
+    timezone: "Africa/Lagos"
+  });
+
   console.log("\n✅ Cron jobs scheduled:");
   console.log("   • Executive Pool Distribution: Friday at 8:00 AM (0 8 * * 5)");
+  console.log("   • CSP Auto-Contribute Sweep: every 15 minutes (*/15 * * * *)");
+  console.log("   • CSP Broadcast Sweep: every 10 minutes (*/10 * * * *)");
   console.log("\n⏳ Waiting for scheduled tasks...\n");
 
   // Keep process alive

@@ -50,6 +50,14 @@ export default function AdminCspAutoContributePage() {
     onError: (err) => toast.error(err.message),
   });
 
+  const runSweepMutation = api.csp.adminRunAutoContributeSweep.useMutation({
+    onSuccess: (res: any) => {
+      toast.success(res?.summary || "Auto-contribute sweep completed");
+      refetch();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const toggleUserMutation = api.csp.adminToggleAutoContributeUser.useMutation({
     onSuccess: () => {
       toast.success("User auto-contribute status updated");
@@ -87,6 +95,15 @@ export default function AdminCspAutoContributePage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => runSweepMutation.mutate()}
+              disabled={runSweepMutation.isPending}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-60 transition-colors"
+              title="Runs auto-contribute now for all enabled, funded users. Also runs automatically every 15 minutes."
+            >
+              <Zap className="w-4 h-4" />
+              {runSweepMutation.isPending ? "Running..." : "Run Sweep Now"}
+            </button>
             <button
               onClick={() => refetch()}
               className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"

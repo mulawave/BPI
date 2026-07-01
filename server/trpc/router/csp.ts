@@ -2652,6 +2652,19 @@ export const cspRouter = createTRPCRouter({
       return { success: true, globalDisabled: input.disabled };
     }),
 
+  /** Manually trigger the recurring auto-contribute sweep (admin). */
+  adminRunAutoContributeSweep: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      const adminId = (ctx.session?.user as any)?.id as string;
+      if (!adminId) throw new Error("UNAUTHORIZED");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
+      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+
+      const { runCspAutoContributeSweep } = await import("@/server/jobs/cspAutoContributeSweep");
+      const result = await runCspAutoContributeSweep();
+      return result;
+    }),
+
   adminToggleAutoContributeUser: protectedProcedure
     .input(z.object({ userId: z.string(), disabled: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
