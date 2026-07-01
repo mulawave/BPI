@@ -65,24 +65,10 @@ export async function runCspAutoContribute(params: {
   });
 
   if (!user || user.community < minAmountPerRequest) {
-    // Disable auto-contribute and notify
-    await prisma.cspAutoContributeSetting.update({
-      where: { userId },
-      data: { isEnabled: false },
-    });
-
-    await prisma.notification.create({
-      data: {
-        id: randomUUID(),
-        userId,
-        title: "Auto-Contribute Paused",
-        message: "Your CSP auto-contribute has been paused due to insufficient community wallet balance. Please fund your community wallet and re-activate auto-contribute.",
-        type: "csp",
-        isRead: false,
-      },
-    });
-
-    return { totalContributed: 0, requestsContributed: 0, disabledDueToBalance: true };
+    // Not enough funds this run. Leave auto-contribute ENABLED so the recurring
+    // sweep resumes automatically once the community wallet is funded again —
+    // do not disable it (that was the "runs once and stops" bug).
+    return { totalContributed: 0, requestsContributed: 0, disabledDueToBalance: false };
   }
 
   // Find broadcasting requests this user hasn't maxed out
@@ -167,7 +153,6 @@ export async function runCspAutoContribute(params: {
         });
 
         // Update request raised amount
-        const newRaised = request.raisedAmount + (totalContributed > 0 ? contributeAmount : contributeAmount);
         await tx.cspSupportRequest.update({
           where: { id: request.id },
           data: {
@@ -226,19 +211,15 @@ export async function runCspAutoContribute(params: {
     if (disabledDueToBalance) break;
   }
 
-  // If balance exhausted, disable and notify
+  // Balance exhausted this run: notify once, but keep auto-contribute ENABLED so
+  // the recurring sweep resumes automatically once the wallet is funded again.
   if (disabledDueToBalance) {
-    await prisma.cspAutoContributeSetting.update({
-      where: { userId },
-      data: { isEnabled: false },
-    });
-
     await prisma.notification.create({
       data: {
         id: randomUUID(),
         userId,
         title: "Auto-Contribute Paused — No Balance",
-        message: "Your CSP auto-contribute has been paused because your community wallet has insufficient funds. Please top up and re-activate when ready.",
+        message: "Your CSP auto-contribute is paused until your community wallet is funded. It will resume automatically once funds are available.",
         type: "csp",
         isRead: false,
       },
