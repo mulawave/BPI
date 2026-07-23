@@ -3,7 +3,7 @@
 ## Prereqs
 
 - Node 20+ (see `.nvmrc` — currently pinned to 22)
-- Postgres database (Neon, Supabase, Railway, etc.)
+- Postgres database (Neon, Supabase, Rail
 
 ## 1) Install deps
 
