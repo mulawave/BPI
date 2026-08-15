@@ -32,6 +32,7 @@ import {
   Tags,
   Trash2,
   X,
+  XCircle,
 } from "lucide-react";
 import AdminPageGuide from "@/components/admin/AdminPageGuide";
 
@@ -116,6 +117,8 @@ export default function AdminStorePage() {
   const [pausingProductId, setPausingProductId] = useState<string | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
+  const [retiringProductId, setRetiringProductId] = useState<string | null>(null);
+  const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null);
   const [togglingConfigId, setTogglingConfigId] = useState<string | null>(null);
   const [togglingStoreConfigId, setTogglingStoreConfigId] = useState<string | null>(null);
   const [deletingConfigId, setDeletingConfigId] = useState<string | null>(null);
@@ -151,6 +154,8 @@ export default function AdminStorePage() {
 
   const upsertProduct = api.store.adminUpsertProduct.useMutation();
   const deleteProduct = api.store.adminDeleteProduct.useMutation();
+  const retireProduct = api.store.adminRetireProduct.useMutation();
+  const retryRewardSettlement = api.store.adminRetryRewardSettlement.useMutation();
   const upsertTokenRate = api.store.adminUpsertTokenRate.useMutation();
   const upsertRewardConfig = api.store.adminUpsertRewardConfig.useMutation();
   const updateOrderStatus = api.store.adminUpdateOrderStatus.useMutation();
@@ -196,6 +201,32 @@ export default function AdminStorePage() {
       toast.error(err?.message || "Failed to update status");
     } finally {
       setPausingProductId(null);
+    }
+  };
+
+  const handleRetireProduct = async (product: Product) => {
+    try {
+      setRetiringProductId(product.product_id);
+      await retireProduct.mutateAsync({ id: product.product_id });
+      toast.success("Product retired");
+      await productsQuery.refetch();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to retire product");
+    } finally {
+      setRetiringProductId(null);
+    }
+  };
+
+  const handleRetrySettlement = async (orderId: string) => {
+    try {
+      setRetryingOrderId(orderId);
+      await retryRewardSettlement.mutateAsync({ orderId });
+      toast.success("Reward settlement retried");
+      ordersQuery.refetch();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to retry settlement");
+    } finally {
+      setRetryingOrderId(null);
     }
   };
 
@@ -581,6 +612,15 @@ export default function AdminStorePage() {
                         {pausingProductId === p.product_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4 text-emerald-500" />}
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleRetireProduct(p)}
+                      disabled={retiringProductId === p.product_id || p.status === "retired"}
+                      title="Retire product"
+                    >
+                      {retiringProductId === p.product_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4 text-orange-500" />}
+                    </Button>
                     {confirmDeleteProductId === p.product_id ? (
                       <>
                         <Button
@@ -601,14 +641,14 @@ export default function AdminStorePage() {
                             }
                           }}
                         >
-                          {deletingProductId === p.product_id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
+                          {deletingProductId === p.product_id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Delete"}
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteProductId(null)}>
                           <X className="h-4 w-4" />
                         </Button>
                       </>
                     ) : (
-                      <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteProductId(p.product_id)}>
+                      <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteProductId(p.product_id)} title="Permanently delete (only works if no orders exist)">
                         <Trash2 className="h-4 w-4 text-rose-500" />
                       </Button>
                     )}
@@ -767,6 +807,18 @@ export default function AdminStorePage() {
                             <option key={s} value={s}>{s}</option>
                           ))}
                         </select>
+                        {(o.reward_settlement_state === "FAILED" || o.reward_settlement_state === "PENDING") && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            disabled={retryingOrderId === o.id}
+                            onClick={() => handleRetrySettlement(o.id)}
+                          >
+                            {retryingOrderId === o.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                            Retry
+                          </Button>
+                        )}
                       </div>
                     </div>
                     <div className="col-span-2 text-sm space-y-1">

@@ -36,7 +36,7 @@ export default function StoreDetailClient({ product }: Props) {
   const autoCheckoutTriggered = useRef(false);
   const checkoutMutation = api.store.createCheckoutIntent.useMutation();
   const externalCheckoutMutation = api.store.createExternalTokenCheckoutIntent.useMutation();
-  const { data: catalog } = api.store.listProducts.useQuery({ status: "all" });
+  const { data: catalog } = api.store.listProducts.useQuery({ status: "active" });
   const catalogProducts: Product[] = catalog ?? [];
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const touchStartX = useRef<number | null>(null);
@@ -93,11 +93,11 @@ export default function StoreDetailClient({ product }: Props) {
   }, [galleryImages, selectedImage]);
 
   const featuredProducts = useMemo<Product[]>(
-    () => catalogProducts.filter((p: Product) => p.featured && p.product_id !== product.product_id).slice(0, 6),
+    () => catalogProducts.filter((p: Product) => p.featured && p.status === "active" && p.product_id !== product.product_id).slice(0, 6),
     [catalogProducts, product.product_id]
   );
   const similarProducts = useMemo<Product[]>(
-    () => catalogProducts.filter((p: Product) => p.product_type === product.product_type && p.product_id !== product.product_id).slice(0, 4),
+    () => catalogProducts.filter((p: Product) => p.status === "active" && p.product_type === product.product_type && p.product_id !== product.product_id).slice(0, 4),
     [catalogProducts, product.product_id, product.product_type]
   );
 

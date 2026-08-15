@@ -371,16 +371,17 @@ export function StoreExperience() {
 
   // Fetch the full catalog once; filters/search are applied client-side so the featured carousel stays unfiltered.
   const { data: productsData, isLoading } = api.store.listProducts.useQuery({
-    status: "all",
+    status: "active",
   });
 
   const products: Product[] = productsData ?? [];
-  const featuredProducts = useMemo<Product[]>(() => products.filter((p: Product) => p.featured), [products]);
+  const featuredProducts = useMemo<Product[]>(() => products.filter((p: Product) => p.featured && p.status === "active"), [products]);
   const cardsPerView = 4;
   const maxFeaturedStart = Math.max(0, featuredProducts.length - cardsPerView);
 
   const filtered = useMemo<Product[]>(() => {
     return products.filter((p: Product) => {
+      if (p.status !== "active") return false;
       const matchesType = selectedType === "all" || p.product_type === selectedType;
       const matchesToken = selectedToken === "all" || p.accepted_tokens.includes(selectedToken.toUpperCase());
       const matchesSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.description.toLowerCase().includes(search.toLowerCase());

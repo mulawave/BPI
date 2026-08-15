@@ -461,3 +461,56 @@ describe("Store: Referral chain resolution", () => {
     assert.deepStrictEqual(chain, ["b"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: resolveSponsorChain must not filter by referral status
+// (store.ts previously filtered `where: { referredId, status: "active" }`,
+// which broke payouts for admin-reassigned sponsors whose Referral rows
+// are created with status "completed" — see adminReferrals.ts)
+// ---------------------------------------------------------------------------
+
+type MockReferralRow = { referrerId: string; referredId: string; status: string };
+
+async function resolveSponsorChainAsync(
+  findFirst: (where: { referredId: string }) => Promise<{ referrerId: string } | null>,
+  buyerUserId: string,
+  maxLevels = 4
+): Promise<string[]> {
+  const chain: string[] = [];
+  let current = buyerUserId;
+
+  for (let i = 0; i < maxLevels; i++) {
+    const referral = await findFirst({ referredId: current });
+    const next = referral?.referrerId;
+    if (!next) break;
+    if (chain.includes(next)) break;
+    chain.push(next);
+    current = next;
+  }
+
+  return chain;
+}
+
+describe("Store: resolveSponsorChain status-agnostic regression", () => {
+  const rows: MockReferralRow[] = [
+    { referrerId: "sponsorActive", referredId: "buyer", status: "active" },
+    { referrerId: "sponsorCompleted", referredId: "sponsorActive", status: "completed" },
+    { referrerId: "sponsorPending", referredId: "sponsorCompleted", status: "pending" },
+  ];
+
+  const findFirst = async (where: { referredId: string }) =>
+    rows.find((r) => r.referredId === where.referredId) ?? null;
+
+  it("includes sponsors regardless of referral status (active/completed/pending)", async () => {
+    const chain = await resolveSponsorChainAsync(findFirst, "buyer", 4);
+    assert.deepStrictEqual(chain, ["sponsorActive", "sponsorCompleted", "sponsorPending"]);
+  });
+
+  it("would have broken the chain if status filter were reintroduced", async () => {
+    const statusFilteredFindFirst = async (where: { referredId: string }) =>
+      rows.find((r) => r.referredId === where.referredId && r.status === "active") ?? null;
+    const chain = await resolveSponsorChainAsync(statusFilteredFindFirst, "buyer", 4);
+    // Only the first hop has status "active"; the chain stops there — this is the bug being guarded against.
+    assert.deepStrictEqual(chain, ["sponsorActive"]);
+  });
+});

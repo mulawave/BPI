@@ -62,7 +62,7 @@ export default async function StoreDetailPage({ params }: { params: { id: string
 
   const product = rawProduct ? mapProduct(rawProduct) : null;
 
-  if (!product) return notFound();
+  if (!product || product.status !== "active") return notFound();
 
   return (
     <DashboardShell session={session}>

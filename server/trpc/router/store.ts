@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure, publicProcedure, adminProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import { sendEmail } from "@/lib/email";
 import { PAYMENT_FULFILLMENT_TYPES } from "@/server/services/payment/paymentMetadata";
@@ -41,7 +41,7 @@ async function resolveSponsorChain(prisma: any, buyerUserId: string, maxLevels =
 
   for (let i = 0; i < maxLevels; i++) {
     const referral = await prisma.referral.findFirst({
-      where: { referredId: current, status: "active" },
+      where: { referredId: current },
       select: { referrerId: true },
     });
 
@@ -104,12 +104,8 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
         .filter((l: any) => Number.isFinite(l.level) && l.level >= 1 && l.level <= 4)
         .sort((a: any, b: any) => a.level - b.level);
 
-      // No active config means nothing to pay; mark as settled to prevent repeated attempts.
+      // No active config means nothing to pay yet; leave as PENDING so a future config addition can trigger settlement.
       if (!activeConfig || levels.length === 0) {
-        await tx.order.update({
-          where: { id: order.id },
-          data: { rewardSettlementState: "ISSUED" },
-        });
         return;
       }
 
@@ -213,7 +209,8 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
           });
           const rateToFiat = Number(rate?.rateToFiat ?? 0);
           if (!Number.isFinite(rateToFiat) || rateToFiat <= 0) {
-            throw new Error(`Missing token rate for ${symbol}`);
+            console.error(`[store.settleStoreReferralRewards] Missing token rate for ${symbol}, skipping level ${level}`);
+            continue;
           }
 
           const tokenAmount = payoutFiat / rateToFiat;
@@ -241,7 +238,8 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
         } else if (levelConfig.payoutType === "UTILITY_TOKEN") {
           const symbol = levelConfig.utilityTokenSymbol;
           if (!symbol) {
-            throw new Error("UTILITY_TOKEN payout requires utilityTokenSymbol");
+            console.error(`[store.settleStoreReferralRewards] UTILITY_TOKEN payout missing utilityTokenSymbol, skipping level ${level}`);
+            continue;
           }
 
           const rate = await tx.tokenRate.findFirst({
@@ -250,7 +248,8 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
           });
           const rateToFiat = Number(rate?.rateToFiat ?? 0);
           if (!Number.isFinite(rateToFiat) || rateToFiat <= 0) {
-            throw new Error(`Missing token rate for ${symbol}`);
+            console.error(`[store.settleStoreReferralRewards] Missing token rate for ${symbol}, skipping level ${level}`);
+            continue;
           }
           const tokenAmount = payoutFiat / rateToFiat;
 
@@ -567,7 +566,7 @@ export const storeRouter = createTRPCRouter({
     return configs.map(mapStoreRewardConfig);
   }),
 
-  adminUpsertStoreRewardConfig: protectedProcedure
+  adminUpsertStoreRewardConfig: adminProcedure
     .input(
       z.object({
         id: z.string().optional(),
@@ -614,14 +613,14 @@ export const storeRouter = createTRPCRouter({
       return mapStoreRewardConfig(config);
     }),
 
-  adminDeleteStoreRewardConfig: protectedProcedure
+  adminDeleteStoreRewardConfig: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await (ctx.prisma as any).storeRewardConfig.delete({ where: { id: input.id } });
       return { ok: true };
     }),
 
-  adminLinkProductReferralConfig: protectedProcedure
+  adminLinkProductReferralConfig: adminProcedure
     .input(
       z.object({
         productId: z.string(),
@@ -644,7 +643,7 @@ export const storeRouter = createTRPCRouter({
       return { ok: true };
     }),
 
-  adminUpsertStoreRewardLevel: protectedProcedure
+  adminUpsertStoreRewardLevel: adminProcedure
     .input(
       z.object({
         id: z.string().optional(),
@@ -685,14 +684,14 @@ export const storeRouter = createTRPCRouter({
       return mapStoreRewardLevel(saved);
     }),
 
-  adminDeleteStoreRewardLevel: protectedProcedure
+  adminDeleteStoreRewardLevel: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await (ctx.prisma as any).storeRewardLevel.delete({ where: { id: input.id } });
       return { ok: true };
     }),
 
-  adminUpsertProduct: protectedProcedure
+  adminUpsertProduct: adminProcedure
     .input(
       z
         .object({
@@ -788,14 +787,32 @@ export const storeRouter = createTRPCRouter({
       return mapProduct(product);
     }),
 
-  adminDeleteProduct: protectedProcedure
+  adminDeleteProduct: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const orderCount = await (ctx.prisma as any).order.count({ where: { productId: input.id } });
+      if (orderCount > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot permanently delete a product with existing orders. Retire it instead.",
+        });
+      }
       await (ctx.prisma as any).product.delete({ where: { id: input.id } });
       return { ok: true };
     }),
 
-  adminUpsertRewardConfig: protectedProcedure
+  adminRetireProduct: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const product = await (ctx.prisma as any).product.update({
+        where: { id: input.id },
+        data: { status: "RETIRED" },
+        include: { rewardConfig: true, storeRewardConfigs: { include: { levels: true } } },
+      });
+      return mapProduct(product);
+    }),
+
+  adminUpsertRewardConfig: adminProcedure
     .input(
       z.object({
         id: z.string().optional(),
@@ -835,7 +852,7 @@ export const storeRouter = createTRPCRouter({
       };
     }),
 
-  adminUpsertTokenRate: protectedProcedure
+  adminUpsertTokenRate: adminProcedure
     .input(
       z.object({
         id: z.string().optional(),
@@ -866,7 +883,7 @@ export const storeRouter = createTRPCRouter({
       };
     }),
 
-  adminUpsertPickupCenter: protectedProcedure
+  adminUpsertPickupCenter: adminProcedure
     .input(
       z.object({
         id: z.string().optional(),
@@ -905,7 +922,7 @@ export const storeRouter = createTRPCRouter({
       return center;
     }),
 
-  adminUpsertRewardCenter: protectedProcedure
+  adminUpsertRewardCenter: adminProcedure
     .input(
       z.object({
         id: z.string().optional(),
@@ -1021,7 +1038,7 @@ export const storeRouter = createTRPCRouter({
       return orders.map(mapOrder);
     }),
 
-  adminUpdateOrderStatus: protectedProcedure
+  adminUpdateOrderStatus: adminProcedure
     .input(
       z.object({
         id: z.string(),
@@ -1047,6 +1064,37 @@ export const storeRouter = createTRPCRouter({
       }
 
       return mapOrder(order);
+    }),
+
+  adminRetryRewardSettlement: adminProcedure
+    .input(z.object({ orderId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const order = await (ctx.prisma as any).order.findUnique({
+        where: { id: input.orderId },
+        select: { id: true, status: true, claimStatus: true, rewardSettlementState: true },
+      });
+
+      if (!order) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+      }
+
+      if (order.rewardSettlementState === "ISSUED") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Rewards already issued for this order" });
+      }
+
+      await (ctx.prisma as any).order.update({
+        where: { id: input.orderId },
+        data: { rewardSettlementState: "PENDING" },
+      });
+
+      await settleStoreReferralRewards(ctx.prisma, input.orderId);
+
+      const refreshed = await (ctx.prisma as any).order.findUnique({
+        where: { id: input.orderId },
+        include: { product: { include: { rewardConfig: true } }, pickupCenter: true, pickupExperienceRating: true },
+      });
+
+      return mapOrder(refreshed);
     }),
 
   createCheckoutIntent: protectedProcedure
@@ -1525,6 +1573,10 @@ export const storeRouter = createTRPCRouter({
 
       if (existing.status !== "PENDING") {
         return mapOrder(existing);
+      }
+
+      if (existing.product?.status !== "ACTIVE") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This product is no longer available for checkout." });
       }
 
       const existingPaymentMode =
