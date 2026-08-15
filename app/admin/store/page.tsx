@@ -119,6 +119,10 @@ export default function AdminStorePage() {
   const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
   const [retiringProductId, setRetiringProductId] = useState<string | null>(null);
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [productStatusOrderFilter, setProductStatusOrderFilter] = useState<string>("all");
   const [togglingConfigId, setTogglingConfigId] = useState<string | null>(null);
   const [togglingStoreConfigId, setTogglingStoreConfigId] = useState<string | null>(null);
   const [deletingConfigId, setDeletingConfigId] = useState<string | null>(null);
@@ -156,6 +160,7 @@ export default function AdminStorePage() {
   const deleteProduct = api.store.adminDeleteProduct.useMutation();
   const retireProduct = api.store.adminRetireProduct.useMutation();
   const retryRewardSettlement = api.store.adminRetryRewardSettlement.useMutation();
+  const bulkDeleteOrders = api.store.adminBulkDeleteOrders.useMutation();
   const upsertTokenRate = api.store.adminUpsertTokenRate.useMutation();
   const upsertRewardConfig = api.store.adminUpsertRewardConfig.useMutation();
   const updateOrderStatus = api.store.adminUpdateOrderStatus.useMutation();
@@ -220,8 +225,15 @@ export default function AdminStorePage() {
   const handleRetrySettlement = async (orderId: string) => {
     try {
       setRetryingOrderId(orderId);
-      await retryRewardSettlement.mutateAsync({ orderId });
-      toast.success("Reward settlement retried");
+      const result: any = await retryRewardSettlement.mutateAsync({ orderId });
+      const report = result?.settlementReport;
+      if (report?.success && report?.payoutsIssued > 0) {
+        toast.success(report.message || "Reward settlement succeeded");
+      } else if (report?.message) {
+        toast.error(report.message);
+      } else {
+        toast.success("Reward settlement retried");
+      }
       ordersQuery.refetch();
     } catch (err: any) {
       toast.error(err?.message || "Failed to retry settlement");
@@ -340,24 +352,84 @@ export default function AdminStorePage() {
 
   useEffect(() => {
     setOrderPage(1);
-  }, [orderStatusFilter, debouncedOrderQuery]);
+  }, [orderStatusFilter, debouncedOrderQuery, productStatusOrderFilter]);
+
+  const deletableOrderStatuses = ["PENDING", "FAILED", "REFUNDED"];
 
   const filteredOrders = useMemo(() => {
     const source = ordersQuery.data ?? [];
-    if (!debouncedOrderQuery) return source;
-    const q = debouncedOrderQuery.toLowerCase();
-    return source.filter((o: Order) => {
-      const idMatch = o.id.toLowerCase().includes(q);
-      const userMatch = (o.user_id || "").toLowerCase().includes(q);
-      const productMatch = o.product?.name?.toLowerCase?.().includes(q) ?? false;
-      return idMatch || userMatch || productMatch;
-    });
-  }, [ordersQuery.data, debouncedOrderQuery]);
+    let result = source;
+
+    // Filter by product status (Issue C: retired/active product filter)
+    if (productStatusOrderFilter !== "all") {
+      const targetStatus = productStatusOrderFilter.toUpperCase();
+      result = result.filter((o: Order) => {
+        const ps = (o.product as any)?.status;
+        return ps === targetStatus;
+      });
+    }
+
+    if (debouncedOrderQuery) {
+      const q = debouncedOrderQuery.toLowerCase();
+      result = result.filter((o: Order) => {
+        const idMatch = o.id.toLowerCase().includes(q);
+        const userMatch = (o.user_id || "").toLowerCase().includes(q);
+        const productMatch = o.product?.name?.toLowerCase?.().includes(q) ?? false;
+        return idMatch || userMatch || productMatch;
+      });
+    }
+
+    return result;
+  }, [ordersQuery.data, debouncedOrderQuery, productStatusOrderFilter]);
 
   const pageSize = 10;
   const totalOrderPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
   const orderSliceStart = (orderPage - 1) * pageSize;
   const pagedOrders = filteredOrders.slice(orderSliceStart, orderSliceStart + pageSize);
+
+  const eligiblePagedOrders = pagedOrders.filter((o: Order) => deletableOrderStatuses.includes(o.status));
+  const allEligibleSelected = eligiblePagedOrders.length > 0 && eligiblePagedOrders.every((o: Order) => selectedOrderIds.has(o.id));
+
+  const toggleOrderSelection = (orderId: string) => {
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllEligible = () => {
+    if (allEligibleSelected) {
+      setSelectedOrderIds((prev) => {
+        const next = new Set(prev);
+        eligiblePagedOrders.forEach((o: Order) => next.delete(o.id));
+        return next;
+      });
+    } else {
+      setSelectedOrderIds((prev) => {
+        const next = new Set(prev);
+        eligiblePagedOrders.forEach((o: Order) => next.add(o.id));
+        return next;
+      });
+    }
+  };
+
+  const handleBulkDeleteOrders = async () => {
+    try {
+      setBulkDeleting(true);
+      const ids = Array.from(selectedOrderIds);
+      const result: any = await bulkDeleteOrders.mutateAsync({ orderIds: ids });
+      toast.success(`${result.deleted} order(s) deleted`);
+      setSelectedOrderIds(new Set());
+      setConfirmBulkDelete(false);
+      ordersQuery.refetch();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to delete orders");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   const handleOrderStatusChange = async (orderId: string, nextStatus: Order["status"]) => {
     try {
@@ -630,9 +702,10 @@ export default function AdminStorePage() {
                           onClick={async () => {
                             try {
                               setDeletingProductId(p.product_id);
-                              await deleteProduct.mutateAsync({ id: p.product_id });
-                              toast.success("Product deleted");
+                              const result: any = await deleteProduct.mutateAsync({ id: p.product_id });
+                              toast.success(result?.deletedOrders ? "Product and its pending orders deleted" : "Product deleted");
                               productsQuery.refetch();
+                              ordersQuery.refetch();
                             } catch (err: any) {
                               toast.error(err?.message || "Failed to delete product");
                             } finally {
@@ -648,7 +721,7 @@ export default function AdminStorePage() {
                         </Button>
                       </>
                     ) : (
-                      <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteProductId(p.product_id)} title="Permanently delete (only works if no orders exist)">
+                      <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteProductId(p.product_id)} title="Permanently delete product and its pending/failed/refunded orders">
                         <Trash2 className="h-4 w-4 text-rose-500" />
                       </Button>
                     )}
@@ -715,6 +788,15 @@ export default function AdminStorePage() {
                 {s === "all" ? "All" : s}
               </Button>
             ))}
+            <select
+              value={productStatusOrderFilter}
+              onChange={(e) => setProductStatusOrderFilter(e.target.value)}
+              className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs"
+            >
+              <option value="all">All Products</option>
+              <option value="active">Active Products</option>
+              <option value="retired">Retired Products</option>
+            </select>
             <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5 bg-background">
               <Search className="h-4 w-4 text-muted-foreground" />
               <input
@@ -731,12 +813,22 @@ export default function AdminStorePage() {
         </div>
 
         <div className="overflow-hidden rounded-xl border border-border/70">
-          <div className="grid grid-cols-12 bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground px-4 py-2">
-            <div className="col-span-3">Order</div>
-            <div className="col-span-3">Product</div>
-            <div className="col-span-3">Payment & Rewards</div>
-            <div className="col-span-2">Claim</div>
-            <div className="col-span-1 text-right">Actions</div>
+          <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr_auto] gap-2 bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground px-4 py-2 items-center">
+            <div className="w-5">
+              {eligiblePagedOrders.length > 0 && (
+                <input
+                  type="checkbox"
+                  checked={allEligibleSelected}
+                  onChange={toggleSelectAllEligible}
+                  className="h-4 w-4 rounded border-border"
+                />
+              )}
+            </div>
+            <div>Order</div>
+            <div>Product</div>
+            <div>Payment & Rewards</div>
+            <div>Claim</div>
+            <div className="text-right">Actions</div>
           </div>
           <div className="divide-y divide-border/60">
             {ordersQuery.isLoading ? (
@@ -748,9 +840,20 @@ export default function AdminStorePage() {
                 const payment = (o.payment_breakdown as any) || {};
                 const tokenPart = payment?.token;
                 const fiatPart = payment?.fiat;
+                const isDeletable = deletableOrderStatuses.includes(o.status);
                 return (
-                  <div key={o.id} className="grid grid-cols-12 items-center px-4 py-3 bg-card/40 backdrop-blur gap-2">
-                    <div className="col-span-3 space-y-1 text-sm">
+                  <div key={o.id} className="grid grid-cols-[auto_1fr_1fr_1fr_1fr_auto] gap-2 items-center px-4 py-3 bg-card/40 backdrop-blur">
+                    <div className="w-5">
+                      {isDeletable && (
+                        <input
+                          type="checkbox"
+                          checked={selectedOrderIds.has(o.id)}
+                          onChange={() => toggleOrderSelection(o.id)}
+                          className="h-4 w-4 rounded border-border"
+                        />
+                      )}
+                    </div>
+                    <div className="space-y-1 text-sm">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-foreground">{o.id.slice(0, 8)}…</span>
                         <Badge variant="outline" className="text-[10px]">{new Date(o.created_at as any).toLocaleDateString()}</Badge>
@@ -772,11 +875,11 @@ export default function AdminStorePage() {
                         {o.status}
                       </Badge>
                     </div>
-                    <div className="col-span-3 space-y-1 text-sm">
+                    <div className="space-y-1 text-sm">
                       <div className="font-semibold text-foreground">{o.product?.name || "—"}</div>
                       <div className="text-xs text-muted-foreground">Qty {o.quantity}</div>
                     </div>
-                    <div className="col-span-3 text-sm text-muted-foreground space-y-1">
+                    <div className="text-sm text-muted-foreground space-y-1">
                       <div>Fiat: {typeof fiatPart === "number" ? formatCurrency(fiatPart) : "—"}</div>
                       {tokenPart ? (
                         <div className="flex items-center gap-1 text-xs">
@@ -821,7 +924,7 @@ export default function AdminStorePage() {
                         )}
                       </div>
                     </div>
-                    <div className="col-span-2 text-sm space-y-1">
+                    <div className="text-sm space-y-1">
                       <div className="flex items-center gap-2">
                         <Badge
                           variant="outline"
@@ -839,7 +942,7 @@ export default function AdminStorePage() {
                       </div>
                       <div className="text-xs text-muted-foreground line-clamp-1">Pickup: {o.pickup_center?.name || "—"}</div>
                     </div>
-                    <div className="col-span-1 flex justify-end gap-2 items-center">
+                    <div className="flex justify-end gap-2 items-center">
                       <select
                         value={o.status}
                         onChange={(e) => handleOrderStatusChange(o.id, e.target.value as Order["status"])}
@@ -860,6 +963,29 @@ export default function AdminStorePage() {
             )}
           </div>
         </div>
+
+        {selectedOrderIds.size > 0 && (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-rose-200/60 dark:border-rose-800/60 bg-rose-50/50 dark:bg-rose-900/10 px-4 py-3">
+            <span className="text-sm font-semibold text-foreground">{selectedOrderIds.size} order(s) selected</span>
+            {confirmBulkDelete ? (
+              <>
+                <span className="text-sm text-rose-600 font-medium">Permanently delete {selectedOrderIds.size} order(s)? This cannot be undone.</span>
+                <Button size="sm" variant="destructive" disabled={bulkDeleting} onClick={handleBulkDeleteOrders}>
+                  {bulkDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Confirm Delete
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirmBulkDelete(false)}>Cancel</Button>
+              </>
+            ) : (
+              <>
+                <Button size="sm" variant="destructive" onClick={() => setConfirmBulkDelete(true)}>
+                  <Trash2 className="h-4 w-4" /> Delete Selected
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedOrderIds(new Set())}>Clear</Button>
+              </>
+            )}
+          </div>
+        )}
 
         {pagedOrders.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2">

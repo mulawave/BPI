@@ -56,7 +56,27 @@ async function resolveSponsorChain(prisma: any, buyerUserId: string, maxLevels =
   return chain;
 }
 
-async function settleStoreReferralRewards(prisma: any, orderId: string): Promise<void> {
+type SettlementResult = {
+  success: boolean;
+  configFound: boolean;
+  levelsCount: number;
+  sponsorChainLength: number;
+  payoutsIssued: number;
+  skippedReasons: string[];
+  message: string;
+};
+
+async function settleStoreReferralRewards(prisma: any, orderId: string): Promise<SettlementResult> {
+  const report: SettlementResult = {
+    success: false,
+    configFound: false,
+    levelsCount: 0,
+    sponsorChainLength: 0,
+    payoutsIssued: 0,
+    skippedReasons: [],
+    message: "",
+  };
+
   try {
     await prisma.$transaction(async (tx: any) => {
       const order = await tx.order.findUnique({
@@ -73,9 +93,20 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
         },
       });
 
-      if (!order) return;
-      if (order.rewardSettlementState === "ISSUED") return;
-      if (order.claimStatus !== "COMPLETED" || order.status !== "COMPLETED") return;
+      if (!order) {
+        report.message = "Order not found.";
+        return;
+      }
+      if (order.rewardSettlementState === "ISSUED") {
+        report.message = "Rewards already issued for this order.";
+        report.success = true;
+        return;
+      }
+      if (order.claimStatus !== "COMPLETED" || order.status !== "COMPLETED") {
+        report.skippedReasons.push(`Order status is ${order.status}, claimStatus is ${order.claimStatus}. Both must be COMPLETED.`);
+        report.message = `Order is not COMPLETED (status: ${order.status}, claim: ${order.claimStatus}).`;
+        return;
+      }
 
       const now = new Date();
       const commonWhere: any = {
@@ -106,23 +137,40 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
 
       // No active config means nothing to pay yet; leave as PENDING so a future config addition can trigger settlement.
       if (!activeConfig || levels.length === 0) {
+        report.skippedReasons.push("No active reward config with levels found for this product or globally.");
+        report.message = "No active reward config found. Create and activate a config with levels, then retry.";
         return;
       }
+
+      report.configFound = true;
+      report.levelsCount = levels.length;
 
       const pricing = (order.pricingSnapshot as any) ?? {};
       const grossFiat = Number(pricing.total_fiat ?? pricing.totalFiat ?? pricing.base_price_fiat ?? 0);
       const profitFiat = Number(pricing.profit_fiat ?? 0);
 
       const sponsorChain = await resolveSponsorChain(tx, order.userId, 4);
+      report.sponsorChainLength = sponsorChain.length;
+
+      if (sponsorChain.length === 0) {
+        report.skippedReasons.push("No sponsor chain found for this buyer. Ensure the buyer has a referrer.");
+        report.message = "No sponsor chain found for this buyer. Ensure the buyer has an active referrer.";
+      }
 
       for (const levelConfig of levels) {
         const level = Number(levelConfig.level);
         const recipientUserId = sponsorChain[level - 1];
-        if (!recipientUserId) continue;
+        if (!recipientUserId) {
+          report.skippedReasons.push(`Level ${level}: no recipient in sponsor chain.`);
+          continue;
+        }
 
         const basis = levelConfig.rewardBasis;
         const basisAmountFiat = basis === "PROFIT" ? profitFiat : grossFiat;
-        if (!Number.isFinite(basisAmountFiat) || basisAmountFiat <= 0) continue;
+        if (!Number.isFinite(basisAmountFiat) || basisAmountFiat <= 0) {
+          report.skippedReasons.push(`Level ${level}: basis amount is zero or invalid.`);
+          continue;
+        }
 
         let payoutFiat = 0;
         if (levelConfig.rewardValueType === "PERCENTAGE") {
@@ -137,7 +185,10 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
         }
 
         payoutFiat = clampNumber(payoutFiat, 0, Number.MAX_SAFE_INTEGER);
-        if (payoutFiat <= 0) continue;
+        if (payoutFiat <= 0) {
+          report.skippedReasons.push(`Level ${level}: calculated payout is zero.`);
+          continue;
+        }
 
         // Idempotency guard: only credit if we successfully create the ledger row.
         let createdLedger = false;
@@ -184,6 +235,7 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
               walletType: "wallet",
             },
           });
+          report.payoutsIssued += 1;
         } else if (levelConfig.payoutType === "CASHBACK") {
           await tx.user.update({
             where: { id: recipientUserId },
@@ -201,6 +253,7 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
               walletType: "cashback",
             },
           });
+          report.payoutsIssued += 1;
         } else if (levelConfig.payoutType === "BPT") {
           const symbol = "BPT";
           const rate = await tx.tokenRate.findFirst({
@@ -210,6 +263,7 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
           const rateToFiat = Number(rate?.rateToFiat ?? 0);
           if (!Number.isFinite(rateToFiat) || rateToFiat <= 0) {
             console.error(`[store.settleStoreReferralRewards] Missing token rate for ${symbol}, skipping level ${level}`);
+            report.skippedReasons.push(`Level ${level}: missing token rate for ${symbol}.`);
             continue;
           }
 
@@ -235,10 +289,12 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
               walletType: "bpiToken",
             },
           });
+          report.payoutsIssued += 1;
         } else if (levelConfig.payoutType === "UTILITY_TOKEN") {
           const symbol = levelConfig.utilityTokenSymbol;
           if (!symbol) {
             console.error(`[store.settleStoreReferralRewards] UTILITY_TOKEN payout missing utilityTokenSymbol, skipping level ${level}`);
+            report.skippedReasons.push(`Level ${level}: UTILITY_TOKEN payout missing utilityTokenSymbol.`);
             continue;
           }
 
@@ -249,6 +305,7 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
           const rateToFiat = Number(rate?.rateToFiat ?? 0);
           if (!Number.isFinite(rateToFiat) || rateToFiat <= 0) {
             console.error(`[store.settleStoreReferralRewards] Missing token rate for ${symbol}, skipping level ${level}`);
+            report.skippedReasons.push(`Level ${level}: missing token rate for ${symbol}.`);
             continue;
           }
           const tokenAmount = payoutFiat / rateToFiat;
@@ -289,6 +346,7 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
               walletType: "utility",
             },
           });
+          report.payoutsIssued += 1;
         }
       }
 
@@ -296,9 +354,20 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
         where: { id: order.id },
         data: { rewardSettlementState: "ISSUED" },
       });
+
+      report.success = true;
+      if (report.payoutsIssued > 0) {
+        report.message = `Settlement succeeded — ${report.payoutsIssued} payout(s) issued to ${new Set(sponsorChain.slice(0, report.payoutsIssued)).size} recipient(s).`;
+      } else if (report.skippedReasons.length > 0) {
+        report.message = `No payouts issued. ${report.skippedReasons.length} level(s) skipped: ${report.skippedReasons.join("; ")}`;
+      } else {
+        report.message = "Settlement completed but no payouts were issued.";
+      }
     });
   } catch (e) {
     console.error("[store.settleStoreReferralRewards] Failed", e);
+    report.success = false;
+    report.message = "Settlement failed. Check server logs for details.";
     try {
       await prisma.order.update({
         where: { id: orderId },
@@ -308,6 +377,8 @@ async function settleStoreReferralRewards(prisma: any, orderId: string): Promise
       console.error("[store.settleStoreReferralRewards] Failed to mark FAILED", e2);
     }
   }
+
+  return report;
 }
 
 async function sendPickupCompletionEmails(order: any) {
@@ -790,15 +861,39 @@ export const storeRouter = createTRPCRouter({
   adminDeleteProduct: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const orderCount = await (ctx.prisma as any).order.count({ where: { productId: input.id } });
-      if (orderCount > 0) {
+      const deletableStatuses = ["PENDING", "FAILED", "REFUNDED"];
+
+      const nonDeletableCount = await (ctx.prisma as any).order.count({
+        where: { productId: input.id, status: { notIn: deletableStatuses } },
+      });
+
+      if (nonDeletableCount > 0) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Cannot permanently delete a product with existing orders. Retire it instead.",
+          message: "Cannot permanently delete a product with active orders (PAID, PROCESSING, DELIVERED, or COMPLETED). Retire it instead.",
         });
       }
-      await (ctx.prisma as any).product.delete({ where: { id: input.id } });
-      return { ok: true };
+
+      // Delete any deletable orders (PENDING/FAILED/REFUNDED) along with related records, then the product
+      await (ctx.prisma as any).$transaction(async (tx: any) => {
+        const deletableOrders = await tx.order.findMany({
+          where: { productId: input.id, status: { in: deletableStatuses } },
+          select: { id: true },
+        });
+        const orderIds = deletableOrders.map((o: any) => o.id);
+
+        if (orderIds.length > 0) {
+          // PickupExperienceRating has no onDelete: Cascade on Order, so delete explicitly
+          await tx.pickupExperienceRating.deleteMany({ where: { orderId: { in: orderIds } } });
+          // StoreReferralRewardLedger has onDelete: Cascade but explicit delete is safer in transaction
+          await tx.storeReferralRewardLedger.deleteMany({ where: { orderId: { in: orderIds } } });
+          await tx.order.deleteMany({ where: { id: { in: orderIds } } });
+        }
+
+        await tx.product.delete({ where: { id: input.id } });
+      });
+
+      return { ok: true, deletedOrders: true };
     }),
 
   adminRetireProduct: adminProcedure
@@ -1082,19 +1177,53 @@ export const storeRouter = createTRPCRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Rewards already issued for this order" });
       }
 
+      // Auto-advance order to COMPLETED + claimStatus COMPLETED so settlement can proceed
       await (ctx.prisma as any).order.update({
         where: { id: input.orderId },
-        data: { rewardSettlementState: "PENDING" },
+        data: {
+          rewardSettlementState: "PENDING",
+          status: "COMPLETED",
+          claimStatus: "COMPLETED",
+        },
       });
 
-      await settleStoreReferralRewards(ctx.prisma, input.orderId);
+      const settlementReport = await settleStoreReferralRewards(ctx.prisma, input.orderId);
 
       const refreshed = await (ctx.prisma as any).order.findUnique({
         where: { id: input.orderId },
         include: { product: { include: { rewardConfig: true } }, pickupCenter: true, pickupExperienceRating: true },
       });
 
-      return mapOrder(refreshed);
+      return { ...mapOrder(refreshed), settlementReport };
+    }),
+
+  adminBulkDeleteOrders: adminProcedure
+    .input(z.object({ orderIds: z.array(z.string()).min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const deletableStatuses = ["PENDING", "FAILED", "REFUNDED"];
+
+      const orders = await (ctx.prisma as any).order.findMany({
+        where: { id: { in: input.orderIds } },
+        select: { id: true, status: true },
+      });
+
+      const nonDeletable = orders.filter((o: any) => !deletableStatuses.includes(o.status));
+      if (nonDeletable.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Cannot delete orders with status: ${nonDeletable.map((o: any) => o.status).join(", ")}. Only PENDING, FAILED, and REFUNDED orders can be deleted.`,
+        });
+      }
+
+      const validIds = orders.map((o: any) => o.id);
+
+      await (ctx.prisma as any).$transaction(async (tx: any) => {
+        await tx.pickupExperienceRating.deleteMany({ where: { orderId: { in: validIds } } });
+        await tx.storeReferralRewardLedger.deleteMany({ where: { orderId: { in: validIds } } });
+        await tx.order.deleteMany({ where: { id: { in: validIds } } });
+      });
+
+      return { deleted: validIds.length, skipped: input.orderIds.length - validIds.length };
     }),
 
   createCheckoutIntent: protectedProcedure
