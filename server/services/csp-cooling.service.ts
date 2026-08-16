@@ -29,7 +29,7 @@ export type SponsorProgressConfig = {
 
 type CoolingDb = Pick<
   PrismaClient,
-  "referral" | "user" | "kycSubmission" | "membershipPackage" | "cspMemberStanding" | "cspRuleChangeLog"
+  "referral" | "user" | "kycSubmission" | "membershipPackage" | "cspMemberStanding" | "cspRuleChangeLog" | "cspTier" | "cspContribution"
 >;
 
 function addMonths(date: Date, months: number) {
@@ -145,7 +145,7 @@ export async function loadDirectSponsorCount(
   const latestKycRows = config.sponsorshipRequiresKyc
     ? await db.kycSubmission.findMany({
         where: { userId: { in: referredIds } },
-        orderBy: [{ userId: "asc" }, { createdAt: "desc" }],
+        orderBy: [{ userId: "asc" }, { submittedAt: "desc" }],
         select: { userId: true, status: true },
       })
     : [];

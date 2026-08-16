@@ -5,6 +5,7 @@ import {
   generateCspDonationCertificatePdf,
   loadActiveCspDonationBadgeCategories,
   resolveCspDonationBadgeCategory,
+  type CspDonationBadgeCategoryRecord,
 } from "@/server/services/csp-donations.service";
 
 export async function GET(
@@ -62,7 +63,7 @@ export async function GET(
 
     const activeCategories = await loadActiveCspDonationBadgeCategories(prisma);
     const badgeCategory =
-      awardedBadge?.Category ??
+      (awardedBadge?.Category as CspDonationBadgeCategoryRecord | null) ??
       (donation.amount
         ? resolveCspDonationBadgeCategory(activeCategories, donation.amount)
         : null);

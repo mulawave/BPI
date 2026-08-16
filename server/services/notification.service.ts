@@ -31,8 +31,12 @@ export type NotificationType =
   | "CSP_REQUEST_APPROVED"
   | "CSP_REQUEST_REJECTED"
   | "CSP_BROADCAST_EXTENDED"
+  | "CSP_BROADCAST_EXPIRING"
   | "CSP_CONTRIBUTION_RECEIVED"
   | "CSP_CONTRIBUTION_SENT"
+  | "CSP_QUALIFICATION_MET"
+  | "CSP_BROADCAST_COMPLETED"
+  | "CSP_REQUEST_PROCESSED"
   // Elite Club
   | "ELITE_CLUB_ACTIVATED"
   | "ELITE_CLUB_APP_SUBMITTED"
@@ -124,6 +128,16 @@ export async function notifyCspBroadcastExtended(userId: string, hours: number) 
     type: "CSP_BROADCAST_EXTENDED",
     title: "Broadcast extended",
     message: `Your CSP broadcast was extended by ${hours} hour(s).`,
+    actionUrl: "/csp",
+  });
+}
+
+export async function notifyCspBroadcastExpiring(userId: string, hoursLeft: number) {
+  await sendNotification({
+    userId,
+    type: "CSP_BROADCAST_EXPIRING",
+    title: `Broadcast ending in ${hoursLeft}h`,
+    message: `Your CSP support broadcast will expire in ${hoursLeft} hour(s). Encourage your community to contribute before it ends.`,
     actionUrl: "/csp",
   });
 }
@@ -736,4 +750,28 @@ export async function notifyEliteClubSuspended(userId: string, defaultCount: num
 
 export async function notifyEliteClubReinstated(userId: string) {
   await sendNotification({ userId, type: "ELITE_CLUB_REINSTATED", title: "Elite Club Membership Reinstated", message: `Your Elite Club membership has been reinstated. Welcome back!`, actionUrl: "/elite-club" });
+}
+
+export async function sendCspLifecycleEmail(
+  userEmail: string,
+  stage: "received" | "processed",
+  details: { category: string; amount: number; status: string },
+) {
+  const subject = stage === "received" ? "CSP: Request received" : "CSP: Request processed";
+  const html = `
+    <h2>${stage === "received" ? "Your CSP Support Request Has Been Received" : "Your CSP Support Request Has Been Processed"}</h2>
+    <p>Category: ${details.category}</p>
+    <p>Amount: ₦${details.amount.toLocaleString()}</p>
+    <p>Status: ${details.status}</p>
+    <p>You can track your request status on your CSP dashboard.</p>
+  `;
+  await sendEmail({ to: userEmail, subject, html });
+}
+
+export async function notifyCspRequestReceived(userId: string, category: string, amount: number) {
+  await sendNotification({ userId, type: "CSP_REQUEST_PROCESSED", title: "CSP: Request received", message: `Your ${category} support request for ₦${amount.toLocaleString()} has been received and is pending review.`, actionUrl: "/csp" });
+}
+
+export async function notifyCspRequestProcessed(userId: string, category: string, amount: number, status: string) {
+  await sendNotification({ userId, type: "CSP_BROADCAST_COMPLETED", title: "CSP: Request processed", message: `Your ${category} support request for ₦${amount.toLocaleString()} has been processed. Status: ${status}.`, actionUrl: "/csp" });
 }

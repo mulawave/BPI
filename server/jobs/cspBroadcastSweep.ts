@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { notifyCspBroadcastExtended } from "@/server/services/notification.service";
+import { notifyCspBroadcastExtended, notifyCspBroadcastExpiring } from "@/server/services/notification.service";
 import { ensureMemberStanding } from "@/server/services/csp-tier.service";
+import { loadTierConfig } from "@/server/services/csp-config.service";
 
 type TierConfig = {
   tierModelEnabled: boolean;
@@ -8,6 +9,9 @@ type TierConfig = {
   maxAutoExtensions: number;
   defaultCoolingMonthsMin: number;
 };
+
+// Re-export loadTierConfig from shared service for backward compatibility
+export { loadTierConfig };
 
 type BroadcastSweepCandidate = {
   id: string;
@@ -37,44 +41,6 @@ type BroadcastSweepResult = {
   failed: number;
   summary: string;
 };
-
-function parseIntSetting(value: string | null | undefined, fallback: number) {
-  const parsed = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function parseBoolSetting(value: string | null | undefined, fallback: boolean) {
-  if (value == null || value === "") return fallback;
-  const normalized = value.trim().toLowerCase();
-  if (["true", "1", "yes", "on"].includes(normalized)) return true;
-  if (["false", "0", "no", "off"].includes(normalized)) return false;
-  return fallback;
-}
-
-export async function loadTierConfig(db = prisma): Promise<TierConfig> {
-  const rows = await db.adminSettings.findMany({
-    where: {
-      settingKey: {
-        in: [
-          "csp_tier_model_enabled",
-          "csp_auto_extension_hours",
-          "csp_max_auto_extensions",
-          "csp_default_cooling_months_min",
-        ],
-      },
-    },
-    select: { settingKey: true, settingValue: true },
-  });
-
-  const values = new Map(rows.map((row) => [row.settingKey, row.settingValue]));
-
-  return {
-    tierModelEnabled: parseBoolSetting(values.get("csp_tier_model_enabled"), false),
-    autoExtensionHours: parseIntSetting(values.get("csp_auto_extension_hours"), 48),
-    maxAutoExtensions: parseIntSetting(values.get("csp_max_auto_extensions"), 3),
-    defaultCoolingMonthsMin: parseIntSetting(values.get("csp_default_cooling_months_min"), 12),
-  };
-}
 
 export function decideCspBroadcastSweepAction(input: {
   raisedAmount: number;
@@ -249,6 +215,39 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
   }
 
   const completedAt = new Date();
+
+  // B7: Countdown warning notifications — check broadcasts approaching expiry at 6h, 3h, 1h
+  const warningHours = [6, 3, 1];
+  const now = new Date();
+  for (const warnHours of warningHours) {
+    const windowStart = new Date(now.getTime() + (warnHours - 1) * 60 * 60 * 1000);
+    const windowEnd = new Date(now.getTime() + warnHours * 60 * 60 * 1000);
+
+    const approaching = await prisma.cspSupportRequest.findMany({
+      where: {
+        status: "broadcasting",
+        isAdminDefault: false,
+        broadcastExpiresAt: { gte: windowStart, lt: windowEnd },
+      },
+      select: { id: true, userId: true },
+    });
+
+    for (const req of approaching) {
+      // Check if we already sent a notification for this warning window
+      const existing = await prisma.notification.findFirst({
+        where: {
+          userId: req.userId,
+          title: { contains: `${warnHours}h` },
+          createdAt: { gte: new Date(now.getTime() - 2 * 60 * 60 * 1000) },
+        },
+        select: { id: true },
+      });
+      if (!existing) {
+        await notifyCspBroadcastExpiring(req.userId, warnHours);
+      }
+    }
+  }
+
   return {
     success: failed === 0,
     enabled: true,

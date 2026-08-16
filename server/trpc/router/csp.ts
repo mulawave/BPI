@@ -9,8 +9,11 @@ import {
   notifyCspContributionReceived,
   notifyCspContributionSent,
   notifyCspRequestApproved,
+  notifyCspRequestReceived,
+  notifyCspRequestProcessed,
   notifyCspRequestRejected,
   notifyCspRequestSubmitted,
+  sendCspLifecycleEmail,
 } from "@/server/services/notification.service";
 import {
   buildTierSnapshot,
@@ -28,6 +31,8 @@ import {
   loadActiveCspDonationBadgeCategories,
   resolveCspDonationBadgeCategory,
 } from "@/server/services/csp-donations.service";
+import { isCspBroadcastVisible, getCspBroadcastHiddenReason } from "@/lib/csp/broadcastVisibility";
+import { loadTierConfig, type TierConfig } from "@/server/services/csp-config.service";
 
 // Hardcoded fallback defaults – overridden by AdminSettings when set
 const DEFAULTS = {
@@ -60,25 +65,6 @@ interface EligibilityConfig {
   waitReductionMonthlyTarget: number;
 }
 
-interface TierConfig {
-  tierModelEnabled: boolean;
-  contributionMultiplier: number;
-  minContributionRight: number;
-  requireKyc: boolean;
-  requireAutoDebit: boolean;
-  requireAutoContribute: boolean;
-  defaultBroadcastHours: number;
-  autoExtensionHours: number;
-  maxAutoExtensions: number;
-  defaultCoolingMonthsMin: number;
-  defaultCoolingMonthsMax: number;
-  sponsorshipRequiredCount: number;
-  sponsorshipReducedCoolingMonths: number;
-  sponsorshipRequiresKyc: boolean;
-  sponsorshipRequiresRegularPlus: boolean;
-  sponsorshipAutoApply: boolean;
-  badgeGiftingEnabled: boolean;
-}
 
 async function loadEligibilityConfig(db: typeof prisma): Promise<EligibilityConfig> {
   const keys = [
@@ -123,80 +109,6 @@ async function loadEligibilityConfig(db: typeof prisma): Promise<EligibilityConf
   };
 }
 
-const TIER_CONFIG_DEFAULTS: TierConfig = {
-  tierModelEnabled: false,
-  contributionMultiplier: 20,
-  minContributionRight: 10000,
-  requireKyc: false,
-  requireAutoDebit: false,
-  requireAutoContribute: false,
-  defaultBroadcastHours: 48,
-  autoExtensionHours: 48,
-  maxAutoExtensions: 3,
-  defaultCoolingMonthsMin: 12,
-  defaultCoolingMonthsMax: 24,
-  sponsorshipRequiredCount: 100,
-  sponsorshipReducedCoolingMonths: 6,
-  sponsorshipRequiresKyc: false,
-  sponsorshipRequiresRegularPlus: false,
-  sponsorshipAutoApply: false,
-  badgeGiftingEnabled: true,
-};
-
-async function loadTierConfig(db: typeof prisma): Promise<TierConfig> {
-  const keys = [
-    "csp_tier_model_enabled",
-    "csp_contribution_multiplier",
-    "csp_min_contribution_right",
-    "csp_require_kyc",
-    "csp_require_auto_debit",
-    "csp_require_auto_contribute",
-    "csp_default_broadcast_hours",
-    "csp_auto_extension_hours",
-    "csp_max_auto_extensions",
-    "csp_default_cooling_months_min",
-    "csp_default_cooling_months_max",
-    "csp_sponsorship_required_count",
-    "csp_sponsorship_reduced_cooling_months",
-    "csp_sponsorship_requires_kyc",
-    "csp_sponsorship_requires_regular_plus",
-    "csp_sponsorship_auto_apply",
-    "csp_badge_gifting_enabled",
-  ];
-  const rows = await db.adminSettings.findMany({ where: { settingKey: { in: keys } } });
-  const m = new Map(rows.map((r: any) => [r.settingKey, r.settingValue]));
-  const n = (key: string, def: number) => {
-    const v = parseInt(m.get(key) ?? "", 10);
-    return Number.isFinite(v) ? v : def;
-  };
-  const b = (key: string, def: boolean) => {
-    const raw = m.get(key);
-    if (raw == null || raw === "") return def;
-    const normalized = String(raw).trim().toLowerCase();
-    if (["true", "1", "yes", "on"].includes(normalized)) return true;
-    if (["false", "0", "no", "off"].includes(normalized)) return false;
-    return def;
-  };
-  return {
-    tierModelEnabled: b("csp_tier_model_enabled", TIER_CONFIG_DEFAULTS.tierModelEnabled),
-    contributionMultiplier: n("csp_contribution_multiplier", TIER_CONFIG_DEFAULTS.contributionMultiplier),
-    minContributionRight: n("csp_min_contribution_right", TIER_CONFIG_DEFAULTS.minContributionRight),
-    requireKyc: b("csp_require_kyc", TIER_CONFIG_DEFAULTS.requireKyc),
-    requireAutoDebit: b("csp_require_auto_debit", TIER_CONFIG_DEFAULTS.requireAutoDebit),
-    requireAutoContribute: b("csp_require_auto_contribute", TIER_CONFIG_DEFAULTS.requireAutoContribute),
-    defaultBroadcastHours: n("csp_default_broadcast_hours", TIER_CONFIG_DEFAULTS.defaultBroadcastHours),
-    autoExtensionHours: n("csp_auto_extension_hours", TIER_CONFIG_DEFAULTS.autoExtensionHours),
-    maxAutoExtensions: n("csp_max_auto_extensions", TIER_CONFIG_DEFAULTS.maxAutoExtensions),
-    defaultCoolingMonthsMin: n("csp_default_cooling_months_min", TIER_CONFIG_DEFAULTS.defaultCoolingMonthsMin),
-    defaultCoolingMonthsMax: n("csp_default_cooling_months_max", TIER_CONFIG_DEFAULTS.defaultCoolingMonthsMax),
-    sponsorshipRequiredCount: n("csp_sponsorship_required_count", TIER_CONFIG_DEFAULTS.sponsorshipRequiredCount),
-    sponsorshipReducedCoolingMonths: n("csp_sponsorship_reduced_cooling_months", TIER_CONFIG_DEFAULTS.sponsorshipReducedCoolingMonths),
-    sponsorshipRequiresKyc: b("csp_sponsorship_requires_kyc", TIER_CONFIG_DEFAULTS.sponsorshipRequiresKyc),
-    sponsorshipRequiresRegularPlus: b("csp_sponsorship_requires_regular_plus", TIER_CONFIG_DEFAULTS.sponsorshipRequiresRegularPlus),
-    sponsorshipAutoApply: b("csp_sponsorship_auto_apply", TIER_CONFIG_DEFAULTS.sponsorshipAutoApply),
-    badgeGiftingEnabled: b("csp_badge_gifting_enabled", TIER_CONFIG_DEFAULTS.badgeGiftingEnabled),
-  };
-}
 
 const MEMBERSHIP_ORDER = ["basic", "regular", "regular plus", "gold", "gold plus", "platinum", "platinum plus"] as const;
 
@@ -426,7 +338,7 @@ export const cspRouter = createTRPCRouter({
       loadActiveTiers(prisma),
       prisma.kycSubmission.findFirst({
         where: { userId },
-        orderBy: { createdAt: "desc" },
+        orderBy: { submittedAt: "desc" },
         select: { status: true },
       }),
       prisma.walletAutoDebitSetting.findUnique({
@@ -550,6 +462,30 @@ export const cspRouter = createTRPCRouter({
           global: { ...categories.global, eligible: categories.global.eligible && tierEligibility },
         }
       : categories;
+
+    // B8: Send qualification notification when user first becomes eligible
+    const anyEligible = tierAdjustedCategories.national.eligible || tierAdjustedCategories.global.eligible;
+    if (anyEligible) {
+      const existingQualNotification = await prisma.notification.findFirst({
+        where: {
+          userId,
+          title: "CSP Eligibility Met",
+        },
+        select: { id: true },
+      });
+      if (!existingQualNotification) {
+        await prisma.notification.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            title: "CSP Eligibility Met",
+            message: "Congratulations! You now meet the eligibility requirements for the Community Support Program. You can submit a support request.",
+            link: "/csp",
+            isRead: false,
+          },
+        });
+      }
+    }
 
     return {
       membershipName,
@@ -834,7 +770,7 @@ export const cspRouter = createTRPCRouter({
             userId: recipient.id,
             title: "You received a Time Reduction Badge",
             message: `A CSP member gifted you a ${badge.Category?.badgeType ?? "Time Reduction"} badge worth ${badge.reductionMonths} month(s) of cooling reduction. Redeem it from your CSP dashboard.`,
-            type: "csp",
+            link: "/csp",
             isRead: false,
           },
         }),
@@ -903,7 +839,7 @@ export const cspRouter = createTRPCRouter({
             userId,
             title: "Cooling period reduced",
             message: `You redeemed a Time Reduction Badge and shortened your cooling period by ${badge.reductionMonths} month(s).`,
-            type: "csp",
+            link: "/csp",
             isRead: false,
           },
         }),
@@ -1028,7 +964,7 @@ export const cspRouter = createTRPCRouter({
         loadTierConfig(prisma),
         prisma.user.findUnique({
           where: { id: userId },
-          select: { activeMembershipPackageId: true, membershipActivatedAt: true, country: true, community: true },
+          select: { activeMembershipPackageId: true, membershipActivatedAt: true, country: true, community: true, email: true },
         }),
         prisma.membershipPackage.findMany({
           select: { id: true, name: true, price: true },
@@ -1169,6 +1105,12 @@ export const cspRouter = createTRPCRouter({
       });
       if (existingActive) throw new Error("You already have an active or pending support request.");
 
+      // Apply 20% markup: the broadcast target is 120% of the requested amount
+      const rules = config[input.category];
+      const requestedAmount = input.amount;
+      const markupTarget = Math.ceil(requestedAmount * 1.2);
+      const thresholdAmount = Math.max(markupTarget, rules.minThreshold);
+
       let tierStanding: Awaited<ReturnType<typeof ensureMemberStanding>> | null = null;
       let tierResult: ReturnType<typeof validateTierSupportRequest> | null = null;
       if (tierConfig.tierModelEnabled) {
@@ -1177,7 +1119,7 @@ export const cspRouter = createTRPCRouter({
           loadActiveTiers(prisma),
           prisma.kycSubmission.findFirst({
             where: { userId },
-            orderBy: { createdAt: "desc" },
+            orderBy: { submittedAt: "desc" },
             select: { status: true },
           }),
           prisma.walletAutoDebitSetting.findUnique({
@@ -1216,12 +1158,6 @@ export const cspRouter = createTRPCRouter({
         }
       }
 
-      // Apply 20% markup: the broadcast target is 120% of the requested amount
-      const rules = config[input.category];
-      const requestedAmount = input.amount;
-      const markupTarget = Math.ceil(requestedAmount * 1.2);
-      const thresholdAmount = Math.max(markupTarget, rules.minThreshold);
-
       const request = await prisma.cspSupportRequest.create({
         data: {
           userId,
@@ -1246,6 +1182,11 @@ export const cspRouter = createTRPCRouter({
       });
 
       await notifyCspRequestSubmitted(userId, input.category, thresholdAmount);
+      await notifyCspRequestReceived(userId, input.category, thresholdAmount);
+      if (user?.email) {
+        try { await sendCspLifecycleEmail(user.email, "received", { category: input.category, amount: thresholdAmount, status: "pending" }); }
+        catch (e) { console.error("[CSP] Lifecycle email failed:", e); }
+      }
 
       // CSP WAIVER: Mark waiver as used after successful CSP request submission
       if (hasCspWaiver && cspWaiverPkg) {
@@ -1286,6 +1227,7 @@ export const cspRouter = createTRPCRouter({
 
       const request = await prisma.cspSupportRequest.findUnique({ where: { id: input.requestId } });
       if (!request) throw new Error("Request not found");
+      if (request.status !== "pending") throw new Error("Only pending requests can be approved");
 
       const [config, tierConfig] = await Promise.all([
         loadEligibilityConfig(prisma),
@@ -1302,11 +1244,17 @@ export const cspRouter = createTRPCRouter({
           broadcastExpiresAt,
           approvedAt: new Date(),
           approvedBy: (ctx.session?.user as any)?.id ?? "admin",
-          cooldownMonths: input.cooldownMonths ?? null,
+          cooldownMonths: input.cooldownMonths ?? tierConfig.defaultCoolingMonthsMin,
         },
       });
 
       await notifyCspRequestApproved(request.userId, request.category, request.thresholdAmount, broadcastExpiresAt);
+      await notifyCspRequestProcessed(request.userId, request.category, request.thresholdAmount, "broadcasting");
+      const beneficiary = await prisma.user.findUnique({ where: { id: request.userId }, select: { email: true } });
+      if (beneficiary?.email) {
+        try { await sendCspLifecycleEmail(beneficiary.email, "processed", { category: request.category, amount: request.thresholdAmount, status: "broadcasting" }); }
+        catch (e) { console.error("[CSP] Lifecycle email failed:", e); }
+      }
 
       return { requestId: updated.id, status: updated.status, broadcastExpiresAt: updated.broadcastExpiresAt, cooldownMonths: updated.cooldownMonths };
     }),
@@ -1413,18 +1361,48 @@ export const cspRouter = createTRPCRouter({
     const userId = (ctx.session?.user as any)?.id as string | undefined;
     if (!userId) throw new Error("UNAUTHORIZED");
 
+    const now = new Date();
+
+    // Auto-close expired non-default broadcasts before listing
+    await prisma.cspSupportRequest.updateMany({
+      where: { isAdminDefault: false, status: "broadcasting", broadcastExpiresAt: { lt: now } },
+      data: { status: "closed" },
+    });
+
+    // B5: Get user's country for national geo-scoping
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { country: true },
+    });
+    const userCountry = (user as any)?.country ?? null;
+
     const requests = await prisma.cspSupportRequest.findMany({
       where: {
+        isActive: true,
         OR: [
-          { status: "broadcasting" },
-          { isAdminDefault: true, isActive: true },
+          { isAdminDefault: false, status: "broadcasting", broadcastExpiresAt: { gt: now } },
+          { isAdminDefault: true, isActive: true, status: "broadcasting" },
         ],
       },
       orderBy: [{ isAdminDefault: "desc" }, { createdAt: "desc" }],
       // No User include — all PII stripped at API layer for anonymity
     });
 
-    return requests.map((req) => ({
+    // B5: Filter national requests by user's country (global requests visible to all)
+    // B6: Use broadcast visibility guard to filter out expired/inactive broadcasts
+    const visible = requests.filter((req) => {
+      // B6: Check broadcast visibility
+      if (!isCspBroadcastVisible(req)) return false;
+
+      // B5: Geo-scope national requests
+      if (req.category === "national" && req.countryCode && userCountry) {
+        return req.countryCode === userCountry;
+      }
+
+      return true;
+    });
+
+    return visible.map((req) => ({
       id: req.id,
       // userId is intentionally omitted to preserve anonymity
       category: req.category,
@@ -1587,7 +1565,7 @@ export const cspRouter = createTRPCRouter({
       const tierStanding = tierConfig.tierModelEnabled
         ? await ensureMemberStanding(prisma, contributorId)
         : null;
-      const activeCooldown = tierConfig.tierModelEnabled
+      const activeCooldown: any = tierConfig.tierModelEnabled
         ? tierStanding
         : await prisma.cspSupportRequest.findFirst({
             where: {
@@ -1694,10 +1672,16 @@ export const cspRouter = createTRPCRouter({
 
       const request = await prisma.cspSupportRequest.findUnique({
         where: { id: input.requestId },
-        include: { User: { select: { id: true, sponsorId: true, state: true } } },
+        include: { User: { select: { id: true, sponsorId: true, state: true, email: true } } },
       });
 
       if (!request) throw new Error("Support request not found");
+      if (request.status === "released") {
+        throw new Error("Funds have already been released for this request");
+      }
+      if (request.status !== "broadcasting" && request.status !== "ready_for_release") {
+        throw new Error(`Cannot release funds for a request with status "${request.status}"`);
+      }
       if (request.raisedAmount <= 0) {
         throw new Error("No funds available to release yet");
       }
@@ -1713,6 +1697,7 @@ export const cspRouter = createTRPCRouter({
 
       // Load admin-configurable CSP fee percentages (with hardcoded defaults)
       const pct = await loadCspFeePercentages(prisma);
+      const tierConfig = await loadTierConfig(prisma);
 
       // ─── 120% Disbursement Rule ───────────────────────────────────────────
       // Path A — Fully funded (raisedAmount >= thresholdAmount):
@@ -1849,6 +1834,20 @@ export const cspRouter = createTRPCRouter({
           },
         });
 
+        // A2: When tier model is enabled, also update CspMemberStanding cooling
+        // so the beneficiary's cooldown is tracked in the correct place.
+        if (tierConfig.tierModelEnabled) {
+          await ensureMemberStanding(tx, request.userId);
+          await tx.cspMemberStanding.update({
+            where: { userId: request.userId },
+            data: {
+              lastSupportReleasedAt: releasedAt,
+              coolingEndsAt: cooldownEndsAt,
+              coolingMonthsBase: request.cooldownMonths ?? tierConfig.defaultCoolingMonthsMin,
+            },
+          });
+        }
+
         // Full audit trail for the admin action.
         await tx.auditLog.create({
           data: {
@@ -1892,6 +1891,12 @@ export const cspRouter = createTRPCRouter({
         },
       });
 
+      await notifyCspRequestProcessed(request.userId, request.category, request.thresholdAmount, "released");
+      if (request.User?.email) {
+        try { await sendCspLifecycleEmail(request.User.email, "processed", { category: request.category, amount: request.thresholdAmount, status: "released" }); }
+        catch (e) { console.error("[CSP] Lifecycle email failed:", e); }
+      }
+
       return { success: true, released: total, shares, fullyFunded };
     }),
 
@@ -1904,6 +1909,20 @@ export const cspRouter = createTRPCRouter({
         const request = await tx.cspSupportRequest.findUnique({ where: { id: input.requestId } });
         if (!request) throw new Error("Request not found");
         if (request.status !== "broadcasting") throw new Error("Only broadcasting requests can be extended");
+
+        // C3: Enforce cumulative 7-day (168h) cap on manual extensions
+        const existingExtensions = await tx.cspBroadcastExtension.findMany({
+          where: { requestId: request.id, type: { in: ["paid", "referrals"] } },
+          select: { hoursGranted: true },
+        });
+        const cumulativeHours = existingExtensions.reduce((sum, ext) => sum + ext.hoursGranted, 0);
+        const MAX_CUMULATIVE_HOURS = 168; // 7 days cap per spec
+        if (cumulativeHours + input.hours > MAX_CUMULATIVE_HOURS) {
+          const remaining = Math.max(0, MAX_CUMULATIVE_HOURS - cumulativeHours);
+          throw new Error(
+            `Cumulative extension cap is 7 days (168h). Already granted: ${cumulativeHours}h. Remaining: ${remaining}h. Requested: ${input.hours}h.`
+          );
+        }
 
         const baseDate = request.broadcastExpiresAt && request.broadcastExpiresAt > new Date() ? request.broadcastExpiresAt : new Date();
         const broadcastExpiresAt = new Date(baseDate.getTime() + input.hours * 60 * 60 * 1000);
@@ -1970,6 +1989,7 @@ export const cspRouter = createTRPCRouter({
           userId: targetUserId,
           category: input.category,
           amount: thresholdAmount,
+          requestedAmount: input.amount, // D4: Set requestedAmount so releaseFunds Path A works
           purpose: input.purpose,
           notes: input.notes,
           status: "broadcasting", // Auto-approved
@@ -2008,7 +2028,9 @@ export const cspRouter = createTRPCRouter({
         where: { id: input.requestId },
         data: {
           isActive: input.isActive,
-          status: input.isActive ? "broadcasting" : "closed",
+          // B3: Don't set status to "closed" when deactivating — "closed" means fulfilled.
+          // Only set status to "broadcasting" when reactivating.
+          ...(input.isActive ? { status: "broadcasting" as const } : {}),
         },
       });
 
@@ -2029,6 +2051,54 @@ export const cspRouter = createTRPCRouter({
 
       if (!request) throw new Error("Request not found");
       if (!request.isAdminDefault) throw new Error("Only admin default requests can be marked complete");
+
+      // B4: If the request raised funds, release them before closing.
+      if (request.raisedAmount > 0) {
+        const holdingWalletName = `CSP Holding - ${request.id}`;
+        const holdingWallet = await ensureSystemWallet(prisma, holdingWalletName, "CSP_HOLDING");
+        if (holdingWallet.balanceNgn > 0) {
+          const total = Math.min(holdingWallet.balanceNgn, request.raisedAmount);
+          const pct = await loadCspFeePercentages(prisma);
+
+          const recipientShare = Math.floor(total * pct.recipient);
+          const adminShare = Math.floor(total * pct.admin);
+          const sponsorShare = Math.floor(total * pct.sponsor);
+          const stateShare = Math.floor(total * pct.state);
+          const managementShare = Math.floor(total * pct.management);
+          const reserveShare = total - recipientShare - adminShare - sponsorShare - stateShare - managementShare;
+
+          await prisma.$transaction(async (tx) => {
+            const holding = await ensureSystemWallet(tx, holdingWalletName, "CSP_HOLDING");
+            await tx.systemWallet.update({
+              where: { id: holding.id },
+              data: { balanceNgn: { decrement: total } },
+            });
+            await tx.user.update({
+              where: { id: request.userId },
+              data: { wallet: { increment: recipientShare } },
+            });
+            const adminWallet = await ensureSystemWallet(tx, "CSP Admin Wallet", "EXECUTIVE_POOL");
+            await tx.systemWallet.update({ where: { id: adminWallet.id }, data: { balanceNgn: { increment: adminShare } } });
+            const stateWallet = await ensureSystemWallet(tx, "CSP State Wallet", "STATE_REVENUE_POOL");
+            await tx.systemWallet.update({ where: { id: stateWallet.id }, data: { balanceNgn: { increment: stateShare } } });
+            const managementWallet = await ensureSystemWallet(tx, "CSP Management Wallet", "CSP_MANAGEMENT_RESERVE");
+            await tx.systemWallet.update({ where: { id: managementWallet.id }, data: { balanceNgn: { increment: managementShare } } });
+            const reserveWallet = await ensureSystemWallet(tx, "CSP Reserve Wallet", "CSP_RESERVE");
+            await tx.systemWallet.update({ where: { id: reserveWallet.id }, data: { balanceNgn: { increment: reserveShare } } });
+            await tx.transaction.create({
+              data: {
+                id: randomUUID(),
+                userId: request.userId,
+                transactionType: "CSP_PAYOUT",
+                amount: recipientShare,
+                description: `CSP support released (admin default request ${request.id})`,
+                status: "completed",
+                walletType: "wallet",
+              },
+            });
+          });
+        }
+      }
 
       const updated = await prisma.cspSupportRequest.update({
         where: { id: input.requestId },
@@ -2055,9 +2125,13 @@ export const cspRouter = createTRPCRouter({
       if (!request) throw new Error("Request not found");
       if (request.status !== "pending") throw new Error("Only pending requests can be rejected");
 
-      // Delete the request from database
-      await prisma.cspSupportRequest.delete({
+      // B1: Mark as rejected instead of deleting (preserves audit trail)
+      await prisma.cspSupportRequest.update({
         where: { id: input.requestId },
+        data: {
+          status: "rejected",
+          rejectionReason: input.reason,
+        },
       });
 
       // Send email and notification to user
@@ -2066,6 +2140,12 @@ export const cspRouter = createTRPCRouter({
         request.category,
         input.reason
       );
+      await notifyCspRequestProcessed(request.userId, request.category, request.thresholdAmount, "rejected");
+      const beneficiary = await prisma.user.findUnique({ where: { id: request.userId }, select: { email: true } });
+      if (beneficiary?.email) {
+        try { await sendCspLifecycleEmail(beneficiary.email, "processed", { category: request.category, amount: request.thresholdAmount, status: "rejected" }); }
+        catch (e) { console.error("[CSP] Lifecycle email failed:", e); }
+      }
 
       return { success: true };
     }),
@@ -2148,7 +2228,7 @@ export const cspRouter = createTRPCRouter({
     ]);
     const now = new Date();
 
-    const [activeRequest, sponsorProgress] = tierConfig.tierModelEnabled
+    const [activeRequest, sponsorProgress]: [any, any] = tierConfig.tierModelEnabled
       ? await Promise.all([
           prisma.cspMemberStanding.findUnique({
             where: { userId },
@@ -2915,4 +2995,157 @@ export const cspRouter = createTRPCRouter({
 
       return { logs, total, page: input.page, totalPages: Math.ceil(total / input.limit) };
     }),
+
+  // B9: Admin CSV export — support requests
+  adminExportRequests: protectedProcedure
+    .input(z.object({
+      status: z.string().optional(),
+      category: z.enum(["national", "global"]).optional(),
+    }).optional())
+    .query(async ({ ctx, input }) => {
+      const adminId = (ctx.session?.user as any)?.id as string;
+      if (!adminId) throw new Error("UNAUTHORIZED");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
+      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+
+      const where: any = {};
+      if (input?.status) where.status = input.status;
+      if (input?.category) where.category = input.category;
+
+      const requests = await prisma.cspSupportRequest.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: 5000,
+        include: {
+          User: { select: { id: true, name: true, email: true, firstname: true, lastname: true } },
+        },
+      });
+
+      const headers = [
+        "ID", "User", "Email", "Category", "Amount", "RequestedAmount",
+        "Purpose", "Status", "ThresholdAmount", "RaisedAmount",
+        "ContributorsCount", "BroadcastExpiresAt", "ApprovedAt", "ReleasedAt",
+        "CooldownMonths", "CooldownEndsAt", "IsAdminDefault", "IsActive", "CreatedAt",
+      ];
+
+      const rows = requests.map((r) => [
+        r.id,
+        r.User?.name ?? r.User?.firstname ?? "",
+        r.User?.email ?? "",
+        r.category,
+        r.amount,
+        r.requestedAmount ?? "",
+        r.purpose,
+        r.status,
+        r.thresholdAmount,
+        r.raisedAmount,
+        r.contributorsCount,
+        r.broadcastExpiresAt?.toISOString() ?? "",
+        r.approvedAt?.toISOString() ?? "",
+        r.releasedAt?.toISOString() ?? "",
+        r.cooldownMonths ?? "",
+        r.cooldownEndsAt?.toISOString() ?? "",
+        r.isAdminDefault ? "true" : "false",
+        r.isActive ? "true" : "false",
+        r.createdAt.toISOString(),
+      ]);
+
+      const csv = [headers, ...rows]
+        .map((row) => row.map((cell) => {
+          const s = String(cell ?? "");
+          return s.includes(",") || s.includes("\"") || s.includes("\n")
+            ? `"${s.replace(/"/g, '""')}"`
+            : s;
+        }).join(","))
+        .join("\n");
+
+      return { csv, filename: `csp-requests-${new Date().toISOString().slice(0, 10)}.csv` };
+    }),
+
+  // B9: Admin CSV export — contributions
+  adminExportContributions: protectedProcedure
+    .input(z.object({
+      requestId: z.string().optional(),
+    }).optional())
+    .query(async ({ ctx, input }) => {
+      const adminId = (ctx.session?.user as any)?.id as string;
+      if (!adminId) throw new Error("UNAUTHORIZED");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
+      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+
+      const where: any = {};
+      if (input?.requestId) where.requestId = input.requestId;
+
+      const contributions = await prisma.cspContribution.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: 5000,
+        include: {
+          Contributor: { select: { id: true, name: true, email: true } },
+          Request: { select: { id: true, purpose: true, userId: true } },
+        },
+      });
+
+      const headers = [
+        "ID", "RequestID", "RequestPurpose", "ContributorID",
+        "ContributorName", "ContributorEmail", "Amount", "WalletType", "CreatedAt",
+      ];
+
+      const rows = contributions.map((c) => [
+        c.id,
+        c.requestId,
+        c.Request?.purpose ?? "",
+        c.contributorId,
+        c.Contributor?.name ?? "",
+        c.Contributor?.email ?? "",
+        c.amount,
+        c.walletType,
+        c.createdAt.toISOString(),
+      ]);
+
+      const csv = [headers, ...rows]
+        .map((row) => row.map((cell) => {
+          const s = String(cell ?? "");
+          return s.includes(",") || s.includes("\"") || s.includes("\n")
+            ? `"${s.replace(/"/g, '""')}"`
+            : s;
+        }).join(","))
+        .join("\n");
+
+      return { csv, filename: `csp-contributions-${new Date().toISOString().slice(0, 10)}.csv` };
+    }),
+
+  // E4: Admin diagnostics API for hidden broadcast reasons
+  getBroadcastVisibilityDiagnostics: protectedProcedure.query(async ({ ctx }) => {
+    assertAdmin(ctx.session);
+    const now = new Date();
+    const broadcasts = await prisma.cspSupportRequest.findMany({
+      where: { status: "broadcasting" },
+      select: { id: true, isActive: true, isAdminDefault: true, status: true, broadcastExpiresAt: true },
+    });
+    const hiddenReasonCounts: Record<string, number> = {};
+    let visibleCount = 0;
+    for (const b of broadcasts) {
+      const reason = getCspBroadcastHiddenReason(b, now);
+      if (reason) {
+        hiddenReasonCounts[reason] = (hiddenReasonCounts[reason] ?? 0) + 1;
+      } else {
+        visibleCount++;
+      }
+    }
+    return { total: broadcasts.length, visible: visibleCount, hiddenReasonCounts };
+  }),
+
+  // E7a: CSP communication feed — notifications addressed to this user with CSP: prefix
+  getCommunicationFeed: protectedProcedure.query(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id as string | undefined;
+    if (!userId) throw new Error("UNAUTHORIZED");
+    const notifications = await prisma.notification.findMany({
+      where: { userId, title: { startsWith: "CSP:" } },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: { id: true, title: true, message: true, link: true, isRead: true, createdAt: true },
+    });
+    return notifications;
+  }),
 });

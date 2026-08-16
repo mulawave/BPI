@@ -9,6 +9,7 @@ import { PaymentPurpose } from "@/server/services/payment";
 import CryptoTransferDetails from "@/components/payment/CryptoTransferDetails";
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { Input } from "@/components/ui/input";
+import { isCspBroadcastVisible } from "@/lib/csp/broadcastVisibility";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -109,7 +110,8 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   const recognitionQuery = api.csp.getMyCspRecognition.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 2 * 60 * 1000 });
   const liveStatusQuery = api.csp.getLiveStatus.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 60 * 1000 });
   const historyQuery = api.csp.listHistory.useQuery({ pageSize: 5 }, { refetchOnWindowFocus: false, retry: false, staleTime: 2 * 60 * 1000 });
-  const broadcastsQuery = api.csp.listBroadcasts.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 60 * 1000 });
+  const broadcastsQuery = api.csp.listBroadcasts.useQuery(undefined, { refetchOnWindowFocus: true, retry: false, staleTime: 60 * 1000, refetchInterval: 15 * 1000 });
+  const communicationFeedQuery = api.csp.getCommunicationFeed.useQuery(undefined, { refetchOnWindowFocus: false, staleTime: 60 * 1000 });
 
   // Derive per-category config from backend when available, fall back to static defaults
   const categoryRules = {
@@ -265,29 +267,34 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   }));
 
   const broadcasts = broadcastsQuery.data ?? [];
+  const now = new Date();
+  const visibleBroadcasts = broadcasts.filter((broadcast) => isCspBroadcastVisible(broadcast, now));
+  if (broadcasts.length > visibleBroadcasts.length) {
+    // Stale broadcasts hidden from feed — visibleBroadcasts used for rendering
+  }
 
   useEffect(() => {
-    setShuffledBroadcasts(broadcasts);
-  }, [broadcasts]);
+    setShuffledBroadcasts(visibleBroadcasts);
+  }, [visibleBroadcasts]);
 
   useEffect(() => {
-    if (!broadcasts.length) return;
+    if (!visibleBroadcasts.length) return;
     const interval = setInterval(() => {
       // startTransition marks this as a non-urgent update so Next.js
       // navigation clicks are never blocked by the cosmetic shuffle re-render.
       startTransition(() => {
         setShuffledBroadcasts((prev) => {
-          const source = prev && prev.length ? prev : broadcasts;
+          const source = prev && prev.length ? prev : visibleBroadcasts;
           return shuffleArray(source);
         });
       });
     }, 30000);
     return () => clearInterval(interval);
-  }, [broadcasts]);
+  }, [visibleBroadcasts]);
 
   const broadcastColumns = useMemo(() => {
     const perColumn = 5;
-    const source = (shuffledBroadcasts && shuffledBroadcasts.length ? shuffledBroadcasts : broadcasts) ?? [];
+    const source = (shuffledBroadcasts && shuffledBroadcasts.length ? shuffledBroadcasts : visibleBroadcasts) ?? [];
     const chunks: typeof broadcastsQuery.data[] = [];
     for (let i = 0; i < source.length; i += perColumn) {
       chunks.push(source.slice(i, i + perColumn));
@@ -1321,9 +1328,9 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </div>
             <ul className="space-y-2.5">
               {[
-                "Qualification notice",
+                "Eligibility updates",
                 "Request submitted",
-                "Approval + broadcast",
+                "Broadcast status",
                 "Contribution confirmation",
                 "Countdown expiry alerts",
               ].map((t, i) => (
@@ -1528,6 +1535,37 @@ export function CspDashboard({ userName }: CspDashboardProps) {
           </div>
         </div>
       )}
+
+      {/* Communication history */}
+      <div className="mt-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Communication history</h3>
+          <Button variant="outline" size="sm" onClick={() => communicationFeedQuery.refetch()} className="border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200">
+            <Bell className="w-3.5 h-3.5 mr-1.5" />
+            Refresh
+          </Button>
+        </div>
+        {communicationFeedQuery.data && communicationFeedQuery.data.length > 0 ? (
+          <div className="space-y-3">
+            {communicationFeedQuery.data.map((item) => (
+              <div key={item.id} className="flex items-start gap-3 rounded-lg border border-slate-100 dark:border-slate-800 p-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">{item.title}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{item.message}</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{new Date(item.createdAt).toLocaleString()}</p>
+                </div>
+                {!item.isRead && (
+                  <span className="inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                    New
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No communications yet.</p>
+        )}
+      </div>
     </div>
   );
 }

@@ -141,6 +141,9 @@ export default function CspAdminQueuePage() {
     ruleKey: ruleLogFilter.trim() || undefined,
   });
 
+  const utils = api.useUtils();
+  const { data: visibilityDiagnostics, refetch: refetchDiagnostics } = api.csp.getBroadcastVisibilityDiagnostics.useQuery();
+
   const { data: searchedUsers } = api.user.searchUsers.useQuery(
     { term: userSearchTerm },
     { enabled: userSearchTerm.length >= 2 }
@@ -156,6 +159,8 @@ export default function CspAdminQueuePage() {
       toast.success("Request approved and broadcast started");
       setApproveTarget(null);
       refetch();
+      utils.csp.listBroadcasts.invalidate();
+      utils.csp.getLiveStatus.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -165,6 +170,8 @@ export default function CspAdminQueuePage() {
       toast.success("Broadcast extended");
       setExtendTarget(null);
       refetch();
+      utils.csp.listBroadcasts.invalidate();
+      utils.csp.getLiveStatus.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -175,6 +182,8 @@ export default function CspAdminQueuePage() {
       refetch();
       refetchDefaults();
       setDetailTarget(null);
+      utils.csp.listBroadcasts.invalidate();
+      utils.csp.getLiveStatus.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -188,6 +197,8 @@ export default function CspAdminQueuePage() {
       setDefaultForm({ category: "national", amount: 10000, purpose: "", notes: "" });
       refetchDefaults();
       refetch();
+      utils.csp.listBroadcasts.invalidate();
+      utils.csp.getLiveStatus.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -197,6 +208,8 @@ export default function CspAdminQueuePage() {
       toast.success(res.isActive ? "Default request activated" : "Default request deactivated");
       refetchDefaults();
       refetch();
+      utils.csp.listBroadcasts.invalidate();
+      utils.csp.getLiveStatus.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -206,6 +219,8 @@ export default function CspAdminQueuePage() {
       toast.success("Default request marked as complete");
       refetchDefaults();
       refetch();
+      utils.csp.listBroadcasts.invalidate();
+      utils.csp.getLiveStatus.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -216,6 +231,8 @@ export default function CspAdminQueuePage() {
       setRejectTarget(null);
       setRejectReason("");
       refetch();
+      utils.csp.listBroadcasts.invalidate();
+      utils.csp.getLiveStatus.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -315,6 +332,48 @@ export default function CspAdminQueuePage() {
           </div>
         </div>
       </motion.div>
+
+      {/* Broadcast visibility diagnostics */}
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">Broadcast visibility diagnostics</h2>
+          <button
+            onClick={() => refetchDiagnostics()}
+            className="flex items-center gap-2 rounded-xl border border-border bg-muted px-3 py-1.5 text-sm font-medium hover:bg-accent"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh diagnostics
+          </button>
+        </div>
+        {visibilityDiagnostics ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground">Total broadcasting</p>
+              <p className="text-2xl font-bold">{visibilityDiagnostics.total}</p>
+            </div>
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground">Visible in feed</p>
+              <p className="text-2xl font-bold text-emerald-600">{visibilityDiagnostics.visible}</p>
+            </div>
+            <div className="rounded-lg border border-border p-3 col-span-2">
+              <p className="text-xs text-muted-foreground">Hidden from feed</p>
+              <div className="mt-2 space-y-1">
+                {Object.entries(visibilityDiagnostics.hiddenReasonCounts).length > 0 ? (
+                  Object.entries(visibilityDiagnostics.hiddenReasonCounts).map(([reason, count]) => (
+                    <div key={reason} className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{reason.replace(/_/g, " ")}</span>
+                      <span className="font-semibold text-red-500">{count}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">None hidden</p>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Loading diagnostics…</p>
+        )}
+      </div>
 
       {/* User Guide */}
       <AdminPageGuide
