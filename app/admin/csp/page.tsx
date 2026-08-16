@@ -270,6 +270,15 @@ export default function CspAdminQueuePage() {
     onError: (err) => toast.error(err.message),
   });
 
+  const seedTiersMutation = api.csp.seedDefaultCspTiers.useMutation({
+    onSuccess: (res) => {
+      toast.success(res.message || "Default tiers seeded");
+      refetchCspTiers();
+      refetchRuleChangeLogs();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const handleReject = () => {
     if (!rejectTarget) return;
     if (!rejectReason.trim()) {
@@ -900,12 +909,31 @@ export default function CspAdminQueuePage() {
           {showTiersPanel ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
         </button>
 
-        {showTiersPanel && cspTiers && (
+        {showTiersPanel && cspTiers && cspTiers.length > 0 && (
           <TiersManager
             tiers={cspTiers}
             onSave={(tiers, reason) => upsertTiersMutation.mutate({ tiers, reason })}
             isPending={upsertTiersMutation.isPending}
           />
+        )}
+        {showTiersPanel && cspTiers && cspTiers.length === 0 && (
+          <div className="mt-4 space-y-4">
+            <div className="rounded-xl border border-border bg-muted/30 px-4 py-6 text-center">
+              <Layers className="mx-auto h-8 w-8 text-muted-foreground" />
+              <p className="mt-2 text-sm font-medium text-foreground">No CSP tiers found</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                The tier table is empty. Seed the default 20 tiers to get started, or add tiers manually.
+              </p>
+              <button
+                onClick={() => seedTiersMutation.mutate()}
+                disabled={seedTiersMutation.isPending}
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                <Layers className="h-4 w-4" />
+                {seedTiersMutation.isPending ? "Seeding..." : "Seed Default Tiers"}
+              </button>
+            </div>
+          </div>
         )}
         {showTiersPanel && !cspTiers && (
           <p className="mt-4 text-sm text-muted-foreground">Loading tiers...</p>

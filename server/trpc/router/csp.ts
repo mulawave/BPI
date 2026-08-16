@@ -2731,6 +2731,65 @@ export const cspRouter = createTRPCRouter({
       return { success: true, updated: input.tiers.length };
     }),
 
+  /** Seed default CSP tier rows if the table is empty (admin) */
+  seedDefaultCspTiers: protectedProcedure.mutation(async ({ ctx }) => {
+    assertAdmin(ctx.session);
+    const adminUserId = (ctx.session?.user as any)?.id as string;
+    if (!adminUserId) throw new Error("UNAUTHORIZED");
+
+    const existingCount = await prisma.cspTier.count();
+    if (existingCount > 0) {
+      return { success: true, message: "Tiers already exist", count: existingCount };
+    }
+
+    const defaultTiers = [
+      { tierNumber: 1, name: "Tier 1", contributionRight: 10000, maxSupportCap: 200000 },
+      { tierNumber: 2, name: "Tier 2", contributionRight: 20000, maxSupportCap: 400000 },
+      { tierNumber: 3, name: "Tier 3", contributionRight: 30000, maxSupportCap: 600000 },
+      { tierNumber: 4, name: "Tier 4", contributionRight: 50000, maxSupportCap: 1000000 },
+      { tierNumber: 5, name: "Tier 5", contributionRight: 75000, maxSupportCap: 1500000 },
+      { tierNumber: 6, name: "Tier 6", contributionRight: 100000, maxSupportCap: 2000000 },
+      { tierNumber: 7, name: "Tier 7", contributionRight: 125000, maxSupportCap: 2500000 },
+      { tierNumber: 8, name: "Tier 8", contributionRight: 150000, maxSupportCap: 3000000 },
+      { tierNumber: 9, name: "Tier 9", contributionRight: 175000, maxSupportCap: 3500000 },
+      { tierNumber: 10, name: "Tier 10", contributionRight: 200000, maxSupportCap: 4000000 },
+      { tierNumber: 11, name: "Tier 11", contributionRight: 225000, maxSupportCap: 4500000 },
+      { tierNumber: 12, name: "Tier 12", contributionRight: 250000, maxSupportCap: 5000000 },
+      { tierNumber: 13, name: "Tier 13", contributionRight: 275000, maxSupportCap: 5500000 },
+      { tierNumber: 14, name: "Tier 14", contributionRight: 300000, maxSupportCap: 6000000 },
+      { tierNumber: 15, name: "Tier 15", contributionRight: 325000, maxSupportCap: 6500000 },
+      { tierNumber: 16, name: "Tier 16", contributionRight: 350000, maxSupportCap: 7000000 },
+      { tierNumber: 17, name: "Tier 17", contributionRight: 375000, maxSupportCap: 7500000 },
+      { tierNumber: 18, name: "Tier 18", contributionRight: 400000, maxSupportCap: 8000000 },
+      { tierNumber: 19, name: "Tier 19", contributionRight: 450000, maxSupportCap: 9000000 },
+      { tierNumber: 20, name: "Tier 20", contributionRight: 500000, maxSupportCap: 10000000 },
+    ];
+
+    await prisma.cspTier.createMany({
+      data: defaultTiers.map((t) => ({
+        ...t,
+        minFulfilmentPct: 30,
+        isActive: true,
+        isSpecial: false,
+        sortOrder: t.tierNumber,
+      })),
+    });
+
+    // Log the action
+    await prisma.cspRuleChangeLog.create({
+      data: {
+        id: randomUUID(),
+        adminUserId,
+        ruleKey: "csp_tiers_seeded",
+        previousValue: "0",
+        newValue: String(defaultTiers.length),
+        reason: "Seeded default CSP tiers from admin panel",
+      },
+    });
+
+    return { success: true, message: `Seeded ${defaultTiers.length} default tiers`, count: defaultTiers.length };
+  }),
+
   /** Apply the sponsor-based cooling reduction for a member (admin) */
   applyCspSponsorCoolingReduction: protectedProcedure
     .input(z.object({
