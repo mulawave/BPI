@@ -60,12 +60,13 @@ async function handleCron(req: NextRequest) {
         continue;
       }
 
-      // Get pending allocations
+      // Get pending allocations (only from official pool start date)
       const pendingAllocations = await prisma.revenueAllocation.findMany({
         where: {
           destinationId: pool.id,
           destinationType: "STRATEGY_POOL",
           status: "PENDING",
+          createdAt: { gte: new Date("2026-05-01T00:00:00.000Z") },
         },
       });
 

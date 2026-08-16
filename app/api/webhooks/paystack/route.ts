@@ -717,7 +717,10 @@ export async function POST(req: NextRequest) {
       if (parsedReference) {
         await prisma.pendingPayment.updateMany({
           where: { gatewayReference: parsedReference, status: "processing" },
-          data: { reviewNotes: `Paystack webhook handler crashed: ${error?.message ?? 'Unknown error'}. Payment needs manual review.` },
+          data: {
+            status: "pending",
+            reviewNotes: `Paystack webhook handler crashed: ${error?.message ?? 'Unknown error'}. Reset to pending for retry.`,
+          },
         });
       }
     } catch { /* swallow – primary error is already logged */ }

@@ -6,6 +6,19 @@
 import { prisma } from "@/lib/prisma";
 import cron from "node-cron";
 
+const REVENUE_POOL_START_DATE = new Date("2026-05-01T00:00:00.000Z");
+
+function getWeeklyWindow(reference: Date) {
+  const weekEnd = new Date(reference);
+  weekEnd.setHours(23, 59, 59, 999);
+  const day = weekEnd.getDay();
+  const daysSinceSaturday = (day + 1) % 7;
+  const weekStart = new Date(weekEnd);
+  weekStart.setDate(weekStart.getDate() - daysSinceSaturday);
+  weekStart.setHours(0, 0, 0, 0);
+  return { weekStart, weekEnd };
+}
+
 /**
  * Distribute Executive Pool to shareholders
  * Calculates and distributes the 30% executive pool based on individual shareholder percentages
@@ -15,12 +28,14 @@ async function distributeExecutivePool() {
   console.log(`⏰ Time: ${new Date().toLocaleString()}`);
 
   try {
-    // Get all pending executive pool allocations
+    // Get all pending executive pool allocations on or after REVENUE_POOL_START_DATE
     const pendingAllocations = await prisma.revenueAllocation.findMany({
       where: {
         destinationType: "EXECUTIVE_POOL",
         status: "PENDING",
+        createdAt: { gte: REVENUE_POOL_START_DATE },
       },
+      orderBy: { createdAt: "asc" },
     });
 
     if (pendingAllocations.length === 0) {
@@ -36,14 +51,15 @@ async function distributeExecutivePool() {
 
     // Calculate total pending amount
     const totalAmount = pendingAllocations.reduce(
-      (sum: any, alloc: any) => sum + alloc.amount,
+      (sum: number, alloc: any) => sum + Number(alloc.amount),
       0
     );
     console.log(`💰 Total Executive Pool Amount: ₦${totalAmount.toLocaleString()}`);
 
-    // Get all executive shareholders with assigned users
+    // Get all active executive shareholders with assigned users
     const shareholders = await prisma.executiveShareholder.findMany({
       where: {
+        isActive: true,
         userId: { not: null },
       },
       include: {
@@ -99,100 +115,151 @@ async function distributeExecutivePool() {
         .map((user: any) => [String(user.email).trim().toLowerCase(), user])
     );
 
-    // Create a revenue transaction for this distribution
-    const revenueTransaction = await prisma.revenueTransaction.create({
-      data: {
-        source: "OTHER",
-        amount: totalAmount,
-        currency: "NGN",
-        description: `Weekly Friday executive pool distribution for ${new Date().toLocaleDateString()}`,
-      },
-    });
+    const runAt = new Date();
+    const { weekStart, weekEnd } = getWeeklyWindow(runAt);
 
-    // Create a master allocation for this distribution
-    const masterAllocation = await prisma.revenueAllocation.create({
-      data: {
-        revenueTransactionId: revenueTransaction.id,
-        amount: totalAmount,
-        percentage: 30, // Executive pool is 30% of revenue
-        destinationType: "EXECUTIVE_POOL",
-        status: "DISTRIBUTED",
-        distributedAt: new Date(),
-      },
-    });
+    // Use transaction for atomicity
+    const result = await prisma.$transaction(async (tx: any) => {
+      const distributions = [];
+      const unresolvedBeneficiaries: Array<{
+        shareholderId: string;
+        role: string;
+        email: string | null;
+      }> = [];
 
-    // Calculate and distribute to each shareholder
-    const distributions = [];
-    for (const shareholder of shareholders) {
-      const beneficiaryEmail = shareholder.User?.email?.trim().toLowerCase() ?? null;
-      const resolvedByEmail = beneficiaryEmail ? emailToUser.get(beneficiaryEmail) : null;
-      const beneficiaryUserId = resolvedByEmail?.id ?? shareholder.userId;
+      // Process each allocation
+      for (const allocation of pendingAllocations) {
+        for (const shareholder of shareholders) {
+          const beneficiaryEmail = shareholder.User?.email?.trim().toLowerCase() ?? null;
+          const resolvedByEmail = beneficiaryEmail ? emailToUser.get(beneficiaryEmail) : null;
+          const beneficiaryUserId = resolvedByEmail?.id ?? shareholder.userId;
 
-      if (!beneficiaryUserId) {
-        continue;
+          if (!beneficiaryUserId) {
+            unresolvedBeneficiaries.push({
+              shareholderId: shareholder.id,
+              role: shareholder.role,
+              email: beneficiaryEmail,
+            });
+            continue;
+          }
+
+          const shareAmount = (Number(allocation.amount) * Number(shareholder.percentage)) / 100;
+
+          // Credit shareholder main wallet (User.shareholder field)
+          await tx.user.update({
+            where: { id: beneficiaryUserId },
+            data: { shareholder: { increment: shareAmount } },
+          });
+
+          // Credit executive shareholder wallet
+          await tx.executiveShareholder.update({
+            where: { id: shareholder.id },
+            data: {
+              totalEarned: { increment: shareAmount },
+              currentBalance: { increment: shareAmount },
+              lastDistributionAt: new Date(),
+            },
+          });
+
+          // Record distribution
+          const distribution = await tx.executiveDistribution.create({
+            data: {
+              allocationId: allocation.id,
+              shareholderId: shareholder.id,
+              amount: shareAmount,
+              percentage: shareholder.percentage,
+              status: "COMPLETED",
+              distributedAt: new Date(),
+            },
+          });
+
+          // Create wallet transaction record
+          await tx.executiveWalletTransaction.create({
+            data: {
+              shareholderId: shareholder.id,
+              amount: shareAmount,
+              type: "DISTRIBUTION",
+              distributionId: distribution.id,
+              description: `Weekly Friday executive pool payout - ${shareholder.role}`,
+              metadata: {
+                payoutType: "WEEKLY_FRIDAY_EXECUTIVE",
+                beneficiaryEmail,
+                creditedUserId: beneficiaryUserId,
+                resolvedByEmail: Boolean(resolvedByEmail),
+                weekStart: weekStart.toISOString(),
+                weekEnd: weekEnd.toISOString(),
+                runAt: runAt.toISOString(),
+                allocationId: allocation.id,
+              },
+            },
+          });
+
+          distributions.push({
+            role: shareholder.role,
+            name: resolvedByEmail?.name || shareholder.User?.name,
+            email: beneficiaryEmail,
+            percentage: shareholder.percentage,
+            amount: shareAmount,
+            creditedUserId: beneficiaryUserId,
+            resolvedByEmail: Boolean(resolvedByEmail),
+          });
+
+          console.log(
+            `  ✅ ${shareholder.role}: ₦${shareAmount.toLocaleString()} (${shareholder.percentage}%) → ${resolvedByEmail?.name || shareholder.User?.name || beneficiaryEmail || beneficiaryUserId}`
+          );
+        }
       }
 
-      // Calculate shareholder's share
-      const shareAmount = (totalAmount * Number(shareholder.percentage)) / 100;
-
-      // Credit shareholder wallet
-      await prisma.user.update({
-        where: { id: beneficiaryUserId },
-        data: {
-          shareholder: {
-            increment: shareAmount,
-          },
+      // Mark allocations as distributed
+      await tx.revenueAllocation.updateMany({
+        where: {
+          id: { in: pendingAllocations.map((a: any) => a.id) },
         },
-      });
-
-      // Record distribution
-      const distribution = await prisma.executiveDistribution.create({
         data: {
-          allocationId: masterAllocation.id,
-          shareholderId: shareholder.id,
-          amount: shareAmount,
-          percentage: shareholder.percentage,
+          status: "DISTRIBUTED",
           distributedAt: new Date(),
-          status: "COMPLETED",
         },
       });
 
-      distributions.push({
-        role: shareholder.role,
-        name: resolvedByEmail?.name || shareholder.User?.name,
-        email: beneficiaryEmail,
-        percentage: shareholder.percentage,
-        amount: shareAmount,
-      });
-
-      console.log(
-        `  ✅ ${shareholder.role}: ₦${shareAmount.toLocaleString()} (${shareholder.percentage}%) → ${resolvedByEmail?.name || shareholder.User?.name || beneficiaryEmail || beneficiaryUserId}`
-      );
-    }
-
-    // Mark allocations as distributed
-    await prisma.revenueAllocation.updateMany({
-      where: {
-        id: {
-          in: pendingAllocations.map((a: any) => a.id),
-        },
-      },
-      data: {
-        status: "DISTRIBUTED",
-      },
+      return { distributions, totalAmount, unresolvedBeneficiaries };
     });
+
+    // Log unresolved beneficiaries for admin review (outside transaction)
+    if (result.unresolvedBeneficiaries.length > 0) {
+      const systemAdmin = await prisma.user.findFirst({
+        where: { role: "admin" },
+        select: { id: true },
+      });
+      if (systemAdmin) {
+        await prisma.revenueAdminAction.create({
+          data: {
+            adminId: systemAdmin.id,
+            actionType: "EXECUTIVE_PAYOUT_MAPPING_WARNING",
+            description: `Weekly executive payout completed with ${result.unresolvedBeneficiaries.length} unresolved beneficiary mappings`,
+            metadata: {
+              unresolvedBeneficiaries: result.unresolvedBeneficiaries,
+              weekStart: weekStart.toISOString(),
+              weekEnd: weekEnd.toISOString(),
+              runAt: runAt.toISOString(),
+            },
+          },
+        });
+      } else {
+        console.warn("⚠️  [EXECUTIVE DISTRIBUTION] No admin user found to log unresolved beneficiary warning");
+      }
+    }
 
     console.log(`\n✅ [EXECUTIVE DISTRIBUTION] Completed successfully!`);
     console.log(`📊 Summary:`);
-    console.log(`   Total Distributed: ₦${totalAmount.toLocaleString()}`);
-    console.log(`   Recipients: ${distributions.length}`);
+    console.log(`   Total Distributed: ₦${result.totalAmount.toLocaleString()}`);
+    console.log(`   Recipients: ${result.distributions.length}`);
     console.log(`   Allocations Processed: ${pendingAllocations.length}`);
 
     return {
       success: true,
       message: "Weekly executive payout completed",
-      totalAmount,
-      recipientCount: distributions.length,
+      totalAmount: result.totalAmount,
+      recipientCount: result.distributions.length,
       allocationsProcessed: pendingAllocations.length,
     };
   } catch (error) {

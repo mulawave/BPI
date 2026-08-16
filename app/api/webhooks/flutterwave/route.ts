@@ -771,7 +771,10 @@ export async function POST(req: NextRequest) {
       if (parsedTxRef) {
         await prisma.pendingPayment.updateMany({
           where: { gatewayReference: parsedTxRef, status: "processing" },
-          data: { reviewNotes: `Flutterwave webhook handler crashed: ${error instanceof Error ? error.message : 'Unknown error'}. Payment needs manual review.` },
+          data: {
+            status: "pending",
+            reviewNotes: `Flutterwave webhook handler crashed: ${error instanceof Error ? error.message : 'Unknown error'}. Reset to pending for retry.`,
+          },
         });
       }
     } catch { /* swallow – primary error is already logged */ }

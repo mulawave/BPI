@@ -18,6 +18,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { initiateBankTransfer } from "@/lib/flutterwave";
 import { notifyWithdrawalStatus, notifyDepositStatus } from "@/server/services/notification.service";
+import { invalidatePackageListCache } from "./package";
 import { generateReceiptLink } from "@/server/services/receipt.service";
 import { sendWithdrawalApprovedToUser, sendWithdrawalRejectedToUser } from "@/lib/email";
 import { recordRevenue } from "@/server/services/revenue.service";
@@ -3248,6 +3249,9 @@ export const adminRouter = createTRPCRouter({
           updatedAt: new Date(),
         },
       });
+
+      // Invalidate the package list cache so the frontend sees the change immediately
+      invalidatePackageListCache();
 
       // Log the action
       await prisma.auditLog.create({

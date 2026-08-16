@@ -1912,6 +1912,255 @@ export const revenueRouter = createTRPCRouter({
   }),
 
   /**
+   * Get detailed accounting breakdown for full revenue reconciliation.
+   * Returns per-shareholder earnings, per-pool pending/distributed amounts,
+   * and allocation totals that reconcile to overall revenue.
+   */
+  getDetailedAccounting: protectedProcedure.query(async ({ ctx }) => {
+    requireAdmin(ctx);
+
+    const cutoff = REVENUE_POOL_START_DATE;
+
+    // ── 1. Revenue totals ──────────────────────────────────────────
+    const [
+      totalRevenueAgg,
+      revenueBySource,
+      companyAllocatedAgg,
+      executivePendingAgg,
+      executiveDistributedAgg,
+      strategicPendingAgg,
+      strategicDistributedAgg,
+      companyReserve,
+      shareholders,
+      strategicPools,
+      recentExecutiveDistributions,
+    ] = await Promise.all([
+      // Total revenue
+      ctx.prisma.revenueTransaction.aggregate({
+        _sum: { amount: true },
+        _count: true,
+        where: { allocationStatus: "ALLOCATED", createdAt: { gte: cutoff } },
+      }),
+      // Revenue by source
+      ctx.prisma.revenueTransaction.groupBy({
+        by: ["source"],
+        _sum: { amount: true },
+        _count: true,
+        where: { allocationStatus: "ALLOCATED", createdAt: { gte: cutoff } },
+      }),
+      // Company reserve allocated
+      ctx.prisma.revenueAllocation.aggregate({
+        _sum: { amount: true },
+        where: { destinationType: "COMPANY_RESERVE", createdAt: { gte: cutoff } },
+      }),
+      // Executive pool pending
+      ctx.prisma.revenueAllocation.aggregate({
+        _sum: { amount: true },
+        where: { destinationType: "EXECUTIVE_POOL", status: "PENDING", createdAt: { gte: cutoff } },
+      }),
+      // Executive pool distributed
+      ctx.prisma.revenueAllocation.aggregate({
+        _sum: { amount: true },
+        where: { destinationType: "EXECUTIVE_POOL", status: "DISTRIBUTED", createdAt: { gte: cutoff } },
+      }),
+      // Strategic pools pending
+      ctx.prisma.revenueAllocation.aggregate({
+        _sum: { amount: true },
+        where: { destinationType: { in: ["STRATEGY_POOL", "STRATEGIC_POOL"] }, status: "PENDING", createdAt: { gte: cutoff } },
+      }),
+      // Strategic pools distributed
+      ctx.prisma.revenueAllocation.aggregate({
+        _sum: { amount: true },
+        where: { destinationType: { in: ["STRATEGY_POOL", "STRATEGIC_POOL"] }, status: "DISTRIBUTED", createdAt: { gte: cutoff } },
+      }),
+      // Company reserve record
+      ctx.prisma.companyReserve.findFirst({ orderBy: { updatedAt: "desc" } }),
+      // Executive shareholders with user info
+      ctx.prisma.executiveShareholder.findMany({
+        include: {
+          User: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { percentage: "desc" },
+      }),
+      // Strategic pools with members
+      (ctx.prisma as any).strategyPool.findMany({
+        include: {
+          Members: {
+            where: { isActive: true },
+            include: {
+              User: { select: { id: true, name: true, email: true } },
+            },
+          },
+        },
+        orderBy: { type: "asc" },
+      }),
+      // Recent executive distributions
+      ctx.prisma.executiveDistribution.findMany({
+        where: { createdAt: { gte: cutoff } },
+        include: {
+          Shareholder: {
+            include: { User: { select: { name: true, email: true } } },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }),
+    ]);
+
+    // ── 2. Allocation totals ───────────────────────────────────────
+    const totalRevenue = Number(totalRevenueAgg._sum.amount) || 0;
+    const companyAllocated = Number(companyAllocatedAgg._sum.amount) || 0;
+    const executivePending = Number(executivePendingAgg._sum.amount) || 0;
+    const executiveDistributed = Number(executiveDistributedAgg._sum.amount) || 0;
+    const executiveTotal = executivePending + executiveDistributed;
+    const strategicPending = Number(strategicPendingAgg._sum.amount) || 0;
+    const strategicDistributed = Number(strategicDistributedAgg._sum.amount) || 0;
+    const strategicTotal = strategicPending + strategicDistributed;
+    const totalAllocated = companyAllocated + executiveTotal + strategicTotal;
+
+    // ── 3. Company reserve ─────────────────────────────────────────
+    const companyReserveData = {
+      balance: Number(companyReserve?.balance) || 0,
+      totalReceived: Number(companyReserve?.totalReceived) || 0,
+      totalSpent: Number(companyReserve?.totalSpent) || 0,
+      net: (Number(companyReserve?.totalReceived) || 0) - (Number(companyReserve?.totalSpent) || 0),
+    };
+
+    // ── 4. Executive pool per-shareholder ──────────────────────────
+    const executiveShareholders = shareholders.map((s: any) => ({
+      id: s.id,
+      role: s.role,
+      isActive: s.isActive,
+      percentage: Number(s.percentage),
+      totalEarned: Number(s.totalEarned),
+      currentBalance: Number(s.currentBalance),
+      lastDistributionAt: s.lastDistributionAt,
+      user: s.User ? { id: s.User.id, name: s.User.name, email: s.User.email } : null,
+    }));
+
+    // ── 5. Strategic pools per-pool breakdown ──────────────────────
+    const strategicPoolBreakdown = await Promise.all(
+      strategicPools.map(async (pool: any) => {
+        const [poolPending, poolDistributed] = await Promise.all([
+          ctx.prisma.revenueAllocation.aggregate({
+            _sum: { amount: true },
+            where: {
+              destinationId: pool.id,
+              destinationType: { in: ["STRATEGY_POOL", "STRATEGIC_POOL"] },
+              status: "PENDING",
+              createdAt: { gte: cutoff },
+            },
+          }),
+          ctx.prisma.revenueAllocation.aggregate({
+            _sum: { amount: true },
+            where: {
+              destinationId: pool.id,
+              destinationType: { in: ["STRATEGY_POOL", "STRATEGIC_POOL"] },
+              status: "DISTRIBUTED",
+              createdAt: { gte: cutoff },
+            },
+          }),
+        ]);
+
+        const recentPoolDistributions = await ctx.prisma.poolDistribution.findMany({
+          where: { poolId: pool.id, createdAt: { gte: cutoff } },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        });
+
+        return {
+          id: pool.id,
+          type: pool.type,
+          name: pool.name,
+          balance: Number(pool.balance),
+          isActive: pool.isActive,
+          distributionFrequency: pool.distributionFrequency ?? "MANUAL",
+          lastDistributedAt: pool.lastDistributedAt,
+          nextDistributionAt: pool.nextDistributionAt,
+          pendingAmount: Number(poolPending._sum.amount) || 0,
+          distributedAmount: Number(poolDistributed._sum.amount) || 0,
+          totalAllocated: (Number(poolPending._sum.amount) || 0) + (Number(poolDistributed._sum.amount) || 0),
+          memberCount: pool.Members.length,
+          members: pool.Members.map((m: any) => ({
+            userId: m.userId,
+            name: m.User?.name || "Unknown",
+            email: m.User?.email || "Unknown",
+            customPercentage: m.customPercentage != null ? Number(m.customPercentage) : null,
+            totalEarned: Number(m.totalEarned),
+            currentBalance: Number(m.currentBalance),
+            qualificationStatus: m.qualificationStatus ?? "ACTIVE",
+            lastDistributionAt: m.lastDistributionAt,
+          })),
+          recentDistributions: recentPoolDistributions.map((d: any) => ({
+            id: d.id,
+            totalAmount: Number(d.totalAmount),
+            memberCount: d.memberCount,
+            amountPerMember: Number(d.amountPerMember),
+            status: d.status,
+            distributedAt: d.distributedAt,
+          })),
+        };
+      })
+    );
+
+    // ── 6. Reconciliation ──────────────────────────────────────────
+    const reconciliation = {
+      totalRevenue,
+      totalAllocated,
+      companyAllocated,
+      executiveTotal,
+      strategicTotal,
+      difference: totalRevenue - totalAllocated,
+      isBalanced: Math.abs(totalRevenue - totalAllocated) < 1, // ₦1 tolerance
+    };
+
+    return {
+      cutoffDate: cutoff.toISOString(),
+      revenue: {
+        total: totalRevenue,
+        transactionCount: totalRevenueAgg._count || 0,
+        bySource: revenueBySource.map((item: any) => ({
+          source: item.source,
+          label: REVENUE_SOURCE_LABELS[item.source] || item.source,
+          totalAmount: Number(item._sum.amount) || 0,
+          transactionCount: item._count,
+        })),
+      },
+      allocations: {
+        companyAllocated,
+        executivePending,
+        executiveDistributed,
+        executiveTotal,
+        strategicPending,
+        strategicDistributed,
+        strategicTotal,
+        totalAllocated,
+      },
+      companyReserve: companyReserveData,
+      executivePool: {
+        pending: executivePending,
+        distributed: executiveDistributed,
+        total: executiveTotal,
+        shareholders: executiveShareholders,
+        recentDistributions: recentExecutiveDistributions.map((d: any) => ({
+          id: d.id,
+          amount: Number(d.amount),
+          percentage: Number(d.percentage),
+          status: d.status,
+          distributedAt: d.distributedAt,
+          shareholder: d.Shareholder ? {
+            role: d.Shareholder.role,
+            name: d.Shareholder.User?.name || null,
+            email: d.Shareholder.User?.email || null,
+          } : null,
+        })),
+      },
+      strategicPools: strategicPoolBreakdown,
+      reconciliation,
+    };
+  }),
+
+  /**
    * Get revenue breakdown by source
    */
   getRevenueBreakdown: protectedProcedure

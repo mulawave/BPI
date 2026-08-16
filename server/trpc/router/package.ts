@@ -70,7 +70,7 @@ async function getCachedMembershipPackages() {
     return packageListInFlight;
   }
 
-  packageListInFlight = prisma.membershipPackage.findMany();
+  packageListInFlight = prisma.membershipPackage.findMany({ where: { isActive: true } });
 
   try {
     const packages = await packageListInFlight;
@@ -82,6 +82,11 @@ async function getCachedMembershipPackages() {
   } finally {
     packageListInFlight = null;
   }
+}
+
+export function invalidatePackageListCache() {
+  packageListCache = null;
+  packageListInFlight = null;
 }
 
 async function getCachedActiveMembership(userId: string) {
@@ -3653,7 +3658,7 @@ export const packageRouter = createTRPCRouter({
         expectedUserId: userId,
         purpose: pending.transactionType,
         actor: `Payment verification page (${input.gateway})`,
-        claimableStatuses: ["pending"],
+        claimableStatuses: ["pending", "processing"],
       });
 
       if (claim.status === "already_processed") {

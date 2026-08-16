@@ -16,6 +16,8 @@ import { runCspBroadcastSweep } from "@/server/jobs/cspBroadcastSweep";
 import fs from "fs";
 import path from "path";
 
+const REVENUE_POOL_START_DATE = new Date("2026-05-01T00:00:00.000Z");
+
 // Set timezone to Nigeria (WAT = UTC+1)
 process.env.TZ = 'Africa/Lagos';
 
@@ -51,9 +53,17 @@ async function notifyAdminOfError(error: any, context: string) {
 
   // Best-effort: log to database for admin dashboard
   try {
+    const systemAdmin = await prisma.user.findFirst({
+      where: { role: "admin" },
+      select: { id: true },
+    });
+    if (!systemAdmin) {
+      logToFile(`[${timestamp}] No admin user found to log DISTRIBUTION_ERROR`);
+      return;
+    }
     await prisma.revenueAdminAction.create({
       data: {
-        adminId: "system",
+        adminId: systemAdmin.id,
         actionType: "DISTRIBUTION_ERROR",
         description: `Error in ${context}: ${message}`,
         metadata: {
@@ -125,6 +135,7 @@ async function distributeExecutivePool() {
       where: {
         destinationType: "EXECUTIVE_POOL",
         status: "PENDING",
+        createdAt: { gte: REVENUE_POOL_START_DATE },
       },
       orderBy: {
         createdAt: "asc", // Process oldest first
@@ -318,19 +329,27 @@ async function distributeExecutivePool() {
     });
 
     if (unresolvedBeneficiaries.length > 0) {
-      await prisma.revenueAdminAction.create({
-        data: {
-          adminId: "system",
-          actionType: "EXECUTIVE_PAYOUT_MAPPING_WARNING",
-          description: `Weekly executive payout completed with ${unresolvedBeneficiaries.length} unresolved beneficiary mappings`,
-          metadata: {
-            unresolvedBeneficiaries,
-            weekStart: weekStart.toISOString(),
-            weekEnd: weekEnd.toISOString(),
-            runAt: runAt.toISOString(),
-          },
-        },
+      const systemAdmin = await prisma.user.findFirst({
+        where: { role: "admin" },
+        select: { id: true },
       });
+      if (systemAdmin) {
+        await prisma.revenueAdminAction.create({
+          data: {
+            adminId: systemAdmin.id,
+            actionType: "EXECUTIVE_PAYOUT_MAPPING_WARNING",
+            description: `Weekly executive payout completed with ${unresolvedBeneficiaries.length} unresolved beneficiary mappings`,
+            metadata: {
+              unresolvedBeneficiaries,
+              weekStart: weekStart.toISOString(),
+              weekEnd: weekEnd.toISOString(),
+              runAt: runAt.toISOString(),
+            },
+          },
+        });
+      } else {
+        console.warn("⚠️  [EXECUTIVE DISTRIBUTION] No admin user found to log unresolved beneficiary warning");
+      }
     }
 
     console.log(`\n✅ [EXECUTIVE DISTRIBUTION] Completed successfully!`);

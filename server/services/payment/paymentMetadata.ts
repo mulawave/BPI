@@ -26,6 +26,8 @@ export function resolvePaymentFulfillmentType(
     case "EMPOWERMENT_PACKAGE_FEE":
       return PAYMENT_FULFILLMENT_TYPES.EMPOWERMENT;
     case "DEPOSIT":
+    case "WALLET_DEPOSIT":
+    case "WALLET_TOPUP":
     case "TOPUP":
       return PAYMENT_FULFILLMENT_TYPES.DEPOSIT;
     case "STORE_PURCHASE":
