@@ -8,6 +8,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/client/trpc";
+import { useQueryClient } from "@tanstack/react-query";
 import DashboardLoadingSkeleton from "@/components/layout/DashboardLoadingSkeleton";
 import { 
   User, Calendar, DollarSign, Users, TrendingUp, 
@@ -269,6 +270,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const [isBlogNavPending, startBlogNav] = useTransition();
   const [navLoadingHref, setNavLoadingHref] = useState<string | null>(null);
   // Escape-hatch: if initial data has been loading for more than 10 s we stop
@@ -341,6 +343,15 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   const currentPath = pathname || "";
   const isActive = (href: string) => currentPath === href || currentPath.startsWith(`${href}/`);
 
+  // Cancel all in-flight tRPC/React-Query requests when a nav link is
+  // clicked.  Without this, slow batched HTTP requests (e.g. CSP eligibility)
+  // hold the browser's connection pool open and block the Next.js RSC fetch,
+  // leaving the user stuck on an everlasting spinner.
+  const handleNavClick = useCallback((href: string) => {
+    void queryClient.cancelQueries();
+    setNavLoadingHref(href);
+  }, [queryClient]);
+
   // Clear spinner immediately when the path commits to the target route.
   useEffect(() => {
     setNavLoadingHref(null);
@@ -364,7 +375,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
       <nav className="space-y-0.5">
         <div className="group">
           <Link href="/dashboard" className={navItemClass(isActive("/dashboard") || currentPath === "/") }
-            onClick={() => setNavLoadingHref("/dashboard")}>
+            onClick={() => handleNavClick("/dashboard")}>
             {navLoadingHref === "/dashboard" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <Home className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold">Dashboard</div>
@@ -374,7 +385,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
         <div className="group">
           <Link href="/blog" className={navItemClass(isActive("/blog"))}
-            onClick={() => setNavLoadingHref("/blog")}>
+            onClick={() => handleNavClick("/blog")}>
             {navLoadingHref === "/blog" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <BookOpen className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium">BPI Blog</div>
@@ -384,7 +395,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
         <div className="group">
           <Link href="/csp" className={navItemClass(isActive("/csp"))}
-            onClick={() => setNavLoadingHref("/csp")}>
+            onClick={() => handleNavClick("/csp")}>
             {navLoadingHref === "/csp" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <LifeBuoy className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium">BPI CSP</div>
@@ -394,7 +405,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
         <div className="group">
           <Link href="/store" className={navItemClass(isActive("/store"))}
-            onClick={() => setNavLoadingHref("/store")}>
+            onClick={() => handleNavClick("/store")}>
             {navLoadingHref === "/store" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <Store className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium">Store</div>
@@ -404,7 +415,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
         <div className="group">
           <Link href="/help" className={navItemClass(isActive("/help"))}
-            onClick={() => setNavLoadingHref("/help")}>
+            onClick={() => handleNavClick("/help")}>
             {navLoadingHref === "/help" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <AiOutlineRobot className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium">Smart Help</div>
@@ -414,7 +425,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
         <div className="group">
           <Link href="/empowerment" className={navItemClass(isActive("/empowerment"))}
-            onClick={() => setNavLoadingHref("/empowerment")}>
+            onClick={() => handleNavClick("/empowerment")}>
             {navLoadingHref === "/empowerment" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <GraduationCap className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium">Empowerment</div>
@@ -424,7 +435,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
         <div className="group">
           <Link href="/elite-club" className={navItemClass(isActive("/elite-club"))}
-            onClick={() => setNavLoadingHref("/elite-club")}>
+            onClick={() => handleNavClick("/elite-club")}>
             {navLoadingHref === "/elite-club" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <Crown className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium">Elite Club</div>
@@ -434,7 +445,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
         <div className="group">
           <Link href="/techquiz" className={navItemClass(isActive("/techquiz"))}
-            onClick={() => setNavLoadingHref("/techquiz")}>
+            onClick={() => handleNavClick("/techquiz")}>
             {navLoadingHref === "/techquiz" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <Trophy className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium">TechQuiz</div>
@@ -444,7 +455,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
         <div className="group">
           <Link href="/settings" className={navItemClass(isActive("/settings"))}
-            onClick={() => setNavLoadingHref("/settings")}>
+            onClick={() => handleNavClick("/settings")}>
             {navLoadingHref === "/settings" ? <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" /> : <User className="w-4 h-4 flex-shrink-0" />}
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium">Account</div>

@@ -339,7 +339,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   };
 
   return (
-    <div className="space-y-8 pb-4">
+    <div className="mx-auto max-w-7xl space-y-6 pb-4">
       {/* ═══════════════════════ ROYAL HERO ═══════════════════════ */}
       <div className="relative overflow-hidden rounded-3xl shadow-[0_30px_80px_-20px_rgba(4,47,32,0.55)] ring-1 ring-amber-300/20">
         {/* Base gradient */}
@@ -467,6 +467,8 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </div>
       </div>
 
+      {/* ═══════════════════════ TIER STANDING + COOLDOWN (side-by-side) ═══════════════════════ */}
+      <div className="grid lg:grid-cols-2 gap-5 items-start">
       {tierProfile && (
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-slate-50 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/30 border border-slate-200/70 dark:border-slate-800/70 shadow-xl shadow-slate-900/[0.04]">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
@@ -643,7 +645,11 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </div>
       )}
 
-      {/* ═══════════════════════ DONOR RECOGNITION ═══════════════════════ */}
+      </div>
+
+      {/* ═══════════════════════ DONOR RECOGNITION + ELIGIBILITY (side-by-side) ═══════════════════════ */}
+      <div className="grid lg:grid-cols-2 gap-5 items-start">
+      {/* ── DONOR RECOGNITION ── */}
       {recognitionQuery.data && (
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-50/70 via-white to-amber-50/40 dark:from-emerald-950/25 dark:via-slate-950 dark:to-amber-950/15 border border-emerald-200/60 dark:border-emerald-800/40 shadow-lg">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
@@ -807,7 +813,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </div>
       )}
 
-      {/* ═══════════════════════ ELIGIBILITY OVERVIEW ═══════════════════════ */}
+      {/* ── ELIGIBILITY OVERVIEW ── */}
       <div>
         <div className="flex items-center gap-3 mb-4">
           <div className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-300 dark:via-slate-700 to-transparent" />
@@ -863,6 +869,8 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </div>
           ))}
         </div>
+      </div>
+
       </div>
 
       {/* ═══════════════════════ REQUEST + LIVE STATUS ═══════════════════════ */}
@@ -1346,7 +1354,9 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </div>
       </div>
 
-      {/* ═══════════════════════ WHAT HAPPENS NEXT ═══════════════════════ */}
+      {/* ═══════════════════════ WHAT HAPPENS NEXT + COMMUNICATION (side-by-side) ═══════════════════════ */}
+      <div className="grid lg:grid-cols-2 gap-5 items-start">
+      {/* ── WHAT HAPPENS NEXT ── */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-white to-emerald-50/40 dark:from-slate-900/40 dark:via-slate-950 dark:to-emerald-950/20 border border-slate-200/70 dark:border-slate-800/70 shadow-lg">
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
         <div className="relative p-6 sm:p-8">
@@ -1536,8 +1546,8 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </div>
       )}
 
-      {/* Communication history */}
-      <div className="mt-8 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-5">
+      {/* ── COMMUNICATION HISTORY ── */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Communication history</h3>
           <Button variant="outline" size="sm" onClick={() => communicationFeedQuery.refetch()} className="border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200">
@@ -1565,6 +1575,8 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         ) : (
           <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No communications yet.</p>
         )}
+      </div>
+
       </div>
     </div>
   );

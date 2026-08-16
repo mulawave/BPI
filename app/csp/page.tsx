@@ -17,7 +17,7 @@ export default async function CspPage() {
     <DashboardShell session={session}>
       <div className="w-full">
         <CspDashboard userName={session?.user?.name ?? session?.user?.email} />
-        <div className="max-w-3xl mx-auto mt-10">
+        <div className="mt-6">
           <CspAutoContributeSettings />
         </div>
       </div>
