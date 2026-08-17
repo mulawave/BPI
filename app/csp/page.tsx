@@ -2,7 +2,7 @@ import { auth } from "@/server/auth";
 import { redirect } from "next/navigation";
 import CspDashboard from "@/components/csp/CspDashboard";
 import CspAutoContributeSettings from "@/components/csp/CspAutoContributeSettings";
-import DashboardShell from "@/components/layout/DashboardShell";
+import CspShell from "@/components/csp/CspShell";
 
 export const dynamic = "force-dynamic";
 
@@ -14,13 +14,11 @@ export default async function CspPage() {
   }
 
   return (
-    <DashboardShell session={session}>
-      <div className="w-full">
-        <CspDashboard userName={session?.user?.name ?? session?.user?.email} />
-        <div className="mt-6">
-          <CspAutoContributeSettings />
-        </div>
+    <CspShell session={session}>
+      <CspDashboard userName={session?.user?.name ?? session?.user?.email} />
+      <div className="mt-6">
+        <CspAutoContributeSettings />
       </div>
-    </DashboardShell>
+    </CspShell>
   );
 }
