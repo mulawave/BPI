@@ -522,7 +522,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
 
       {/* ── TIER STANDING + COOLDOWN ── */}
       <div className="grid lg:grid-cols-2 gap-4 items-start">
-      {tierProfile && (
+      {tierProfile ? (
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-slate-50 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/30 border border-slate-200/70 dark:border-slate-800/70 shadow-lg">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
 
@@ -588,10 +588,26 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </div>
           </div>
         </div>
+      ) : (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-900/40 dark:via-slate-950 dark:to-emerald-950/10 border border-dashed border-slate-300 dark:border-slate-700 shadow-sm">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/30 to-transparent" />
+          <div className="relative p-5 flex items-center gap-3">
+            <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-slate-100 dark:bg-slate-800/60 ring-1 ring-slate-200 dark:ring-slate-700 shrink-0">
+              <Gem className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+            </div>
+            <div>
+              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-slate-400 dark:text-slate-500">Reserved Space</p>
+              <p className="font-serif text-sm font-bold text-slate-600 dark:text-slate-300 mt-0.5">Tier Standing & Contribution Right</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-md leading-relaxed">
+                Your tier ranking, contribution right, and calculator metrics will appear here once your membership is activated and tier evaluation is complete.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── COOLDOWN / SPONSOR PROGRESS ── */}
-      {(waitStatusQuery.data?.hasCooldown || waitStatusQuery.data?.sponsorProgress) && (
+      {(waitStatusQuery.data?.hasCooldown || waitStatusQuery.data?.sponsorProgress) ? (
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50/80 to-white dark:from-amber-950/20 dark:via-slate-950 dark:to-amber-950/10 border border-amber-300/50 dark:border-amber-700/40 shadow-lg">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-500/60 to-transparent" />
 
@@ -689,6 +705,22 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </div>
           </div>
         </div>
+      ) : (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-900/40 dark:via-slate-950 dark:to-amber-950/10 border border-dashed border-slate-300 dark:border-slate-700 shadow-sm">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/30 to-transparent" />
+          <div className="relative p-5 flex items-center gap-3">
+            <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-800/60 ring-1 ring-slate-200 dark:ring-slate-700 shrink-0">
+              <TimerReset className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+            </div>
+            <div>
+              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-slate-400 dark:text-slate-500">Reserved Space</p>
+              <p className="font-serif text-sm font-bold text-slate-600 dark:text-slate-300 mt-0.5">Cooldown Timer & Sponsor Progress</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-md leading-relaxed">
+                Your cooldown countdown and sponsor reduction tracker will appear here once a support request has been submitted and a cooling period is assigned.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       </div>
@@ -696,7 +728,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
       {/* ── DONOR RECOGNITION + ELIGIBILITY ── */}
       <div className="grid lg:grid-cols-2 gap-4 items-start">
       {/* ── DONOR RECOGNITION ── */}
-      {recognitionQuery.data && (
+      {recognitionQuery.data ? (
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-50/70 to-white dark:from-emerald-950/20 dark:via-slate-950 dark:to-amber-950/10 border border-emerald-200/60 dark:border-emerald-800/40 shadow-lg">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
 
@@ -854,6 +886,22 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      ) : (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-900/40 dark:via-slate-950 dark:to-emerald-950/10 border border-dashed border-slate-300 dark:border-slate-700 shadow-sm">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/30 to-transparent" />
+          <div className="relative p-5 flex items-center gap-3">
+            <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-800/60 ring-1 ring-slate-200 dark:ring-slate-700 shrink-0">
+              <Award className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+            </div>
+            <div>
+              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-slate-400 dark:text-slate-500">Reserved Space</p>
+              <p className="font-serif text-sm font-bold text-slate-600 dark:text-slate-300 mt-0.5">Donor Recognition & Badges</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-md leading-relaxed">
+                Your donation history, time reduction badges, and certificates will appear here once you have contributed to a CSP broadcast.
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -1432,6 +1480,47 @@ export function CspDashboard({ userName }: CspDashboardProps) {
           </div>
         </div>
       </div>
+
+      {/* ── COMMUNICATION HISTORY ── */}
+      <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-lg">
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent" />
+        <div className="relative p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-gradient-to-br from-emerald-700 to-emerald-900 shadow-md ring-1 ring-amber-300/25">
+                <Bell className="w-3.5 h-3.5 text-amber-300" />
+              </div>
+              <div>
+                <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">Dispatch</p>
+                <h4 className="font-serif text-base font-bold text-slate-900 dark:text-white">Communication History</h4>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => communicationFeedQuery.refetch()} className="border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200">
+              <Bell className="w-3.5 h-3.5 mr-1.5" />
+              Refresh
+            </Button>
+          </div>
+          {communicationFeedQuery.data && communicationFeedQuery.data.length > 0 ? (
+            <div className="space-y-2">
+              {communicationFeedQuery.data.map((item) => (
+                <div key={item.id} className="flex items-start gap-2.5 rounded-lg border border-slate-100 dark:border-slate-800 p-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-slate-900 dark:text-white">{item.title}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.message}</p>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 shrink-0">{new Date(item.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/30 py-6 text-center">
+              <Bell className="w-6 h-6 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+              <p className="text-xs text-slate-500 dark:text-slate-400">No communications yet.</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">CSP dispatches and updates will appear here.</p>
+            </div>
+          )}
+        </div>
+      </div>
       </div>
 
       {/* ── CONTRIBUTE MODAL ── */}
@@ -1582,37 +1671,6 @@ export function CspDashboard({ userName }: CspDashboardProps) {
           </div>
         </div>
       )}
-
-      {/* ── COMMUNICATION HISTORY ── */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-serif text-base font-bold text-slate-900 dark:text-white">Communication History</h3>
-          <Button variant="outline" size="sm" onClick={() => communicationFeedQuery.refetch()} className="border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200">
-            <Bell className="w-3.5 h-3.5 mr-1.5" />
-            Refresh
-          </Button>
-        </div>
-        {communicationFeedQuery.data && communicationFeedQuery.data.length > 0 ? (
-          <div className="space-y-2">
-            {communicationFeedQuery.data.map((item) => (
-              <div key={item.id} className="flex items-start gap-2.5 rounded-lg border border-slate-100 dark:border-slate-800 p-2.5">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-slate-900 dark:text-white">{item.title}</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.message}</p>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{new Date(item.createdAt).toLocaleString()}</p>
-                </div>
-                {!item.isRead && (
-                  <span className="inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                    New
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">No communications yet.</p>
-        )}
-      </div>
 
     </div>
   );
