@@ -24,6 +24,7 @@ import {
   Shield,
   Zap,
   Globe,
+  ChevronRight,
   TimerReset,
   TrendingDown,
   Crown,
@@ -77,28 +78,6 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   const [giftBadgeId, setGiftBadgeId] = useState<string | null>(null);
   const [giftRecipient, setGiftRecipient] = useState("");
 
-  const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, expired: false });
-  useEffect(() => {
-    const target = new Date("2026-08-20T00:00:00Z").getTime();
-    const tick = () => {
-      const diff = target - Date.now();
-      if (diff <= 0) {
-        setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0, expired: true });
-        return;
-      }
-      setCountdown({
-        days: Math.floor(diff / 86400000),
-        hours: Math.floor((diff % 86400000) / 3600000),
-        minutes: Math.floor((diff % 3600000) / 60000),
-        seconds: Math.floor((diff % 60000) / 1000),
-        expired: false,
-      });
-    };
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   const categoryRulesFallback = {
     national: { label: "National", minDirects: 2, minThreshold: 10000, broadcastHours: 48, minCumulativeContrib: 10000, minDistinctRequests: 10 },
     global: { label: "Global", minDirects: 10, minThreshold: 20000, broadcastHours: 48, minCumulativeContrib: 20000, minDistinctRequests: 10 },
@@ -120,7 +99,6 @@ export function CspDashboard({ userName }: CspDashboardProps) {
       void utilsRef.current.csp.getLiveStatus.cancel();
       void utilsRef.current.csp.listHistory.cancel();
       void utilsRef.current.csp.listBroadcasts.cancel();
-      void utilsRef.current.notification.getMyNotifications.cancel();
     };
   }, []);
 
@@ -134,10 +112,6 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   const historyQuery = api.csp.listHistory.useQuery({ pageSize: 5 }, { refetchOnWindowFocus: false, retry: false, staleTime: 2 * 60 * 1000 });
   const broadcastsQuery = api.csp.listBroadcasts.useQuery(undefined, { refetchOnWindowFocus: true, retry: false, staleTime: 60 * 1000, refetchInterval: 15 * 1000 });
   const communicationFeedQuery = api.csp.getCommunicationFeed.useQuery(undefined, { refetchOnWindowFocus: false, staleTime: 60 * 1000 });
-  const notificationsQuery = api.notification.getMyNotifications.useQuery(undefined, { refetchOnWindowFocus: false, staleTime: 60 * 1000 });
-  const markNotificationRead = api.notification.markAsRead.useMutation({
-    onSuccess: () => notificationsQuery.refetch(),
-  });
 
   // Derive per-category config from backend when available, fall back to static defaults
   const categoryRules = {
@@ -364,37 +338,10 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     });
   };
 
-  if (eligibilityQuery.isLoading) {
-    return (
-      <div className="space-y-4 pb-4 animate-pulse">
-        <div className="h-32 rounded-2xl bg-slate-200 dark:bg-slate-800" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-24 rounded-2xl bg-slate-200 dark:bg-slate-800" />
-          ))}
-        </div>
-        <div className="h-64 rounded-2xl bg-slate-200 dark:bg-slate-800" />
-      </div>
-    );
-  }
-
-  if (eligibilityQuery.isError) {
-    return (
-      <div className="rounded-2xl border border-red-200 dark:border-red-800/50 bg-red-50/70 dark:bg-red-950/20 p-6 text-center space-y-2">
-        <AlertTriangle className="w-8 h-8 text-red-500 mx-auto" />
-        <p className="font-serif text-lg font-bold text-red-800 dark:text-red-200">Unable to load CSP dashboard</p>
-        <p className="text-sm text-red-600 dark:text-red-400">Please refresh the page or try again later.</p>
-        <Button variant="outline" size="sm" onClick={() => eligibilityQuery.refetch()} className="mt-2 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300">
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-5 pb-4">
-      {/* ── HERO BANNER ── */}
-      <div className="relative overflow-hidden rounded-2xl shadow-xl ring-1 ring-amber-300/20">
+    <div className="mx-auto max-w-7xl space-y-6 pb-4">
+      {/* ═══════════════════════ ROYAL HERO ═══════════════════════ */}
+      <div className="relative overflow-hidden rounded-3xl shadow-[0_30px_80px_-20px_rgba(4,47,32,0.55)] ring-1 ring-amber-300/20">
         {/* Base gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-[#04231a] via-[#0a3d2b] to-[#062818]" />
         {/* Radial glow layers */}
@@ -405,80 +352,49 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-300/70 to-transparent" />
         <div className="absolute top-1.5 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-300/25 to-transparent" />
 
-        <div className="relative px-6 py-6 sm:px-8 sm:py-8">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-            <div className="flex-1">
-              <div className="flex items-center gap-2.5 mb-3">
-                <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-amber-300 to-amber-600 shadow-md ring-1 ring-amber-200/50">
-                  <Crown className="h-3.5 w-3.5 text-[#2a1a05]" />
+        <div className="relative px-6 py-8 sm:px-10 sm:py-12">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
+            <div className="max-w-2xl">
+              {/* Eyebrow with monogram */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex items-center justify-center h-9 w-9 rounded-full bg-gradient-to-br from-amber-300 via-amber-500 to-amber-700 shadow-[0_0_20px_rgba(251,191,36,0.35)] ring-1 ring-amber-200/50">
+                  <Crown className="h-4 w-4 text-[#2a1a05]" />
                 </div>
-                <span className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-200/90">
+                <div className="h-px flex-1 max-w-[3rem] bg-gradient-to-r from-amber-300/60 to-transparent" />
+                <span className="text-[11px] uppercase tracking-[0.35em] font-semibold text-amber-200/90">
                   Community Support Program
                 </span>
               </div>
 
-              <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold leading-[1.05] text-white tracking-tight">
-                Request &amp; Steward{" "}
-                <span className="bg-gradient-to-r from-amber-200 via-amber-300 to-amber-500 bg-clip-text text-transparent">
+              <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold leading-[1.05] text-white tracking-tight">
+                Request &amp; Steward
+                <span className="block bg-gradient-to-r from-amber-200 via-amber-300 to-amber-500 bg-clip-text text-transparent">
                   Community Support
                 </span>
               </h1>
-              <p className="mt-3 text-emerald-50/60 text-sm sm:text-base leading-relaxed max-w-xl">
-                Verify your standing, submit a request, and follow live broadcasts — all in one place.
+              <p className="mt-5 text-emerald-50/70 text-base sm:text-lg leading-relaxed max-w-xl">
+                Verify your standing, submit a request, and follow live anonymous broadcasts — all in one refined chamber.
               </p>
-
-              {/* Countdown Timer */}
-              <div className="mt-5">
-                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-200/70 mb-2.5">
-                  {countdown.expired ? "CSP Season is Live" : "CSP Season Launch"}
-                </p>
-                {countdown.expired ? (
-                  <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-500/15 backdrop-blur border border-emerald-300/30 px-5 py-3">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="font-serif text-lg font-bold text-emerald-200">Live Now</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                    {[
-                      { label: "Days", value: countdown.days },
-                      { label: "Hours", value: countdown.hours },
-                      { label: "Min", value: countdown.minutes },
-                      { label: "Sec", value: countdown.seconds },
-                    ].map((unit, idx, arr) => (
-                      <div key={unit.label} className="flex items-center gap-2 sm:gap-3">
-                        <div className="relative group">
-                          <div className="absolute -inset-0.5 rounded-lg bg-gradient-to-br from-amber-300/20 to-emerald-400/10 blur-sm group-hover:from-amber-300/30 group-hover:to-emerald-400/20 transition-all" />
-                          <div className="relative rounded-lg bg-white/[0.08] backdrop-blur-xl border border-amber-200/20 px-3 py-2 sm:px-4 sm:py-2.5 min-w-[56px] sm:min-w-[68px] text-center">
-                            <p className="font-serif text-xl sm:text-2xl font-bold text-white tabular-nums tracking-tight">
-                              {String(unit.value).padStart(2, "0")}
-                            </p>
-                            <p className="text-[8px] sm:text-[9px] uppercase tracking-[0.15em] font-semibold text-amber-200/60 mt-0.5">
-                              {unit.label}
-                            </p>
-                          </div>
-                        </div>
-                        {idx < arr.length - 1 && (
-                          <span className="font-serif text-xl sm:text-2xl font-bold text-amber-300/40">:</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* Status seal */}
-            <div className="relative shrink-0">
-              <div className="absolute -inset-1 rounded-xl bg-gradient-to-br from-amber-300/30 to-transparent blur-lg" />
-              <div className="relative rounded-xl bg-white/[0.06] backdrop-blur-xl border border-amber-200/20 px-5 py-4 min-w-[260px]">
-                <div className="flex items-center gap-3">
-                  <div className={"flex items-center justify-center h-11 w-11 rounded-lg ring-1 " + (profile.hasCooldown ? "bg-amber-500/15 ring-amber-300/40 text-amber-200" : eligibility.eligible ? "bg-emerald-500/20 ring-emerald-300/40 text-emerald-200" : "bg-amber-500/15 ring-amber-300/40 text-amber-200")}>
+            <div className="relative">
+              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-amber-300/40 via-amber-500/20 to-transparent blur-xl" />
+              <div className="relative rounded-2xl bg-white/[0.06] backdrop-blur-xl border border-amber-200/25 px-6 py-5 min-w-[280px] shadow-inner shadow-black/30">
+                <div className="flex items-center gap-4">
+                  <div className={`flex items-center justify-center h-14 w-14 rounded-xl ring-1 ${
+                    profile.hasCooldown
+                      ? "bg-amber-500/15 ring-amber-300/40 text-amber-200"
+                      : eligibility.eligible
+                      ? "bg-emerald-500/20 ring-emerald-300/40 text-emerald-200"
+                      : "bg-amber-500/15 ring-amber-300/40 text-amber-200"
+                  }`}>
                     {profile.hasCooldown ? (
-                      <TimerReset className="w-5 h-5" />
+                      <TimerReset className="w-6 h-6" />
                     ) : eligibility.eligible ? (
-                      <CheckCircle2 className="w-5 h-5" />
+                      <CheckCircle2 className="w-6 h-6" />
                     ) : (
-                      <AlertTriangle className="w-5 h-5" />
+                      <AlertTriangle className="w-6 h-6" />
                     )}
                   </div>
                   <div>
@@ -503,25 +419,31 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </div>
           </div>
 
+          {/* Ornamental bottom divider */}
+          <div className="mt-10 flex items-center gap-3 text-amber-200/40">
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-300/40 to-transparent" />
+            <Gem className="h-3 w-3 text-amber-300/70" />
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-amber-300/40 to-transparent" />
           </div>
         </div>
+      </div>
 
-      {/* ── TREasury + TIER METRICS (4-col) ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* ═══════════════════════ TREASURY BALANCES ═══════════════════════ */}
+      <div className="grid sm:grid-cols-2 gap-4">
         {/* Cash Wallet */}
         <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-emerald-50/40 dark:from-slate-950 dark:via-emerald-950/40 dark:to-slate-950 border border-emerald-200/60 dark:border-emerald-800/40 shadow-lg shadow-emerald-900/[0.04] hover:shadow-emerald-900/[0.10] transition-shadow duration-300">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent" />
           <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-emerald-400/10 blur-2xl group-hover:bg-emerald-400/20 transition-colors" />
-          <div className="relative p-4 flex items-center justify-between">
+          <div className="relative p-5 flex items-center justify-between">
             <div>
-              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-emerald-700/70 dark:text-emerald-300/60">Cash Treasury</p>
-              <p className="mt-1.5 font-serif text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+              <p className="text-[10px] uppercase tracking-[0.28em] font-semibold text-emerald-700/70 dark:text-emerald-300/60">Cash Treasury</p>
+              <p className="mt-2 font-serif text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
                 {formatAmount(balances.cash)}
               </p>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">Available</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Available for contribution</p>
             </div>
-            <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-md ring-1 ring-emerald-300/40">
-              <Wallet className="w-4 h-4 text-white" />
+            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-lg shadow-emerald-900/30 ring-1 ring-emerald-300/40">
+              <Wallet className="w-5 h-5 text-white" />
             </div>
           </div>
         </div>
@@ -530,90 +452,55 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-amber-50/40 dark:from-slate-950 dark:via-amber-950/20 dark:to-slate-950 border border-amber-200/60 dark:border-amber-800/40 shadow-lg shadow-amber-900/[0.04] hover:shadow-amber-900/[0.10] transition-shadow duration-300">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
           <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-amber-400/10 blur-2xl group-hover:bg-amber-400/20 transition-colors" />
-          <div className="relative p-4 flex items-center justify-between">
+          <div className="relative p-5 flex items-center justify-between">
             <div>
-              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-amber-700/80 dark:text-amber-300/70">Community Coffers</p>
-              <p className="mt-1.5 font-serif text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+              <p className="text-[10px] uppercase tracking-[0.28em] font-semibold text-amber-700/80 dark:text-amber-300/70">Community Coffers</p>
+              <p className="mt-2 font-serif text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
                 {formatAmount(balances.community)}
               </p>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">Reserved for CSP</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Reserved for CSP</p>
             </div>
-            <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 shadow-md ring-1 ring-amber-300/50">
-              <Landmark className="w-4 h-4 text-white" />
-            </div>
-          </div>
-        </div>
-
-        {/* Contribution Right */}
-        <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-emerald-50/30 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/20 border border-slate-200/70 dark:border-slate-800/70 shadow-lg hover:shadow-xl transition-shadow">
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent" />
-          <div className="relative p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Contribution Right</p>
-              <p className="mt-1.5 font-serif text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-                {tierProfile ? formatAmount(tierProfile.contributionRight) : "—"}
-              </p>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">Per request</p>
-            </div>
-            <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-800 shadow-md ring-1 ring-emerald-300/30">
-              <Sparkles className="w-4 h-4 text-amber-300" />
-            </div>
-          </div>
-        </div>
-
-        {/* Max Support Cap */}
-        <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-amber-50/30 dark:from-slate-950 dark:via-slate-950 dark:to-amber-950/20 border border-slate-200/70 dark:border-slate-800/70 shadow-lg hover:shadow-xl transition-shadow">
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" />
-          <div className="relative p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Max Support Cap</p>
-              <p className="mt-1.5 font-serif text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-                {tierProfile ? formatAmount(tierProfile.maxSupportCap) : "—"}
-              </p>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                {tierProfile?.currentTier ? tierProfile.currentTier.name : "No tier"}
-              </p>
-            </div>
-            <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 shadow-md ring-1 ring-amber-300/40">
-              <Shield className="w-4 h-4 text-white" />
+            <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-900/30 ring-1 ring-amber-300/50">
+              <Landmark className="w-5 h-5 text-white" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── TIER STANDING + COOLDOWN ── */}
-      <div className="grid lg:grid-cols-2 gap-4 items-stretch">
-      {tierProfile ? (
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-slate-50 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/30 border border-slate-200/70 dark:border-slate-800/70 shadow-lg h-full">
+      {/* ═══════════════════════ TIER STANDING + COOLDOWN (side-by-side) ═══════════════════════ */}
+      <div className="grid lg:grid-cols-2 gap-5 items-start">
+      {tierProfile && (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-slate-50 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/30 border border-slate-200/70 dark:border-slate-800/70 shadow-xl shadow-slate-900/[0.04]">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
+          <div className="absolute -top-20 -right-24 w-80 h-80 rounded-full bg-emerald-500/[0.04] blur-3xl" />
 
-          <div className="relative p-5 space-y-4">
+          <div className="relative p-6 sm:p-8 space-y-6">
             {/* Header */}
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-gradient-to-br from-amber-300 to-amber-600 shadow-md ring-1 ring-amber-200/60">
-                <Gem className="w-3.5 h-3.5 text-white" />
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-amber-300 via-amber-500 to-amber-600 shadow-lg shadow-amber-900/25 ring-1 ring-amber-200/60">
+                <Gem className="w-4 h-4 text-white" />
               </div>
               <div>
-                <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-amber-700/80 dark:text-amber-300/70">Tier Standing</p>
-                <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Order of Contribution</h4>
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700/80 dark:text-amber-300/70">Order of Contribution</p>
+                <h4 className="font-serif text-xl font-bold text-slate-900 dark:text-white">Your Tier Standing</h4>
               </div>
             </div>
 
             {/* Metrics grid */}
-            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[
-                { label: "Contrib. Right", value: formatAmount(tierProfile.contributionRight), icon: Sparkles, tint: "emerald" },
+                { label: "Contribution Right", value: formatAmount(tierProfile.contributionRight), icon: Sparkles, tint: "emerald" },
                 { label: "Current Tier", value: tierProfile.currentTier ? `${tierProfile.currentTier.name}` : "No tier yet", sub: tierProfile.currentTier ? `#${tierProfile.currentTier.tierNumber}` : null, icon: Crown, tint: "amber" },
-                { label: "Max Cap", value: formatAmount(tierProfile.maxSupportCap), icon: Shield, tint: "emerald" },
+                { label: "Max Support Cap", value: formatAmount(tierProfile.maxSupportCap), icon: Shield, tint: "emerald" },
                 { label: "To Next Tier", value: tierProfile.amountToNextTier == null ? "—" : formatAmount(Math.max(0, tierProfile.amountToNextTier)), icon: ArrowUpRight, tint: "amber" },
               ].map((stat, idx) => (
-                <div key={idx} className="group relative rounded-lg border border-slate-200/70 dark:border-slate-800/70 bg-gradient-to-br from-slate-50/70 to-white dark:from-slate-900/50 dark:to-slate-950 p-3 hover:border-amber-300/50 dark:hover:border-amber-500/30 transition-colors">
-                  <div className="flex items-start justify-between mb-1.5">
-                    <p className="text-[9px] uppercase tracking-[0.18em] font-semibold text-slate-500 dark:text-slate-400">{stat.label}</p>
-                    <stat.icon className={`h-3 w-3 ${stat.tint === "amber" ? "text-amber-500/70" : "text-emerald-600/70"}`} />
+                <div key={idx} className="group relative rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-gradient-to-br from-slate-50/70 via-white to-white dark:from-slate-900/50 dark:via-slate-950 dark:to-slate-950 p-4 hover:border-amber-300/50 dark:hover:border-amber-500/30 transition-colors">
+                  <div className="flex items-start justify-between mb-2">
+                    <p className="text-[10px] uppercase tracking-[0.2em] font-semibold text-slate-500 dark:text-slate-400">{stat.label}</p>
+                    <stat.icon className={`h-3.5 w-3.5 ${stat.tint === "amber" ? "text-amber-500/70" : "text-emerald-600/70"}`} />
                   </div>
-                  <p className="font-serif text-base font-bold text-slate-900 dark:text-white leading-tight">{stat.value}</p>
-                  {stat.sub && <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400 font-mono">{stat.sub}</p>}
+                  <p className="font-serif text-xl font-bold text-slate-900 dark:text-white leading-tight">{stat.value}</p>
+                  {stat.sub && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 font-mono">{stat.sub}</p>}
                 </div>
               ))}
             </div>
@@ -625,7 +512,11 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                 { ok: tierProfile.autoDebitEnabled, on: "Auto-Debit Enabled", off: "Auto-Debit Off" },
                 { ok: tierProfile.autoContributeEnabled, on: "Auto-Contribute Enabled", off: "Auto-Contribute Off" },
               ].map((s, i) => (
-                <span key={i} className={"inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 " + (s.ok ? "bg-emerald-50 text-emerald-800 ring-emerald-200/70 dark:bg-emerald-900/25 dark:text-emerald-200 dark:ring-emerald-800/50" : "bg-amber-50 text-amber-800 ring-amber-200/70 dark:bg-amber-900/20 dark:text-amber-200 dark:ring-amber-800/50")}>
+                <span key={i} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 ${
+                  s.ok
+                    ? "bg-emerald-50 text-emerald-800 ring-emerald-200/70 dark:bg-emerald-900/25 dark:text-emerald-200 dark:ring-emerald-800/50"
+                    : "bg-amber-50 text-amber-800 ring-amber-200/70 dark:bg-amber-900/20 dark:text-amber-200 dark:ring-amber-800/50"
+                }`}>
                   {s.ok ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
                   {s.ok ? s.on : s.off}
                 </span>
@@ -633,53 +524,39 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </div>
 
             {/* Calculator ribbon */}
-            <div className="relative overflow-hidden rounded-lg bg-gradient-to-r from-emerald-900 to-emerald-800 p-3.5 ring-1 ring-amber-300/20">
-              <div className="relative flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <ScrollText className="h-4 w-4 text-amber-300" />
+            <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-emerald-900 via-emerald-800 to-emerald-900 p-4 sm:p-5 ring-1 ring-amber-300/25 shadow-inner shadow-black/25">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_left_center,rgba(251,191,36,0.12),transparent_60%)]" />
+              <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <ScrollText className="h-5 w-5 text-amber-300" />
                   <div>
-                    <p className="text-[9px] uppercase tracking-[0.2em] font-semibold text-amber-200/80">Calculator</p>
-                    <p className="text-xs text-emerald-50/70">Right × {tierProfile.contributionMultiplier}</p>
+                    <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-amber-200/80">Tier Calculator</p>
+                    <p className="text-sm text-emerald-50/80 mt-0.5">Contribution Right × {tierProfile.contributionMultiplier}</p>
                   </div>
                 </div>
-                <p className="font-serif text-xl font-bold bg-gradient-to-r from-amber-200 to-amber-400 bg-clip-text text-transparent">
+                <p className="font-serif text-2xl font-bold bg-gradient-to-r from-amber-200 via-amber-300 to-amber-400 bg-clip-text text-transparent">
                   {formatAmount(tierProfile.contributionRight * tierProfile.contributionMultiplier)}
                 </p>
               </div>
             </div>
           </div>
         </div>
-      ) : (
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-900/40 dark:via-slate-950 dark:to-emerald-950/10 border border-dashed border-slate-300 dark:border-slate-700 shadow-sm h-full">
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/30 to-transparent" />
-          <div className="relative p-5 flex items-center gap-3 h-full">
-            <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-slate-100 dark:bg-slate-800/60 ring-1 ring-slate-200 dark:ring-slate-700 shrink-0">
-              <Gem className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
-            </div>
-            <div>
-              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-slate-400 dark:text-slate-500">Reserved Space</p>
-              <p className="font-serif text-sm font-bold text-slate-600 dark:text-slate-300 mt-0.5">Tier Standing & Contribution Right</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-md leading-relaxed">
-                Your tier ranking, contribution right, and calculator metrics will appear here once your membership is activated and tier evaluation is complete.
-              </p>
-            </div>
-          </div>
-        </div>
       )}
 
-      {/* ── COOLDOWN / SPONSOR PROGRESS ── */}
-      {(waitStatusQuery.data?.hasCooldown || waitStatusQuery.data?.sponsorProgress) ? (
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50/80 to-white dark:from-amber-950/20 dark:via-slate-950 dark:to-amber-950/10 border border-amber-300/50 dark:border-amber-700/40 shadow-lg h-full">
+      {/* ═══════════════════════ COOLDOWN / SPONSOR PROGRESS ═══════════════════════ */}
+      {(waitStatusQuery.data?.hasCooldown || waitStatusQuery.data?.sponsorProgress) && (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50/80 via-white to-amber-50/50 dark:from-amber-950/25 dark:via-slate-950 dark:to-amber-950/15 border border-amber-300/50 dark:border-amber-700/40 shadow-lg shadow-amber-900/[0.05]">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-500/60 to-transparent" />
+          <div className="absolute -top-16 -left-16 w-48 h-48 rounded-full bg-amber-400/10 blur-3xl" />
 
-          <div className="relative p-5 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 shadow-md ring-1 ring-amber-300/50 shrink-0">
-                <TimerReset className="w-4 h-4 text-white" />
+          <div className="relative p-6 sm:p-7 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+            <div className="flex items-start gap-4">
+              <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-900/25 ring-1 ring-amber-300/50 shrink-0">
+                <TimerReset className="w-5 h-5 text-white" />
               </div>
               <div>
-                <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-amber-700 dark:text-amber-300/80">Restricted Period</p>
-                <p className="font-serif text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700 dark:text-amber-300/80">Restricted Period</p>
+                <p className="font-serif text-xl font-bold text-slate-900 dark:text-white mt-0.5">
                   {waitStatusQuery.data?.hasCooldown ? "Collection Cooldown Active" : "Sponsor Reduction Progress"}
                 </p>
                 {waitStatusQuery.data?.cooldownEndsAt ? (
@@ -766,46 +643,31 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </div>
           </div>
         </div>
-      ) : (
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-900/40 dark:via-slate-950 dark:to-amber-950/10 border border-dashed border-slate-300 dark:border-slate-700 shadow-sm h-full">
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/30 to-transparent" />
-          <div className="relative p-5 flex items-center gap-3 h-full">
-            <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-800/60 ring-1 ring-slate-200 dark:ring-slate-700 shrink-0">
-              <TimerReset className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-            </div>
-            <div>
-              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-slate-400 dark:text-slate-500">Reserved Space</p>
-              <p className="font-serif text-sm font-bold text-slate-600 dark:text-slate-300 mt-0.5">Cooldown Timer & Sponsor Progress</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-md leading-relaxed">
-                Your cooldown countdown and sponsor reduction tracker will appear here once a support request has been submitted and a cooling period is assigned.
-              </p>
-            </div>
-          </div>
-        </div>
       )}
 
       </div>
 
-      {/* ── DONOR RECOGNITION + ELIGIBILITY ── */}
-      <div className="grid lg:grid-cols-2 gap-4 items-stretch">
+      {/* ═══════════════════════ DONOR RECOGNITION + ELIGIBILITY (side-by-side) ═══════════════════════ */}
+      <div className="grid lg:grid-cols-2 gap-5 items-start">
       {/* ── DONOR RECOGNITION ── */}
-      {recognitionQuery.data ? (
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-50/70 to-white dark:from-emerald-950/20 dark:via-slate-950 dark:to-amber-950/10 border border-emerald-200/60 dark:border-emerald-800/40 shadow-lg h-full">
+      {recognitionQuery.data && (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-50/70 via-white to-amber-50/40 dark:from-emerald-950/25 dark:via-slate-950 dark:to-amber-950/15 border border-emerald-200/60 dark:border-emerald-800/40 shadow-lg">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
+          <div className="absolute -top-24 -right-16 w-80 h-80 rounded-full bg-emerald-400/[0.06] blur-3xl" />
 
-          <div className="relative p-5 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-gradient-to-br from-amber-300 to-amber-700 shadow-md ring-1 ring-amber-200/60">
-                  <Award className="w-4 h-4 text-white" />
+          <div className="relative p-6 sm:p-8 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-gradient-to-br from-amber-300 via-amber-500 to-amber-700 shadow-lg shadow-amber-900/25 ring-1 ring-amber-200/60">
+                  <Award className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-amber-700/90 dark:text-amber-300/80">Order of Merit</p>
-                  <p className="font-serif text-lg font-bold text-slate-900 dark:text-white mt-0.5">Donor Recognition</p>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1.5 max-w-xl">
+                  <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700/90 dark:text-amber-300/80">Order of Merit</p>
+                  <p className="font-serif text-xl font-bold text-slate-900 dark:text-white mt-0.5">Donor Recognition</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 max-w-xl">
                     {recognitionQuery.data.donationCount
-                      ? `${recognitionQuery.data.donationCount} donation${recognitionQuery.data.donationCount === 1 ? "" : "s"} — ${formatAmount(recognitionQuery.data.totalDonatedAmount)} inscribed.`
-                      : "No donation record yet."}
+                      ? `${recognitionQuery.data.donationCount} donation${recognitionQuery.data.donationCount === 1 ? "" : "s"} recorded — ${formatAmount(recognitionQuery.data.totalDonatedAmount)} of stewardship inscribed.`
+                      : "No donation record has been issued yet."}
                   </p>
                 </div>
               </div>
@@ -820,7 +682,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
               )}
             </div>
 
-            <div className="grid gap-2.5 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-3">
               {[
                 {
                   label: "Latest Support",
@@ -847,31 +709,31 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                   tertiary: "Gift or redeem badges below",
                 },
               ].map((c, i) => (
-                <div key={i} className="rounded-lg border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/70 px-3 py-3 hover:border-amber-300/60 dark:hover:border-amber-600/30 transition-colors">
-                  <p className="text-[9px] uppercase tracking-[0.2em] font-semibold text-amber-700/80 dark:text-amber-300/60">{c.label}</p>
-                  <p className="mt-1.5 font-serif text-base font-bold text-slate-900 dark:text-white leading-tight">{c.primary}</p>
-                  {c.secondary && <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{c.secondary}</p>}
-                  {c.tertiary && <p className="text-[10px] text-slate-500 dark:text-slate-500 mt-1">{c.tertiary}</p>}
+                <div key={i} className="rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/70 backdrop-blur px-4 py-4 hover:border-amber-300/60 dark:hover:border-amber-600/30 transition-colors">
+                  <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-amber-700/80 dark:text-amber-300/60">{c.label}</p>
+                  <p className="mt-2 font-serif text-lg font-bold text-slate-900 dark:text-white leading-tight">{c.primary}</p>
+                  {c.secondary && <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">{c.secondary}</p>}
+                  {c.tertiary && <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">{c.tertiary}</p>}
                 </div>
               ))}
             </div>
 
             {/* ── Time Reduction Badges: gift or redeem ── */}
             {recognitionQuery.data.badges.length > 0 && (
-              <div className="space-y-2.5">
-                <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-amber-700/90 dark:text-amber-300/80">My Time Reduction Badges</p>
+              <div className="space-y-3">
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700/90 dark:text-amber-300/80">My Time Reduction Badges</p>
                 <div className="space-y-2">
                   {recognitionQuery.data.badges.map((badge: any) => (
-                    <div key={badge.id} className="rounded-lg border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/70 px-3 py-2.5">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5">
-                          <Gem className="h-3.5 w-3.5 text-amber-500" />
+                    <div key={badge.id} className="rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/70 backdrop-blur px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <Gem className="h-4 w-4 text-amber-500" />
                           <div>
-                            <p className="text-xs font-semibold text-slate-900 dark:text-white">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-white">
                               {badge.category?.badgeType ?? "Time Reduction Badge"}
-                              <span className="ml-2 text-[11px] font-normal text-slate-500">{badge.reductionMonths}mo</span>
+                              <span className="ml-2 text-xs font-normal text-slate-500">{badge.reductionMonths} month{badge.reductionMonths === 1 ? "" : "s"}</span>
                             </p>
-                            <p className="text-[11px] text-slate-500">
+                            <p className="text-xs text-slate-500">
                               {badge.status === "available" ? "Available to redeem or gift" : badge.status === "redeemed" ? "Redeemed" : badge.status}
                             </p>
                           </div>
@@ -923,17 +785,17 @@ export function CspDashboard({ userName }: CspDashboardProps) {
 
             {/* ── Donation history + certificates ── */}
             {recognitionQuery.data.donations.length > 0 && (
-              <div className="space-y-2.5">
-                <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-amber-700/90 dark:text-amber-300/80">Donation History</p>
+              <div className="space-y-3">
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700/90 dark:text-amber-300/80">Donation History</p>
                 <div className="space-y-2">
                   {recognitionQuery.data.donations.map((donation: any) => (
-                    <div key={donation.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/70 px-3 py-2.5">
+                    <div key={donation.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/70 backdrop-blur px-4 py-3">
                       <div>
-                        <p className="text-xs font-semibold text-slate-900 dark:text-white">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
                           {formatAmount(donation.amount)}
-                          {donation.category && <span className="ml-2 text-[11px] font-normal text-slate-500">{donation.category}</span>}
+                          {donation.category && <span className="ml-2 text-xs font-normal text-slate-500">{donation.category}</span>}
                         </p>
-                        <p className="text-[11px] text-slate-500">{new Date(donation.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}</p>
+                        <p className="text-xs text-slate-500">{new Date(donation.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}</p>
                       </div>
                       {donation.certificateUrl && (
                         <Button asChild size="sm" variant="outline" className="border-amber-400/40 text-amber-800 hover:bg-amber-50 dark:border-amber-700/50 dark:text-amber-300 dark:hover:bg-amber-900/20">
@@ -949,32 +811,16 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             )}
           </div>
         </div>
-      ) : (
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-900/40 dark:via-slate-950 dark:to-emerald-950/10 border border-dashed border-slate-300 dark:border-slate-700 shadow-sm h-full">
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/30 to-transparent" />
-          <div className="relative p-5 flex items-center gap-3 h-full">
-            <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-800/60 ring-1 ring-slate-200 dark:ring-slate-700 shrink-0">
-              <Award className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-            </div>
-            <div>
-              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-slate-400 dark:text-slate-500">Reserved Space</p>
-              <p className="font-serif text-sm font-bold text-slate-600 dark:text-slate-300 mt-0.5">Donor Recognition & Badges</p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-md leading-relaxed">
-                Your donation history, time reduction badges, and certificates will appear here once you have contributed to a CSP broadcast.
-              </p>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* ── ELIGIBILITY OVERVIEW ── */}
-      <div className="h-full">
-        <div className="flex items-center gap-2 mb-3">
+      <div>
+        <div className="flex items-center gap-3 mb-4">
           <div className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-300 dark:via-slate-700 to-transparent" />
-          <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Standing at a Glance</p>
+          <p className="text-[10px] uppercase tracking-[0.35em] font-semibold text-slate-500 dark:text-slate-400">Standing at a Glance</p>
           <div className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-300 dark:via-slate-700 to-transparent" />
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {[
             {
               icon: Shield,
@@ -1007,44 +853,49 @@ export function CspDashboard({ userName }: CspDashboardProps) {
               ok: true,
             },
           ].map((s, i) => (
-            <div key={i} className="group relative overflow-hidden rounded-lg bg-white dark:bg-slate-950/70 border border-slate-200/70 dark:border-slate-800/70 hover:border-emerald-300/70 dark:hover:border-emerald-700/50 hover:shadow-md transition-all">
+            <div key={i} className="group relative overflow-hidden rounded-xl bg-white dark:bg-slate-950/70 border border-slate-200/70 dark:border-slate-800/70 hover:border-emerald-300/70 dark:hover:border-emerald-700/50 hover:shadow-lg hover:shadow-emerald-900/[0.06] transition-all">
               <div className={`absolute top-0 left-0 right-0 h-0.5 ${s.ok ? "bg-gradient-to-r from-emerald-400 to-emerald-600" : "bg-gradient-to-r from-amber-400 to-amber-600"}`} />
-              <div className="p-3">
-                <div className="flex items-start justify-between mb-1.5">
-                  <div className={`flex items-center justify-center h-8 w-8 rounded-lg ring-1 ${s.ok ? "bg-emerald-50 ring-emerald-200/70 text-emerald-700 dark:bg-emerald-900/20 dark:ring-emerald-800/40 dark:text-emerald-300" : "bg-amber-50 ring-amber-200/70 text-amber-700 dark:bg-amber-900/20 dark:ring-amber-800/40 dark:text-amber-300"}`}>
-                    <s.icon className="w-3.5 h-3.5" />
+              <div className="p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <div className={`flex items-center justify-center h-9 w-9 rounded-lg ring-1 ${s.ok ? "bg-emerald-50 ring-emerald-200/70 text-emerald-700 dark:bg-emerald-900/20 dark:ring-emerald-800/40 dark:text-emerald-300" : "bg-amber-50 ring-amber-200/70 text-amber-700 dark:bg-amber-900/20 dark:ring-amber-800/40 dark:text-amber-300"}`}>
+                    <s.icon className="w-4 h-4" />
                   </div>
-                  {s.ok && <CheckCircle2 className="h-3 w-3 text-emerald-500" />}
+                  {s.ok && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
                 </div>
-                <p className="text-[9px] uppercase tracking-[0.18em] font-semibold text-slate-500 dark:text-slate-400">{s.label}</p>
-                <p className="mt-0.5 font-serif text-base font-bold text-slate-900 dark:text-white leading-tight">{s.value}</p>
-                <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">{s.sub}</p>
+                <p className="text-[10px] uppercase tracking-[0.22em] font-semibold text-slate-500 dark:text-slate-400">{s.label}</p>
+                <p className="mt-1 font-serif text-lg font-bold text-slate-900 dark:text-white leading-tight">{s.value}</p>
+                <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{s.sub}</p>
               </div>
             </div>
           ))}
         </div>
       </div>
+
       </div>
 
-      {/* ── REQUEST + LIVE STATUS ── */}
-      <div className="grid lg:grid-cols-3 gap-4 items-stretch">
+      {/* ═══════════════════════ REQUEST + LIVE STATUS ═══════════════════════ */}
+      <div className="grid lg:grid-cols-3 gap-5 items-start">
         {/* Request form */}
-        <div className="lg:col-span-2 relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-900 via-emerald-950 to-slate-950 border border-emerald-700/40 shadow-lg">
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
-          <div className="absolute -top-20 -right-20 w-48 h-48 rounded-full bg-amber-400/8 blur-3xl" />
+        <div className="lg:col-span-2 relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-xl shadow-slate-900/[0.05]">
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-500 via-amber-400 to-emerald-500" />
+          <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-emerald-500/[0.04] blur-3xl" />
 
-          <div className="relative p-5 space-y-4">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-start gap-2.5">
-                <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-gradient-to-br from-amber-300 to-amber-600 shadow-md ring-1 ring-amber-200/50">
-                  <ScrollText className="w-4 h-4 text-white" />
+          <div className="relative p-6 sm:p-8 space-y-6">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex items-center justify-center h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 shadow-lg shadow-emerald-900/25 ring-1 ring-emerald-400/40">
+                  <ScrollText className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-amber-200/80">Petition of Support</p>
-                  <h3 className="font-serif text-xl font-bold text-white">Submit a Request</h3>
+                  <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">Petition of Support</p>
+                  <h3 className="font-serif text-2xl font-bold text-slate-900 dark:text-white">Submit a Request</h3>
                 </div>
               </div>
-              <span className={"inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-full ring-1 " + (eligibility.eligible ? "bg-emerald-500/15 text-emerald-200 ring-emerald-300/40" : "bg-amber-500/15 text-amber-200 ring-amber-300/40")}>
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-full ring-1 ${
+                eligibility.eligible
+                  ? "bg-emerald-50 text-emerald-800 ring-emerald-300/60 dark:bg-emerald-900/25 dark:text-emerald-200 dark:ring-emerald-700/40"
+                  : "bg-amber-50 text-amber-800 ring-amber-300/60 dark:bg-amber-900/25 dark:text-amber-200 dark:ring-amber-700/40"
+              }`}>
                 {eligibility.eligible ? <CheckCircle2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
                 {eligibility.eligible ? "Eligible" : "Locked"}
               </span>
@@ -1052,7 +903,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
 
             {/* Category selector */}
             <div>
-              <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-amber-200/70">Support Category</label>
+              <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Support Category</label>
               <div className="mt-2 grid grid-cols-2 gap-2.5">
                 {(["national", "global"] as SupportCategory[]).map((cat) => {
                   const active = supportCategory === cat;
@@ -1061,14 +912,18 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                     <button
                       key={cat}
                       onClick={() => setSupportCategory(cat)}
-                      className={"group relative overflow-hidden rounded-xl border-2 px-4 py-3 text-left transition-all " + (active ? "border-emerald-400 bg-white/[0.08] backdrop-blur shadow-lg" : "border-white/10 hover:border-emerald-400/40 bg-white/[0.03]")}
+                      className={`group relative overflow-hidden rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                        active
+                          ? "border-emerald-500 bg-gradient-to-br from-emerald-50 via-white to-emerald-50/50 dark:from-emerald-950/40 dark:via-slate-950 dark:to-emerald-950/20 shadow-lg shadow-emerald-900/[0.08]"
+                          : "border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 bg-white dark:bg-slate-950/50"
+                      }`}
                     >
                       {active && <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-400 to-amber-400" />}
                       <div className="flex items-center justify-between">
-                        <span className="font-serif text-base font-bold text-white">{rules?.label ?? cat}</span>
-                        <Globe className={`w-4 h-4 ${active ? "text-emerald-300" : "text-emerald-200/40"}`} />
+                        <span className="font-serif text-base font-bold text-slate-900 dark:text-white">{rules?.label ?? cat}</span>
+                        <Globe className={`w-4 h-4 ${active ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`} />
                       </div>
-                      <p className="mt-1 text-[11px] text-emerald-100/50">
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                         {rules?.minDirects === 0 ? "No directs required" : `${rules?.minDirects ?? 10}+ directs`} · {formatAmount(rules?.minThreshold ?? 10000)}
                       </p>
                     </button>
@@ -1078,41 +933,41 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </div>
 
             {/* Amount + Purpose */}
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-amber-200/70">Requested Amount</label>
+                <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Requested Amount</label>
                 <input
                   type="number"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-emerald-700/40 bg-white/[0.06] backdrop-blur px-4 py-3 text-base font-serif font-bold text-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 outline-none transition placeholder:text-emerald-200/30"
+                  className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/70 px-4 py-3 text-base font-serif font-bold text-slate-900 dark:text-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition"
                   min={categoryRules[supportCategory]?.minThreshold ?? 10000}
                 />
                 {amount && !Number.isNaN(Number(amount)) && Number(amount) > 0 && (
-                  <p className="mt-1.5 text-[11px] text-emerald-100/50">
-                    Broadcast target: <span className="font-semibold text-amber-200">{formatAmount(Math.ceil(Number(amount) * 1.2))}</span> <span className="text-amber-300/70">(+20% markup)</span>
+                  <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                    Broadcast target: <span className="font-semibold text-slate-700 dark:text-slate-300">{formatAmount(Math.ceil(Number(amount) * 1.2))}</span> <span className="text-amber-600 dark:text-amber-400">(+20% markup)</span>
                   </p>
                 )}
               </div>
               <div>
-                <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-amber-200/70">Purpose</label>
+                <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Purpose</label>
                 <input
                   type="text"
                   value={purpose}
                   onChange={(e) => setPurpose(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-emerald-700/40 bg-white/[0.06] backdrop-blur px-4 py-3 text-sm text-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 outline-none transition placeholder:text-emerald-200/30"
+                  className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/70 px-4 py-3 text-sm text-slate-900 dark:text-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition"
                   placeholder="E.g. medical, rent, education"
                 />
               </div>
             </div>
 
             <div>
-              <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-amber-200/70">Additional Details</label>
+              <label className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Additional Details</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
-                className="mt-2 w-full rounded-xl border border-emerald-700/40 bg-white/[0.06] backdrop-blur px-4 py-3 text-sm text-white focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 outline-none transition resize-none placeholder:text-emerald-200/30"
+                className="mt-2 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/70 px-4 py-3 text-sm text-slate-900 dark:text-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition resize-none"
                 placeholder="Add context for management approval"
               />
             </div>
@@ -1125,13 +980,17 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                 { ok: eligibility.hasContrib, on: "Contribution OK", off: `${formatAmount(categoryRules[supportCategory]?.minCumulativeContrib ?? 10000)} cumulative` },
                 { ok: eligibility.hasDistinct, on: "10 requests met", off: `${profile.minDistinctRequests} distinct requests needed` },
               ].map((s, i) => (
-                <span key={i} className={"inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 " + (s.ok ? "bg-emerald-500/15 text-emerald-200 ring-emerald-300/40" : "bg-amber-500/15 text-amber-200 ring-amber-300/40")}>
+                <span key={i} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 ${
+                  s.ok
+                    ? "bg-emerald-50 text-emerald-800 ring-emerald-200/70 dark:bg-emerald-900/20 dark:text-emerald-200 dark:ring-emerald-800/40"
+                    : "bg-amber-50 text-amber-800 ring-amber-200/70 dark:bg-amber-900/20 dark:text-amber-200 dark:ring-amber-800/40"
+                }`}>
                   {s.ok ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
                   {s.ok ? s.on : s.off}
                 </span>
               ))}
               {supportCategory === "global" && eligibility.globalPath && (
-                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 bg-blue-500/15 text-blue-200 ring-blue-300/40">
+                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 bg-blue-50 text-blue-800 ring-blue-200/70 dark:bg-blue-900/20 dark:text-blue-200 dark:ring-blue-800/40">
                   <Sparkles className="h-3 w-3" />
                   Qualifies via Path {eligibility.globalPath}
                 </span>
@@ -1139,17 +998,18 @@ export function CspDashboard({ userName }: CspDashboardProps) {
             </div>
 
             {/* Submit */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-emerald-800/40">
-              <div className="text-[11px] text-emerald-100/50 flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-amber-300" />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <Mail className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 Confirmation &amp; broadcast sent after approval
               </div>
               <button
                 onClick={handleSubmit}
                 disabled={!eligibility.eligible || profile.hasCooldown || submitRequest.isPending}
-                className="group relative inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-400 to-amber-600 px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-emerald-950 shadow-md ring-1 ring-amber-300/50 hover:shadow-lg hover:from-amber-300 hover:to-amber-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="group relative inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-700 to-emerald-800 px-6 py-3 text-sm font-semibold uppercase tracking-wider text-white shadow-lg shadow-emerald-900/30 ring-1 ring-emerald-400/30 hover:shadow-xl hover:shadow-emerald-900/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-lg"
               >
-                <Sparkles className="w-3.5 h-3.5 relative" />
+                <span className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-amber-300/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <Sparkles className="w-4 h-4 relative" />
                 <span className="relative">{profile.hasCooldown ? "Cooldown Active" : "Submit for Approval"}</span>
               </button>
             </div>
@@ -1157,17 +1017,19 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </div>
 
         {/* Live status */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-900 via-emerald-950 to-slate-950 border border-emerald-700/40 shadow-lg h-full">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-900 via-emerald-950 to-slate-950 border border-emerald-700/40 shadow-2xl shadow-emerald-900/40">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
+          <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-emerald-500/20 blur-3xl" />
+          <div className="absolute -bottom-20 -left-16 w-48 h-48 rounded-full bg-amber-400/10 blur-3xl" />
 
-          <div className="relative p-5 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-gradient-to-br from-amber-300 to-amber-600 shadow-md ring-1 ring-amber-200/50">
-                <RadioTower className="w-3.5 h-3.5 text-white" />
+          <div className="relative p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-amber-300 via-amber-500 to-amber-600 shadow-lg shadow-amber-900/40 ring-1 ring-amber-200/50">
+                <RadioTower className="w-4 h-4 text-white" />
               </div>
               <div>
-                <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-amber-200/80">Broadcast Chamber</p>
-                <h4 className="font-serif text-base font-bold text-white">Live Status</h4>
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-200/80">Broadcast Chamber</p>
+                <h4 className="font-serif text-lg font-bold text-white">Live Status</h4>
               </div>
             </div>
 
@@ -1219,57 +1081,49 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </div>
       </div>
 
-      {/* ── EXTENSIONS + ANALYTICS ── */}
-      <div className="grid lg:grid-cols-2 gap-4">
+      {/* ═══════════════════════ EXTENSIONS + ANALYTICS ═══════════════════════ */}
+      <div className="grid lg:grid-cols-2 gap-5">
         {/* Time extensions */}
-        <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-lg">
+        <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-lg shadow-slate-900/[0.03]">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent" />
-          <div className="relative p-5 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-800 shadow-md ring-1 ring-emerald-400/40">
-                <Clock className="w-3.5 h-3.5 text-white" />
+          <div className="relative p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 shadow-lg shadow-emerald-900/25 ring-1 ring-emerald-400/40">
+                <Clock className="w-4 h-4 text-white" />
               </div>
               <div>
-                <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">Chronicle</p>
-                <h4 className="font-serif text-base font-bold text-slate-900 dark:text-white">Time Extensions</h4>
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">Chronicle</p>
+                <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Time Extensions</h4>
               </div>
             </div>
 
-            <div className="space-y-2.5">
-              <p className="text-[9px] uppercase tracking-[0.2em] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-2">
+            <div className="space-y-3">
+              <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-2">
                 <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
-                Auto-Extension Thresholds
+                Pay for Extra Time
                 <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
               </p>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 -mt-1">Granted automatically when contributions cross milestones</p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 {extensionPaid.map((row) => (
-                  <div key={row.amount} className="group rounded-lg border border-emerald-200/60 dark:border-emerald-800/40 bg-gradient-to-br from-emerald-50/60 to-white dark:from-emerald-950/30 dark:to-slate-950 p-3">
-                    <div className="flex items-center justify-between">
-                      <p className="font-serif text-lg font-bold text-emerald-700 dark:text-emerald-300">+{row.hours}h</p>
-                      <span className="text-[8px] uppercase tracking-wider font-semibold text-emerald-600/60 dark:text-emerald-400/60">Auto</span>
-                    </div>
-                    <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5">At {formatAmount(row.amount)} raised</p>
+                  <div key={row.amount} className="group rounded-xl border border-emerald-200/60 dark:border-emerald-800/40 bg-gradient-to-br from-emerald-50/60 via-white to-white dark:from-emerald-950/30 dark:via-slate-950 dark:to-slate-950 p-3.5 hover:border-emerald-400 dark:hover:border-emerald-600 transition-colors">
+                    <p className="font-serif text-xl font-bold text-emerald-700 dark:text-emerald-300">+{row.hours}h</p>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">Pay {formatAmount(row.amount)}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="space-y-2.5">
-              <p className="text-[9px] uppercase tracking-[0.2em] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-2">
+            <div className="space-y-3">
+              <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-2">
                 <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
                 Earn Time via Directs
                 <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
               </p>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 -mt-1">Admin-granted when your direct sponsor count reaches milestones</p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 {extensionReferrals.map((row) => (
-                  <div key={row.directs} className="group rounded-lg border border-amber-200/60 dark:border-amber-800/40 bg-gradient-to-br from-amber-50/60 to-white dark:from-amber-950/25 dark:to-slate-950 p-3">
-                    <div className="flex items-center justify-between">
-                      <p className="font-serif text-lg font-bold text-amber-700 dark:text-amber-300">+{row.hours}h</p>
-                      <span className="text-[8px] uppercase tracking-wider font-semibold text-amber-600/60 dark:text-amber-400/60">Admin</span>
-                    </div>
-                    <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5">At {row.directs} directs</p>
+                  <div key={row.directs} className="group rounded-xl border border-amber-200/60 dark:border-amber-800/40 bg-gradient-to-br from-amber-50/60 via-white to-white dark:from-amber-950/25 dark:via-slate-950 dark:to-slate-950 p-3.5 hover:border-amber-400 dark:hover:border-amber-600 transition-colors">
+                    <p className="font-serif text-xl font-bold text-amber-700 dark:text-amber-300">+{row.hours}h</p>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">Add {row.directs} directs</p>
                   </div>
                 ))}
               </div>
@@ -1278,16 +1132,16 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </div>
 
         {/* Live analytics */}
-        <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-lg">
+        <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-lg shadow-slate-900/[0.03]">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
-          <div className="relative p-5 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 shadow-md ring-1 ring-amber-300/50">
-                <Zap className="w-3.5 h-3.5 text-white" />
+          <div className="relative p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-900/25 ring-1 ring-amber-300/50">
+                <Zap className="w-4 h-4 text-white" />
               </div>
               <div>
-                <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-amber-700/80 dark:text-amber-300/70">Realm Metrics</p>
-                <h4 className="font-serif text-base font-bold text-slate-900 dark:text-white">Live Analytics</h4>
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700/80 dark:text-amber-300/70">Realm Metrics</p>
+                <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Live Analytics</h4>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -1297,10 +1151,10 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                 { label: "Total Raised", value: formatAmount(broadcastMetrics.totalRaised), tint: "emerald" },
                 { label: "Avg. Progress", value: `${broadcastMetrics.avgProgress}%`, tint: "amber" },
               ].map((s, i) => (
-                <div key={i} className="relative overflow-hidden rounded-lg border border-slate-200/70 dark:border-slate-800/70 bg-gradient-to-br from-slate-50/60 to-white dark:from-slate-900/40 dark:to-slate-950 p-3">
+                <div key={i} className="relative overflow-hidden rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-gradient-to-br from-slate-50/60 to-white dark:from-slate-900/40 dark:to-slate-950 p-4">
                   <div className={`absolute top-0 left-0 h-full w-0.5 ${s.tint === "amber" ? "bg-gradient-to-b from-amber-400 to-amber-600" : "bg-gradient-to-b from-emerald-400 to-emerald-600"}`} />
-                  <p className="text-[9px] uppercase tracking-[0.18em] font-semibold text-slate-500 dark:text-slate-400">{s.label}</p>
-                  <p className="mt-1 font-serif text-xl font-bold text-slate-900 dark:text-white leading-none">{s.value}</p>
+                  <p className="text-[10px] uppercase tracking-[0.2em] font-semibold text-slate-500 dark:text-slate-400">{s.label}</p>
+                  <p className="mt-1.5 font-serif text-2xl font-bold text-slate-900 dark:text-white leading-none">{s.value}</p>
                 </div>
               ))}
             </div>
@@ -1308,17 +1162,17 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </div>
 
         {/* Active broadcasts */}
-        <div className="lg:col-span-2 relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-lg">
+        <div className="lg:col-span-2 relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-xl shadow-slate-900/[0.04]">
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-500 via-amber-400 to-emerald-500" />
-          <div className="relative p-5 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-gradient-to-br from-emerald-700 to-emerald-900 shadow-md ring-1 ring-amber-300/30">
-                  <RadioTower className="w-3.5 h-3.5 text-amber-300" />
+          <div className="relative p-6 sm:p-8 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-700 to-emerald-900 shadow-lg shadow-emerald-900/30 ring-1 ring-amber-300/30">
+                  <RadioTower className="w-5 h-5 text-amber-300" />
                 </div>
                 <div>
-                  <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">The Assembly</p>
-                  <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Active Broadcasts</h4>
+                  <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">The Assembly</p>
+                  <h4 className="font-serif text-xl font-bold text-slate-900 dark:text-white">Active Broadcasts</h4>
                 </div>
               </div>
               <Button variant="outline" size="sm" onClick={() => broadcastsQuery.refetch()} className="border-slate-300 dark:border-slate-700 hover:border-emerald-400 dark:hover:border-emerald-600 text-slate-700 dark:text-slate-200">
@@ -1327,63 +1181,55 @@ export function CspDashboard({ userName }: CspDashboardProps) {
               </Button>
             </div>
 
-            {broadcastsQuery.isLoading && (
-              <div className="space-y-2.5 animate-pulse">
-                {[0, 1].map((i) => (
-                  <div key={i} className="h-28 rounded-lg bg-slate-100 dark:bg-slate-800/50" />
-                ))}
-              </div>
-            )}
-
             {broadcastsQuery.data && broadcastsQuery.data.length === 0 && (
-              <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/30 py-8 text-center">
-                <RadioTower className="w-7 h-7 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
-                <p className="text-xs text-slate-500 dark:text-slate-400">No active broadcasts at this moment.</p>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">The chamber is quiet. Check back soon.</p>
+              <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/30 py-10 text-center">
+                <RadioTower className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-3" />
+                <p className="text-sm text-slate-500 dark:text-slate-400">No active broadcasts at this moment.</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">The chamber is quiet. Check back soon.</p>
               </div>
             )}
 
-            <div className="grid lg:grid-cols-2 gap-2.5">
-              {broadcastColumns.map((col, idx) => (
-                <div key={idx} className="space-y-2.5">
-                  {(col ?? []).map((item) => {
+            <div className="grid lg:grid-cols-2 gap-3">
+              {broadcastColumns.map((col = [], idx) => (
+                <div key={idx} className="space-y-3">
+                  {col.map((item) => {
                     const percent = Math.min(100, Math.floor((item.raisedAmount / item.thresholdAmount) * 100));
                     const remaining = item.broadcastExpiresAt ? formatCountdown(Math.floor((new Date(item.broadcastExpiresAt).getTime() - Date.now()) / 1000)) : "--";
                     const targetMet = item.raisedAmount >= item.thresholdAmount;
                     const anonLabel = hashRequestId(item.id);
                     return (
-                      <div key={item.id} className="group relative overflow-hidden rounded-lg border border-slate-200/70 dark:border-slate-800/70 bg-gradient-to-br from-white to-slate-50/60 dark:from-slate-950 dark:to-emerald-950/10 p-3 hover:border-emerald-400/60 dark:hover:border-emerald-600/40 hover:shadow-md transition-all">
+                      <div key={item.id} className="group relative overflow-hidden rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-gradient-to-br from-white via-white to-slate-50/60 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/10 p-4 hover:border-emerald-400/60 dark:hover:border-emerald-600/40 hover:shadow-lg hover:shadow-emerald-900/[0.06] transition-all">
                         <div className={`absolute top-0 left-0 right-0 h-0.5 ${targetMet ? "bg-gradient-to-r from-emerald-400 to-emerald-600" : "bg-gradient-to-r from-amber-400 to-amber-500"}`} />
 
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="relative flex items-center justify-center h-9 w-9 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 ring-1 ring-slate-200 dark:ring-slate-700">
-                              <Lock className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="relative flex items-center justify-center h-11 w-11 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 ring-1 ring-slate-200 dark:ring-slate-700">
+                              <Lock className="w-4 h-4 text-slate-600 dark:text-slate-300" />
                               <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-white dark:ring-slate-950 animate-pulse" />
                             </div>
                             <div>
-                              <p className="font-mono text-xs font-bold text-slate-900 dark:text-white">{anonLabel}</p>
+                              <p className="font-mono text-sm font-bold text-slate-900 dark:text-white">{anonLabel}</p>
                               <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Anonymous · {item.category}</p>
                             </div>
                           </div>
                           {targetMet ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-800 ring-1 ring-emerald-300/60 px-2 py-0.5 text-[10px] font-semibold dark:bg-emerald-900/25 dark:text-emerald-200 dark:ring-emerald-700/40">
-                              <CheckCircle2 className="h-2.5 w-2.5" /> Target Met
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 text-emerald-800 ring-1 ring-emerald-300/60 px-2.5 py-1 text-[10px] font-semibold dark:bg-emerald-900/25 dark:text-emerald-200 dark:ring-emerald-700/40">
+                              <CheckCircle2 className="h-3 w-3" /> Target Met
                             </span>
                           ) : (
                             <button
                               onClick={() => setSelectedBroadcast(item)}
-                              className="inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white text-[11px] font-semibold px-2.5 py-1 shadow-md ring-1 ring-emerald-400/30 transition"
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white text-xs font-semibold px-3 py-1.5 shadow-md shadow-emerald-900/25 ring-1 ring-emerald-400/30 transition"
                             >
-                              <Sparkles className="h-2.5 w-2.5" />
+                              <Sparkles className="h-3 w-3" />
                               Contribute
                             </button>
                           )}
                         </div>
 
-                        <div className="mt-2.5 flex items-center justify-between">
+                        <div className="mt-3.5 flex items-center justify-between">
                           <div>
-                            <p className="font-serif text-base font-bold text-slate-900 dark:text-white">{formatAmount(item.thresholdAmount)}</p>
+                            <p className="font-serif text-lg font-bold text-slate-900 dark:text-white">{formatAmount(item.thresholdAmount)}</p>
                             <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Requested</p>
                           </div>
                           <div className="text-right">
@@ -1418,39 +1264,51 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </div>
       </div>
 
-      {/* ── HISTORY + NOTIFICATIONS ── */}
-      <div className="grid lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-lg">
+      {/* ═══════════════════════ HISTORY + NOTIFICATIONS ═══════════════════════ */}
+      <div className="grid lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2 relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-lg shadow-slate-900/[0.03]">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent" />
-          <div className="relative p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 shadow-md ring-1 ring-amber-300/20">
-                  <ScrollText className="w-3.5 h-3.5 text-amber-300" />
+          <div className="relative p-6 sm:p-7">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 shadow-lg shadow-slate-900/30 ring-1 ring-amber-300/20">
+                  <ScrollText className="w-4 h-4 text-amber-300" />
                 </div>
                 <div>
-                  <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-slate-500 dark:text-slate-400">Chronicle</p>
-                  <h4 className="font-serif text-base font-bold text-slate-900 dark:text-white">Recent Petitions</h4>
+                  <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-slate-500 dark:text-slate-400">Chronicle</p>
+                  <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Recent Petitions</h4>
                 </div>
               </div>
+              <Button variant="outline" size="sm" className="gap-1 border-slate-300 dark:border-slate-700">
+                View all
+                <ChevronRight className="w-4 h-4" />
+              </Button>
             </div>
             <div className="divide-y divide-slate-100 dark:divide-slate-800/70">
-              {history.map((item) => {
+              {history.map((item: { id: string; category: string; date: string; amount: number; status: string }) => {
                 const ok = ["approved", "broadcasting", "closed"].includes(item.status.toLowerCase());
                 return (
-                  <div key={item.id} className="py-2.5 flex items-center justify-between text-sm hover:bg-slate-50/60 dark:hover:bg-slate-900/40 rounded-lg px-2 -mx-2 transition-colors">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className={"h-8 w-8 rounded-lg flex items-center justify-center ring-1 shrink-0 " + (ok ? "bg-emerald-50 ring-emerald-200/60 text-emerald-700 dark:bg-emerald-900/20 dark:ring-emerald-800/40 dark:text-emerald-300" : "bg-amber-50 ring-amber-200/60 text-amber-700 dark:bg-amber-900/20 dark:ring-amber-800/40 dark:text-amber-300")}>
-                        {ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
+                  <div key={item.id} className="py-3.5 flex items-center justify-between text-sm hover:bg-slate-50/60 dark:hover:bg-slate-900/40 rounded-lg px-2 -mx-2 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`h-9 w-9 rounded-lg flex items-center justify-center ring-1 shrink-0 ${
+                        ok
+                          ? "bg-emerald-50 ring-emerald-200/60 text-emerald-700 dark:bg-emerald-900/20 dark:ring-emerald-800/40 dark:text-emerald-300"
+                          : "bg-amber-50 ring-amber-200/60 text-amber-700 dark:bg-amber-900/20 dark:ring-amber-800/40 dark:text-amber-300"
+                      }`}>
+                        {ok ? <CheckCircle2 className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-mono text-[11px] font-bold text-slate-900 dark:text-white truncate">{item.id}</p>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 capitalize">{item.category} {item.date}</p>
+                        <p className="font-mono text-xs font-bold text-slate-900 dark:text-white truncate">{item.id}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 capitalize">{item.category} · {item.date}</p>
                       </div>
                     </div>
-                    <div className="text-right shrink-0 ml-2">
-                      <p className="font-serif text-sm font-bold text-slate-900 dark:text-white">{formatAmount(Number(item.amount))}</p>
-                      <span className={"inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider mt-0.5 px-1.5 py-0.5 rounded-full ring-1 " + (ok ? "bg-emerald-50 text-emerald-800 ring-emerald-200/70 dark:bg-emerald-900/25 dark:text-emerald-200 dark:ring-emerald-800/40" : "bg-amber-50 text-amber-800 ring-amber-200/70 dark:bg-amber-900/25 dark:text-amber-200 dark:ring-amber-800/40")}>
+                    <div className="text-right shrink-0 ml-3">
+                      <p className="font-serif text-base font-bold text-slate-900 dark:text-white">{formatAmount(Number(item.amount))}</p>
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider mt-0.5 px-2 py-0.5 rounded-full ring-1 ${
+                        ok
+                          ? "bg-emerald-50 text-emerald-800 ring-emerald-200/70 dark:bg-emerald-900/25 dark:text-emerald-200 dark:ring-emerald-800/40"
+                          : "bg-amber-50 text-amber-800 ring-amber-200/70 dark:bg-amber-900/25 dark:text-amber-200 dark:ring-amber-800/40"
+                      }`}>
                         {item.status}
                       </span>
                     </div>
@@ -1458,134 +1316,84 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                 );
               })}
               {history.length === 0 && (
-                <p className="py-6 text-center text-xs text-slate-500 dark:text-slate-400">No petitions recorded yet.</p>
+                <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">No petitions recorded yet.</p>
               )}
             </div>
           </div>
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white to-slate-50 dark:from-slate-950 dark:to-emerald-950/20 border border-slate-200/70 dark:border-slate-800/70 shadow-lg">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white via-white to-slate-50 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950/20 border border-slate-200/70 dark:border-slate-800/70 shadow-lg shadow-slate-900/[0.03]">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
-          <div className="relative p-5 space-y-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 shadow-md ring-1 ring-amber-300/50">
-                <Bell className="w-3.5 h-3.5 text-white" />
+          <div className="relative p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg shadow-amber-900/25 ring-1 ring-amber-300/50">
+                <Bell className="w-4 h-4 text-white" />
               </div>
               <div>
-                <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-amber-700/80 dark:text-amber-300/70">Herald</p>
-                <h4 className="font-serif text-base font-bold text-slate-900 dark:text-white">Notifications</h4>
+                <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-amber-700/80 dark:text-amber-300/70">Herald</p>
+                <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Notifications</h4>
               </div>
             </div>
-            <ul className="space-y-2">
-              {notificationsQuery.isLoading ? (
-                <li className="py-4 text-center text-xs text-slate-400 dark:text-slate-500 animate-pulse">Loading notifications…</li>
-              ) : notificationsQuery.data && notificationsQuery.data.length > 0 ? (
-                notificationsQuery.data.slice(0, 6).map((n) => (
-                  <li
-                    key={n.id}
-                    onClick={() => { if (!n.isRead) markNotificationRead.mutate({ notificationId: n.id }); }}
-                    className={"flex items-start gap-2 text-xs rounded-lg px-2 -mx-2 py-1.5 transition-colors cursor-pointer " + (n.isRead ? "text-slate-500 dark:text-slate-400" : "text-slate-900 dark:text-white bg-emerald-50/50 dark:bg-emerald-900/10 hover:bg-emerald-50/80 dark:hover:bg-emerald-900/20")}
-                  >
-                    <div className={"flex items-center justify-center h-4 w-4 rounded-full ring-1 shrink-0 mt-0.5 " + (n.isRead ? "bg-slate-100 dark:bg-slate-800 ring-slate-200 dark:ring-slate-700" : "bg-emerald-100 dark:bg-emerald-900/30 ring-emerald-200/70 dark:ring-emerald-800/40")}>
-                      {n.isRead ? <CheckCircle2 className="w-2.5 h-2.5 text-slate-400 dark:text-slate-500" /> : <Bell className="w-2.5 h-2.5 text-emerald-700 dark:text-emerald-300" />}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold truncate">{n.title}</p>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{n.message}</p>
-                    </div>
-                    {!n.isRead && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0 mt-1" />}
-                  </li>
-                ))
-              ) : (
-                <li className="py-4 text-center text-xs text-slate-400 dark:text-slate-500">No notifications yet.</li>
-              )}
+            <ul className="space-y-2.5">
+              {[
+                "Eligibility updates",
+                "Request submitted",
+                "Broadcast status",
+                "Contribution confirmation",
+                "Countdown expiry alerts",
+              ].map((t, i) => (
+                <li key={i} className="flex items-center gap-2.5 text-sm text-slate-700 dark:text-slate-300 rounded-lg hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10 px-2 -mx-2 py-1 transition-colors">
+                  <div className="flex items-center justify-center h-5 w-5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 ring-1 ring-emerald-200/70 dark:ring-emerald-800/40 shrink-0">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-700 dark:text-emerald-300" />
+                  </div>
+                  <span>{t}</span>
+                </li>
+              ))}
             </ul>
           </div>
         </div>
       </div>
 
-      {/* ── WHAT HAPPENS NEXT + COMMUNICATION ── */}
-      <div className="grid lg:grid-cols-2 gap-4 items-start">
+      {/* ═══════════════════════ WHAT HAPPENS NEXT + COMMUNICATION (side-by-side) ═══════════════════════ */}
+      <div className="grid lg:grid-cols-2 gap-5 items-start">
       {/* ── WHAT HAPPENS NEXT ── */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-900/40 dark:via-slate-950 dark:to-emerald-950/20 border border-slate-200/70 dark:border-slate-800/70 shadow-lg">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-white to-emerald-50/40 dark:from-slate-900/40 dark:via-slate-950 dark:to-emerald-950/20 border border-slate-200/70 dark:border-slate-800/70 shadow-lg">
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
-        <div className="relative p-5">
-          <div className="flex items-center gap-2.5 mb-4">
-            <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-gradient-to-br from-emerald-700 to-emerald-900 shadow-md ring-1 ring-amber-300/25">
-              <ScrollText className="w-3.5 h-3.5 text-amber-300" />
+        <div className="relative p-6 sm:p-8">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-700 to-emerald-900 shadow-lg shadow-emerald-900/30 ring-1 ring-amber-300/25">
+              <ScrollText className="w-4 h-4 text-amber-300" />
             </div>
             <div>
-              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">The Rite</p>
-              <h4 className="font-serif text-base font-bold text-slate-900 dark:text-white">What Happens Next</h4>
+              <p className="text-[10px] uppercase tracking-[0.3em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">The Rite</p>
+              <h4 className="font-serif text-lg font-bold text-slate-900 dark:text-white">What Happens Next</h4>
             </div>
           </div>
 
-          <div className="grid md:grid-cols-4 gap-2.5">
+          <div className="grid md:grid-cols-4 gap-3">
             {[
               { title: "Submit", desc: "Send request with purpose and amount." },
               { title: "Approval", desc: "Management reviews and approves." },
               { title: "Broadcast", desc: "48h window to raise threshold." },
               { title: "Payout", desc: "Admin releases held funds to the recipient." },
             ].map((step, idx) => (
-              <div key={step.title} className="group relative overflow-hidden rounded-lg border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/80 p-3 hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors">
+              <div key={step.title} className="group relative overflow-hidden rounded-xl border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-950/80 p-4 hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors">
                 <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-400 to-amber-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-gradient-to-br from-emerald-600 to-emerald-800 text-white text-[10px] font-bold shadow-md ring-1 ring-amber-300/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-gradient-to-br from-emerald-600 to-emerald-800 text-white text-[11px] font-bold shadow-md shadow-emerald-900/25 ring-1 ring-amber-300/30">
                     {idx + 1}
                   </span>
-                  <p className="text-[9px] uppercase tracking-[0.18em] font-semibold text-slate-500 dark:text-slate-400">Step</p>
+                  <p className="text-[10px] uppercase tracking-[0.22em] font-semibold text-slate-500 dark:text-slate-400">Step</p>
                 </div>
-                <p className="font-serif text-sm font-bold text-slate-900 dark:text-white">{step.title}</p>
-                <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">{step.desc}</p>
+                <p className="font-serif text-lg font-bold text-slate-900 dark:text-white">{step.title}</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">{step.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* ── COMMUNICATION HISTORY ── */}
-      <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800/70 shadow-lg">
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent" />
-        <div className="relative p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-gradient-to-br from-emerald-700 to-emerald-900 shadow-md ring-1 ring-amber-300/25">
-                <Bell className="w-3.5 h-3.5 text-amber-300" />
-              </div>
-              <div>
-                <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-emerald-700/80 dark:text-emerald-300/70">Dispatch</p>
-                <h4 className="font-serif text-base font-bold text-slate-900 dark:text-white">Communication History</h4>
-              </div>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => communicationFeedQuery.refetch()} className="border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200">
-              <Bell className="w-3.5 h-3.5 mr-1.5" />
-              Refresh
-            </Button>
-          </div>
-          {communicationFeedQuery.data && communicationFeedQuery.data.length > 0 ? (
-            <div className="space-y-2">
-              {communicationFeedQuery.data.map((item) => (
-                <div key={item.id} className="flex items-start gap-2.5 rounded-lg border border-slate-100 dark:border-slate-800 p-2.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-slate-900 dark:text-white">{item.title}</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.message}</p>
-                  </div>
-                  <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 shrink-0">{new Date(item.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/30 py-6 text-center">
-              <Bell className="w-6 h-6 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
-              <p className="text-xs text-slate-500 dark:text-slate-400">No communications yet.</p>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">CSP dispatches and updates will appear here.</p>
-            </div>
-          )}
-        </div>
-      </div>
-      </div>
-
-      {/* ── CONTRIBUTE MODAL ── */}
+      {/* ═══════════════════════ CONTRIBUTE MODAL ═══════════════════════ */}
       {selectedBroadcast && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md px-4 py-6 overflow-y-auto">
           <div className="absolute inset-0" onClick={() => setSelectedBroadcast(null)} />
@@ -1641,7 +1449,11 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                           <button
                             key={w}
                             onClick={() => setContributionWallet(w)}
-                            className={"relative overflow-hidden rounded-xl border-2 px-3 py-2.5 text-xs font-semibold capitalize transition-all " + (active ? "border-emerald-500 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/40 dark:to-slate-950 shadow-md shadow-emerald-900/[0.08]" : "border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 bg-white dark:bg-slate-950/50")}
+                            className={`relative overflow-hidden rounded-xl border-2 px-3 py-2.5 text-xs font-semibold capitalize transition-all ${
+                              active
+                                ? "border-emerald-500 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/40 dark:to-slate-950 shadow-md shadow-emerald-900/[0.08]"
+                                : "border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 bg-white dark:bg-slate-950/50"
+                            }`}
                           >
                             {active && <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-400 to-amber-400" />}
                             <div className="text-slate-900 dark:text-white text-xs font-serif font-bold">
@@ -1734,6 +1546,38 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         </div>
       )}
 
+      {/* ── COMMUNICATION HISTORY ── */}
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-serif text-lg font-bold text-slate-900 dark:text-white">Communication history</h3>
+          <Button variant="outline" size="sm" onClick={() => communicationFeedQuery.refetch()} className="border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200">
+            <Bell className="w-3.5 h-3.5 mr-1.5" />
+            Refresh
+          </Button>
+        </div>
+        {communicationFeedQuery.data && communicationFeedQuery.data.length > 0 ? (
+          <div className="space-y-3">
+            {communicationFeedQuery.data.map((item) => (
+              <div key={item.id} className="flex items-start gap-3 rounded-lg border border-slate-100 dark:border-slate-800 p-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">{item.title}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{item.message}</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{new Date(item.createdAt).toLocaleString()}</p>
+                </div>
+                {!item.isRead && (
+                  <span className="inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                    New
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">No communications yet.</p>
+        )}
+      </div>
+
+      </div>
     </div>
   );
 }
