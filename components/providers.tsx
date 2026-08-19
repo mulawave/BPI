@@ -90,12 +90,12 @@ export default function Providers({ children }: { children: ReactNode }) {
         httpBatchLink({
           url: "/api/trpc",
           transformer: superjson,
-          // Add a 20-second timeout while preserving tRPC/React-Query's own
-          // cancellation signal so queries are still properly aborted on
-          // component unmount / page navigation.
+          // 10-second timeout — keeps connections from being held too long
+          // while preserving tRPC/React-Query's own cancellation signal so
+          // queries are properly aborted on component unmount / page navigation.
           fetch: (url, options) => {
             const timeoutController = new AbortController();
-            const timeoutId = setTimeout(() => timeoutController.abort(), 20000);
+            const timeoutId = setTimeout(() => timeoutController.abort(), 10000);
 
             // If tRPC/React-Query passed its own signal, forward its abort to
             // our controller too (manual signal combination for broad compat).

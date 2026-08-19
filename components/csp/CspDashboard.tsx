@@ -132,7 +132,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
   const recognitionQuery = api.csp.getMyCspRecognition.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 2 * 60 * 1000 });
   const liveStatusQuery = api.csp.getLiveStatus.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 60 * 1000 });
   const historyQuery = api.csp.listHistory.useQuery({ pageSize: 5 }, { refetchOnWindowFocus: false, retry: false, staleTime: 2 * 60 * 1000 });
-  const broadcastsQuery = api.csp.listBroadcasts.useQuery(undefined, { refetchOnWindowFocus: true, retry: false, staleTime: 60 * 1000, refetchInterval: 15 * 1000 });
+  const broadcastsQuery = api.csp.listBroadcasts.useQuery(undefined, { refetchOnWindowFocus: false, retry: false, staleTime: 60 * 1000 });
   const communicationFeedQuery = api.csp.getCommunicationFeed.useQuery(undefined, { refetchOnWindowFocus: false, staleTime: 60 * 1000 });
   const notificationsQuery = api.notification.getMyNotifications.useQuery(undefined, { refetchOnWindowFocus: false, staleTime: 60 * 1000 });
   const markNotificationRead = api.notification.markAsRead.useMutation({
