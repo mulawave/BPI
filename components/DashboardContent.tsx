@@ -74,6 +74,7 @@ import { evaluateMembershipAccess } from "@/lib/membershipAccess";
 interface DashboardContentProps {
   session: Session;
   customContent?: ReactNode;
+  hideChrome?: boolean;
 }
 
 // ProfileField Component for inline editing
@@ -266,7 +267,7 @@ const investmentDeals = [
 // Inner component — keeps ALL hooks unconditional (no early returns before hooks).
 // The outer DashboardContent wrapper handles the null-session guard so this
 // component can call every hook in a fixed, predictable order.
-function DashboardContentInner({ session, customContent }: DashboardContentProps) {
+function DashboardContentInner({ session, customContent, hideChrome }: DashboardContentProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -279,9 +280,11 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const readOnlyProfile = !!customContent;
   const isStorePage = pathname?.startsWith("/store");
-  const containerClass = `dashboard-premium min-h-screen w-full ${isStorePage
-    ? "bg-gradient-to-br from-amber-100 via-orange-200 to-amber-300 dark:from-amber-200 dark:via-orange-300 dark:to-amber-400"
-    : "bg-bpi-gradient-light dark:bg-bpi-gradient-dark"}`;
+  const containerClass = hideChrome
+    ? "min-h-screen w-full"
+    : `dashboard-premium min-h-screen w-full ${isStorePage
+      ? "bg-gradient-to-br from-amber-100 via-orange-200 to-amber-300 dark:from-amber-200 dark:via-orange-300 dark:to-amber-400"
+      : "bg-bpi-gradient-light dark:bg-bpi-gradient-dark"}`;
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const { theme, toggleTheme } = useTheme();
@@ -1508,7 +1511,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
       {/* Mobile: single base container; desktop: structured containers */}
       <div>
-        {/* Extended Header with BPI Theme */}
+        {!hideChrome && (
         <header className="bg-white/80 dark:bg-bpi-dark-card/80 backdrop-blur-md border-b border-bpi-border dark:border-bpi-dark-accent shadow-sm sticky top-0 z-40">
           <div className="w-full px-3 sm:px-4 lg:px-6 py-3 sm:py-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -1634,14 +1637,15 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
 
           </div>
         </header>
+        )}
 
         {/* Main Dashboard */}
-        <main className="w-full py-5 sm:py-8 px-3 sm:px-4 lg:px-6 pb-24 sm:pb-8 relative">
+        <main className={`w-full py-5 sm:py-8 px-3 sm:px-4 lg:px-6 pb-24 sm:pb-8 relative ${hideChrome ? 'premium-dashboard' : ''}`}>
         {/* KYC Warning Banner */}
         <KycWarningBanner />
         {customContent ? (
           <div className="grid grid-cols-1 md:grid-cols-12 gap-2 lg:gap-3 relative items-start">
-            <div className="hidden lg:block lg:col-span-1">{sidebarNav()}</div>
+            {!hideChrome && <div className="hidden lg:block lg:col-span-1">{sidebarNav()}</div>}
             <div className="hidden md:block md:col-span-12 lg:col-span-2">
               <div className={`bg-white dark:bg-bpi-dark-card rounded-2xl p-3 sm:p-4 shadow-lg dark:shadow-none mb-3`}>
                 {/* Reuse the same profile card but with read-only safeguards */}
@@ -1814,7 +1818,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
             </>
           )}
           
-          <div className="hidden lg:block lg:col-span-1">{sidebarNav()}</div>
+          {!hideChrome && <div className="hidden lg:block lg:col-span-1">{sidebarNav()}</div>}
 
           {/* User Profile Column */}
           <div className="col-span-12 lg:col-span-3 flex flex-col gap-3 h-full">
@@ -2680,7 +2684,12 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
               mobileOnly
             >
             {/* Hero - Portfolio Value Card */}
-            <Card className="p-6 mb-6 bg-gradient-to-br from-bpi-primary to-amber-800 text-white border-0 shadow-xl">
+            <Card className="relative overflow-hidden p-6 mb-6 border border-emerald-700/40 shadow-xl shadow-emerald-950/50 rounded-2xl">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#04231a] via-[#0a3d2b] to-[#062818]" />
+              <div className="absolute -top-32 -left-24 w-[28rem] h-[28rem] rounded-full bg-emerald-500/25 blur-3xl" />
+              <div className="absolute -bottom-24 -right-16 w-[26rem] h-[26rem] rounded-full bg-amber-400/15 blur-3xl" />
+              <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-300/70 to-transparent" />
+              <div className="relative text-white">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
@@ -2821,6 +2830,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                   <span className="text-xs font-medium">Auto-Debit</span>
                 </button>
               </div>
+              </div>
             </Card>
             </CollapsibleSection>
 
@@ -2838,9 +2848,13 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
             <div id="wallets-section" className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               {/* BPI Token */}
               <Card 
-                className="p-4 hover:shadow-md transition-shadow border-l-4 border-l-yellow-500 bg-gradient-to-br from-yellow-50 to-yellow-100/50 dark:from-yellow-900/10 dark:to-yellow-800/5 cursor-pointer"
+                className="group relative overflow-hidden p-4 hover:shadow-md transition-shadow cursor-pointer rounded-2xl border border-emerald-700/40 shadow-lg shadow-emerald-950/30"
                 onClick={() => setIsBptTimelineOpen(true)}
               >
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-emerald-950/30 to-slate-950" />
+                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/40 to-transparent" />
+                <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-amber-400/10 blur-2xl group-hover:bg-amber-400/20 transition-colors" />
+                <div className="relative">
                 <div className="flex items-start justify-between mb-3">
                   <div className="w-10 h-10 bg-yellow-500/10 rounded-lg flex items-center justify-center">
                     <Coins className="w-5 h-5 text-yellow-600 dark:text-yellow-500" />
@@ -2852,21 +2866,26 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                     <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full">Low</span>
                   )}
                 </div>
-                <h3 className="font-semibold text-foreground mb-1">BPI Token</h3>
-                <p className="text-xl font-bold text-yellow-600 dark:text-yellow-500 mb-1">
+                <h3 className="font-semibold text-white mb-1">BPI Token</h3>
+                <p className="text-xl font-bold text-amber-400 mb-1">
                   {showBalances ? `${((dashboardData?.wallets.primary.bpiToken as any)?.balanceInBpt ?? 0).toFixed(2)} BPT` : '••••••'}
                 </p>
                 <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                   <Clock className="w-3 h-3" />
                   <span>Click to view timeline</span>
                 </div>
+                </div>
               </Card>
 
               {/* Main Wallet */}
               <Card 
-                className="p-4 hover:shadow-md transition-shadow border-l-4 border-l-bpi-primary bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-900/10 dark:to-green-800/5 cursor-pointer"
+                className="group relative overflow-hidden p-4 hover:shadow-md transition-shadow cursor-pointer rounded-2xl border border-emerald-700/40 shadow-lg shadow-emerald-950/30"
                 onClick={() => setIsWalletTimelineOpen(true)}
               >
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-emerald-950/30 to-slate-950" />
+                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent" />
+                <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-emerald-400/10 blur-2xl group-hover:bg-emerald-400/20 transition-colors" />
+                <div className="relative">
                 <div className="flex items-start justify-between mb-3">
                   <div className="w-10 h-10 bg-bpi-primary/10 rounded-lg flex items-center justify-center">
                     <Wallet className="w-5 h-5 text-bpi-primary" />
@@ -2878,25 +2897,30 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                     <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full">Low</span>
                   )}
                 </div>
-                <h3 className="font-semibold text-foreground mb-1">Main Wallet</h3>
-                <p className="text-xl font-bold text-bpi-primary mb-1">
+                <h3 className="font-semibold text-white mb-1">Main Wallet</h3>
+                <p className="text-xl font-bold text-emerald-400 mb-1">
                   {formatBalance(dashboardData?.wallets.primary.main.balance || 0)}
                 </p>
                 <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                   <Clock className="w-3 h-3" />
                   <span>Click to view timeline</span>
                 </div>
+                </div>
               </Card>
 
               {/* Palliative Wallet */}
-              <Card className="p-4 hover:shadow-md transition-shadow border-l-4 border-l-green-700 bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-900/10 dark:to-green-800/5">
+              <Card className="group relative overflow-hidden p-4 hover:shadow-md transition-shadow rounded-2xl border border-emerald-700/40 shadow-lg shadow-emerald-950/30">
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-emerald-950/30 to-slate-950" />
+                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent" />
+                <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-emerald-400/10 blur-2xl group-hover:bg-emerald-400/20 transition-colors" />
+                <div className="relative">
                 <div className="flex items-start justify-between mb-3">
                   <div className="w-10 h-10 bg-green-700/10 rounded-lg flex items-center justify-center">
                     <Shield className="w-5 h-5 text-green-700 dark:text-green-600" />
                   </div>
                 </div>
-                <h3 className="font-semibold text-foreground mb-1">Palliative Wallet</h3>
-                <p className="text-xl font-bold text-green-700 dark:text-green-600 mb-1">
+                <h3 className="font-semibold text-white mb-1">Palliative Wallet</h3>
+                <p className="text-xl font-bold text-emerald-400 mb-1">
                   {formatBalance(dashboardData?.wallets.community?.find((w: any) => w.id === 'palliative')?.balance || 0)}
                 </p>
                 <button
@@ -2913,20 +2937,25 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                     </p>
                   </div>
                 )}
+                </div>
               </Card>
 
               {/* Taxes */}
               <Card 
-                className="p-4 hover:shadow-md transition-shadow border-l-4 border-l-emerald-500 cursor-pointer bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-900/10 dark:to-emerald-800/5"
+                className="group relative overflow-hidden p-4 hover:shadow-md transition-shadow cursor-pointer rounded-2xl border border-emerald-700/40 shadow-lg shadow-emerald-950/30"
                 onClick={() => setShowTaxesModal(true)}
               >
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-emerald-950/30 to-slate-950" />
+                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent" />
+                <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-emerald-400/10 blur-2xl group-hover:bg-emerald-400/20 transition-colors" />
+                <div className="relative">
                 <div className="flex items-start justify-between mb-3">
                   <div className="w-10 h-10 bg-emerald-500/10 rounded-lg flex items-center justify-center">
                     <FileText className="w-5 h-5 text-emerald-600 dark:text-emerald-500" />
                   </div>
                 </div>
-                <h3 className="font-semibold text-foreground mb-1">Taxes</h3>
-                <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400 mb-1">
+                <h3 className="font-semibold text-white mb-1">Taxes</h3>
+                <p className="text-xl font-bold text-emerald-400 mb-1">
                   {formatBalance(totalTaxes || 0)}
                 </p>
                 <button
@@ -2935,6 +2964,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
                   <span>View History</span>
                   <ChevronRight className="w-3 h-3" />
                 </button>
+                </div>
               </Card>
             </div>
 
@@ -5142,7 +5172,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
       />
 
       {/* Footer */}
-      <Footer
+      {!hideChrome && <Footer
         onModalOpen={(modalName) => {
           switch(modalName) {
             case 'calculator':
@@ -5168,9 +5198,10 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
           }
         }}
       />
+      }
 
       {/* Mobile Bottom Navigation */}
-      <MobileBottomNav 
+      {!hideChrome && <MobileBottomNav 
         unreadNotifications={notifications?.filter((n: any) => !n.isRead).length || 0}
         onWalletClick={() => {
           // Scroll to wallets section
@@ -5180,6 +5211,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
           }
         }}
       />
+      }
     </div>
     </div>
   );
@@ -5191,7 +5223,7 @@ function DashboardContentInner({ session, customContent }: DashboardContentProps
  * hooks ordering clean: the null-check lives here with NO hooks, so
  * DashboardContentInner can call all its hooks unconditionally).
  */
-export default function DashboardContent({ session, customContent }: DashboardContentProps) {
+export default function DashboardContent({ session, customContent, hideChrome }: DashboardContentProps) {
   if (!session?.user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -5201,5 +5233,5 @@ export default function DashboardContent({ session, customContent }: DashboardCo
       </div>
     );
   }
-  return <DashboardContentInner session={session} customContent={customContent} />;
+  return <DashboardContentInner session={session} customContent={customContent} hideChrome={hideChrome} />;
 }

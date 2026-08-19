@@ -4,15 +4,19 @@ import { Session } from "next-auth";
 import Link from "next/link";
 import { useState, useEffect, useCallback, useRef, ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/client/trpc";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useCurrency } from "@/contexts/CurrencyContext";
 import {
   Home, BookOpen, LifeBuoy, Store, User, GraduationCap,
   Crown, Trophy, Moon, Sun, Loader2, LogOut, Settings, Wallet, Gem,
+  RefreshCw, ChevronDown, Calendar,
 } from "lucide-react";
 import { AiOutlineRobot } from "react-icons/ai";
 import { signOut } from "next-auth/react";
 import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
+import toast from "react-hot-toast";
 import Footer from "@/components/Footer";
 
 function formatAmountShort(v: number): string {
@@ -21,7 +25,7 @@ function formatAmountShort(v: number): string {
   return String(v);
 }
 
-interface CspShellProps {
+interface DashboardShellProps {
   session: Session;
   children: ReactNode;
 }
@@ -38,13 +42,18 @@ const navItems = [
   { href: "/settings", label: "Account", icon: User },
 ];
 
-export default function CspShell({ session, children }: CspShellProps) {
+export default function DashboardShell({ session, children }: DashboardShellProps) {
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   const { theme, toggleTheme } = useTheme();
+  const { selectedCurrency, currencies, setSelectedCurrencyId } = useCurrency();
   const [navLoadingHref, setNavLoadingHref] = useState<string | null>(null);
   const [scrolled, setScrolled] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
   const [profileOpen, setProfileOpen] = useState(false);
+  const [currencyOpen, setCurrencyOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+  const currencyRef = useRef<HTMLDivElement>(null);
 
   const { data: userDetails } = api.user.getDetails.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
@@ -64,6 +73,7 @@ export default function CspShell({ session, children }: CspShellProps) {
     const t = setTimeout(() => setNavLoadingHref(null), 12000);
     return () => clearTimeout(t);
   }, [navLoadingHref]);
+  useEffect(() => { const t = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(t); }, []);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -74,16 +84,24 @@ export default function CspShell({ session, children }: CspShellProps) {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
       }
+      if (currencyRef.current && !currencyRef.current.contains(e.target as Node)) {
+        setCurrencyOpen(false);
+      }
     };
-    if (profileOpen) document.addEventListener("mousedown", handleClickOutside);
+    if (profileOpen || currencyOpen) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [profileOpen]);
+  }, [profileOpen, currencyOpen]);
 
   const profile = userDetails as any;
   const membershipName = profile?.activeMembership?.name ?? "No Membership";
   const walletBalance = profile?.wallet ?? 0;
   const tierName = profile?.rank ?? "—";
   const profileImage = profile?.image || profile?.profilePic || null;
+
+  const handleRefresh = () => {
+    queryClient.invalidateQueries();
+    toast.success("Dashboard refreshed!");
+  };
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-slate-950 via-emerald-950/40 to-slate-950 transition-colors duration-500">
@@ -96,9 +114,10 @@ export default function CspShell({ session, children }: CspShellProps) {
               </div>
               <div className="hidden sm:block">
                 <span className="font-serif text-lg font-bold text-slate-900 dark:text-white">BPI</span>
-                <span className="ml-1.5 text-[10px] uppercase tracking-[0.2em] font-semibold text-emerald-600 dark:text-emerald-400">CSP</span>
+                <span className="ml-1.5 text-[10px] uppercase tracking-[0.2em] font-semibold text-emerald-600 dark:text-emerald-400">Dashboard</span>
               </div>
             </Link>
+
             <nav className="hidden lg:flex items-center gap-0.5">
               {navItems.map((item) => {
                 const active = isActive(item.href);
@@ -112,10 +131,48 @@ export default function CspShell({ session, children }: CspShellProps) {
                 );
               })}
             </nav>
+
             <div className="flex items-center gap-3">
-              <button onClick={toggleTheme} className="flex items-center justify-center h-9 w-9 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label="Toggle theme">
+              <div className="hidden xl:flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                <Calendar className="w-3.5 h-3.5" />
+                <span className="font-medium">{currentTime.toLocaleDateString()}</span>
+                <span className="font-mono tabular-nums tracking-tight">{currentTime.toLocaleTimeString()}</span>
+              </div>
+              <button onClick={handleRefresh} className="flex items-center justify-center h-9 w-9 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label="Refresh data">
+                <RefreshCw className="w-4 h-4" />
+              </button>
+
+              <button onClick={toggleTheme} className="flex items-center justify-center h-9 w-9 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label="Toggle theme">
                 {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
+
+              <div ref={currencyRef} className="relative hidden sm:block">
+                <button
+                  onClick={() => setCurrencyOpen((v) => !v)}
+                  className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <span>{selectedCurrency?.symbol || "NGN"}</span>
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                {currencyOpen && (
+                  <div className="absolute right-0 top-11 w-40 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-emerald-800/40 shadow-2xl dark:shadow-emerald-950/50 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="h-1 bg-gradient-to-r from-emerald-500 via-amber-400 to-emerald-500" />
+                    <div className="p-1.5 max-h-60 overflow-y-auto">
+                      {currencies?.map((currency) => (
+                        <button
+                          key={currency.id}
+                          onClick={() => { setSelectedCurrencyId(currency.id); setCurrencyOpen(false); }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${selectedCurrency?.id === currency.id ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+                        >
+                          <span className="font-mono">{currency.sign}</span>
+                          <span>{currency.symbol}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div ref={profileRef} className="relative">
                 <button
                   onClick={() => setProfileOpen((v) => !v)}
@@ -160,7 +217,7 @@ export default function CspShell({ session, children }: CspShellProps) {
                         <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-2.5">
                           <div className="flex items-center gap-1.5 mb-1">
                             <Gem className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                            <p className="text-[9px] uppercase tracking-wider font-semibold text-slate-500 dark:text-slate-400">Tier</p>
+                            <p className="text-[9px] uppercase tracking-wider font-semibold text-slate-500 dark:text-slate-400">Rank</p>
                           </div>
                           <p className="text-xs font-bold text-slate-900 dark:text-white">{tierName}</p>
                         </div>
@@ -183,6 +240,7 @@ export default function CspShell({ session, children }: CspShellProps) {
           </div>
         </div>
       </header>
+
       <nav className="lg:hidden sticky top-16 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800/60">
         <div className="flex items-center gap-1 overflow-x-auto px-3 py-2 no-scrollbar">
           {navItems.map((item) => {
@@ -197,6 +255,7 @@ export default function CspShell({ session, children }: CspShellProps) {
           })}
         </div>
       </nav>
+
       <main className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 py-6 pb-0">
         {children}
       </main>

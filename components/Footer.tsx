@@ -31,7 +31,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
   };
 
   return (
-    <footer className="site-footer relative bg-gradient-to-br from-green-950 via-bpi-dark-card to-emerald-950 text-gray-300 mt-16">
+    <footer className="site-footer relative bg-gradient-to-br from-green-950 via-bpi-dark-card to-emerald-950 text-gray-300">
       {/* Decorative Top Wave */}
       <div className="absolute top-0 left-0 w-full overflow-hidden leading-none">
         <svg className="relative block w-full h-12" viewBox="0 0 1200 120" preserveAspectRatio="none">
@@ -42,7 +42,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
         </svg>
       </div>
 
-      <div className="w-full px-3 sm:px-4 lg:px-6 pt-20 pb-8">
+      <div className="w-full px-3 sm:px-4 lg:px-6 pt-20 pb-6">
         {/* Main Footer Content */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
           
@@ -119,7 +119,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
         </div>
 
         {/* Divider */}
-        <div className="border-t border-green-800/30 mb-8"></div>
+        <div className="border-t border-green-800/30 mb-4"></div>
 
         {/* Bottom Footer */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm">
@@ -138,7 +138,7 @@ export default function Footer({ onModalOpen }: FooterProps) {
         </div>
 
         {/* Trust Badges */}
-        <div className="flex flex-wrap items-center justify-center gap-6 mt-8 pt-8 border-t border-green-800/30">
+        <div className="flex flex-wrap items-center justify-center gap-6 mt-4 pt-4 border-t border-green-800/30">
           <div className="flex items-center gap-2 text-gray-500 text-xs">
             <Shield className="w-4 h-4 text-green-500" />
             <span>Secure Platform</span>

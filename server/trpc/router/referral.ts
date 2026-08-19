@@ -62,10 +62,23 @@ export const referralRouter = createTRPCRouter({
     const activereferrals = level1Referrals.filter(r => r.status === 'active').length;
     const paidreferrals = level1Referrals.filter(r => r.rewardPaid).length;
 
+    const referralTxTypes = [
+      'REFERRAL_CASH_L1', 'REFERRAL_CASH_L2', 'REFERRAL_CASH_L3', 'REFERRAL_CASH_L4',
+      'REFERRAL_PALLIATIVE_L1', 'REFERRAL_PALLIATIVE_L2', 'REFERRAL_PALLIATIVE_L3', 'REFERRAL_PALLIATIVE_L4',
+      'REFERRAL_CASHBACK_L1', 'REFERRAL_CASHBACK_L2', 'REFERRAL_CASHBACK_L3', 'REFERRAL_CASHBACK_L4',
+      'REFERRAL_BPT_L1', 'REFERRAL_BPT_L2', 'REFERRAL_BPT_L3', 'REFERRAL_BPT_L4',
+    ];
+    const earningsTx = await ctx.prisma.transaction.findMany({
+      where: { userId, transactionType: { in: referralTxTypes } },
+      select: { amount: true }
+    });
+    const totalEarnings = earningsTx.reduce((sum, t) => sum + t.amount, 0);
+
     return {
       totalreferrals,
       activereferrals,
       paidreferrals,
+      totalEarnings,
       level2Count: level2Referrals.length,
       level3Count: level3Referrals.length,
       level4Count: level4Referrals.length,

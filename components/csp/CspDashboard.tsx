@@ -418,7 +418,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
               </div>
 
               <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold leading-[1.05] text-white tracking-tight">
-                Request &amp; Steward{" "}
+                BPI{" "}
                 <span className="bg-gradient-to-r from-amber-200 via-amber-300 to-amber-500 bg-clip-text text-transparent">
                   Community Support
                 </span>
@@ -514,7 +514,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
           <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-emerald-400/10 blur-2xl group-hover:bg-emerald-400/20 transition-colors" />
           <div className="relative p-4 flex items-center justify-between">
             <div>
-              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-emerald-700/70 dark:text-emerald-300/60">Cash Treasury</p>
+              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-emerald-700/70 dark:text-emerald-300/60">Cash Wallet</p>
               <p className="mt-1.5 font-serif text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                 {formatAmount(balances.cash)}
               </p>
@@ -532,7 +532,7 @@ export function CspDashboard({ userName }: CspDashboardProps) {
           <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-amber-400/10 blur-2xl group-hover:bg-amber-400/20 transition-colors" />
           <div className="relative p-4 flex items-center justify-between">
             <div>
-              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-amber-700/80 dark:text-amber-300/70">Community Coffers</p>
+              <p className="text-[9px] uppercase tracking-[0.25em] font-semibold text-amber-700/80 dark:text-amber-300/70">Community Wallet</p>
               <p className="mt-1.5 font-serif text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                 {formatAmount(balances.community)}
               </p>

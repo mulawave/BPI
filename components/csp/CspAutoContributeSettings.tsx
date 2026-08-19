@@ -169,7 +169,7 @@ export default function CspAutoContributeSettings() {
                 </div>
                 <div className="text-[11px] text-slate-700 dark:text-slate-300 space-y-1 leading-relaxed">
                   <p>
-                    Draws from <strong className="text-emerald-700 dark:text-emerald-300">Community Coffers</strong> to serve up to 10 active CSP requests in fair round-robin order.
+                    Draws from <strong className="text-emerald-700 dark:text-emerald-300">Community Wallet</strong> to serve up to 10 active CSP requests in fair round-robin order.
                   </p>
                   <p>
                     Pauses automatically if wallet runs dry. Re-enable once balance is restored.
