@@ -283,6 +283,22 @@ export default function PremiumDashboard({ session }: PremiumDashboardProps) {
               <Button variant="outline" size="sm" onClick={() => setIsTransferModalOpen(true)} className="rounded-xl border-amber-300/30 bg-white/10 text-amber-100 hover:bg-white/15 hover:shadow-md ring-1 ring-amber-300/20"><RefreshCw className="w-3.5 h-3.5 mr-1.5" />Transfer</Button>
             </div>
           </div>
+          {/* AUTO_DEBIT_BUTTON */}
+          <div className="mt-4 mb-6 flex justify-start">
+            <button
+              onClick={() => router.push('/wallet/settings')}
+              className="inline-flex items-center gap-3 rounded-xl border border-amber-300/30 bg-gradient-to-r from-amber-500/15 to-emerald-500/15 hover:from-amber-500/25 hover:to-emerald-500/25 px-4 py-3 transition-all ring-1 ring-amber-300/20 group"
+            >
+              <div className="w-8 h-8 rounded-lg bg-amber-400/20 flex items-center justify-center ring-1 ring-amber-300/30">
+                <Settings className="w-4 h-4 text-amber-300" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-bold text-amber-100">Auto-Debit Settings</p>
+                <p className="text-[10px] text-amber-200/60">Configure automatic deductions & scheduled payments</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-amber-300/60 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          </div>
           {/* HERO_STATS */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[

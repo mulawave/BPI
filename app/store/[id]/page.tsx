@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/server/auth";
 import { prisma } from "@/lib/prisma";
-import DashboardShell from "@/components/layout/DashboardShell";
+import StoreShell from "@/components/store/StoreShell";
 import StoreDetailClient from "../../../components/store/StoreDetailClient";
 
 const mapRewardConfig = (rc?: any) => {
@@ -25,6 +25,8 @@ const mapProduct = (dbProduct: any) => {
     product_id: dbProduct.id,
     name: dbProduct.name,
     description: dbProduct.description,
+    vendor: dbProduct.vendor ?? null,
+    category: dbProduct.category ?? null,
     product_type: dbProduct.productType?.toLowerCase?.() ?? dbProduct.productType,
     pricing_mode: dbProduct.pricingMode?.toLowerCase?.() ?? dbProduct.pricingMode ?? "fiat",
     base_price_fiat: Number(dbProduct.basePriceFiat ?? 0),
@@ -50,7 +52,7 @@ export const dynamic = "force-dynamic";
 
 export default async function StoreDetailPage({ params }: { params: { id: string } }) {
   const session = await auth();
-  
+
   if (!session?.user) {
     redirect("/login");
   }
@@ -65,8 +67,8 @@ export default async function StoreDetailPage({ params }: { params: { id: string
   if (!product || product.status !== "active") return notFound();
 
   return (
-    <DashboardShell session={session}>
+    <StoreShell session={session}>
       <StoreDetailClient product={product} />
-    </DashboardShell>
+    </StoreShell>
   );
 }

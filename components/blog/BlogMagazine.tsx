@@ -62,7 +62,7 @@ export default function BlogMagazine() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <div className="h-7 w-1 rounded-full bg-gradient-to-b from-emerald-500 to-amber-400" />
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">News &amp; Insights</h2>
+            <h2 className="text-2xl font-bold text-white dark:text-white">News &amp; Insights</h2>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 ml-3">Corporate news, community stories, and industry analysis from BPI</p>
         </div>

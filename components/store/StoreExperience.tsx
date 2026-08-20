@@ -1,671 +1,671 @@
 "use client";
 
-import { useMemo, useState, useRef, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import {
+  Search,
+  Filter,
+  Grid3x3,
+  List,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+  Shield,
+  Coins,
+  Gift,
+  CreditCard,
+  Wallet,
+  X,
+  TrendingUp,
+  Package,
+  ArrowRight,
+} from "lucide-react";
+import { api } from "@/client/trpc";
+import ProductCard, { formatProductPrice } from "./ProductCard";
 import type { AppRouter } from "@/server/trpc/router/_app";
 import type { inferRouterOutputs } from "@trpc/server";
+import { cn } from "@/lib/utils";
+
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type Product = RouterOutputs["store"]["listProducts"][number];
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { Sparkles, Filter, ArrowRight, Shield, Coins, Percent, CheckCircle2, MapPin, Gift, Wallet, CreditCard, Star, ChevronLeft, ChevronRight, ShoppingCart, Loader2 } from "lucide-react";
-import { api } from "@/client/trpc";
-import toast from "react-hot-toast";
 
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(value);
+type SortOption = "newest" | "price-low" | "price-high" | "featured";
+type ViewMode = "grid" | "list";
 
-const formatProductPrice = (product: Product): string => {
-  const mode = String((product as any).pricing_mode ?? "fiat").toLowerCase();
-  if (mode === "token_unit") {
-    const symbol = String((product as any).token_unit_symbol ?? "").toUpperCase();
-    const amount = Number((product as any).token_unit_amount ?? 0);
-    if (symbol && Number.isFinite(amount) && amount > 0) return `${amount} ${symbol}`;
-    return "Token-unit";
-  }
-  return formatCurrency(product.base_price_fiat);
-};
+const PRODUCT_TYPES = [
+  { label: "All Products", value: "all" },
+  { label: "Physical", value: "physical" },
+  { label: "Digital", value: "digital" },
+  { label: "License", value: "license" },
+  { label: "Service", value: "service" },
+  { label: "Utility", value: "utility" },
+];
 
-function RatingStars({ rating }: { rating: number }) {
-  return (
-    <div className="flex items-center gap-1">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <Star
-          key={i}
-          className={cn(
-            "h-3.5 w-3.5",
-            i < Math.floor(rating) ? "fill-amber-400 text-amber-400" : "text-gray-300 dark:text-white/40"
-          )}
-        />
-      ))}
-      <span className="ml-1 text-xs font-medium text-muted-foreground">{rating.toFixed(1)}</span>
-    </div>
-  );
-}
+const SORT_OPTIONS: { label: string; value: SortOption }[] = [
+  { label: "Newest", value: "newest" },
+  { label: "Price: Low to High", value: "price-low" },
+  { label: "Price: High to Low", value: "price-high" },
+  { label: "Featured", value: "featured" },
+];
 
-function FeaturedCarouselCard({ product, detailLoading, onViewDetails }: { product: Product; detailLoading: string | null; onViewDetails: (product: Product) => void; }) {
-  const productTypeLabel = product.product_type.charAt(0).toUpperCase() + product.product_type.slice(1);
-  
-  return (
-    <div className="group snap-center flex flex-col bg-white dark:bg-bpi-dark-card rounded-2xl overflow-hidden border border-border/40 dark:border-bpi-dark-accent/40 shadow-lg hover:shadow-2xl dark:shadow-xl dark:hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
-      {/* Image Section - Row 1 */}
-      <div className="relative aspect-[16/10] overflow-hidden bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/50 dark:to-emerald-900/30">
-        <img
-          src={product.images?.[0] || "/img/default.jpg"}
-          alt={product.name}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-          onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            target.src = "/img/default.jpg";
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-60" />
-        
-        {/* Badges Overlay on Image */}
-        <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center gap-2">
-          {product.hero_badge && (
-            <span className="inline-block px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full bg-emerald-600 text-white shadow-md">
-              {product.hero_badge}
-            </span>
-          )}
-          <Badge variant="outline" className="bg-white/90 dark:bg-bpi-dark-card/80 text-gray-700 dark:text-white/90 backdrop-blur-sm text-[10px] uppercase">
-            {productTypeLabel}
-          </Badge>
-        </div>
-
-        {/* Inventory Badge */}
-        {product.inventory_type === "limited" && (
-          <div className="absolute bottom-3 left-3">
-            <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-semibold uppercase rounded-full bg-amber-600 text-white shadow-md">
-              <Sparkles className="h-3 w-3" /> Limited
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Content Section - Rows 2-4 */}
-      <div className="flex flex-col flex-1 p-4 sm:p-5">
-        {/* Product Name (Title) - Row 2 */}
-        <h4 className="text-base sm:text-lg font-bold leading-tight line-clamp-2 text-foreground mb-2 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-          {product.name}
-        </h4>
-        
-        {/* Product Type (Subtitle) & Rating - Row 3 */}
-        <div className="flex items-center justify-between mb-3 pb-3 border-b border-border/50">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{productTypeLabel}</span>
-          {product.rating && <RatingStars rating={product.rating} />}
-        </div>
-
-        {/* Product Brief (Body) - Row 4 */}
-        <p className="text-sm text-muted-foreground line-clamp-3 mb-4 flex-1">
-          {product.description}
-        </p>
-
-        {/* Token Limits */}
-        <div className="flex flex-wrap gap-1 mb-3">
-          {product.accepted_tokens.slice(0, 2).map((t: string) => (
-            <span key={t} className="inline-flex items-center gap-1 text-[10px] rounded-full bg-foreground/5 px-2 py-1 text-muted-foreground">
-              <Coins className="h-3 w-3" /> {t}
-            </span>
-          ))}
-        </div>
-
-        {/* Amount & See Details Button - Row 5 */}
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-xs text-muted-foreground">From</div>
-            <div className="text-xl font-bold text-foreground">{formatProductPrice(product)}</div>
-          </div>
-          <Button
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:shadow-lg transition-all duration-200"
-            onClick={() => onViewDetails(product)}
-            disabled={detailLoading === product.product_id}
-          >
-            {detailLoading === product.product_id ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Loading...
-              </span>
-            ) : (
-              <>
-                See Details
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RewardChips({ product }: { product: Product }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {product.reward_config.map((reward: Product["reward_config"][number]) => {
-        const label = `${reward.reward_value}${reward.reward_value_type === "PERCENTAGE" ? "%" : ""} ${reward.reward_type === "CASH" ? "Cash" : reward.reward_type === "CASHBACK" ? "Cashback" : reward.reward_type === "BPT" ? "BPT" : reward.utility_token_symbol || "Utility"}`;
-        return (
-          <Badge key={reward.reward_id} variant="outline" className="border-emerald-400/50 text-emerald-600 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/30">
-            {label}
-          </Badge>
-        );
-      })}
-    </div>
-  );
-}
-
-function TokenLimits({ product }: { product: Product }) {
-  return (
-    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-      {product.accepted_tokens.map((t: string) => (
-        <span key={t} className="inline-flex items-center gap-1 rounded-full bg-foreground/5 px-3 py-1">
-          <Coins className="h-3 w-3" /> {t} up to {Math.round((product.token_payment_limits[t] || 0) * 100)}%
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function ProductCard({ product, quickBuyLoading, detailLoading, onQuickBuy, onViewDetails }: { product: Product; quickBuyLoading: string | null; detailLoading: string | null; onQuickBuy: (product: Product) => void; onViewDetails: (product: Product) => void; }) {
-  return (
-    <div className="rounded-2xl border border-white/20 bg-white/70 dark:bg-bpi-dark-card/80 backdrop-blur shadow-lg overflow-hidden hover:-translate-y-1 hover:shadow-xl transition-all">
-      {/* Product Image */}
-      <div className="relative aspect-[16/10] overflow-hidden bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/50 dark:to-emerald-900/30">
-        <img
-          src={product.images?.[0] || "/img/default.jpg"}
-          alt={product.name}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-          onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            target.src = "/img/default.jpg";
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
-        
-        {/* Badges Overlay */}
-        <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center gap-2">
-          {product.hero_badge && (
-            <Badge variant="secondary" className="bg-emerald-600 text-white shadow-md">{product.hero_badge}</Badge>
-          )}
-          <Badge variant="outline" className="bg-white/90 dark:bg-bpi-dark-card/80 text-gray-700 dark:text-white/90 backdrop-blur-sm uppercase text-[10px] tracking-[0.08em]">{product.product_type}</Badge>
-        </div>
-
-        {/* Inventory Badge */}
-        {product.inventory_type === "limited" && (
-          <div className="absolute bottom-3 left-3">
-            <Badge variant="outline" className="bg-amber-600 text-white border-0 text-[10px] shadow-md">{product.inventory_type}</Badge>
-          </div>
-        )}
-
-        {/* Rating */}
-        {product.rating && (
-          <div className="absolute bottom-3 right-3">
-            <div className="inline-flex items-center gap-1 bg-white/90 dark:bg-bpi-dark-card/80 backdrop-blur-sm rounded-full px-2 py-1">
-              <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-              <span className="text-xs font-semibold text-foreground">{product.rating.toFixed(1)}</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Content Section */}
-      <div className="p-4 flex flex-col gap-3">
-        <div>
-          <h3 className="text-lg font-semibold text-foreground line-clamp-1">{product.name}</h3>
-          <p className="text-sm text-muted-foreground line-clamp-2">{product.description}</p>
-        </div>
-        
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">From</div>
-          <div className="text-xl font-bold text-foreground">{formatProductPrice(product)}</div>
-        </div>
-
-      <TokenLimits product={product} />
-      <RewardChips product={product} />
-
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <div className="flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> Hybrid checkout (fiat + tokens)</div>
-        <div className="flex items-center gap-1"><Percent className="h-3.5 w-3.5" /> Rewards configured</div>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="default"
-          className="flex-1 justify-between bg-gradient-to-r from-emerald-600 to-green-500 text-white"
-          onClick={() => onQuickBuy(product)}
-          disabled={quickBuyLoading === product.product_id}
-        >
-          {quickBuyLoading === product.product_id ? (
-            <span className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Preparing...
-            </span>
-          ) : (
-            <>
-              Quick Buy
-              <ArrowRight className="h-4 w-4" />
-            </>
-          )}
-        </Button>
-        <Button
-          variant="outline"
-          className="flex-1 justify-between"
-          onClick={() => onViewDetails(product)}
-          disabled={detailLoading === product.product_id}
-        >
-          {detailLoading === product.product_id ? (
-            <span className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading...
-            </span>
-          ) : (
-            <>
-              View Details
-              <ArrowRight className="h-4 w-4" />
-            </>
-          )}
-        </Button>
-      </div>
-      </div>
-    </div>
-  );
-}
-
-function MobileProductCard({ product, quickBuyLoading, detailLoading, onQuickBuy, onViewDetails }: { product: Product; quickBuyLoading: string | null; detailLoading: string | null; onQuickBuy: (product: Product) => void; onViewDetails: (product: Product) => void; }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/80 dark:bg-bpi-dark-card/90 backdrop-blur overflow-hidden">
-      {/* Product Image */}
-      <div className="relative aspect-[16/9] overflow-hidden bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/50 dark:to-emerald-900/30">
-        <img
-          src={product.images?.[0] || "/img/default.jpg"}
-          alt={product.name}
-          className="h-full w-full object-cover"
-          onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            target.src = "/img/default.jpg";
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
-        
-        {/* Badges */}
-        <div className="absolute top-2 left-2 right-2 flex items-center gap-2 flex-wrap">
-          <Badge variant="outline" className="bg-white/90 dark:bg-bpi-dark-card/80 backdrop-blur-sm text-[10px] uppercase">{product.product_type}</Badge>
-          {product.hero_badge && <Badge variant="secondary" className="bg-emerald-600 text-white text-[10px]">{product.hero_badge}</Badge>}
-        </div>
-
-        {/* Rating */}
-        {product.rating && (
-          <div className="absolute bottom-2 right-2">
-            <div className="inline-flex items-center gap-1 bg-white/90 dark:bg-bpi-dark-card/80 backdrop-blur-sm rounded-full px-2 py-1">
-              <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-              <span className="text-xs font-semibold text-foreground">{product.rating.toFixed(1)}</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Content Section */}
-      <div className="p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1">
-            <h3 className="text-base font-semibold text-foreground line-clamp-1">{product.name}</h3>
-            <p className="text-sm text-muted-foreground line-clamp-2">{product.description}</p>
-          </div>
-          <div className="text-right text-sm font-semibold text-foreground whitespace-nowrap">{formatProductPrice(product)}</div>
-        </div>
-      <TokenLimits product={product} />
-      <RewardChips product={product} />
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          className="flex-1 bg-gradient-to-r from-emerald-600 to-green-500 text-white"
-          onClick={() => onQuickBuy(product)}
-          disabled={quickBuyLoading === product.product_id}
-        >
-          {quickBuyLoading === product.product_id ? (
-            <span className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Preparing...
-            </span>
-          ) : (
-            "Quick Buy"
-          )}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="flex-1"
-          onClick={() => onViewDetails(product)}
-          disabled={detailLoading === product.product_id}
-        >
-          {detailLoading === product.product_id ? (
-            <span className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading...
-            </span>
-          ) : (
-            "Details"
-          )}
-        </Button>
-      </div>
-      </div>
-    </div>
-  );
-}
+const PAGE_SIZE = 12;
 
 export function StoreExperience() {
   const [selectedType, setSelectedType] = useState<string>("all");
   const [selectedToken, setSelectedToken] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [search, setSearch] = useState("");
-  const [desktopPage, setDesktopPage] = useState(1);
-  const [mobilePage, setMobilePage] = useState(1);
-  const [featuredSlide, setFeaturedSlide] = useState(0);
-  const carouselRef = useRef<HTMLDivElement | null>(null);
-  const [quickBuyLoading, setQuickBuyLoading] = useState<string | null>(null);
-  const [detailLoading, setDetailLoading] = useState<string | null>(null);
-  const router = useRouter();
-  const checkoutMutation = api.store.createCheckoutIntent.useMutation();
-  const externalCheckoutMutation = api.store.createExternalTokenCheckoutIntent.useMutation();
+  const [sort, setSort] = useState<SortOption>("featured");
+  const [view, setView] = useState<ViewMode>("grid");
+  const [page, setPage] = useState(1);
+  const [showFilters, setShowFilters] = useState(false);
 
-  // Fetch the full catalog once; filters/search are applied client-side so the featured carousel stays unfiltered.
   const { data: productsData, isLoading } = api.store.listProducts.useQuery({
     status: "active",
   });
 
   const products: Product[] = productsData ?? [];
-  const featuredProducts = useMemo<Product[]>(() => products.filter((p: Product) => p.featured && p.status === "active"), [products]);
-  const cardsPerView = 4;
-  const maxFeaturedStart = Math.max(0, featuredProducts.length - cardsPerView);
 
-  const filtered = useMemo<Product[]>(() => {
-    return products.filter((p: Product) => {
-      if (p.status !== "active") return false;
-      const matchesType = selectedType === "all" || p.product_type === selectedType;
-      const matchesToken = selectedToken === "all" || p.accepted_tokens.includes(selectedToken.toUpperCase());
-      const matchesSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.description.toLowerCase().includes(search.toLowerCase());
-      return matchesType && matchesToken && matchesSearch;
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p: Product) => {
+      if (p.category) set.add(p.category);
     });
-  }, [products, selectedType, selectedToken, search]);
-
-  const desktopPageSize = 9;
-  const mobilePageSize = 5;
-  const desktopTotalPages = Math.max(1, Math.ceil(filtered.length / desktopPageSize));
-  const mobileTotalPages = Math.max(1, Math.ceil(filtered.length / mobilePageSize));
-
-  if (desktopPage > desktopTotalPages) setDesktopPage(desktopTotalPages);
-  if (mobilePage > mobileTotalPages) setMobilePage(mobileTotalPages);
-
-  const desktopSliceStart = (desktopPage - 1) * desktopPageSize;
-  const mobileSliceStart = (mobilePage - 1) * mobilePageSize;
-  const desktopPageItems = filtered.slice(desktopSliceStart, desktopSliceStart + desktopPageSize);
-  const mobilePageItems = filtered.slice(mobileSliceStart, mobileSliceStart + mobilePageSize);
-
-  const handleQuickBuy = useCallback(async (product: Product) => {
-    setQuickBuyLoading(product.product_id);
-    const loadingId = toast.loading(`Opening checkout for ${product.name}...`);
-    try {
-      const isTokenUnit = String((product as any).pricing_mode ?? "fiat").toLowerCase() === "token_unit";
-      const res = isTokenUnit
-        ? await externalCheckoutMutation.mutateAsync({ productId: product.product_id, quantity: 1 })
-        : await checkoutMutation.mutateAsync({ productId: product.product_id, quantity: 1 });
-      const qty = 1;
-      const redirect = res.redirectUrl || `/checkout?intent=${res.intentId}&productId=${product.product_id}&quantity=${qty}`;
-      router.push(redirect);
-    } catch (err: any) {
-      const message = err?.message || "Failed to start checkout";
-      toast.error(message);
-    } finally {
-      toast.dismiss(loadingId);
-      setQuickBuyLoading(null);
-    }
-  }, [checkoutMutation, externalCheckoutMutation, router]);
-
-  const handleViewDetails = useCallback((product: Product) => {
-    setDetailLoading(product.product_id);
-    router.push(`/store/${product.product_id}`);
-  }, [router]);
-
-  const typeFilters: { label: string; value: string }[] = [
-    { label: "All", value: "all" },
-    { label: "Physical", value: "physical" },
-    { label: "Digital", value: "digital" },
-    { label: "License", value: "license" },
-    { label: "Service", value: "service" },
-    { label: "Utility", value: "utility" },
-  ];
-
-  const tokens = useMemo<string[]>(() => {
-    const tokenSet = new Set<string>(products.flatMap((p: Product) => p.accepted_tokens));
-    return Array.from(tokenSet);
+    return Array.from(set).sort();
   }, [products]);
 
+  const tokens = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p: Product) => {
+      p.accepted_tokens.forEach((t: string) => set.add(t));
+    });
+    return Array.from(set).sort();
+  }, [products]);
+
+  const featuredProducts = useMemo(
+    () => products.filter((p: Product) => p.featured && p.status === "active").slice(0, 6),
+    [products],
+  );
+
+  const filtered = useMemo(() => {
+    let result = products.filter((p: Product) => {
+      if (p.status !== "active") return false;
+      const matchesType = selectedType === "all" || p.product_type === selectedType;
+      const matchesToken =
+        selectedToken === "all" || p.accepted_tokens.includes(selectedToken.toUpperCase());
+      const matchesCategory =
+        selectedCategory === "all" || p.category === selectedCategory;
+      const matchesSearch =
+        !search ||
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        p.description.toLowerCase().includes(search.toLowerCase());
+      return matchesType && matchesToken && matchesCategory && matchesSearch;
+    });
+
+    switch (sort) {
+      case "price-low":
+        result = [...result].sort((a, b) => a.base_price_fiat - b.base_price_fiat);
+        break;
+      case "price-high":
+        result = [...result].sort((a, b) => b.base_price_fiat - a.base_price_fiat);
+        break;
+      case "newest":
+        result = [...result].sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        );
+        break;
+      case "featured":
+        result = [...result].sort(
+          (a, b) => Number(b.featured) - Number(a.featured),
+        );
+        break;
+    }
+
+    return result;
+  }, [products, selectedType, selectedToken, selectedCategory, search, sort]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageItems = filtered.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
+  const resetFilters = useCallback(() => {
+    setSelectedType("all");
+    setSelectedToken("all");
+    setSelectedCategory("all");
+    setSearch("");
+    setSort("featured");
+    setPage(1);
+  }, []);
+
+  const activeFilterCount =
+    (selectedType !== "all" ? 1 : 0) +
+    (selectedToken !== "all" ? 1 : 0) +
+    (selectedCategory !== "all" ? 1 : 0) +
+    (search ? 1 : 0);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 dark:from-orange-950/20 dark:via-amber-950/10 dark:to-background">
-      <div className="space-y-10 px-4 sm:px-6 md:px-10 lg:px-16">
-      {/* Hero Slide */}
-      <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-700 via-emerald-600 to-green-500 text-white relative shadow-2xl">
-        <div className="absolute inset-0 bg-grid-white/10" aria-hidden />
-        <div className="p-8 md:p-12 lg:p-16 relative">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-sm px-4 py-2 text-sm font-medium shadow-lg">
-            <ShoppingCart className="h-4 w-4" /> Hybrid Commerce • Rewards First
-          </div>
-          <h1 className="mt-6 text-3xl md:text-5xl lg:text-6xl font-black leading-tight max-w-4xl">
-            Welcome to the BPI Store
-          </h1>
-          <p className="mt-4 text-base md:text-lg text-white/90 max-w-3xl leading-relaxed">
-            Shop premium products, licenses, and services with flexible fiat + token checkout. Earn cashback, BPT, and utility rewards on every purchase—built for the community, by the community.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3 text-sm">
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-sm px-4 py-2 shadow-md"><CreditCard className="h-4 w-4" /> Hybrid checkout</span>
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-sm px-4 py-2 shadow-md"><Wallet className="h-4 w-4" /> Token limits enforced</span>
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-sm px-4 py-2 shadow-md"><Gift className="h-4 w-4" /> Multi-tier rewards</span>
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-sm px-4 py-2 shadow-md"><Shield className="h-4 w-4" /> Auditable & compliant</span>
-          </div>
-          <div className="mt-8">
-            <Button size="lg" className="bg-white text-emerald-700 hover:bg-white/90 font-bold shadow-xl">
-              Browse All Products <ArrowRight className="h-5 w-5 ml-2" />
-            </Button>
+    <div className="space-y-6">
+      {/* Hero Banner */}
+      <section className="relative overflow-hidden rounded-3xl shadow-xl ring-1 ring-amber-300/20">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#04231a] via-[#0a3d2b] to-[#062818]" />
+        <div className="absolute -top-32 -left-24 w-[28rem] h-[28rem] rounded-full bg-emerald-500/25 blur-3xl" />
+        <div className="absolute -bottom-24 -right-16 w-[26rem] h-[26rem] rounded-full bg-amber-400/15 blur-3xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(255,215,140,0.10),transparent_50%),radial-gradient(ellipse_at_bottom_right,rgba(16,185,129,0.18),transparent_55%)]" />
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-300/70 to-transparent" />
+
+        <div className="relative px-6 py-8 sm:px-10 sm:py-12 lg:px-16 lg:py-16">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full bg-amber-300/15 backdrop-blur-sm px-4 py-1.5 text-xs font-semibold text-amber-100 shadow-md ring-1 ring-amber-300/20">
+              <Sparkles className="h-3.5 w-3.5" />
+              Hybrid Commerce • Rewards on Every Purchase
+            </div>
+            <h1 className="mt-4 text-3xl sm:text-4xl lg:text-5xl font-black leading-tight">
+              The BPI Superstore
+            </h1>
+            <p className="mt-3 text-sm sm:text-base text-white/90 max-w-2xl leading-relaxed">
+              Shop premium products, licenses, and services. Pay with fiat, tokens, or a hybrid split.
+              Earn cashback, BPT, and utility rewards on every order.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-sm px-3 py-1.5 text-xs font-medium text-white ring-1 ring-amber-300/20">
+                <CreditCard className="h-3.5 w-3.5 text-amber-200" /> Hybrid checkout
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-sm px-3 py-1.5 text-xs font-medium text-white ring-1 ring-amber-300/20">
+                <Wallet className="h-3.5 w-3.5 text-emerald-300" /> Token payments
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-sm px-3 py-1.5 text-xs font-medium text-white ring-1 ring-amber-300/20">
+                <Gift className="h-3.5 w-3.5 text-amber-200" /> Multi-tier rewards
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-sm px-3 py-1.5 text-xs font-medium text-white ring-1 ring-amber-300/20">
+                <Shield className="h-3.5 w-3.5 text-emerald-300" /> Secure & auditable
+              </span>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Featured Products Carousel */}
-      {featuredProducts.length > 0 && (
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                <Sparkles className="h-4 w-4 text-emerald-500" /> Featured Products
-              </div>
-              <h2 className="text-2xl font-bold text-foreground">Curated picks for you</h2>
+      {/* Featured Products Strip */}
+      {featuredProducts.length > 0 && !search && selectedType === "all" && selectedCategory === "all" && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-emerald-500" />
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                Featured Products
+              </h2>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSort("featured")}
+              className="text-emerald-600 hover:text-emerald-700"
+            >
+              View all <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
           </div>
-
-          <div className="relative">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setFeaturedSlide((current) => (current <= 0 ? maxFeaturedStart : Math.max(current - cardsPerView, 0)))}
-                className="hidden sm:inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-white text-foreground shadow hover:border-emerald-500 hover:text-emerald-700 dark:bg-bpi-dark-card dark:border-bpi-dark-accent"
-                aria-label="Previous products"
+          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            {featuredProducts.map((product: Product) => (
+              <Link
+                key={product.product_id}
+                href={`/store/${product.product_id}`}
+                className="group flex-shrink-0 w-64 rounded-2xl border border-amber-300/30 dark:border-amber-400/15 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 shadow-md ring-1 ring-amber-300/10 overflow-hidden hover:shadow-xl transition-all"
               >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-
-              <div
-                ref={carouselRef}
-                className="grid grid-flow-col auto-cols-[90%] sm:auto-cols-[55%] lg:auto-cols-[36%] xl:auto-cols-[28%] 2xl:auto-cols-[22%] gap-4 sm:gap-5 overflow-x-auto snap-x snap-mandatory pb-4 pr-2 scrollbar-hide"
-              >
-                {featuredProducts.map((product: Product) => (
-                  <FeaturedCarouselCard
-                    key={product.product_id}
-                    product={product}
-                    detailLoading={detailLoading}
-                    onViewDetails={handleViewDetails}
+                <div className="relative aspect-[4/3] overflow-hidden bg-slate-100 dark:bg-slate-800">
+                  <img
+                    src={product.images?.[0] || "/img/default.jpg"}
+                    alt={product.name}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "/img/default.jpg";
+                    }}
                   />
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setFeaturedSlide((current) => (current >= maxFeaturedStart ? 0 : Math.min(current + cardsPerView, maxFeaturedStart)))}
-                className="hidden sm:inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-white text-foreground shadow hover:border-emerald-500 hover:text-emerald-700 dark:bg-bpi-dark-card dark:border-bpi-dark-accent"
-                aria-label="Next products"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+                  {product.hero_badge && (
+                    <span className="absolute top-2 left-2 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+                      {product.hero_badge}
+                    </span>
+                  )}
+                </div>
+                <div className="p-3 space-y-1">
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-white line-clamp-1 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                    {product.name}
+                  </h3>
+                  <p className="text-xs text-slate-400 line-clamp-1">{product.description}</p>
+                  <div className="text-sm font-bold text-slate-900 dark:text-white pt-1">
+                    {formatProductPrice(product)}
+                  </div>
+                </div>
+              </Link>
+            ))}
           </div>
         </section>
       )}
 
-      {/* Filters and Product Grid */}
-      <section className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
-        <div className="rounded-2xl border border-white/10 bg-card/60 backdrop-blur p-4 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-foreground"><Filter className="h-4 w-4" /> Filters</div>
-            <Button variant="ghost" size="sm" onClick={() => { setSelectedType("all"); setSelectedToken("all"); setSearch(""); }}>Reset</Button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {typeFilters.map((f) => (
-              <Button key={f.value} size="sm" variant={selectedType === f.value ? "default" : "outline"} onClick={() => setSelectedType(f.value)}>
-                {f.label}
-              </Button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant={selectedToken === "all" ? "default" : "outline"} onClick={() => setSelectedToken("all")}>
-              All Tokens
-            </Button>
-            {tokens.map((t: string) => (
-              <Button key={t} size="sm" variant={selectedToken === t ? "default" : "outline"} onClick={() => setSelectedToken(t)}>
-                {t}
-              </Button>
-            ))}
-          </div>
-          <div>
-            <label className="text-sm font-medium text-foreground">Search</label>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search products, licenses, services"
-              className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/30 p-3 text-sm text-emerald-900 dark:text-emerald-100 flex items-start gap-2">
-            <Shield className="h-4 w-4 mt-0.5" /> Token usage and rewards are enforced per product to protect pools and users.
-          </div>
-        </div>
+      {/* Main Layout: Sidebar + Products */}
+      <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+        {/* Sidebar (desktop) */}
+        <aside className="hidden lg:block">
+          <div className="sticky top-24 space-y-4">
+            {/* Categories */}
+            {categories.length > 0 && (
+              <div className="rounded-2xl border border-amber-300/30 dark:border-amber-400/15 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 shadow-md dark:shadow-emerald-950/20 ring-1 ring-amber-300/10 p-4">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                  <Package className="h-4 w-4 text-emerald-500" /> Categories
+                </h3>
+                <div className="space-y-1">
+                  <button
+                    onClick={() => { setSelectedCategory("all"); setPage(1); }}
+                    className={cn(
+                      "w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      selectedCategory === "all"
+                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                    )}
+                  >
+                    All Categories
+                  </button>
+                  {categories.map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => { setSelectedCategory(cat); setPage(1); }}
+                      className={cn(
+                        "w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                        selectedCategory === cat
+                          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                      )}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-        <div className="md:col-span-2 lg:col-span-3 hidden md:block">
+            {/* Product Type */}
+            <div className="rounded-2xl border border-amber-300/30 dark:border-amber-400/15 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 shadow-md dark:shadow-emerald-950/20 ring-1 ring-amber-300/10 p-4">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3">
+                Product Type
+              </h3>
+              <div className="space-y-1">
+                {PRODUCT_TYPES.map((t) => (
+                  <button
+                    key={t.value}
+                    onClick={() => { setSelectedType(t.value); setPage(1); }}
+                    className={cn(
+                      "w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      selectedType === t.value
+                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Token Filter */}
+            {tokens.length > 0 && (
+              <div className="rounded-2xl border border-amber-300/30 dark:border-amber-400/15 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 shadow-md dark:shadow-emerald-950/20 ring-1 ring-amber-300/10 p-4">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                  <Coins className="h-4 w-4 text-emerald-500" /> Accepted Tokens
+                </h3>
+                <div className="space-y-1">
+                  <button
+                    onClick={() => { setSelectedToken("all"); setPage(1); }}
+                    className={cn(
+                      "w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      selectedToken === "all"
+                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                    )}
+                  >
+                    All Tokens
+                  </button>
+                  {tokens.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => { setSelectedToken(t); setPage(1); }}
+                      className={cn(
+                        "w-full text-left rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                        selectedToken === t
+                          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                      )}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Reset */}
+            {activeFilterCount > 0 && (
+              <Button
+                variant="outline"
+                onClick={resetFilters}
+                className="w-full"
+                size="sm"
+              >
+                <X className="h-3.5 w-3.5" /> Clear all filters
+              </Button>
+            )}
+          </div>
+        </aside>
+
+        {/* Products Area */}
+        <div className="space-y-4">
+          {/* Toolbar */}
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+            {/* Search */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                placeholder="Search products..."
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none transition-all"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Mobile filter button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowFilters((v) => !v)}
+                className="lg:hidden"
+              >
+                <Filter className="h-4 w-4" />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="ml-1 rounded-full bg-emerald-600 px-1.5 text-[10px] font-bold text-white">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </Button>
+
+              {/* Sort */}
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortOption)}
+                className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none transition-all cursor-pointer"
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              {/* View toggle */}
+              <div className="flex rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <button
+                  onClick={() => setView("grid")}
+                  className={cn(
+                    "p-2 transition-colors",
+                    view === "grid"
+                      ? "bg-emerald-600 text-white"
+                      : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800",
+                  )}
+                  aria-label="Grid view"
+                >
+                  <Grid3x3 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setView("list")}
+                  className={cn(
+                    "p-2 transition-colors",
+                    view === "list"
+                      ? "bg-emerald-600 text-white"
+                      : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800",
+                  )}
+                  aria-label="List view"
+                >
+                  <List className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Mobile filters panel */}
+          {showFilters && (
+            <div className="lg:hidden rounded-2xl border border-amber-300/30 dark:border-amber-400/15 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 shadow-md ring-1 ring-amber-300/10 p-4 space-y-4">
+              {categories.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-2">Categories</h3>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => { setSelectedCategory("all"); setPage(1); }}
+                      className={cn(
+                        "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                        selectedCategory === "all"
+                          ? "bg-emerald-600 text-white"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
+                      )}
+                    >
+                      All
+                    </button>
+                    {categories.map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => { setSelectedCategory(cat); setPage(1); }}
+                        className={cn(
+                          "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                          selectedCategory === cat
+                            ? "bg-emerald-600 text-white"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
+                        )}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-2">Product Type</h3>
+                <div className="flex flex-wrap gap-2">
+                  {PRODUCT_TYPES.map((t) => (
+                    <button
+                      key={t.value}
+                      onClick={() => { setSelectedType(t.value); setPage(1); }}
+                      className={cn(
+                        "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                        selectedType === t.value
+                          ? "bg-emerald-600 text-white"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
+                      )}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {tokens.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-2">Tokens</h3>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => { setSelectedToken("all"); setPage(1); }}
+                      className={cn(
+                        "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                        selectedToken === "all"
+                          ? "bg-emerald-600 text-white"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
+                      )}
+                    >
+                      All
+                    </button>
+                    {tokens.map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => { setSelectedToken(t); setPage(1); }}
+                        className={cn(
+                          "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                          selectedToken === t
+                            ? "bg-emerald-600 text-white"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
+                        )}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {activeFilterCount > 0 && (
+                <Button variant="outline" onClick={resetFilters} size="sm" className="w-full">
+                  <X className="h-3.5 w-3.5" /> Clear all filters
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Results count */}
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {isLoading ? (
+                "Loading products..."
+              ) : (
+                <>
+                  <span className="font-semibold text-slate-900 dark:text-white">{filtered.length}</span>
+                  {" "}product{filtered.length !== 1 ? "s" : ""}
+                  {activeFilterCount > 0 && " found"}
+                </>
+              )}
+            </p>
+          </div>
+
+          {/* Products Grid/List */}
           {isLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <div key={idx} className="h-48 rounded-2xl bg-muted animate-pulse" />
+            <div
+              className={cn(
+                "grid gap-4",
+                view === "grid"
+                  ? "grid-cols-2 sm:grid-cols-3 xl:grid-cols-4"
+                  : "grid-cols-1",
+              )}
+            >
+              {Array.from({ length: 8 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className={cn(
+                    "rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 animate-pulse",
+                    view === "grid" ? "h-72" : "h-32",
+                  )}
+                />
               ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4 rounded-2xl border border-dashed border-amber-300/40 dark:border-amber-400/20 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 ring-1 ring-amber-300/10">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                <Package className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-semibold text-slate-900 dark:text-white">No products found</p>
+                <p className="text-sm text-slate-400 mt-1">
+                  Try adjusting your filters or search terms.
+                </p>
+              </div>
+              {activeFilterCount > 0 && (
+                <Button onClick={resetFilters} variant="outline">
+                  <X className="h-4 w-4" /> Clear filters
+                </Button>
+              )}
             </div>
           ) : (
             <>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {desktopPageItems.map((product: Product) => (
-                  <ProductCard
-                    key={product.product_id}
-                    product={product}
-                    quickBuyLoading={quickBuyLoading}
-                    detailLoading={detailLoading}
-                    onQuickBuy={handleQuickBuy}
-                    onViewDetails={handleViewDetails}
-                  />
+              <div
+                className={cn(
+                  "grid gap-4",
+                  view === "grid"
+                    ? "grid-cols-2 sm:grid-cols-3 xl:grid-cols-4"
+                    : "grid-cols-1",
+                )}
+              >
+                {pageItems.map((product: Product) => (
+                  <ProductCard key={product.product_id} product={product} view={view} />
                 ))}
               </div>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                {Array.from({ length: desktopTotalPages }).map((_, idx) => {
-                  const page = idx + 1;
-                  const isActive = page === desktopPage;
-                  return (
-                    <Button
-                      key={page}
-                      variant={isActive ? "default" : "outline"}
-                      size="sm"
-                      className={isActive ? "bg-gradient-to-r from-emerald-600 to-green-500 text-white" : ""}
-                      onClick={() => setDesktopPage(page)}
-                    >
-                      {page}
-                    </Button>
-                  );
-                })}
-              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" /> Prev
+                  </Button>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }).slice(0, 7).map((_, idx) => {
+                      const pageNum = idx + 1;
+                      const isActive = pageNum === currentPage;
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setPage(pageNum)}
+                          className={cn(
+                            "h-9 min-w-[2.25rem] rounded-lg text-sm font-semibold transition-colors",
+                            isActive
+                              ? "bg-emerald-600 text-white"
+                              : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                          )}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                    {totalPages > 7 && (
+                      <span className="px-1 text-slate-400">...</span>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                  >
+                    Next <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </>
           )}
-        </div>
-      </section>
 
-      {/* Mobile-first list distinct from desktop grid */}
-      <section className="md:hidden space-y-3">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Sparkles className="h-4 w-4 text-emerald-500" /> Curated for mobile — quick actions & compact cards
-        </div>
-        <div className="space-y-3">
-          {isLoading ? (
-            Array.from({ length: 4 }).map((_, idx) => (
-              <div key={idx} className="h-36 rounded-xl bg-muted animate-pulse" />
-            ))
-          ) : (
-            <>
-              {mobilePageItems.map((product: Product) => (
-                <MobileProductCard
-                  key={product.product_id}
-                  product={product}
-                  quickBuyLoading={quickBuyLoading}
-                  detailLoading={detailLoading}
-                  onQuickBuy={handleQuickBuy}
-                  onViewDetails={handleViewDetails}
-                />
-              ))}
-              <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-                {Array.from({ length: mobileTotalPages }).map((_, idx) => {
-                  const page = idx + 1;
-                  const isActive = page === mobilePage;
-                  return (
-                    <Button
-                      key={page}
-                      variant={isActive ? "default" : "outline"}
-                      size="sm"
-                      className={isActive ? "bg-gradient-to-r from-emerald-600 to-green-500 text-white" : ""}
-                      onClick={() => setMobilePage(page)}
-                    >
-                      {page}
-                    </Button>
-                  );
-                })}
+          {/* Trust badges */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-6">
+            {[
+              { icon: Shield, label: "Secure Checkout", desc: "Encrypted payments" },
+              { icon: Gift, label: "Rewards on Every Order", desc: "Cashback, BPT, utility" },
+              { icon: CreditCard, label: "Hybrid Payments", desc: "Fiat + token split" },
+              { icon: TrendingUp, label: "Fair Pricing", desc: "Transparent token rates" },
+            ].map((badge) => (
+              <div
+                key={badge.label}
+                className="flex items-start gap-2.5 rounded-2xl border border-amber-300/30 dark:border-amber-400/15 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 shadow-md dark:shadow-emerald-950/20 ring-1 ring-amber-300/10 p-3"
+              >
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+                  <badge.icon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-900 dark:text-white">{badge.label}</p>
+                  <p className="text-[11px] text-slate-400">{badge.desc}</p>
+                </div>
               </div>
-            </>
-          )}
+            ))}
+          </div>
         </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-card/70 backdrop-blur p-6 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-foreground"><Shield className="h-4 w-4" /> Checkout Guardrails</div>
-          <ul className="text-sm text-muted-foreground space-y-2 list-disc list-inside">
-            <li>Per-token % caps enforced per product; hybrid split auto-calculated.</li>
-            <li>Token valuation via fixed internal rates (snapshot per order).</li>
-            <li>Idempotent payment intents; rollback on token/fiat failure.</li>
-            <li>Admin switches: pause product, rewards, checkout.</li>
-          </ul>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-card/70 backdrop-blur p-6 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-foreground"><Gift className="h-4 w-4" /> Reward Engine</div>
-          <ul className="text-sm text-muted-foreground space-y-2 list-disc list-inside">
-            <li>Reward types: Cash, Cashback, BPT, Utility tokens (e.g., PACT).</li>
-            <li>Value modes: Fixed or % of order total; optional caps.</li>
-            <li>Vesting: instant, delayed, or milestone-based with audit log.</li>
-            <li>Separate pools for cashback, BPT, and utility rewards.</li>
-          </ul>
-        </div>
-      </section>
       </div>
     </div>
   );

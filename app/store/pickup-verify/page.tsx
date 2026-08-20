@@ -1,6 +1,6 @@
 import { auth } from "@/server/auth";
 import { redirect } from "next/navigation";
-import DashboardShell from "@/components/layout/DashboardShell";
+import StoreShell from "@/components/store/StoreShell";
 import { PickupVerifyClient } from "@/components/store/PickupVerifyClient";
 import { prisma } from "@/lib/prisma";
 import { resolvePickupAccess } from "@/server/services/pickup-access.service";
@@ -14,10 +14,8 @@ export default async function PickupVerifyPage() {
   if (!access.isAdmin && !access.isOperator) redirect("/store");
 
   return (
-    <DashboardShell session={session}>
-      <div className="px-4 md:px-10 lg:px-16 py-6">
-        <PickupVerifyClient />
-      </div>
-    </DashboardShell>
+    <StoreShell session={session}>
+      <PickupVerifyClient />
+    </StoreShell>
   );
 }

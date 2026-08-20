@@ -10,6 +10,7 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { CurrencyProvider } from "@/contexts/CurrencyContext";
 import { Toaster } from "react-hot-toast";
 import { getNavAbortSignal, abortAllInFlightTrpcRequests } from "@/lib/trpcNavAbort";
+import { CartProvider } from "@/lib/cart-context";
 
 /**
  * Listens for unhandled promise rejections caused by a stale browser bundle
@@ -140,6 +141,7 @@ export default function Providers({ children }: { children: ReactNode }) {
         <QueryClientProvider client={qc}>
           <ThemeProvider>
             <CurrencyProvider>
+              <CartProvider>
               <StaleDeployGuard />
               <SessionCacheGuard />
               <Toaster 
@@ -167,6 +169,7 @@ export default function Providers({ children }: { children: ReactNode }) {
                 }}
               />
               {children}
+              </CartProvider>
             </CurrencyProvider>
           </ThemeProvider>
         </QueryClientProvider>

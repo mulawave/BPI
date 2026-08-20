@@ -1,5 +1,6 @@
 import { auth } from "@/server/auth";
 import { redirect } from "next/navigation";
+import StoreShell from "@/components/store/StoreShell";
 import ExternalTokenCheckoutClient from "@/components/store/ExternalTokenCheckoutClient";
 
 export const dynamic = "force-dynamic";
@@ -15,5 +16,9 @@ export default async function ExternalTokenCheckoutPage({
   const orderId = String(searchParams.orderId ?? "");
   if (!orderId) redirect("/store");
 
-  return <ExternalTokenCheckoutClient orderId={orderId} />;
+  return (
+    <StoreShell session={session}>
+      <ExternalTokenCheckoutClient orderId={orderId} />
+    </StoreShell>
+  );
 }
