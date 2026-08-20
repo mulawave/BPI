@@ -1,9 +1,14 @@
 import { auth } from "@/server/auth";
 import { redirect } from "next/navigation";
-import DashboardShell from "@/components/layout/DashboardShell";
+import HelpShell from "@/components/help/HelpShell";
 import HelpTopicDetail from "@/components/help/HelpTopicDetail";
 
 export const dynamic = "force-dynamic";
+
+export const metadata = {
+  title: "Help Topic | BPI",
+  description: "Step-by-step help and FAQs for BPI features.",
+};
 
 export default async function HelpTopicPage() {
   const session = await auth();
@@ -14,8 +19,8 @@ export default async function HelpTopicPage() {
   const isAdmin = (session.user as any)?.role === "admin" || (session.user as any)?.role === "super_admin";
 
   return (
-    <DashboardShell session={session}>
+    <HelpShell session={session}>
       <HelpTopicDetail isAdmin={isAdmin} />
-    </DashboardShell>
+    </HelpShell>
   );
 }

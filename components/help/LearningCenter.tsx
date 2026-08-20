@@ -162,10 +162,10 @@ export default function LearningCenter() {
                   <Icon className="w-5 h-5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-bold text-foreground">{module.title}</h3>
-                  <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{module.description}</p>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">{module.title}</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">{module.description}</p>
                 </div>
-                <ChevronRight className={cn("w-5 h-5 text-muted-foreground transition-transform flex-shrink-0", isExpanded && "rotate-90")} />
+                <ChevronRight className={cn("w-5 h-5 text-slate-500 dark:text-slate-400 transition-transform flex-shrink-0", isExpanded && "rotate-90")} />
               </button>
 
               {isExpanded && (
@@ -178,10 +178,10 @@ export default function LearningCenter() {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-foreground">{lesson.title}</div>
-                          <div className="text-xs text-muted-foreground mt-0.5">{lesson.description}</div>
+                          <div className="text-sm font-semibold text-slate-900 dark:text-white">{lesson.title}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{lesson.description}</div>
                         </div>
-                        <ArrowRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                        <ArrowRight className="w-4 h-4 text-slate-500 dark:text-slate-400 flex-shrink-0" />
                       </div>
                     </Link>
                   ))}
@@ -200,8 +200,8 @@ export default function LearningCenter() {
               <LifeBuoy className="w-5 h-5 text-emerald-500" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-foreground">Need more help?</h3>
-              <p className="text-xs text-muted-foreground">Visit the Help Center or ask RAVEN for instant assistance.</p>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Need more help?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Visit the Help Center or ask RAVEN for instant assistance.</p>
             </div>
           </div>
           <Link href="/help">

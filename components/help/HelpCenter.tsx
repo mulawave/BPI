@@ -380,7 +380,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
         <Card className={cn(premiumCardClass, "lg:col-span-2 p-5")}>
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500 dark:text-slate-400" />
               <input
                 value={search}
                 onChange={(e) => {
@@ -388,7 +388,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
                   setSearch(e.target.value);
                 }}
                 placeholder="Search help topics"
-                className="w-full rounded-xl border border-border bg-background/60 pl-10 pr-3 py-2 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
+                className="w-full rounded-xl border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 pl-10 pr-3 py-2 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
               />
             </div>
             <Button
@@ -412,7 +412,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
                 setPage(1);
                 setTimeout(() => setPendingAction(null), 300);
               }}
-              className={cn(pillClass, !categorySlug ? "bg-emerald-600 text-white" : "bg-muted text-foreground")}
+              className={cn(pillClass, !categorySlug ? "bg-emerald-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white")}
             >
               {pendingAction === "category:all" ? <Loader2 className="h-3 w-3 animate-spin" /> : "All Topics"}
             </button>
@@ -429,7 +429,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
                 }}
                 className={cn(
                   pillClass,
-                  categorySlug === cat.slug ? "bg-emerald-600 text-white" : "bg-muted text-foreground"
+                  categorySlug === cat.slug ? "bg-emerald-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white"
                 )}
               >
                 {pendingAction === `category:${cat.slug}` ? <Loader2 className="h-3 w-3 animate-spin" /> : cat.name}
@@ -441,11 +441,11 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
           {topicsQuery.isLoading ? (
             <div className="grid gap-4 sm:grid-cols-2">
               {Array.from({ length: 4 }).map((_, idx: number) => (
-                <Card key={idx} className="h-32 animate-pulse bg-muted" />
+                <Card key={idx} className="h-32 animate-pulse bg-slate-100 dark:bg-slate-800" />
               ))}
             </div>
           ) : visibleTopics.length === 0 ? (
-            <Card className="p-6 text-sm text-muted-foreground">No help topics found.</Card>
+            <Card className="p-6 text-sm text-slate-500 dark:text-slate-400">No help topics found.</Card>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               {visibleTopics.map((topic: HelpTopic) => (
@@ -453,22 +453,22 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
                   <Card className="p-4 h-full border-amber-300/20 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 hover:border-emerald-500/50 hover:shadow-lg transition ring-1 ring-amber-300/10">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm font-semibold text-foreground line-clamp-2">{topic.title}</div>
-                        <div className="text-xs text-muted-foreground line-clamp-2 mt-1">{topic.summary || "Open for step‑by‑step guidance."}</div>
+                        <div className="text-sm font-semibold text-slate-900 dark:text-white line-clamp-2">{topic.title}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-1">{topic.summary || "Open for step‑by‑step guidance."}</div>
                       </div>
                       {pendingLink === `/help/${topic.slug}` ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        <Loader2 className="h-4 w-4 animate-spin text-slate-500 dark:text-slate-400" />
                       ) : (
-                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                        <ArrowRight className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                       )}
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] uppercase text-muted-foreground">
-                      {topic.category?.name && <span className="rounded-full bg-muted px-2 py-1">{topic.category.name}</span>}
+                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] uppercase text-slate-500 dark:text-slate-400">
+                      {topic.category?.name && <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-1">{topic.category.name}</span>}
                       {isAdminOnlyTopic(topic) && isAdmin && (
                         <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-1">Admin eyes only</span>
                       )}
                       {topic.tags?.slice(0, 2).map((tag: string) => (
-                        <span key={tag} className="rounded-full bg-muted px-2 py-1">{tag}</span>
+                        <span key={tag} className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-1">{tag}</span>
                       ))}
                     </div>
                   </Card>
@@ -477,7 +477,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
             </div>
           )}
 
-          <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+          <div className="mt-4 flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
             <div>
               Page {topicsQuery.data?.page || 1} / {topicsQuery.data?.totalPages || 1}
             </div>
@@ -512,14 +512,14 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
 
         <div className="space-y-4">
           <Card className={cn(premiumCardClass, "p-5")}>
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
                 <AiOutlineRobot className="h-5 w-5 text-emerald-500" /> RAVEN Personal Assistant
               </div>
               <div className="mt-3 space-y-3 max-h-[280px] overflow-y-auto" ref={chatContainerRef}>
                 {messages.map((msg: ChatMessage) => (
-                  <div key={msg.id} className={cn("rounded-xl px-3 py-2 text-sm", msg.role === "assistant" ? "bg-emerald-50/70 dark:bg-emerald-900/20" : "bg-muted")}
+                  <div key={msg.id} className={cn("rounded-xl px-3 py-2 text-sm", msg.role === "assistant" ? "bg-emerald-50/70 dark:bg-emerald-900/20" : "bg-slate-100 dark:bg-slate-800")}
                   >
-                    <p className="text-foreground">{msg.text}</p>
+                    <p className="text-slate-900 dark:text-white">{msg.text}</p>
                     {msg.topics && msg.topics.length > 0 && (
                       <div className="mt-2 space-y-1">
                         {msg.topics.map((topic: { title: string; slug: string }) => (
@@ -544,10 +544,10 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
                       </div>
                     )}
                     {msg.role === "assistant" && msg.id !== "welcome" && (
-                      <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                         <span>Was this helpful?</span>
                         <button
-                          className="rounded-full border border-border px-2 py-0.5 hover:bg-muted"
+                          className="rounded-full border-slate-200 dark:border-slate-800 px-2 py-0.5 hover:bg-slate-100 dark:bg-slate-800"
                           onClick={() => {
                             setPendingAction(`feedback:${msg.id}:yes`);
                             if (typeof window === "undefined") return;
@@ -561,7 +561,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
                           {pendingAction === `feedback:${msg.id}:yes` ? <Loader2 className="h-3 w-3 animate-spin" /> : "Yes"}
                         </button>
                         <button
-                          className="rounded-full border border-border px-2 py-0.5 hover:bg-muted"
+                          className="rounded-full border-slate-200 dark:border-slate-800 px-2 py-0.5 hover:bg-slate-100 dark:bg-slate-800"
                           onClick={() => {
                             setPendingAction(`feedback:${msg.id}:no`);
                             if (typeof window === "undefined") return;
@@ -580,7 +580,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
                 ))}
                 {isTyping && (
                   <div className="rounded-xl px-3 py-2 text-sm bg-emerald-50/70 dark:bg-emerald-900/20">
-                    <em className="text-muted-foreground">RAVEN is typing...</em>
+                    <em className="text-slate-500 dark:text-slate-400">RAVEN is typing...</em>
                   </div>
                 )}
               </div>
@@ -589,7 +589,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   placeholder="Ask RAVEN"
-                  className="flex-1 rounded-xl border border-border bg-background/60 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
+                  className="flex-1 rounded-xl border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60 px-3 py-2 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
                 />
                 <Button onClick={handleAsk} disabled={isTyping || pendingAction === "ask"}>
                   {isTyping || pendingAction === "ask" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Ask"}
@@ -598,7 +598,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
             </Card>
 
           <Card className={cn(premiumCardClass, "p-5")}>
-            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
               <BookOpen className="h-4 w-4 text-emerald-500" /> Featured Help
             </div>
             <div className="mt-3 space-y-2">
@@ -607,26 +607,26 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
                   <Link
                     key={topic.id}
                     href={`/help/${topic.slug}`}
-                    className="block rounded-lg border border-border/60 px-3 py-2 text-sm hover:border-emerald-500"
+                    className="block rounded-lg border border-amber-300/20 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 px-3 py-2 text-sm text-slate-900 dark:text-white hover:border-emerald-500 transition"
                     onClick={() => setPendingLink(`/help/${topic.slug}`)}
                   >
                     <div className="flex items-center justify-between">
                       <span>{topic.title}</span>
-                      {pendingLink === `/help/${topic.slug}` && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                      {pendingLink === `/help/${topic.slug}` && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-500 dark:text-slate-400" />}
                     </div>
                   </Link>
                 ))
               ) : (
-                <p className="text-sm text-muted-foreground">No featured topics yet.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">No featured topics yet.</p>
               )}
             </div>
           </Card>
 
           <Card className={cn(premiumCardClass, "p-5")}>
-            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
               <LifeBuoy className="h-4 w-4 text-emerald-500" /> Need more help?
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               If you can’t find an answer, contact support with your email and a short description.
             </p>
             <Link href="mailto:support@bpi.com?subject=BPI%20Support%20Request" className="block mt-3">
@@ -643,8 +643,8 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
       <Card className={cn(premiumCardClass, "p-5")}>
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold text-foreground">Quick tips</div>
-            <p className="text-xs text-muted-foreground">Popular tasks that users ask about most often.</p>
+            <div className="text-sm font-semibold text-slate-900 dark:text-white">Quick tips</div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Popular tasks that users ask about most often.</p>
           </div>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -654,7 +654,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
             "Enable 2FA",
             "CSP eligibility",
           ].map((tip: string) => (
-            <div key={tip} className="rounded-xl border border-amber-300/20 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 px-3 py-3 text-sm text-foreground ring-1 ring-amber-300/10">
+            <div key={tip} className="rounded-xl border border-amber-300/20 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 px-3 py-3 text-sm text-slate-900 dark:text-white ring-1 ring-amber-300/10">
               <div className="flex items-center gap-2">
                 <MessageCircle className="h-4 w-4 text-emerald-500" />
                 {tip}

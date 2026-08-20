@@ -1,6 +1,6 @@
 import { auth } from "@/server/auth";
 import { redirect } from "next/navigation";
-import DashboardShell from "@/components/layout/DashboardShell";
+import HelpShell from "@/components/help/HelpShell";
 import LearningCenter from "@/components/help/LearningCenter";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +17,8 @@ export default async function LearningPage() {
   }
 
   return (
-    <DashboardShell session={session}>
+    <HelpShell session={session}>
       <LearningCenter />
-    </DashboardShell>
+    </HelpShell>
   );
 }
