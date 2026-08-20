@@ -1,5 +1,6 @@
 import { auth } from "@/server/auth";
 import { redirect } from "next/navigation";
+import DashboardShell from "@/components/dashboard/DashboardShell";
 import KycVerificationFlow from "@/components/kyc/KycVerificationFlow";
 
 export const dynamic = "force-dynamic";
@@ -15,5 +16,9 @@ export default async function KycPage() {
     redirect("/login");
   }
 
-  return <KycVerificationFlow />;
+  return (
+    <DashboardShell session={session}>
+      <KycVerificationFlow />
+    </DashboardShell>
+  );
 }

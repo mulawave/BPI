@@ -208,10 +208,10 @@ export default function KycVerificationFlow() {
   // ── Loading state ───────────────────────────────────────────
   if (statusLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-emerald-50/30 dark:from-bpi-dark-bg dark:via-gray-900 dark:to-emerald-950/20">
+      <div className="flex items-center justify-center py-24">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-          <p className="text-gray-600 dark:text-gray-400">Loading verification status...</p>
+          <Loader2 className="w-8 h-8 animate-spin text-emerald-600 dark:text-emerald-400" />
+          <p className="text-slate-600 dark:text-slate-400">Loading verification status...</p>
         </div>
       </div>
     );
@@ -232,25 +232,23 @@ export default function KycVerificationFlow() {
   // If rejected or expired, allow resubmission (form shows)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-emerald-50/30 dark:from-bpi-dark-bg dark:via-gray-900 dark:to-emerald-950/20">
-      {/* Header */}
-      <div className="border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl sticky top-0 z-30">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <Shield className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900 dark:text-white">Identity Verification</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Secure KYC Process</p>
-            </div>
+    <div className="max-w-4xl mx-auto pb-24">
+      {/* Page Title */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+            <Shield className="w-5 h-5 text-white" />
           </div>
-          <Link href="/dashboard">
-            <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-              <X className="w-4 h-4 mr-1" /> Close
-            </Button>
-          </Link>
+          <div>
+            <h1 className="text-lg font-bold text-slate-900 dark:text-white">Identity Verification</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Secure KYC Process</p>
+          </div>
         </div>
+        <Link href="/dashboard">
+          <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+            <X className="w-4 h-4 mr-1" /> Close
+          </Button>
+        </Link>
       </div>
 
       {/* Rejection / Expiry notice */}
@@ -267,7 +265,7 @@ export default function KycVerificationFlow() {
                 <p className={`font-semibold ${kycStatus.status === "rejected" ? "text-red-800 dark:text-red-300" : "text-amber-800 dark:text-amber-300"}`}>
                   {kycStatus.status === "rejected" ? "Previous Submission Rejected" : "Verification Expired"}
                 </p>
-                <p className="text-sm mt-1 text-gray-600 dark:text-gray-400">
+                <p className="text-sm mt-1 text-slate-600 dark:text-slate-400">
                   {kycStatus.status === "rejected" && kycStatus.submission?.rejectionReason
                     ? `Reason: ${kycStatus.submission.rejectionReason}`
                     : "Please resubmit your documents to maintain access."}
@@ -279,7 +277,7 @@ export default function KycVerificationFlow() {
       )}
 
       {/* Progress Stepper */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 mt-6 mb-8">
+      <div className="mt-2 mb-8">
         <div className="flex items-center justify-between">
           {STEPS.map((step, i) => {
             const Icon = step.icon;
@@ -294,20 +292,20 @@ export default function KycVerificationFlow() {
                       isCompleted
                         ? "bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/30"
                         : isActive
-                        ? "bg-white dark:bg-gray-800 border-emerald-500 text-emerald-600 dark:text-emerald-400 shadow-lg shadow-emerald-500/20"
-                        : "bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-400"
+                        ? "bg-white dark:bg-slate-800 border-emerald-500 text-emerald-600 dark:text-emerald-400 shadow-lg shadow-emerald-500/20"
+                        : "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-400"
                     }`}
                     animate={isActive ? { scale: [1, 1.1, 1] } : {}}
                     transition={{ duration: 1.5, repeat: Infinity }}
                   >
                     {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
                   </motion.div>
-                  <span className={`mt-2 text-xs font-medium hidden sm:block ${isActive ? "text-emerald-600 dark:text-emerald-400" : isCompleted ? "text-emerald-500" : "text-gray-400 dark:text-gray-500"}`}>
+                  <span className={`mt-2 text-xs font-medium hidden sm:block ${isActive ? "text-emerald-600 dark:text-emerald-400" : isCompleted ? "text-emerald-500" : "text-slate-400 dark:text-slate-500"}`}>
                     {step.label}
                   </span>
                 </div>
                 {i < STEPS.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-2 rounded-full transition-colors duration-300 ${isCompleted ? "bg-emerald-500" : "bg-gray-200 dark:bg-gray-700"}`} />
+                  <div className={`flex-1 h-0.5 mx-2 rounded-full transition-colors duration-300 ${isCompleted ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-700"}`} />
                 )}
               </div>
             );
@@ -316,7 +314,7 @@ export default function KycVerificationFlow() {
       </div>
 
       {/* Step Content */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-24">
+      <div className="">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentStep}
@@ -345,18 +343,18 @@ export default function KycVerificationFlow() {
       </div>
 
       {/* Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl border-t border-gray-200 dark:border-gray-800 z-20">
+      <div className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-t border-slate-200/60 dark:border-emerald-800/40 z-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <Button
             variant="outline"
             onClick={prevStep}
             disabled={stepIndex === 0}
-            className="gap-2 border-gray-300 dark:border-gray-600"
+            className="gap-2 border-slate-300 dark:border-slate-600"
           >
             <ChevronLeft className="w-4 h-4" /> Back
           </Button>
 
-          <span className="text-sm text-gray-500 dark:text-gray-400">
+          <span className="text-sm text-slate-500 dark:text-slate-400">
             Step {stepIndex + 1} of {STEPS.length}
           </span>
 
@@ -530,9 +528,9 @@ function AddressStep({ formData, errors, updateField }: StepProps) {
       </div>
 
       {/* Proof of Address Upload */}
-      <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Proof of Address (Optional)</h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Upload a utility bill, bank statement, or tax document not older than 3 months.</p>
+      <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Proof of Address (Optional)</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Upload a utility bill, bank statement, or tax document not older than 3 months.</p>
         <SelectField
           label="Document Type"
           value={formData.proofOfAddressType}
@@ -724,14 +722,14 @@ function SelfieStep({ formData, errors, updateField }: StepProps) {
         description="Take a clear selfie for identity matching. Ensure good lighting and face the camera directly."
       />
 
-      <div className="rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 overflow-hidden">
+      <div className="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 overflow-hidden">
         {!cameraActive && !capturedImage && (
           <div className="flex flex-col items-center justify-center py-16 px-4">
             <div className="w-24 h-24 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-6">
               <Camera className="w-12 h-12 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Take a Selfie</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 text-center max-w-sm mb-6">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Take a Selfie</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 text-center max-w-sm mb-6">
               Use your device camera to take a live photo. This helps us verify your identity matches your documents.
             </p>
             <div className="flex gap-3">
@@ -767,7 +765,7 @@ function SelfieStep({ formData, errors, updateField }: StepProps) {
               <Button
                 onClick={capturePhoto}
                 disabled={isUploading}
-                className="gap-2 bg-white text-gray-900 hover:bg-gray-100 shadow-xl"
+                className="gap-2 bg-white text-slate-900 hover:bg-slate-100 shadow-xl"
                 size="lg"
               >
                 {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
@@ -788,7 +786,7 @@ function SelfieStep({ formData, errors, updateField }: StepProps) {
           <div className="relative">
             <img src={capturedImage} alt="Selfie" className="w-full max-h-[400px] object-cover" />
             <div className="absolute top-3 right-3">
-              <Button onClick={retake} variant="outline" size="sm" className="gap-1 bg-white/90 dark:bg-gray-800/90 backdrop-blur">
+              <Button onClick={retake} variant="outline" size="sm" className="gap-1 bg-white/90 dark:bg-slate-800/90 backdrop-blur">
                 <RefreshCw className="w-3 h-3" /> Retake
               </Button>
             </div>
@@ -862,12 +860,12 @@ function ReviewStep({ formData }: { formData: FormData }) {
         {formData.documentExpiryDate && <ReviewRow label="Expiry" value={formData.documentExpiryDate} />}
         <div className="flex gap-3 mt-3">
           {formData.documentFrontUrl && (
-            <div className="w-24 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+            <div className="w-24 h-16 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
               <img src={formData.documentFrontUrl} alt="Front" className="w-full h-full object-cover" />
             </div>
           )}
           {formData.documentBackUrl && (
-            <div className="w-24 h-16 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+            <div className="w-24 h-16 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
               <img src={formData.documentBackUrl} alt="Back" className="w-full h-full object-cover" />
             </div>
           )}
@@ -881,7 +879,7 @@ function ReviewStep({ formData }: { formData: FormData }) {
             <img src={formData.selfieUrl} alt="Selfie" className="w-full h-full object-cover" />
           </div>
         ) : (
-          <p className="text-sm text-gray-500">No selfie provided</p>
+          <p className="text-sm text-slate-500">No selfie provided</p>
         )}
       </ReviewSection>
 
@@ -938,32 +936,32 @@ function KycStatusCard({ status, submission }: { status: string; submission: any
     },
   }[status] || {
     icon: Clock,
-    color: "gray",
+    color: "slate",
     title: "KYC Status",
     message: "Check your KYC status.",
-    bg: "bg-gray-50 dark:bg-gray-950/30",
-    border: "border-gray-200 dark:border-gray-800/50",
-    iconBg: "bg-gray-100 dark:bg-gray-900/30",
-    iconColor: "text-gray-600 dark:text-gray-400",
+    bg: "bg-slate-50 dark:bg-slate-950/30",
+    border: "border-slate-200 dark:border-slate-800/50",
+    iconBg: "bg-slate-100 dark:bg-slate-900/30",
+    iconColor: "text-slate-600 dark:text-slate-400",
   };
 
   const Icon = config.icon;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-emerald-50/30 dark:from-bpi-dark-bg dark:via-gray-900 dark:to-emerald-950/20 flex items-center justify-center p-4">
+    <div className="flex items-center justify-center py-16">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className={`max-w-md w-full rounded-2xl ${config.bg} border ${config.border} p-8 text-center shadow-xl`}
+        className={`max-w-md w-full rounded-2xl border ${config.border} bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 shadow-xl ring-1 ring-amber-300/10 p-8 text-center`}
       >
         <div className={`w-20 h-20 rounded-full ${config.iconBg} flex items-center justify-center mx-auto mb-6`}>
           <Icon className={`w-10 h-10 ${config.iconColor}`} />
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">{config.title}</h2>
-        <p className="text-gray-600 dark:text-gray-400 mb-6">{config.message}</p>
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">{config.title}</h2>
+        <p className="text-slate-600 dark:text-slate-400 mb-6">{config.message}</p>
 
         {submission?.submittedAt && (
-          <p className="text-xs text-gray-500 dark:text-gray-500 mb-4">
+          <p className="text-xs text-slate-500 dark:text-slate-500 mb-4">
             Submitted: {new Date(submission.submittedAt).toLocaleDateString()}
           </p>
         )}
@@ -994,9 +992,9 @@ function StepHeader({ icon: Icon, title, description }: { icon: typeof Shield; t
         <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
           <Icon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
         </div>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white">{title}</h2>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h2>
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-400 ml-11">{description}</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400 ml-11">{description}</p>
     </div>
   );
 }
@@ -1022,10 +1020,10 @@ function InputField({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{label}</label>
+      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{label}</label>
       <div className="relative">
         {Icon && (
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
             <Icon className="w-4 h-4" />
           </div>
         )}
@@ -1034,10 +1032,10 @@ function InputField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className={`w-full rounded-xl border ${error ? "border-red-300 dark:border-red-700" : "border-gray-300 dark:border-gray-600"} bg-white dark:bg-gray-800 ${Icon ? "pl-10" : "pl-4"} pr-4 py-3 text-sm text-[#232323] dark:text-white placeholder-[#b0b0b0] focus:border-[#0d3b29] dark:focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-[#0d3b29] dark:focus:ring-emerald-500 transition-colors`}
+          className={`w-full rounded-xl border ${error ? "border-red-300 dark:border-red-700" : "border-slate-300 dark:border-slate-600"} bg-white dark:bg-slate-800 ${Icon ? "pl-10" : "pl-4"} pr-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-emerald-500 dark:focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:focus:ring-emerald-500 transition-colors`}
         />
       </div>
-      {hint && !error && <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{hint}</p>}
+      {hint && !error && <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{hint}</p>}
       {error && (
         <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
           <AlertCircle className="w-3 h-3" /> {error}
@@ -1060,11 +1058,11 @@ function SelectField({
 }) {
   return (
     <div>
-      {label && <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{label}</label>}
+      {label && <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">{label}</label>}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-3 text-sm text-[#232323] dark:text-white focus:border-[#0d3b29] dark:focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-[#0d3b29] dark:focus:ring-emerald-500 transition-colors"
+        className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-sm text-slate-900 dark:text-white focus:border-emerald-500 dark:focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:focus:ring-emerald-500 transition-colors"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -1147,13 +1145,13 @@ function FileUploadField({
   return (
     <div>
       {label && (
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
           {label} {required && <span className="text-red-500">*</span>}
         </label>
       )}
 
       {value ? (
-        <div className="relative group rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+        <div className="relative group rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
           <img src={value} alt={label} className="w-full h-32 object-cover" />
           <button
             type="button"
@@ -1167,7 +1165,7 @@ function FileUploadField({
           </div>
         </div>
       ) : (
-        <label className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed ${error ? "border-red-300 dark:border-red-700" : "border-gray-300 dark:border-gray-600"} bg-gray-50 dark:bg-gray-800/50 py-8 px-4 cursor-pointer hover:border-emerald-400 dark:hover:border-emerald-600 transition-colors`}>
+        <label className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed ${error ? "border-red-300 dark:border-red-700" : "border-slate-300 dark:border-slate-600"} bg-slate-50 dark:bg-slate-800/50 py-8 px-4 cursor-pointer hover:border-emerald-400 dark:hover:border-emerald-600 transition-colors`}>
           <input
             type="file"
             accept="image/*,.pdf"
@@ -1180,12 +1178,12 @@ function FileUploadField({
           {isUploading ? (
             <Loader2 className="w-8 h-8 text-emerald-500 animate-spin mb-2" />
           ) : (
-            <FileImage className="w-8 h-8 text-gray-400 mb-2" />
+            <FileImage className="w-8 h-8 text-slate-400 mb-2" />
           )}
-          <span className="text-sm text-gray-500 dark:text-gray-400">
+          <span className="text-sm text-slate-500 dark:text-slate-400">
             {isUploading ? "Uploading..." : "Click to upload"}
           </span>
-          <span className="text-xs text-gray-400 dark:text-gray-500 mt-1">JPEG, PNG, WebP, PDF up to 10MB</span>
+          <span className="text-xs text-slate-400 dark:text-slate-500 mt-1">JPEG, PNG, WebP, PDF up to 10MB</span>
         </label>
       )}
 
@@ -1200,10 +1198,10 @@ function FileUploadField({
 
 function ReviewSection({ title, icon: Icon, children }: { title: string; icon: typeof Shield; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 p-5">
-      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
+    <div className="rounded-2xl border border-amber-300/30 dark:border-amber-400/15 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 shadow-md dark:shadow-emerald-950/20 ring-1 ring-amber-300/10 p-5">
+      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
         <Icon className="w-4 h-4 text-emerald-500" />
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{title}</h3>
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h3>
       </div>
       <div className="space-y-2">{children}</div>
     </div>
@@ -1213,8 +1211,8 @@ function ReviewSection({ title, icon: Icon, children }: { title: string; icon: t
 function ReviewRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between text-sm">
-      <span className="text-gray-500 dark:text-gray-400">{label}</span>
-      <span className="font-medium text-gray-900 dark:text-white">{value}</span>
+      <span className="text-slate-500 dark:text-slate-400">{label}</span>
+      <span className="font-medium text-slate-900 dark:text-white">{value}</span>
     </div>
   );
 }
