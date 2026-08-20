@@ -1,6 +1,6 @@
 import { auth } from "@/server/auth";
 import { redirect } from "next/navigation";
-import DashboardShell from "@/components/layout/DashboardShell";
+import EmpowermentShell from "@/components/empowerment/EmpowermentShell";
 import EmpowermentContent from "@/components/empowerment/EmpowermentContent";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +12,8 @@ export default async function EmpowermentPage() {
   }
 
   return (
-    <DashboardShell session={session}>
+    <EmpowermentShell session={session}>
       <EmpowermentContent />
-    </DashboardShell>
+    </EmpowermentShell>
   );
 }

@@ -1,5 +1,6 @@
 import { auth } from "@/server/auth";
 import { redirect } from "next/navigation";
+import AccountShell from "@/components/account/AccountShell";
 import SettingsLayout from "@/components/settings/SettingsLayout";
 
 export default async function UserSettingsPage() {
@@ -9,5 +10,9 @@ export default async function UserSettingsPage() {
     redirect("/login");
   }
 
-  return <SettingsLayout session={session} />;
+  return (
+    <AccountShell session={session}>
+      <SettingsLayout session={session} />
+    </AccountShell>
+  );
 }
