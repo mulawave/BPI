@@ -284,7 +284,7 @@ export default function PremiumDashboard({ session }: PremiumDashboardProps) {
             </div>
           </div>
           {/* AUTO_DEBIT_BUTTON */}
-          <div className="mt-4 mb-6 flex justify-start">
+          <div className="mt-4 mb-6 flex flex-wrap gap-3 justify-start">
             <button
               onClick={() => router.push('/wallet/settings')}
               className="inline-flex items-center gap-3 rounded-xl border border-amber-300/30 bg-gradient-to-r from-amber-500/15 to-emerald-500/15 hover:from-amber-500/25 hover:to-emerald-500/25 px-4 py-3 transition-all ring-1 ring-amber-300/20 group"
@@ -297,6 +297,19 @@ export default function PremiumDashboard({ session }: PremiumDashboardProps) {
                 <p className="text-[10px] text-amber-200/60">Configure automatic deductions & scheduled payments</p>
               </div>
               <ChevronRight className="w-4 h-4 text-amber-300/60 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+            <button
+              onClick={() => router.push('/elite-club')}
+              className="inline-flex items-center gap-3 rounded-xl border border-purple-300/30 bg-gradient-to-r from-purple-500/15 to-fuchsia-500/15 hover:from-purple-500/25 hover:to-fuchsia-500/25 px-4 py-3 transition-all ring-1 ring-purple-300/20 group"
+            >
+              <div className="w-8 h-8 rounded-lg bg-purple-400/20 flex items-center justify-center ring-1 ring-purple-300/30">
+                <Crown className="w-4 h-4 text-purple-300" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-bold text-purple-100">Membership Upgrade</p>
+                <p className="text-[10px] text-purple-200/60">Unlock higher tiers & exclusive benefits</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-purple-300/60 group-hover:translate-x-0.5 transition-transform" />
             </button>
           </div>
           {/* HERO_STATS */}
