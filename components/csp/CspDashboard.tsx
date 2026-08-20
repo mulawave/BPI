@@ -63,6 +63,8 @@ function shuffleArray<T>(input: T[]) {
   return arr;
 }
 
+const EMPTY_ARRAY: any[] = [];
+
 export function CspDashboard({ userName }: CspDashboardProps) {
   const { formatAmount, selectedCurrency } = useCurrency();
   const [supportCategory, setSupportCategory] = useState<SupportCategory>("national");
@@ -120,7 +122,10 @@ export function CspDashboard({ userName }: CspDashboardProps) {
       void utilsRef.current.csp.getLiveStatus.cancel();
       void utilsRef.current.csp.listHistory.cancel();
       void utilsRef.current.csp.listBroadcasts.cancel();
+      void utilsRef.current.csp.getCommunicationFeed.cancel();
       void utilsRef.current.notification.getMyNotifications.cancel();
+      void utilsRef.current.user.getDetails.cancel();
+      void utilsRef.current.csp.getAutoContributeSettings.cancel();
     };
   }, []);
 
@@ -292,12 +297,11 @@ export function CspDashboard({ userName }: CspDashboardProps) {
     date: new Date(item.createdAt).toLocaleDateString(),
   }));
 
-  const broadcasts = broadcastsQuery.data ?? [];
-  const now = new Date();
-  const visibleBroadcasts = broadcasts.filter((broadcast) => isCspBroadcastVisible(broadcast, now));
-  if (broadcasts.length > visibleBroadcasts.length) {
-    // Stale broadcasts hidden from feed — visibleBroadcasts used for rendering
-  }
+  const broadcasts = broadcastsQuery.data ?? EMPTY_ARRAY;
+  const visibleBroadcasts = useMemo(
+    () => broadcasts.filter((broadcast) => isCspBroadcastVisible(broadcast, new Date())),
+    [broadcasts]
+  );
 
   useEffect(() => {
     setShuffledBroadcasts(visibleBroadcasts);

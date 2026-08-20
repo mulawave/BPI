@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Settings, Zap, ToggleLeft, ToggleRight, Info, History, AlertCircle, Sparkles, Gem } from 'lucide-react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -14,6 +14,15 @@ export default function CspAutoContributeSettings() {
   const [showLogs, setShowLogs] = useState(false);
 
   const utils = api.useUtils();
+  const utilsRef = useRef(utils);
+  utilsRef.current = utils;
+
+  useEffect(() => {
+    return () => {
+      void utilsRef.current.csp.getAutoContributeSettings.cancel();
+      void utilsRef.current.csp.getAutoContributeLogs.cancel();
+    };
+  }, []);
 
   const { data: settings, isLoading } = api.csp.getAutoContributeSettings.useQuery();
   const { data: logs } = api.csp.getAutoContributeLogs.useQuery(

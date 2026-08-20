@@ -9,6 +9,7 @@ import superjson from "superjson";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { CurrencyProvider } from "@/contexts/CurrencyContext";
 import { Toaster } from "react-hot-toast";
+import { getNavAbortSignal, abortAllInFlightTrpcRequests } from "@/lib/trpcNavAbort";
 
 /**
  * Listens for unhandled promise rejections caused by a stale browser bundle
@@ -26,6 +27,13 @@ function StaleDeployGuard() {
     window.addEventListener("unhandledrejection", handler);
     return () => window.removeEventListener("unhandledrejection", handler);
   }, []);
+
+  useEffect(() => {
+    const onPageHide = () => abortAllInFlightTrpcRequests();
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, []);
+
   return null;
 }
 
@@ -106,6 +114,15 @@ export default function Providers({ children }: { children: ReactNode }) {
               } else {
                 inboundSignal.addEventListener("abort", () => timeoutController.abort(), { once: true });
               }
+            }
+
+            // Also listen to the global navigation abort signal so all
+            // in-flight requests are killed instantly when the user navigates.
+            const navSignal = getNavAbortSignal();
+            if (navSignal.aborted) {
+              timeoutController.abort();
+            } else {
+              navSignal.addEventListener("abort", () => timeoutController.abort(), { once: true });
             }
 
             return fetch(url, { ...options, signal: timeoutController.signal }).finally(

@@ -13,6 +13,7 @@ import {
 import { AiOutlineRobot } from "react-icons/ai";
 import { signOut } from "next-auth/react";
 import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
+import { abortAllInFlightTrpcRequests } from "@/lib/trpcNavAbort";
 import Footer from "@/components/Footer";
 
 function formatAmountShort(v: number): string {
@@ -55,6 +56,7 @@ export default function CspShell({ session, children }: CspShellProps) {
   const isActive = (href: string) => currentPath === href || currentPath.startsWith(`${href}/`);
 
   const handleNavClick = useCallback((href: string) => {
+    abortAllInFlightTrpcRequests();
     setNavLoadingHref(href);
   }, []);
 

@@ -16,6 +16,7 @@ import {
 import { AiOutlineRobot } from "react-icons/ai";
 import { signOut } from "next-auth/react";
 import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
+import { abortAllInFlightTrpcRequests } from "@/lib/trpcNavAbort";
 import toast from "react-hot-toast";
 import Footer from "@/components/Footer";
 
@@ -64,6 +65,7 @@ export default function DashboardShell({ session, children }: DashboardShellProp
   const isActive = (href: string) => currentPath === href || currentPath.startsWith(`${href}/`);
 
   const handleNavClick = useCallback((href: string) => {
+    abortAllInFlightTrpcRequests();
     setNavLoadingHref(href);
   }, []);
 
