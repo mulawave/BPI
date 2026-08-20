@@ -299,7 +299,7 @@ export default function PremiumDashboard({ session }: PremiumDashboardProps) {
               <ChevronRight className="w-4 h-4 text-amber-300/60 group-hover:translate-x-0.5 transition-transform" />
             </button>
             <button
-              onClick={() => router.push('/elite-club')}
+              onClick={() => router.push('/membership')}
               className="inline-flex items-center gap-3 rounded-xl border border-purple-300/30 bg-gradient-to-r from-purple-500/15 to-fuchsia-500/15 hover:from-purple-500/25 hover:to-fuchsia-500/25 px-4 py-3 transition-all ring-1 ring-purple-300/20 group"
             >
               <div className="w-8 h-8 rounded-lg bg-purple-400/20 flex items-center justify-center ring-1 ring-purple-300/30">
