@@ -11,9 +11,123 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 import { AiOutlineRobot } from "react-icons/ai";
-import { Search, MessageCircle, BookOpen, ArrowRight, LifeBuoy, Loader2 } from "lucide-react";
+import {
+  Search, MessageCircle, BookOpen, ArrowRight, LifeBuoy, Loader2,
+  Send, Sparkles, GraduationCap, Wallet, Store, Shield, Trophy,
+  Users, Newspaper, Calculator, ChevronRight, Mail, X,
+} from "lucide-react";
 
 const pillClass = "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold";
+
+const premiumCardClass = "rounded-2xl border border-amber-300/30 dark:border-amber-400/15 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 shadow-md dark:shadow-emerald-950/20 ring-1 ring-amber-300/10";
+
+// ── RAVEN Knowledge Base ───────────────────────────────────────
+const KNOWLEDGE_BASE: Array<{
+  keywords: string[];
+  response: string;
+  links?: { label: string; href: string }[];
+}> = [
+  {
+    keywords: ["dashboard", "home", "overview", "portfolio"],
+    response: "Your Dashboard is the central hub showing your Total Portfolio Value, wallet balances, BPI tokens, membership license, and rewards. You can Deposit, Withdraw, Transfer, manage Auto-Debit settings, and upgrade your membership from here.",
+    links: [{ label: "Go to Dashboard", href: "/dashboard" }],
+  },
+  {
+    keywords: ["wallet", "deposit", "withdraw", "transfer", "balance", "fund"],
+    response: "Your Wallet supports deposits via multiple payment gateways, withdrawals (including USDT), and transfers between BPI users. You can access these from the Dashboard's Total Portfolio card. Auto-Debit settings are available at /wallet/settings for scheduled payments.",
+    links: [{ label: "Wallet Settings", href: "/wallet/settings" }, { label: "Dashboard", href: "/dashboard" }],
+  },
+  {
+    keywords: ["store", "shop", "buy", "product", "cart", "checkout", "purchase", "order"],
+    response: "The BPI Superstore lets you purchase products using fiat, crypto, or hybrid checkout. Browse products, add to cart, and checkout with your preferred payment method. You can also track orders and verify pickups.",
+    links: [{ label: "Visit Store", href: "/store" }, { label: "My Orders", href: "/store/orders" }],
+  },
+  {
+    keywords: ["csp", "community", "support", "program", "palliative"],
+    response: "The Community Support Program (CSP) provides structured community assistance, palliative activations, and empowerment initiatives. You can check your CSP eligibility and status from the CSP page.",
+    links: [{ label: "CSP Page", href: "/csp" }],
+  },
+  {
+    keywords: ["blog", "news", "article", "magazine", "update"],
+    response: "The BPI Blog features articles, news, and updates about the platform. You can browse the magazine and read individual posts.",
+    links: [{ label: "Read Blog", href: "/blog" }],
+  },
+  {
+    keywords: ["kyc", "verify", "verification", "identity", "document"],
+    response: "KYC (Know Your Customer) verification is required to unlock full platform access. You'll need to provide personal info, address, a government-issued ID, and a selfie. Verification typically takes 24-48 hours.",
+    links: [{ label: "Start KYC", href: "/kyc" }],
+  },
+  {
+    keywords: ["membership", "tier", "upgrade", "elite", "club", "package"],
+    response: "Membership tiers unlock exclusive benefits and higher earning potential. Visit the Elite Club to explore available tiers and upgrade your membership.",
+    links: [{ label: "Elite Club", href: "/elite-club" }],
+  },
+  {
+    keywords: ["empowerment", "empower", "program"],
+    response: "The Empowerment program provides tools and resources for personal and financial growth. Explore available empowerment initiatives on the Empowerment page.",
+    links: [{ label: "Empowerment", href: "/empowerment" }],
+  },
+  {
+    keywords: ["techquiz", "quiz", "cbt", "exam", "school", "test"],
+    response: "TechQuiz offers computer-based testing (CBT) and quiz competitions for schools and individuals. You can participate in quizzes, view results, and schools can administer exams.",
+    links: [{ label: "TechQuiz", href: "/techquiz" }],
+  },
+  {
+    keywords: ["settings", "profile", "account", "password", "2fa", "security"],
+    response: "Account Settings lets you manage your profile, change your password, enable two-factor authentication (2FA), and configure security preferences.",
+    links: [{ label: "Account Settings", href: "/settings" }],
+  },
+  {
+    keywords: ["claim", "code", "pickup", "verify"],
+    response: "After placing an order in the store, you'll receive a claim code. Use it to verify pickup at designated pickup centers. Go to Pickup Verify and enter your claim code to confirm collection.",
+    links: [{ label: "Verify Pickup", href: "/store/pickup-verify" }, { label: "Pickup Centers", href: "/store/pickup-centers" }],
+  },
+  {
+    keywords: ["referral", "refer", "invite", "downline", "team"],
+    response: "You can refer others to BPI using your referral link. Track your referrals, downline activity, and team growth from the Dashboard's community section.",
+    links: [{ label: "Dashboard", href: "/dashboard" }],
+  },
+  {
+    keywords: ["token", "bpt", "coin", "crypto"],
+    response: "BPI Token (BPT) is the platform's native token. You can use it for store purchases, staking, and other platform activities. Your BPT balance is shown on the Dashboard.",
+    links: [{ label: "Dashboard", href: "/dashboard" }],
+  },
+  {
+    keywords: ["reward", "cashback", "rebate", "bonus"],
+    response: "Rewards include cashback, educational credits, and bonuses earned through platform activity. Your rewards balance is displayed on the Dashboard and can be used in the store.",
+    links: [{ label: "Dashboard", href: "/dashboard" }],
+  },
+  {
+    keywords: ["learn", "learning", "education", "guide", "tutorial", "training"],
+    response: "The Learning Center provides structured guides and tutorials to help you get the most out of BPI. Topics include getting started, wallet management, store usage, CSP, and advanced features.",
+    links: [{ label: "Learning Center", href: "/learning" }],
+  },
+];
+
+const QUICK_TOPICS = [
+  { label: "How to deposit funds", keywords: "deposit wallet fund" },
+  { label: "Store checkout process", keywords: "store checkout cart" },
+  { label: "KYC verification", keywords: "kyc verify identity" },
+  { label: "Membership upgrade", keywords: "membership upgrade elite" },
+  { label: "Claim code & pickup", keywords: "claim code pickup verify" },
+  { label: "CSP eligibility", keywords: "csp community support" },
+];
+
+function searchKnowledgeBase(query: string): typeof KNOWLEDGE_BASE {
+  const normalized = query.toLowerCase().replace(/[!?.,]/g, "").trim();
+  const words = normalized.split(/\s+/);
+  const scored = KNOWLEDGE_BASE.map((entry) => {
+    let score = 0;
+    for (const kw of entry.keywords) {
+      if (normalized.includes(kw)) score += 3;
+      for (const word of words) {
+        if (kw.includes(word) && word.length > 2) score += 1;
+      }
+    }
+    return { entry, score };
+  }).filter((s) => s.score > 0).sort((a, b) => b.score - a.score);
+  return scored.map((s) => s.entry);
+}
 
 type HelpRouterOutputs = inferRouterOutputs<AppRouter>["help"];
 type HelpCategory = HelpRouterOutputs["listCategories"][number];
@@ -170,8 +284,22 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 650));
+      const kbResults = searchKnowledgeBase(prompt);
       const result = await chatSearchQuery.refetch();
       const matches = result.data?.topics ?? [];
+
+      if (kbResults.length > 0) {
+        const top = kbResults[0];
+        setMessages((prev) => [...prev, {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          text: top.response,
+          topics: top.links?.map(l => ({ title: l.label, slug: l.href })),
+        }]);
+        setIsTyping(false);
+        setPendingAction(null);
+        return;
+      }
 
       if (!matches.length) {
         setMessages((prev) => [
@@ -230,7 +358,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
 
   return (
     <div className="space-y-8 px-4 md:px-10 lg:px-16 py-6">
-      <div className="rounded-3xl border border-emerald-900/10 bg-gradient-to-br from-emerald-600 via-emerald-700 to-emerald-800 text-white p-6 shadow-2xl">
+      <div className="rounded-3xl border border-amber-300/20 bg-gradient-to-br from-[#04231a] via-[#0a3d2b] to-[#062818] bg-[radial-gradient(ellipse_at_top_left,rgba(255,215,140,0.10),transparent_50%),radial-gradient(ellipse_at_bottom_right,rgba(16,185,129,0.18),transparent_55%)] text-white p-6 shadow-2xl ring-1 ring-amber-300/20">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
@@ -249,7 +377,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2 p-5 shadow-lg bg-white/90 dark:bg-bpi-dark-card/80 border-border/60">
+        <Card className={cn(premiumCardClass, "lg:col-span-2 p-5")}>
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -322,7 +450,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
             <div className="grid gap-4 sm:grid-cols-2">
               {visibleTopics.map((topic: HelpTopic) => (
                 <Link key={topic.id} href={`/help/${topic.slug}`} onClick={() => setPendingLink(`/help/${topic.slug}`)}>
-                  <Card className="p-4 h-full border-border/60 bg-background/70 hover:border-emerald-500/50 hover:shadow-lg transition">
+                  <Card className="p-4 h-full border-amber-300/20 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 hover:border-emerald-500/50 hover:shadow-lg transition ring-1 ring-amber-300/10">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-semibold text-foreground line-clamp-2">{topic.title}</div>
@@ -383,7 +511,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
         </Card>
 
         <div className="space-y-4">
-          <Card className="p-5 border-border/60 bg-white/90 dark:bg-bpi-dark-card/80 shadow-lg">
+          <Card className={cn(premiumCardClass, "p-5")}>
               <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <AiOutlineRobot className="h-5 w-5 text-emerald-500" /> RAVEN Personal Assistant
               </div>
@@ -469,7 +597,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
               </div>
             </Card>
 
-          <Card className="p-5 border-border/60 bg-white/90 dark:bg-bpi-dark-card/80 shadow-lg">
+          <Card className={cn(premiumCardClass, "p-5")}>
             <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <BookOpen className="h-4 w-4 text-emerald-500" /> Featured Help
             </div>
@@ -494,29 +622,25 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
             </div>
           </Card>
 
-          <Card className="p-5 border-border/60 bg-white/90 dark:bg-bpi-dark-card/80 shadow-lg">
+          <Card className={cn(premiumCardClass, "p-5")}>
             <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <LifeBuoy className="h-4 w-4 text-emerald-500" /> Need more help?
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
               If you can’t find an answer, contact support with your email and a short description.
             </p>
-            <Button
-              className="mt-3 w-full"
-              variant="outline"
-              onClick={() => {
-                setPendingAction("contact");
-                setTimeout(() => setPendingAction(null), 600);
-              }}
-              disabled={pendingAction === "contact"}
-            >
-              {pendingAction === "contact" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Contact Support"}
-            </Button>
+            <Link href="mailto:support@bpi.com?subject=BPI%20Support%20Request" className="block mt-3">
+              <Button
+                className="w-full gap-2 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white shadow-lg shadow-emerald-500/20"
+              >
+                <Mail className="h-4 w-4" /> Contact Support
+              </Button>
+            </Link>
           </Card>
         </div>
       </div>
 
-      <Card className="p-5 border-border/60 bg-white/90 dark:bg-bpi-dark-card/80 shadow-lg">
+      <Card className={cn(premiumCardClass, "p-5")}>
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-semibold text-foreground">Quick tips</div>
@@ -530,7 +654,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
             "Enable 2FA",
             "CSP eligibility",
           ].map((tip: string) => (
-            <div key={tip} className="rounded-xl border border-border/60 bg-background/70 px-3 py-3 text-sm text-foreground">
+            <div key={tip} className="rounded-xl border border-amber-300/20 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 px-3 py-3 text-sm text-foreground ring-1 ring-amber-300/10">
               <div className="flex items-center gap-2">
                 <MessageCircle className="h-4 w-4 text-emerald-500" />
                 {tip}

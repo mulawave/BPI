@@ -8,7 +8,10 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import toast from "react-hot-toast";
+import { cn } from "@/lib/utils";
 import { ArrowLeft, CheckCircle2, MessageCircle, ThumbsDown, ThumbsUp, Loader2 } from "lucide-react";
+
+const premiumCardClass = "rounded-2xl border border-amber-300/30 dark:border-amber-400/15 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 shadow-md dark:shadow-emerald-950/20 ring-1 ring-amber-300/10";
 
 export default function HelpTopicDetail({ isAdmin = false }: { isAdmin?: boolean }) {
   const params = useParams();
@@ -105,7 +108,7 @@ export default function HelpTopicDetail({ isAdmin = false }: { isAdmin?: boolean
         </div>
       </div>
 
-      <Card className="p-6 border-border/60 bg-white/90 dark:bg-bpi-dark-card/80 shadow-lg">
+      <Card className={cn(premiumCardClass, "p-6")}>
         <h1 className="text-2xl font-bold text-foreground">{topic.title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{topic.summary || "Follow the steps below."}</p>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -116,14 +119,14 @@ export default function HelpTopicDetail({ isAdmin = false }: { isAdmin?: boolean
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2 p-6 border-border/60 bg-white/90 dark:bg-bpi-dark-card/80 shadow-lg">
+        <Card className={cn(premiumCardClass, "lg:col-span-2 p-6")}>
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Step‑by‑step
           </div>
           <ol className="mt-4 space-y-3 text-sm text-foreground">
             {steps.length ? (
               steps.map((step: string, idx: number) => (
-                <li key={idx} className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
+                <li key={idx} className="rounded-xl border border-amber-300/20 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 px-4 py-3 ring-1 ring-amber-300/10">
                   <span className="font-semibold">Step {idx + 1}:</span> {step}
                 </li>
               ))
@@ -133,14 +136,14 @@ export default function HelpTopicDetail({ isAdmin = false }: { isAdmin?: boolean
           </ol>
         </Card>
 
-        <Card className="p-6 border-border/60 bg-white/90 dark:bg-bpi-dark-card/80 shadow-lg">
+        <Card className={cn(premiumCardClass, "p-6")}>
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <MessageCircle className="h-4 w-4 text-emerald-500" /> Quick FAQ
           </div>
           <div className="mt-4 space-y-3 text-sm">
             {faq.length ? (
               faq.map((item: { question: string; answer: string }, idx: number) => (
-                <div key={idx} className="rounded-xl border border-border/60 bg-background/70 px-4 py-3">
+                <div key={idx} className="rounded-xl border border-amber-300/20 bg-gradient-to-br from-white to-emerald-50/20 dark:from-slate-900 dark:to-emerald-950/20 px-4 py-3 ring-1 ring-amber-300/10">
                   <div className="font-semibold text-foreground">{item.question}</div>
                   <div className="text-muted-foreground mt-1">{item.answer}</div>
                 </div>
@@ -152,7 +155,7 @@ export default function HelpTopicDetail({ isAdmin = false }: { isAdmin?: boolean
         </Card>
       </div>
 
-      <Card className="p-5 border-border/60 bg-white/90 dark:bg-bpi-dark-card/80 shadow-lg flex flex-wrap items-center justify-between gap-3">
+      <Card className={cn(premiumCardClass, "p-5 flex flex-wrap items-center justify-between gap-3")}>
         <div className="text-sm text-muted-foreground">Was this helpful?</div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => handleHelpful(true)} disabled={pendingHelpful === "yes"}>
