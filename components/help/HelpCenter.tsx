@@ -223,10 +223,7 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
     pageSize: 9,
   });
 
-  const chatSearchQuery = api.help.listTopics.useQuery(
-    { search: chatInput || undefined, page: 1, pageSize: 5 },
-    { enabled: false }
-  );
+  const ravenAsk = api.raven.ask.useMutation();
 
   const categories = categoriesQuery.data ?? [];
   const topics = topicsQuery.data?.topics ?? [];
@@ -242,108 +239,66 @@ export default function HelpCenter({ isAdmin = false }: { isAdmin?: boolean }) {
   const featuredTopics = useMemo(() => visibleTopics.slice(0, 3), [visibleTopics]);
 
   const handleAsk = async () => {
-    const prompt = chatInput.trim();
-    if (!prompt) {
-      toast.error("Type a question first.");
-      return;
-    }
+  const prompt = chatInput.trim();
+  if (!prompt) {
+    toast.error("Type a question first.");
+    return;
+  }
 
-    setPendingAction("ask");
+  setPendingAction("ask");
 
-    const normalized = normalizeInput(prompt);
-    if (greetingSet.has(normalized)) {
-      setIsTyping(true);
-      const greetingResponse: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        text: `Hello${userDetailsQuery.data?.name ? ` ${userDetailsQuery.data.name}` : ""}! I’m RAVEN. Tell me what you need help with, and I’ll guide you step‑by‑step.`,
-      };
-      const userMessage: ChatMessage = {
-        id: `user-${Date.now()}`,
-        role: "user",
-        text: prompt,
-      };
-      setMessages((prev) => [...prev, userMessage]);
-      setChatInput("");
-      setTimeout(() => {
-        setMessages((prev) => [...prev, greetingResponse]);
-        setIsTyping(false);
-      }, 650);
-      setPendingAction(null);
-      return;
-    }
-
+  const normalized = normalizeInput(prompt);
+  if (greetingSet.has(normalized)) {
+    setIsTyping(true);
+    const greetingResponse: ChatMessage = {
+      id: "assistant-" + Date.now(),
+      role: "assistant",
+      text: "Hello" + (userDetailsQuery.data?.name ? " " + userDetailsQuery.data.name : "") + "! I am RAVEN. Tell me what you need help with, and I will guide you step-by-step.",
+    };
     const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
+      id: "user-" + Date.now(),
       role: "user",
       text: prompt,
     };
-
     setMessages((prev) => [...prev, userMessage]);
-    setIsTyping(true);
-
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 650));
-      const kbResults = searchKnowledgeBase(prompt);
-      const result = await chatSearchQuery.refetch();
-      const matches = result.data?.topics ?? [];
-
-      if (kbResults.length > 0) {
-        const top = kbResults[0];
-        setMessages((prev) => [...prev, {
-          id: `assistant-${Date.now()}`,
-          role: "assistant",
-          text: top.response,
-          topics: top.links?.map(l => ({ title: l.label, slug: l.href })),
-        }]);
-        setIsTyping(false);
-        setPendingAction(null);
-        return;
-      }
-
-      if (!matches.length) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `assistant-${Date.now()}`,
-            role: "assistant",
-            text: "I couldn’t find an exact match. Try keywords like ‘claim code’, ‘checkout’, ‘PIN’, or ‘CSP eligibility’.",
-          },
-        ]);
-        setIsTyping(false);
-        setPendingAction(null);
-        return;
-      }
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `assistant-${Date.now()}`,
-          role: "assistant",
-          text: "Here are the closest help topics:",
-          topics: (matches as HelpTopic[]).map((t: HelpTopic) => ({ title: t.title, slug: t.slug })),
-        },
-      ]);
+    setChatInput("");
+    setTimeout(() => {
+      setMessages((prev) => [...prev, greetingResponse]);
       setIsTyping(false);
-      setPendingAction(null);
+    }, 650);
+    setPendingAction(null);
+    return;
+  }
 
-      if (typeof window !== "undefined") {
-        const path = JSON.parse(localStorage.getItem(learningPathKey) || "[]") as Array<{ query: string; matched: string[]; ts: number }>;
-        const entry = {
-          query: prompt,
-          matched: (matches as HelpTopic[]).map((t: HelpTopic) => t.slug),
-          ts: Date.now(),
-        };
-        localStorage.setItem(learningPathKey, JSON.stringify([...path, entry].slice(-50)));
-      }
-    } catch (error: any) {
-      toast.error(error?.message || "Unable to search help topics.");
-      setIsTyping(false);
-      setPendingAction(null);
-    } finally {
-      setChatInput("");
-    }
+  const userMessage: ChatMessage = {
+    id: "user-" + Date.now(),
+    role: "user",
+    text: prompt,
   };
+
+  setMessages((prev) => [...prev, userMessage]);
+  setChatInput("");
+  setIsTyping(true);
+
+  try {
+    const history = messages
+      .filter((m) => m.id !== "welcome")
+      .map((m) => ({ role: m.role, content: m.text }));
+    const res = await ravenAsk.mutateAsync({ message: prompt, history });
+    setMessages((prev) => [...prev, {
+      id: "assistant-" + Date.now(),
+      role: "assistant",
+      text: res.text,
+      topics: res.topics,
+    }]);
+    setIsTyping(false);
+    setPendingAction(null);
+  } catch (error: any) {
+    toast.error(error?.message || "RAVEN is unavailable.");
+    setIsTyping(false);
+    setPendingAction(null);
+  }
+};
 
   useEffect(() => {
     if (!chatContainerRef.current) return;

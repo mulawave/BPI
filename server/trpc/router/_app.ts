@@ -58,6 +58,7 @@ import { techquizRouter } from "./techquiz";
 import { kycRouter } from "./kyc";
 import { adminPluginsRouter } from "./adminPlugins";
 import { promoCampaignRouter } from "./promoCampaign";
+import { ravenRouter } from "./raven";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -112,6 +113,7 @@ export const appRouter = createTRPCRouter({
   eliteClub: eliteClubRouter,
   store: storeRouter,
   help: helpRouter,
+  raven: ravenRouter,
   adminCurrency: adminCurrencyRouter,
   revenue: revenueRouter,
   techquiz: techquizRouter,
