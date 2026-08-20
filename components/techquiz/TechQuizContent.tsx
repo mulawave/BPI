@@ -466,14 +466,14 @@ export default function TechQuizContent() {
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-900 via-[#0d3b29] to-emerald-800 p-8 text-white shadow-xl"
+        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#04231a] via-[#0a3d2b] to-[#062818] p-8 text-white shadow-xl ring-1 ring-amber-300/20"
       >
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(16,185,129,0.15),transparent_60%)]" />
         <div className="relative flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <GraduationCap className="text-emerald-400" size={20} />
-              <span className="text-emerald-400 text-sm font-semibold uppercase tracking-wider">BPI TechQuiz Competition</span>
+              <GraduationCap className="text-emerald-100" size={20} />
+              <span className="text-emerald-100 text-sm font-semibold uppercase tracking-wider">BPI TechQuiz Competition</span>
             </div>
             <h1 className="text-3xl font-bold mb-2">STEM Competition Portal</h1>
             <p className="text-emerald-200/80 text-sm max-w-lg">

@@ -931,14 +931,19 @@ export default function EliteClubContent() {
     <div className="p-4 sm:p-6 lg:p-8 bg-white dark:bg-[#0f1621] min-h-full">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg flex-shrink-0">
+        <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden rounded-2xl shadow-xl ring-1 ring-amber-300/20 mb-8">
+          <div className="absolute inset-0 bg-gradient-to-br from-[#04231a] via-[#0a3d2b] to-[#062818]" />
+          <div className="absolute -top-32 -left-24 w-[28rem] h-[28rem] rounded-full bg-emerald-500/25 blur-3xl" />
+          <div className="absolute -bottom-24 -right-16 w-[26rem] h-[26rem] rounded-full bg-amber-400/15 blur-3xl" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(255,215,140,0.10),transparent_50%),radial-gradient(ellipse_at_bottom_right,rgba(16,185,129,0.18),transparent_55%)]" />
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-300/70 to-transparent" />
+          <div className="relative px-6 py-8 sm:px-10 sm:py-10 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-lg flex-shrink-0 ring-1 ring-white/20">
               <Crown size={26} className="text-white" />
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Elite Club</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Exclusive BPT/PACToken empowerment rotation programme</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-white">Elite Club</h1>
+              <p className="text-sm text-emerald-100/80">Exclusive BPT/PACToken empowerment rotation programme</p>
             </div>
           </div>
         </motion.div>

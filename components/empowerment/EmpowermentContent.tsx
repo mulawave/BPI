@@ -712,17 +712,24 @@ export default function EmpowermentContent() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700/50 dark:bg-emerald-900/40 dark:text-emerald-200">
-            <FiBookOpen className="h-5 w-5" />
-          </span>
-          Empowerment Packages
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Sponsor education and vocational training for BPI members (24-month maturity)
-        </p>
-      </div>
+      <section className="relative overflow-hidden rounded-2xl shadow-xl ring-1 ring-amber-300/20 mb-6">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#04231a] via-[#0a3d2b] to-[#062818]" />
+        <div className="absolute -top-32 -left-24 w-[28rem] h-[28rem] rounded-full bg-emerald-500/25 blur-3xl" />
+        <div className="absolute -bottom-24 -right-16 w-[26rem] h-[26rem] rounded-full bg-amber-400/15 blur-3xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(255,215,140,0.10),transparent_50%),radial-gradient(ellipse_at_bottom_right,rgba(16,185,129,0.18),transparent_55%)]" />
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-300/70 to-transparent" />
+        <div className="relative px-6 py-8 sm:px-10 sm:py-10">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2 flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-200/50 bg-emerald-500/20 text-emerald-100">
+              <FiBookOpen className="h-5 w-5" />
+            </span>
+            Empowerment Packages
+          </h1>
+          <p className="text-emerald-100/80">
+            Sponsor education and vocational training for BPI members (24-month maturity)
+          </p>
+        </div>
+      </section>
 
       {/* Tabs */}
       <div className="flex items-center gap-4 mb-6 border-b border-gray-200 dark:border-gray-700">

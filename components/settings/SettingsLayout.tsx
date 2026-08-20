@@ -4,11 +4,9 @@ import { useState } from 'react';
 import { Session } from 'next-auth';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  ArrowLeft, X, Shield, User, Bell, Palette, Globe, 
-  Lock, CreditCard, Database, Settings as SettingsIcon,
-  ChevronRight, Home
+  X, Shield, User, Bell, Palette, Globe, 
+  Lock, CreditCard, Database, Settings as SettingsIcon
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import UserSecuritySettingsPanel from '@/components/user/SecuritySettingsPanel';
 import CryptoWalletSettings from '@/components/settings/CryptoWalletSettings';
@@ -88,10 +86,6 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
     },
   ];
 
-  const handleClose = () => {
-    router.push('/dashboard');
-  };
-
   const handleTabClick = (tabId: SettingsTab, available: boolean) => {
     if (available) {
       setActiveTab(tabId);
@@ -126,58 +120,18 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
 
   return (
     <div className="min-h-screen w-full">
-      {/* Header */}
-      <header className="bg-white/60 dark:bg-slate-950/60 backdrop-blur-md border-b border-slate-200/60 dark:border-emerald-800/40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            {/* Left: Navigation */}
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handleClose}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors group"
-              >
-                <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />
-              </button>
-              
-              {/* Breadcrumbs */}
-              <div className="hidden sm:flex items-center gap-2 text-sm">
-                <Home className="w-4 h-4 text-gray-400" />
-                <ChevronRight className="w-4 h-4 text-gray-300" />
-                <span className="text-gray-600 dark:text-gray-400">Settings</span>
-                <ChevronRight className="w-4 h-4 text-gray-300" />
-                <span className="text-gray-900 dark:text-white font-medium">
-                  {activeTabConfig?.label}
-                </span>
-              </div>
-            </div>
-
-            {/* Center: Title */}
-            <div className="absolute left-1/2 -translate-x-1/2 hidden md:block">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center">
-                  <SettingsIcon className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-lg font-bold text-gray-900 dark:text-white">
-                    Account Settings
-                  </h1>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {session.user?.email}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Close Button */}
-            <button
-              onClick={handleClose}
-              className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors group"
-            >
-              <X className="w-5 h-5 text-gray-400 group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors" />
-            </button>
+      {/* Account Hero */}
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#04231a] via-[#0a3d2b] to-[#062818] p-8 shadow-xl ring-1 ring-amber-300/20 mb-6 text-white">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center ring-1 ring-white/20">
+            <SettingsIcon className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Account Settings</h1>
+            <p className="text-sm text-emerald-100/80">{session.user?.email}</p>
           </div>
         </div>
-      </header>
+      </section>
 
       {/* KYC Warning Banner */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
@@ -384,10 +338,10 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
                           <activeTabConfig.icon className="w-6 h-6 text-orange-600 dark:text-orange-400" />
                         </div>
                         <div>
-                          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                          <h2 className="text-2xl font-bold text-white">
                             {activeTabConfig.label}
                           </h2>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                          <p className="text-sm text-emerald-100/80">
                             {activeTabConfig.description}
                           </p>
                         </div>
