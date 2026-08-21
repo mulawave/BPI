@@ -314,7 +314,7 @@ export default function KycVerificationFlow() {
       </div>
 
       {/* Step Content */}
-      <div className="">
+      <div className="rounded-2xl bg-white shadow-lg ring-1 ring-slate-200/60 p-6 sm:p-8">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentStep}
