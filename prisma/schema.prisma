@@ -47,6 +47,17 @@ model AdminSettings {
   updatedAt    DateTime
 }
 
+model UserSettings {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  notifications   Json     @default("{}")
+  privacy         Json     @default("{}")
+  preferences     Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 model Assessment {
   id                        String    @id
   installerSsc              String?
@@ -2076,6 +2087,9 @@ model User {
   WalletAutoDebitSetting                                               WalletAutoDebitSetting?
   CspAutoContributeSetting                                             CspAutoContributeSetting?
   CspAutoContributeLogs                                                CspAutoContributeLog[]
+
+  // User Settings (notifications, privacy, preferences)
+  UserSettings                                                         UserSettings?
 
   @@index([cityId])
   @@index([stateId])

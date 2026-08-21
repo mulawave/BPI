@@ -433,4 +433,85 @@ export const userRouter = createTRPCRouter({
         email: newUser.email,
       };
     }),
+
+  // ── User Settings (notifications, privacy, preferences) ──
+
+  getSettings: protectedProcedure.query(async ({ ctx }) => {
+    const userId = (ctx.session!.user as any).id as string;
+    let settings = await prisma.userSettings.findUnique({ where: { userId } });
+    if (!settings) {
+      settings = await prisma.userSettings.create({ data: { userId } });
+    }
+    return {
+      notifications: settings.notifications as Record<string, boolean>,
+      privacy: settings.privacy as Record<string, boolean | string>,
+      preferences: settings.preferences as Record<string, boolean | string>,
+    };
+  }),
+
+  updateNotifications: protectedProcedure
+    .input(z.object({
+      emailNotifications: z.boolean().optional(),
+      pushNotifications: z.boolean().optional(),
+      transactionAlerts: z.boolean().optional(),
+      securityAlerts: z.boolean().optional(),
+      marketingEmails: z.boolean().optional(),
+      referralUpdates: z.boolean().optional(),
+      packageReminders: z.boolean().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session!.user as any).id as string;
+      const existing = await prisma.userSettings.findUnique({ where: { userId } });
+      const current = (existing?.notifications ?? {}) as Record<string, boolean>;
+      const merged = { ...current, ...input };
+      await prisma.userSettings.upsert({
+        where: { userId },
+        update: { notifications: merged },
+        create: { userId, notifications: merged },
+      });
+      return { success: true };
+    }),
+
+  updatePrivacy: protectedProcedure
+    .input(z.object({
+      profileVisibility: z.enum(["public", "members", "private"]).optional(),
+      showWalletBalance: z.boolean().optional(),
+      showReferralStats: z.boolean().optional(),
+      showActivityStatus: z.boolean().optional(),
+      allowDirectMessages: z.boolean().optional(),
+      dataSharingOptIn: z.boolean().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session!.user as any).id as string;
+      const existing = await prisma.userSettings.findUnique({ where: { userId } });
+      const current = (existing?.privacy ?? {}) as Record<string, boolean | string>;
+      const merged = { ...current, ...input };
+      await prisma.userSettings.upsert({
+        where: { userId },
+        update: { privacy: merged },
+        create: { userId, privacy: merged },
+      });
+      return { success: true };
+    }),
+
+  updatePreferences: protectedProcedure
+    .input(z.object({
+      theme: z.enum(["light", "dark", "system"]).optional(),
+      language: z.string().optional(),
+      currencyDisplay: z.string().optional(),
+      dateFormat: z.enum(["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD"]).optional(),
+      emailDigestFrequency: z.enum(["daily", "weekly", "monthly", "never"]).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session!.user as any).id as string;
+      const existing = await prisma.userSettings.findUnique({ where: { userId } });
+      const current = (existing?.preferences ?? {}) as Record<string, boolean | string>;
+      const merged = { ...current, ...input };
+      await prisma.userSettings.upsert({
+        where: { userId },
+        update: { preferences: merged },
+        create: { userId, preferences: merged },
+      });
+      return { success: true };
+    }),
 });

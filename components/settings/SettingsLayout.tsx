@@ -5,11 +5,15 @@ import { Session } from 'next-auth';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Shield, User, Bell, Palette, Globe, ChevronRight,
-  Lock, CreditCard, Database, Settings as SettingsIcon
+  Lock, CreditCard, Settings as SettingsIcon
 } from 'lucide-react';
 import Link from 'next/link';
 import UserSecuritySettingsPanel from '@/components/user/SecuritySettingsPanel';
 import CryptoWalletSettings from '@/components/settings/CryptoWalletSettings';
+import ProfileSettingsPanel from '@/components/settings/ProfileSettingsPanel';
+import NotificationsSettingsPanel from '@/components/settings/NotificationsSettingsPanel';
+import PreferencesSettingsPanel from '@/components/settings/PreferencesSettingsPanel';
+import PrivacySettingsPanel from '@/components/settings/PrivacySettingsPanel';
 import KycWarningBanner from '@/components/kyc/KycWarningBanner';
 import { api } from '@/client/trpc';
 
@@ -53,28 +57,28 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
       label: 'Profile',
       icon: User,
       description: 'Personal information and photo',
-      available: false,
+      available: true,
     },
     {
       id: 'notifications',
       label: 'Notifications',
       icon: Bell,
       description: 'Email and push notification preferences',
-      available: false,
+      available: true,
     },
     {
       id: 'preferences',
       label: 'Preferences',
       icon: Palette,
       description: 'Theme, language, and display options',
-      available: false,
+      available: true,
     },
     {
       id: 'privacy',
       label: 'Privacy',
       icon: Lock,
       description: 'Data privacy and account visibility',
-      available: false,
+      available: true,
     },
     {
       id: 'billing',
@@ -96,22 +100,18 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
     switch (activeTab) {
       case 'security':
         return <UserSecuritySettingsPanel />;
+      case 'profile':
+        return <ProfileSettingsPanel />;
+      case 'notifications':
+        return <NotificationsSettingsPanel />;
+      case 'preferences':
+        return <PreferencesSettingsPanel />;
+      case 'privacy':
+        return <PrivacySettingsPanel />;
       case 'billing':
         return <CryptoWalletSettings />;
       default:
-        return (
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-12 text-center">
-            <div className="w-20 h-20 bg-gray-100 dark:bg-gray-900 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Database className="w-10 h-10 text-gray-400" />
-            </div>
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              Coming Soon
-            </h3>
-            <p className="text-gray-500 dark:text-gray-400">
-              This section is currently under development
-            </p>
-          </div>
-        );
+        return null;
     }
   };
 
