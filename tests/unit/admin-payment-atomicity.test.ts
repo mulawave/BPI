@@ -53,7 +53,7 @@ function createFakePrisma(seed?: {
 
   return {
     state,
-    async $transaction<T>(callback: (tx: any) => Promise<T>) {
+    async $transaction<T>(callback: (tx: any) => Promise<T>, _options?: { timeout?: number; isolationLevel?: unknown }) {
       const snapshot = structuredClone(state);
 
       const tx = {

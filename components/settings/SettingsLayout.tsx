@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Session } from 'next-auth';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  X, Shield, User, Bell, Palette, Globe, 
+  X, Shield, User, Bell, Palette, Globe, ChevronRight,
   Lock, CreditCard, Database, Settings as SettingsIcon
 } from 'lucide-react';
 import Link from 'next/link';
@@ -28,7 +28,6 @@ interface TabConfig {
 }
 
 export default function SettingsLayout({ session }: SettingsLayoutProps) {
-  const router = useRouter();
   const [activeTab, setActiveTab] = useState<SettingsTab>('security');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 

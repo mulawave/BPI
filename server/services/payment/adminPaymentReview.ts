@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
 import {
   activateMembershipAfterExternalPayment,
   upgradeMembershipAfterExternalPayment,
@@ -59,7 +60,10 @@ type ReviewDeps = {
 };
 
 type ReviewPrismaClient = {
-  $transaction: <T>(callback: (tx: any) => Promise<T>) => Promise<T>;
+  $transaction: <T>(
+    callback: (tx: any) => Promise<T>,
+    options?: { timeout?: number; isolationLevel?: Prisma.TransactionIsolationLevel }
+  ) => Promise<T>;
 };
 
 const defaultDeps: ReviewDeps = {
@@ -586,6 +590,9 @@ export async function executeAdminPaymentReview(params: {
     });
 
     return { updated, depositNotification, emailJobs };
+  }, {
+    timeout: 30_000,
+    isolationLevel: "Serializable",
   });
 
   if (reviewResult.emailJobs.length > 0) {
