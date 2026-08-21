@@ -234,7 +234,8 @@ export default function KycVerificationFlow() {
   return (
     <div className="max-w-4xl mx-auto pb-24">
       {/* Page Title */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="rounded-2xl bg-white shadow-lg ring-1 ring-slate-200/60 p-5 mb-6">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
             <Shield className="w-5 h-5 text-white" />
@@ -249,6 +250,7 @@ export default function KycVerificationFlow() {
             <X className="w-4 h-4 mr-1" /> Close
           </Button>
         </Link>
+      </div>
       </div>
 
       {/* Rejection / Expiry notice */}
@@ -277,7 +279,7 @@ export default function KycVerificationFlow() {
       )}
 
       {/* Progress Stepper */}
-      <div className="mt-2 mb-8">
+      <div className="rounded-2xl bg-white shadow-lg ring-1 ring-slate-200/60 p-5 mb-8">
         <div className="flex items-center justify-between">
           {STEPS.map((step, i) => {
             const Icon = step.icon;

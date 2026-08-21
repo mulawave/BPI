@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { MdWarning, MdExitToApp } from "react-icons/md";
-import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 
@@ -44,11 +43,7 @@ export default function ImpersonationBanner() {
   };
 
   return (
-    <motion.div
-      initial={{ y: -100 }}
-      animate={{ y: 0 }}
-      className="fixed top-0 left-0 right-0 z-[9999] bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-2xl"
-    >
+    <div className="relative z-[60] bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg">
       <div className="container mx-auto px-4 py-3">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -72,6 +67,6 @@ export default function ImpersonationBanner() {
           </button>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
