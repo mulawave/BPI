@@ -484,4 +484,69 @@ export const securityRouter = createTRPCRouter({
         message: "USDT wallet address saved successfully",
       };
     }),
+
+  // Change password (while logged in)
+  changePassword: protectedProcedure
+    .input(
+      z.object({
+        currentPassword: z.string().min(1, "Current password is required"),
+        newPassword: z.string().min(8, "Password must be at least 8 characters"),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.session?.user?.id) {
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+      }
+
+      const user = await ctx.prisma.user.findUnique({
+        where: { id: ctx.session.user.id },
+        select: { passwordHash: true },
+      });
+
+      if (!user || !user.passwordHash) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User account not found or no password set",
+        });
+      }
+
+      const isValid = await bcrypt.compare(input.currentPassword, user.passwordHash);
+      if (!isValid) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Current password is incorrect",
+        });
+      }
+
+      if (input.currentPassword === input.newPassword) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "New password must be different from your current password",
+        });
+      }
+
+      const newHash = await bcrypt.hash(input.newPassword, 12);
+
+      await ctx.prisma.user.update({
+        where: { id: ctx.session.user.id },
+        data: { passwordHash: newHash },
+      });
+
+      await ctx.prisma.auditLog.create({
+        data: {
+          id: crypto.randomUUID(),
+          userId: ctx.session.user.id,
+          action: "PASSWORD_CHANGED",
+          entity: "USER",
+          entityId: ctx.session.user.id,
+          status: "success",
+          createdAt: new Date(),
+        },
+      });
+
+      return {
+        success: true,
+        message: "Password changed successfully",
+      };
+    }),
 });

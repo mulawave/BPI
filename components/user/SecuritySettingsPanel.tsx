@@ -11,6 +11,7 @@ export default function UserSecuritySettingsPanel() {
   const [showPinSetup, setShowPinSetup] = useState(false);
   const [show2FASetup, setShow2FASetup] = useState(false);
   const [showDisable2FA, setShowDisable2FA] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
   
   const [pinData, setPinData] = useState({
     currentPin: '',
@@ -26,6 +27,13 @@ export default function UserSecuritySettingsPanel() {
     pin: '',
     code: '',
   });
+
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [showPassword, setShowPassword] = useState(false);
 
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
@@ -92,6 +100,18 @@ export default function UserSecuritySettingsPanel() {
     },
   });
 
+  // Change password mutation
+  const changePasswordMutation = api.security.changePassword.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message);
+      setShowPasswordForm(false);
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
   const handleSetupPin = () => {
     if (pinData.newPin !== pinData.confirmPin) {
       toast.error('PINs do not match');
@@ -143,6 +163,28 @@ export default function UserSecuritySettingsPanel() {
     });
   };
 
+  const handleChangePassword = () => {
+    if (passwordData.newPassword.length < 8) {
+      toast.error('New password must be at least 8 characters');
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+
+    if (passwordData.currentPassword === passwordData.newPassword) {
+      toast.error('New password must be different from your current password');
+      return;
+    }
+
+    changePasswordMutation.mutate({
+      currentPassword: passwordData.currentPassword,
+      newPassword: passwordData.newPassword,
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -173,6 +215,117 @@ export default function UserSecuritySettingsPanel() {
         )}
 
         <div className="space-y-6">
+          {/* Password Change Card */}
+          <div className="bg-gray-50 dark:bg-bpi-dark-card border border-gray-200 dark:border-green-800/50 rounded-xl p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
+                  <Key className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Account Password</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Change your login password
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-sm font-medium">
+                <CheckCircle2 className="w-4 h-4" />
+                Set
+              </div>
+            </div>
+
+            {!showPasswordForm ? (
+              <button
+                onClick={() => setShowPasswordForm(true)}
+                className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                Change Password
+              </button>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="space-y-4 mt-4"
+              >
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Current Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={passwordData.currentPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                      className="w-full px-4 py-2 pr-10 bg-white dark:bg-bpi-dark-card border border-gray-200 dark:border-bpi-dark-accent rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      placeholder="Enter current password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    New Password
+                  </label>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={passwordData.newPassword}
+                    onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                    className="w-full px-4 py-2 bg-white dark:bg-bpi-dark-card border border-gray-200 dark:border-bpi-dark-accent rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="At least 8 characters"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Confirm New Password
+                  </label>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={passwordData.confirmPassword}
+                    onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                    className="w-full px-4 py-2 bg-white dark:bg-bpi-dark-card border border-gray-200 dark:border-bpi-dark-accent rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="Re-enter new password"
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleChangePassword}
+                    disabled={changePasswordMutation.isPending}
+                    className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {changePasswordMutation.isPending ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      'Update Password'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowPasswordForm(false);
+                      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                    }}
+                    disabled={changePasswordMutation.isPending}
+                    className="px-4 py-2 bg-gray-200 dark:bg-green-900/30 text-gray-700 dark:text-emerald-200 rounded-lg hover:bg-gray-300 dark:hover:bg-green-800/40 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </div>
+
           {/* PIN Setup Card */}
           {pinEnabled && (
             <div className="bg-gray-50 dark:bg-bpi-dark-card border border-gray-200 dark:border-green-800/50 rounded-xl p-6">
