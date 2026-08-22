@@ -304,6 +304,7 @@ export const userRouter = createTRPCRouter({
           name: true,
           username: true,
           image: true,
+          UserSettings: { select: { privacy: true } },
         },
         take: input.limit,
         orderBy: [
@@ -311,7 +312,14 @@ export const userRouter = createTRPCRouter({
         ],
       });
 
-      return users.map((user) => ({
+      // Filter out users with private profile visibility
+      const filtered = users.filter((user) => {
+        const privacy = user.UserSettings?.privacy as Record<string, boolean | string> | undefined;
+        if (privacy?.profileVisibility === 'private') return false;
+        return true;
+      });
+
+      return filtered.map((user) => ({
         id: user.id,
         email: user.email,
         name: user.name,

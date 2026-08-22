@@ -1,40 +1,68 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 
-type Theme = 'light' | 'dark';
+type ThemeMode = 'light' | 'dark' | 'system';
+type ResolvedTheme = 'light' | 'dark';
 
 interface ThemeContextType {
-  theme: Theme;
+  theme: ResolvedTheme;
+  themeMode: ThemeMode;
+  setThemeMode: (mode: ThemeMode) => void;
   toggleTheme: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+function getSystemTheme(): ResolvedTheme {
+  if (typeof window === 'undefined') return 'light';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('light');
+  const [themeMode, setThemeModeState] = useState<ThemeMode>('light');
+  const [theme, setTheme] = useState<ResolvedTheme>('light');
   const [mounted, setMounted] = useState(false);
 
   // Load theme from localStorage on mount
   useEffect(() => {
-    const savedTheme = localStorage.getItem('bpi-theme') as Theme;
-    if (savedTheme && (savedTheme === 'light' || savedTheme === 'dark')) {
-      setTheme(savedTheme);
+    const saved = localStorage.getItem('bpi-theme') as ThemeMode;
+    if (saved && (saved === 'light' || saved === 'dark' || saved === 'system')) {
+      setThemeModeState(saved);
+      setTheme(saved === 'system' ? getSystemTheme() : saved);
     }
     setMounted(true);
   }, []);
 
+  // Listen for system theme changes when in system mode
+  useEffect(() => {
+    if (!mounted || themeMode !== 'system') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setTheme(e.matches ? 'dark' : 'light');
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [themeMode, mounted]);
+
   // Save theme to localStorage and apply to document
   useEffect(() => {
     if (mounted) {
-      localStorage.setItem('bpi-theme', theme);
+      localStorage.setItem('bpi-theme', themeMode);
       document.documentElement.setAttribute('data-theme', theme);
     }
-  }, [theme, mounted]);
+  }, [theme, themeMode, mounted]);
 
-  const toggleTheme = () => {
-    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
-  };
+  const setThemeMode = useCallback((mode: ThemeMode) => {
+    setThemeModeState(mode);
+    setTheme(mode === 'system' ? getSystemTheme() : mode);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setThemeModeState(prev => {
+      const next = prev === 'light' ? 'dark' : 'light';
+      setTheme(next);
+      return next;
+    });
+  }, []);
 
   // Prevent hydration mismatch
   if (!mounted) {
@@ -42,7 +70,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, themeMode, setThemeMode, toggleTheme }}>
       <div className={theme === 'dark' ? 'dark' : ''}>
         {children}
       </div>

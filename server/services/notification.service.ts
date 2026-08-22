@@ -82,6 +82,106 @@ interface NotificationData {
   metadata?: Record<string, any>;
 }
 
+/** Map notification types to user preference keys */
+const NOTIF_TYPE_TO_PREF: Record<string, string> = {
+  MEMBERSHIP_ACTIVATED: "packageReminders",
+  MEMBERSHIP_RENEWED: "packageReminders",
+  MEMBERSHIP_EXPIRING: "packageReminders",
+  MEMBERSHIP_EXPIRED: "packageReminders",
+  REFERRAL_REWARD: "referralUpdates",
+  YOUTUBE_REFERRAL_EARNING: "referralUpdates",
+  EMPOWERMENT_ACTIVATED: "referralUpdates",
+  EMPOWERMENT_MATURE: "referralUpdates",
+  EMPOWERMENT_APPROVED: "referralUpdates",
+  EMPOWERMENT_RELEASED: "referralUpdates",
+  EMPOWERMENT_FALLBACK: "referralUpdates",
+  EMPOWERMENT_CONVERTED: "referralUpdates",
+  DEPOSIT_PENDING: "transactionAlerts",
+  DEPOSIT_PROCESSING: "transactionAlerts",
+  DEPOSIT_COMPLETED: "transactionAlerts",
+  DEPOSIT_FAILED: "transactionAlerts",
+  WITHDRAWAL_PENDING: "transactionAlerts",
+  WITHDRAWAL_APPROVED: "transactionAlerts",
+  WITHDRAWAL_PROCESSING: "transactionAlerts",
+  WITHDRAWAL_COMPLETED: "transactionAlerts",
+  WITHDRAWAL_REJECTED: "transactionAlerts",
+  WITHDRAWAL_FAILED: "transactionAlerts",
+  CSP_REQUEST_SUBMITTED: "transactionAlerts",
+  CSP_REQUEST_APPROVED: "transactionAlerts",
+  CSP_REQUEST_REJECTED: "transactionAlerts",
+  CSP_BROADCAST_EXTENDED: "transactionAlerts",
+  CSP_BROADCAST_EXPIRING: "transactionAlerts",
+  CSP_CONTRIBUTION_RECEIVED: "transactionAlerts",
+  CSP_CONTRIBUTION_SENT: "transactionAlerts",
+  CSP_QUALIFICATION_MET: "transactionAlerts",
+  CSP_BROADCAST_COMPLETED: "transactionAlerts",
+  CSP_REQUEST_PROCESSED: "transactionAlerts",
+  TECHQUIZ_EVENT_PUBLISHED: "marketingEmails",
+  TECHQUIZ_APPLICATION_SUBMITTED: "transactionAlerts",
+  TECHQUIZ_APPLICATION_SLOT_RESERVED: "transactionAlerts",
+  TECHQUIZ_APPLICATION_VERIFIED: "transactionAlerts",
+  TECHQUIZ_APPLICATION_REJECTED: "transactionAlerts",
+  TECHQUIZ_CBT_ACCESS_ISSUED: "transactionAlerts",
+  TECHQUIZ_ROUND1_RESULT: "transactionAlerts",
+  TECHQUIZ_QUALIFIER_NOTICE: "transactionAlerts",
+  TECHQUIZ_ROUND2_SCHEDULE: "transactionAlerts",
+  TECHQUIZ_ROUND2_RESULT: "transactionAlerts",
+  TECHQUIZ_FINAL_RESULTS_PUBLISHED: "transactionAlerts",
+  TECHQUIZ_WINNER_NOTIFICATION: "transactionAlerts",
+  TECHQUIZ_SPONSORSHIP_CONFIRMED: "transactionAlerts",
+  TECHQUIZ_SPONSORSHIP_ALLOCATED: "transactionAlerts",
+  TECHQUIZ_SCHOOL_QUOTA_FULL: "transactionAlerts",
+  TECHQUIZ_SCHOOL_MIN_NOT_REACHED: "transactionAlerts",
+  TECHQUIZ_COMPLIANCE_FLAG: "securityAlerts",
+  ELITE_CLUB_ACTIVATED: "packageReminders",
+  ELITE_CLUB_APP_SUBMITTED: "transactionAlerts",
+  ELITE_CLUB_APP_APPROVED: "transactionAlerts",
+  ELITE_CLUB_APP_REJECTED: "transactionAlerts",
+  ELITE_CLUB_TOKEN_VERIFIED: "transactionAlerts",
+  ELITE_CLUB_CONTRIBUTION_RECORDED: "transactionAlerts",
+  ELITE_CLUB_PAYOUT_SCHEDULED: "transactionAlerts",
+  ELITE_CLUB_PAYOUT_RELEASED: "transactionAlerts",
+  ELITE_CLUB_PAYOUT_BLOCKED: "transactionAlerts",
+  ELITE_CLUB_SWAP_REQUEST: "transactionAlerts",
+  ELITE_CLUB_SWAP_ACCEPTED: "transactionAlerts",
+  ELITE_CLUB_SWAP_REJECTED: "transactionAlerts",
+  ELITE_CLUB_VOTE_OPEN: "transactionAlerts",
+  ELITE_CLUB_INVESTMENT_REJECTED: "transactionAlerts",
+  ELITE_CLUB_SUSPENDED: "securityAlerts",
+  ELITE_CLUB_REINSTATED: "securityAlerts",
+  ADMIN_ACTION_REQUIRED: "securityAlerts",
+  BPT_REWARD: "transactionAlerts",
+};
+
+/** Security-sensitive types that always send regardless of preferences */
+const ALWAYS_SEND_TYPES = new Set<NotificationType>([
+  "ADMIN_ACTION_REQUIRED",
+]);
+
+/** Check if the user has disabled this notification category */
+async function isNotificationAllowed(userId: string, type: NotificationType): Promise<boolean> {
+  // Security alerts always pass
+  if (ALWAYS_SEND_TYPES.has(type)) return true;
+
+  const prefKey = NOTIF_TYPE_TO_PREF[type];
+  if (!prefKey) return true; // unmapped types default to allowed
+
+  try {
+    const settings = await prisma.userSettings.findUnique({
+      where: { userId },
+      select: { notifications: true },
+    });
+    if (!settings) return true; // no settings = allow all
+    const prefs = settings.notifications as Record<string, boolean>;
+    // If the specific pref is explicitly false, block the notification
+    if (prefs[prefKey] === false) return false;
+    return true;
+  } catch {
+    // If UserSettings table doesn't exist or query fails, allow notification
+    return true;
+  }
+}
+
 export async function notifyCspRequestSubmitted(userId: string, category: string, amount: number) {
   await sendNotification({
     userId,
@@ -159,6 +259,10 @@ export async function notifyCspRequestRejected(userId: string, category: string,
  */
 export async function sendNotification(data: NotificationData): Promise<boolean> {
   try {
+    // Check user notification preferences before sending
+    const allowed = await isNotificationAllowed(data.userId, data.type);
+    if (!allowed) return true; // silently skip — user opted out
+
     await prisma.notification.create({
       data: {
         id: randomUUID(),
@@ -182,8 +286,16 @@ export async function sendNotification(data: NotificationData): Promise<boolean>
  */
 export async function sendBulkNotifications(notifications: NotificationData[]): Promise<boolean> {
   try {
+    // Filter out notifications the user has opted out of
+    const allowed: NotificationData[] = [];
+    for (const n of notifications) {
+      const ok = await isNotificationAllowed(n.userId, n.type);
+      if (ok) allowed.push(n);
+    }
+    if (allowed.length === 0) return true;
+
     await prisma.notification.createMany({
-      data: notifications.map(n => ({
+      data: allowed.map(n => ({
         id: randomUUID(),
         userId: n.userId,
         title: n.title,

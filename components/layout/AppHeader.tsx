@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { format } from "date-fns";
+import { formatDate } from "@/lib/userDateFormat";
 import { signOut, useSession } from "next-auth/react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
@@ -46,8 +46,8 @@ export function AppHeader({ pageTitle = "BeepAgro Africa", pageSubtitle = "Palli
           <div className="flex items-center gap-3">
             <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="h-4 w-4" />
-              <span>{format(currentTime, "PP")}</span>
-              <span className="font-mono">{format(currentTime, "p")}</span>
+              <span>{formatDate(currentTime)}</span>
+              <span className="font-mono">{currentTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
             </div>
 
             <Button

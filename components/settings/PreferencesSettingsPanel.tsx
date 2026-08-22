@@ -4,14 +4,29 @@ import { Palette, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '@/client/trpc';
+import { useTheme } from '@/contexts/ThemeContext';
+
+const DATE_FORMAT_KEY = 'bpi-date-format';
 
 export default function PreferencesSettingsPanel() {
   const { data: settings, isLoading } = api.user.getSettings.useQuery();
   const utils = api.useUtils();
+  const { setThemeMode, themeMode } = useTheme();
   const [prefs, setPrefs] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (settings?.preferences) setPrefs(settings.preferences as Record<string, string>);
+    if (settings?.preferences) {
+      const p = settings.preferences as Record<string, string>;
+      setPrefs(p);
+      // Apply theme from DB if present and different from current
+      if (p.theme && p.theme !== themeMode) {
+        setThemeMode(p.theme as any);
+      }
+      // Apply date format to localStorage for use by date utilities
+      if (p.dateFormat) {
+        localStorage.setItem(DATE_FORMAT_KEY, p.dateFormat);
+      }
+    }
   }, [settings]);
 
   const mutation = api.user.updatePreferences.useMutation({
@@ -23,6 +38,14 @@ export default function PreferencesSettingsPanel() {
     const next = { ...prefs, [key]: value };
     setPrefs(next);
     mutation.mutate({ [key]: value } as any);
+    // Immediately apply theme change
+    if (key === 'theme') {
+      setThemeMode(value as any);
+    }
+    // Persist date format to localStorage for client-side date formatting
+    if (key === 'dateFormat') {
+      localStorage.setItem(DATE_FORMAT_KEY, value);
+    }
   };
 
   if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>;
