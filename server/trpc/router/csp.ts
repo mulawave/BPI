@@ -33,6 +33,7 @@ import {
 } from "@/server/services/csp-donations.service";
 import { isCspBroadcastVisible, getCspBroadcastHiddenReason } from "@/lib/csp/broadcastVisibility";
 import { loadTierConfig, type TierConfig } from "@/server/services/csp-config.service";
+import { getCspAdminOverview as fetchCspAdminOverview } from "@/server/services/csp-admin-overview.service";
 
 // Hardcoded fallback defaults – overridden by AdminSettings when set
 const DEFAULTS = {
@@ -1891,9 +1892,17 @@ export const cspRouter = createTRPCRouter({
         },
       });
 
-      await notifyCspRequestProcessed(request.userId, request.category, request.thresholdAmount, "released");
+      await notifyCspRequestProcessed(request.userId, request.category, shares.recipient, "released");
       if (request.User?.email) {
-        try { await sendCspLifecycleEmail(request.User.email, "processed", { category: request.category, amount: request.thresholdAmount, status: "released" }); }
+        try { await sendCspLifecycleEmail(request.User.email, "processed", {
+          category: request.category,
+          amount: shares.recipient,
+          status: "released",
+          requestedAmount: request.requestedAmount ?? undefined,
+          totalRaised: total,
+          fullyFunded,
+          shares,
+        }); }
         catch (e) { console.error("[CSP] Lifecycle email failed:", e); }
       }
 
@@ -3207,4 +3216,14 @@ export const cspRouter = createTRPCRouter({
     });
     return notifications;
   }),
+
+  getCspAdminOverview: protectedProcedure
+    .input(z.object({
+      auditPage: z.number().int().min(1).default(1),
+      auditLimit: z.number().int().min(1).max(50).default(10),
+    }).optional())
+    .query(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      return fetchCspAdminOverview(input?.auditPage ?? 1, input?.auditLimit ?? 10);
+    }),
 });

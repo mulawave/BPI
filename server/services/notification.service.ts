@@ -867,16 +867,41 @@ export async function notifyEliteClubReinstated(userId: string) {
 export async function sendCspLifecycleEmail(
   userEmail: string,
   stage: "received" | "processed",
-  details: { category: string; amount: number; status: string },
+  details: {
+    category: string;
+    amount: number;
+    status: string;
+    requestedAmount?: number;
+    totalRaised?: number;
+    fullyFunded?: boolean;
+    shares?: { recipient: number; admin: number; sponsor: number; state: number; management: number; reserve: number };
+  },
 ) {
   const subject = stage === "received" ? "CSP: Request received" : "CSP: Request processed";
-  const html = `
-    <h2>${stage === "received" ? "Your CSP Support Request Has Been Received" : "Your CSP Support Request Has Been Processed"}</h2>
-    <p>Category: ${details.category}</p>
-    <p>Amount: ₦${details.amount.toLocaleString()}</p>
-    <p>Status: ${details.status}</p>
-    <p>You can track your request status on your CSP dashboard.</p>
-  `;
+  const isRelease = details.status === "released" && details.shares;
+  let html = `<h2>${stage === "received" ? "Your CSP Support Request Has Been Received" : "Your CSP Support Request Has Been Processed"}</h2>`;
+  html += `<p>Category: ${details.category}</p>`;
+  if (isRelease) {
+    html += `<p>Original Requested Amount: ₦${(details.requestedAmount ?? 0).toLocaleString()}</p>`;
+    html += `<p>Total Raised: ₦${(details.totalRaised ?? 0).toLocaleString()}</p>`;
+    html += `<p><strong>Amount Released to Your Wallet: ₦${details.amount.toLocaleString()}</strong></p>`;
+    html += `<p>Fully Funded: ${details.fullyFunded ? "Yes" : "No"}</p>`;
+    html += `<p>Status: ${details.status}</p>`;
+    if (details.shares) {
+      html += `<h4>Distribution Summary</h4><ul>`;
+      html += `<li>Recipient (You): ₦${details.shares.recipient.toLocaleString()}</li>`;
+      html += `<li>BPI Profit Pool: ₦${details.shares.admin.toLocaleString()}</li>`;
+      html += `<li>Sponsor Reward: ₦${details.shares.sponsor.toLocaleString()}</li>`;
+      html += `<li>State Wallet: ₦${details.shares.state.toLocaleString()}</li>`;
+      html += `<li>Management: ₦${details.shares.management.toLocaleString()}</li>`;
+      html += `<li>Reserve: ₦${details.shares.reserve.toLocaleString()}</li>`;
+      html += `</ul>`;
+    }
+  } else {
+    html += `<p>Amount: ₦${details.amount.toLocaleString()}</p>`;
+    html += `<p>Status: ${details.status}</p>`;
+  }
+  html += `<p>You can track your request status on your CSP dashboard.</p>`;
   await sendEmail({ to: userEmail, subject, html });
 }
 

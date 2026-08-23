@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import AdminPageGuide from "@/components/admin/AdminPageGuide";
+import CspAdminOverviewSection from "@/components/admin/CspAdminOverviewSection";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type AdminQueue = RouterOutputs["csp"]["adminListRequests"];
@@ -143,6 +144,7 @@ export default function CspAdminQueuePage() {
 
   const utils = api.useUtils();
   const { data: visibilityDiagnostics, refetch: refetchDiagnostics } = api.csp.getBroadcastVisibilityDiagnostics.useQuery();
+  const { data: adminOverview, refetch: refetchAdminOverview, isLoading: overviewLoading } = api.csp.getCspAdminOverview.useQuery({});
 
   const { data: searchedUsers } = api.user.searchUsers.useQuery(
     { term: userSearchTerm },
@@ -341,6 +343,13 @@ export default function CspAdminQueuePage() {
           </div>
         </div>
       </motion.div>
+
+      {/* ─── CSP Admin Overview ─────────────────────────────────────────── */}
+      <CspAdminOverviewSection
+        data={adminOverview}
+        isLoading={overviewLoading}
+        onRefresh={() => refetchAdminOverview()}
+      />
 
       {/* Broadcast visibility diagnostics */}
       <div className="rounded-2xl border border-border bg-card p-5">
