@@ -19,7 +19,7 @@ const SSC_REGEX = /^[A-Z0-9]{3}-[A-Z0-9]{4}-[A-Z0-9]{3}$/;
 function errorResponse(status: number, code: string, message: string, headers?: Record<string, string>) {
   return NextResponse.json(
     { verified: false, error: { code, message } },
-    { status, headers },
+    { status, headers: { "Access-Control-Allow-Origin": "*", ...headers } },
   );
 }
 
@@ -27,8 +27,19 @@ function toAbsoluteUrl(path: string | null): string | null {
   if (!path) return null;
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
   const base = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "";
-  if (!base) return path;
+  if (!base) return null;
   return `${base.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    },
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -39,6 +50,7 @@ export async function POST(req: NextRequest) {
   const rawKey = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
   const apiKey = await verifyApiKey(rawKey);
   if (!apiKey) {
+    await logApiRequest({ endpoint: ENDPOINT, status: 401, ipAddress });
     return errorResponse(401, "UNAUTHORIZED", "Invalid or revoked API key.");
   }
 
@@ -114,14 +126,15 @@ export async function POST(req: NextRequest) {
     const latestKyc = await prisma.kycSubmission.findFirst({
       where: { userId: user.id },
       orderBy: { submittedAt: "desc" },
-      select: { status: true, reviewedAt: true, expiresAt: true },
+      select: { status: true, reviewedAt: true, expiresAt: true, documentExpiryDate: true },
     });
 
     let kycStatus: string = latestKyc?.status ?? user.kyc ?? "none";
+    const now = new Date();
     if (
       latestKyc?.status === "approved" &&
-      latestKyc.expiresAt &&
-      new Date(latestKyc.expiresAt) < new Date()
+      ((latestKyc.expiresAt && new Date(latestKyc.expiresAt) < now) ||
+       (latestKyc.documentExpiryDate && new Date(latestKyc.documentExpiryDate) < now))
     ) {
       kycStatus = "expired";
     }
@@ -133,44 +146,47 @@ export async function POST(req: NextRequest) {
 
     await logApiRequest({ apiKeyId: apiKey.id, endpoint: ENDPOINT, sscQueried: ssc, matchedUserId: user.id, status: 200, ipAddress });
 
-    return NextResponse.json({
-      verified: true,
-      member: {
-        ssc: user.ssc,
-        photo: toAbsoluteUrl(user.profilePic ?? user.image),
-        firstname: user.firstname,
-        lastname: user.lastname,
-        fullName,
-        username: user.username,
-        gender: user.gender,
-        phone: user.mobile,
-        email: user.email,
-        address: {
-          address: user.address,
-          city: user.city,
-          state: user.state,
-          zip: user.zip,
-          country: user.country,
-        },
-        rank: user.rank,
-        memberSince: user.createdAt,
-        accountActivated: user.activated,
-        membership: {
-          planName: membershipPackage?.name ?? null,
-          activatedAt: user.membershipActivatedAt,
-          expiresAt: user.membershipExpiresAt,
-        },
-        kyc: {
-          status: kycStatus,
-          verified: kycVerified,
-          verifiedAt: kycVerified ? latestKyc?.reviewedAt ?? null : null,
-          expiresAt: latestKyc?.expiresAt ?? null,
-        },
-        wallets: {
-          bpiToken: user.bpiTokenWallet,
+    return NextResponse.json(
+      {
+        verified: true,
+        member: {
+          ssc: user.ssc,
+          photo: toAbsoluteUrl(user.profilePic ?? user.image),
+          firstname: user.firstname,
+          lastname: user.lastname,
+          fullName,
+          username: user.username,
+          gender: user.gender,
+          phone: user.mobile,
+          email: user.email,
+          address: {
+            address: user.address,
+            city: user.city,
+            state: user.state,
+            zip: user.zip,
+            country: user.country,
+          },
+          rank: user.rank,
+          memberSince: user.createdAt,
+          accountActivated: user.activated,
+          membership: {
+            planName: membershipPackage?.name ?? null,
+            activatedAt: user.membershipActivatedAt,
+            expiresAt: user.membershipExpiresAt,
+          },
+          kyc: {
+            status: kycStatus,
+            verified: kycVerified,
+            verifiedAt: kycVerified ? latestKyc?.reviewedAt ?? null : null,
+            expiresAt: latestKyc?.expiresAt ?? null,
+          },
+          wallets: {
+            bpiToken: user.bpiTokenWallet,
+          },
         },
       },
-    });
+      { headers: { "Access-Control-Allow-Origin": "*" } },
+    );
   } catch (error) {
     console.error("[SSC Verify API] Error:", error);
     await logApiRequest({ apiKeyId: apiKey.id, endpoint: ENDPOINT, sscQueried: ssc, status: 500, ipAddress });

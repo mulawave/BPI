@@ -143,8 +143,8 @@ export const apiKeysRouter = createTRPCRouter({
       return {
         logs: logs.map((l) => ({
           id: l.id,
-          keyName: l.ApiKey.name,
-          keyPrefix: l.ApiKey.keyPrefix,
+          keyName: l.ApiKey?.name ?? "Unknown",
+          keyPrefix: l.ApiKey?.keyPrefix ?? "—",
           endpoint: l.endpoint,
           sscQueried: l.sscQueried,
           matchedUserName: l.matchedUserId ? (userMap.get(l.matchedUserId)?.name ?? "Unknown") : null,

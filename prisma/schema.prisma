@@ -4320,14 +4320,14 @@ model ApiKey {
 /// Audit log of every external API request.
 model ApiRequestLog {
   id            String   @id @default(cuid())
-  apiKeyId      String
+  apiKeyId      String?
   endpoint      String
   sscQueried    String?
   matchedUserId String?
   status        Int
   ipAddress     String?
   createdAt     DateTime @default(now())
-  ApiKey        ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  ApiKey        ApiKey?  @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
 
   @@index([apiKeyId, createdAt])
   @@index([createdAt])

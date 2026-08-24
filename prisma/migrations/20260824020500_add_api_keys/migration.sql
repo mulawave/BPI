@@ -17,7 +17,7 @@ CREATE TABLE "ApiKey" (
 -- CreateTable
 CREATE TABLE "ApiRequestLog" (
     "id" TEXT NOT NULL,
-    "apiKeyId" TEXT NOT NULL,
+    "apiKeyId" TEXT,
     "endpoint" TEXT NOT NULL,
     "sscQueried" TEXT,
     "matchedUserId" TEXT,
@@ -41,4 +41,4 @@ CREATE INDEX "ApiRequestLog_apiKeyId_createdAt_idx" ON "ApiRequestLog"("apiKeyId
 CREATE INDEX "ApiRequestLog_createdAt_idx" ON "ApiRequestLog"("createdAt");
 
 -- AddForeignKey
-ALTER TABLE "ApiRequestLog" ADD CONSTRAINT "ApiRequestLog_apiKeyId_fkey" FOREIGN KEY ("apiKeyId") REFERENCES "ApiKey"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ApiRequestLog" ADD CONSTRAINT "ApiRequestLog_apiKeyId_fkey" FOREIGN KEY ("apiKeyId") REFERENCES "ApiKey"("id") ON DELETE SET NULL ON UPDATE CASCADE;

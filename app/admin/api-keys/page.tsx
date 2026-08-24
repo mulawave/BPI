@@ -150,7 +150,7 @@ export default function AdminApiKeysPage() {
                             <RotateCcw className="inline h-3 w-3" /> Activate
                           </button>
                         )}
-                        <button onClick={() => setLogFilter(k.id)} className="rounded-lg border border-border px-2 py-1 text-xs font-semibold text-foreground hover:bg-muted/60">
+                        <button onClick={() => { setLogFilter(k.id); setLogPage(1); }} className="rounded-lg border border-border px-2 py-1 text-xs font-semibold text-foreground hover:bg-muted/60">
                           <Activity className="inline h-3 w-3" /> Logs
                         </button>
                       </div>
@@ -169,7 +169,7 @@ export default function AdminApiKeysPage() {
           <Activity className="h-5 w-5 text-emerald-600" />
           <h3 className="text-lg font-bold text-foreground">Request Logs</h3>
           {logFilter && (
-            <button onClick={() => setLogFilter(undefined)} className="ml-auto rounded-lg border border-border px-2 py-1 text-xs font-medium hover:bg-muted/60">Clear filter</button>
+            <button onClick={() => { setLogFilter(undefined); setLogPage(1); }} className="ml-auto rounded-lg border border-border px-2 py-1 text-xs font-medium hover:bg-muted/60">Clear filter</button>
           )}
         </div>
         {!logs || logs.logs.length === 0 ? (

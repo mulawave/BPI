@@ -32,14 +32,14 @@ export async function verifyApiKey(rawKey: string) {
 export async function checkRateLimit(apiKeyId: string, limit: number): Promise<{ allowed: boolean; remaining: number }> {
   const windowStart = new Date(Date.now() - 60_000);
   const count = await prisma.apiRequestLog.count({
-    where: { apiKeyId, createdAt: { gte: windowStart } },
+    where: { apiKeyId, createdAt: { gte: windowStart }, status: { not: 429 } },
   });
   return { allowed: count < limit, remaining: Math.max(0, limit - count) };
 }
 
 /** Record an API request in the audit log. */
 export async function logApiRequest(params: {
-  apiKeyId: string;
+  apiKeyId?: string | null;
   endpoint: string;
   sscQueried?: string | null;
   matchedUserId?: string | null;
@@ -49,7 +49,7 @@ export async function logApiRequest(params: {
   try {
     await prisma.apiRequestLog.create({
       data: {
-        apiKeyId: params.apiKeyId,
+        apiKeyId: params.apiKeyId ?? null,
         endpoint: params.endpoint,
         sscQueried: params.sscQueried ?? null,
         matchedUserId: params.matchedUserId ?? null,
