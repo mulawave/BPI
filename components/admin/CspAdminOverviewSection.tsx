@@ -1,11 +1,11 @@
 "use client";
 import React from "react";
-import { RefreshCw, Wallet, Users, RadioTower, CheckCircle2, TrendingUp, Award, ShieldCheck } from "lucide-react";
+import { RefreshCw, Wallet, Users, RadioTower, CheckCircle2, TrendingUp, Award, ShieldCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 
 function fmt(n: number) { return `\u20a6${n.toLocaleString()}`; }
 
-export default function CspAdminOverviewSection({ data, isLoading, onRefresh }: { data: any; isLoading: boolean; onRefresh: () => void }) {
+export default function CspAdminOverviewSection({ data, isLoading, onRefresh, auditPage, onAuditPageChange }: { data: any; isLoading: boolean; onRefresh: () => void; auditPage: number; onAuditPageChange: (p: number) => void }) {
   if (isLoading && !data) return <div className="rounded-2xl border border-border bg-card p-8 text-center"><RefreshCw className="mx-auto h-6 w-6 animate-spin text-muted-foreground" /></div>;
   if (!data) return null;
   const { stats, topDonators, auditTrail, auditPagination } = data;
@@ -69,6 +69,13 @@ export default function CspAdminOverviewSection({ data, isLoading, onRefresh }: 
                 {a.request && <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground"><span>Requested: {fmt(a.request.requestedAmount ?? 0)}</span><span>Threshold: {fmt(a.request.thresholdAmount)}</span><span>Raised: {fmt(a.request.raisedAmount)}</span></div>}
               </div>
             ))}
+          </div>
+        )}
+        {auditPagination.totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 pt-3">
+            <button onClick={() => onAuditPageChange(Math.max(1, auditPage - 1))} disabled={auditPage <= 1} className="rounded-lg border border-border p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+            <span className="text-sm text-muted-foreground">Page {auditPage} of {auditPagination.totalPages}</span>
+            <button onClick={() => onAuditPageChange(Math.min(auditPagination.totalPages, auditPage + 1))} disabled={auditPage >= auditPagination.totalPages} className="rounded-lg border border-border p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
           </div>
         )}
       </div>

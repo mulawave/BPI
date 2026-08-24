@@ -2056,6 +2056,7 @@ export const cspRouter = createTRPCRouter({
 
       const request = await prisma.cspSupportRequest.findUnique({
         where: { id: input.requestId },
+        include: { User: { select: { id: true, name: true, email: true, sponsorId: true } } },
       });
 
       if (!request) throw new Error("Request not found");
@@ -2069,12 +2070,34 @@ export const cspRouter = createTRPCRouter({
           const total = Math.min(holdingWallet.balanceNgn, request.raisedAmount);
           const pct = await loadCspFeePercentages(prisma);
 
-          const recipientShare = Math.floor(total * pct.recipient);
-          const adminShare = Math.floor(total * pct.admin);
-          const sponsorShare = Math.floor(total * pct.sponsor);
-          const stateShare = Math.floor(total * pct.state);
-          const managementShare = Math.floor(total * pct.management);
-          const reserveShare = total - recipientShare - adminShare - sponsorShare - stateShare - managementShare;
+          const fullyFunded =
+            request.thresholdAmount > 0 &&
+            request.raisedAmount >= request.thresholdAmount &&
+            request.requestedAmount != null &&
+            request.requestedAmount > 0;
+
+          let shares: { recipient: number; admin: number; sponsor: number; state: number; management: number; reserve: number };
+
+          if (fullyFunded) {
+            const recipientShare = Math.min(request.requestedAmount!, total);
+            const markupPool = total - recipientShare;
+            const adminPoolWeight = pct.admin + pct.sponsor + pct.state + pct.management + pct.reserve;
+            const safeWeight = adminPoolWeight > 0 ? adminPoolWeight : 1;
+            const adminShare = Math.floor(markupPool * (pct.admin / safeWeight));
+            const sponsorShare = Math.floor(markupPool * (pct.sponsor / safeWeight));
+            const stateShare = Math.floor(markupPool * (pct.state / safeWeight));
+            const managementShare = Math.floor(markupPool * (pct.management / safeWeight));
+            const reserveShare = markupPool - adminShare - sponsorShare - stateShare - managementShare;
+            shares = { recipient: recipientShare, admin: adminShare, sponsor: sponsorShare, state: stateShare, management: managementShare, reserve: reserveShare };
+          } else {
+            const adminShare = Math.floor(total * pct.admin);
+            const sponsorShare = Math.floor(total * pct.sponsor);
+            const stateShare = Math.floor(total * pct.state);
+            const managementShare = Math.floor(total * pct.management);
+            const reserveShare = Math.floor(total * pct.reserve);
+            const allocated = adminShare + sponsorShare + stateShare + managementShare + reserveShare;
+            shares = { recipient: total - allocated, admin: adminShare, sponsor: sponsorShare, state: stateShare, management: managementShare, reserve: reserveShare };
+          }
 
           await prisma.$transaction(async (tx) => {
             const holding = await ensureSystemWallet(tx, holdingWalletName, "CSP_HOLDING");
@@ -2084,28 +2107,69 @@ export const cspRouter = createTRPCRouter({
             });
             await tx.user.update({
               where: { id: request.userId },
-              data: { wallet: { increment: recipientShare } },
+              data: { wallet: { increment: shares.recipient } },
             });
+            if (request.User?.sponsorId && shares.sponsor > 0) {
+              await tx.user.update({
+                where: { id: request.User.sponsorId },
+                data: { wallet: { increment: shares.sponsor } },
+              });
+            }
             const adminWallet = await ensureSystemWallet(tx, "CSP Admin Wallet", "EXECUTIVE_POOL");
-            await tx.systemWallet.update({ where: { id: adminWallet.id }, data: { balanceNgn: { increment: adminShare } } });
+            await tx.systemWallet.update({ where: { id: adminWallet.id }, data: { balanceNgn: { increment: shares.admin } } });
             const stateWallet = await ensureSystemWallet(tx, "CSP State Wallet", "STATE_REVENUE_POOL");
-            await tx.systemWallet.update({ where: { id: stateWallet.id }, data: { balanceNgn: { increment: stateShare } } });
+            await tx.systemWallet.update({ where: { id: stateWallet.id }, data: { balanceNgn: { increment: shares.state } } });
             const managementWallet = await ensureSystemWallet(tx, "CSP Management Wallet", "CSP_MANAGEMENT_RESERVE");
-            await tx.systemWallet.update({ where: { id: managementWallet.id }, data: { balanceNgn: { increment: managementShare } } });
+            await tx.systemWallet.update({ where: { id: managementWallet.id }, data: { balanceNgn: { increment: shares.management } } });
             const reserveWallet = await ensureSystemWallet(tx, "CSP Reserve Wallet", "CSP_RESERVE");
-            await tx.systemWallet.update({ where: { id: reserveWallet.id }, data: { balanceNgn: { increment: reserveShare } } });
+            await tx.systemWallet.update({ where: { id: reserveWallet.id }, data: { balanceNgn: { increment: shares.reserve } } });
             await tx.transaction.create({
               data: {
                 id: randomUUID(),
                 userId: request.userId,
                 transactionType: "CSP_PAYOUT",
-                amount: recipientShare,
+                amount: shares.recipient,
                 description: `CSP support released (admin default request ${request.id})`,
                 status: "completed",
                 walletType: "wallet",
               },
             });
+            const adminUserId = (ctx.session?.user as any)?.id as string | undefined;
+            await tx.auditLog.create({
+              data: {
+                id: randomUUID(),
+                userId: adminUserId ?? request.userId,
+                action: "CSP_RELEASE_FUNDS",
+                entity: "CSP_SUPPORT_REQUEST",
+                entityId: request.id,
+                metadata: {
+                  beneficiaryUserId: request.userId,
+                  category: request.category,
+                  totalReleased: total,
+                  recipientCredited: shares.recipient,
+                  fullyFunded,
+                  shares,
+                  adminDefault: true,
+                },
+                ipAddress: "",
+                userAgent: "",
+              },
+            });
           });
+
+          await notifyCspRequestProcessed(request.userId, request.category, shares.recipient, "released");
+          if (request.User?.email) {
+            try { await sendCspLifecycleEmail(request.User.email, "processed", {
+              category: request.category,
+              amount: shares.recipient,
+              status: "released",
+              requestedAmount: request.requestedAmount ?? undefined,
+              totalRaised: total,
+              fullyFunded,
+              shares,
+            }); }
+            catch (e) { console.error("[CSP] Lifecycle email failed:", e); }
+          }
         }
       }
 
@@ -2149,10 +2213,10 @@ export const cspRouter = createTRPCRouter({
         request.category,
         input.reason
       );
-      await notifyCspRequestProcessed(request.userId, request.category, request.thresholdAmount, "rejected");
+      await notifyCspRequestProcessed(request.userId, request.category, request.requestedAmount ?? request.thresholdAmount, "rejected");
       const beneficiary = await prisma.user.findUnique({ where: { id: request.userId }, select: { email: true } });
       if (beneficiary?.email) {
-        try { await sendCspLifecycleEmail(beneficiary.email, "processed", { category: request.category, amount: request.thresholdAmount, status: "rejected" }); }
+        try { await sendCspLifecycleEmail(beneficiary.email, "processed", { category: request.category, amount: request.requestedAmount ?? request.thresholdAmount, status: "rejected" }); }
         catch (e) { console.error("[CSP] Lifecycle email failed:", e); }
       }
 

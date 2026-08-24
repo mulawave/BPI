@@ -117,6 +117,7 @@ export default function CspAdminQueuePage() {
   const [showAuditPanel, setShowAuditPanel] = useState(false);
   const [ruleLogPage, setRuleLogPage] = useState(1);
   const [ruleLogFilter, setRuleLogFilter] = useState("");
+  const [overviewAuditPage, setOverviewAuditPage] = useState(1);
   const [defaultForm, setDefaultForm] = useState({
     category: "national" as "national" | "global",
     amount: 10000,
@@ -144,7 +145,7 @@ export default function CspAdminQueuePage() {
 
   const utils = api.useUtils();
   const { data: visibilityDiagnostics, refetch: refetchDiagnostics } = api.csp.getBroadcastVisibilityDiagnostics.useQuery();
-  const { data: adminOverview, refetch: refetchAdminOverview, isLoading: overviewLoading } = api.csp.getCspAdminOverview.useQuery({});
+  const { data: adminOverview, refetch: refetchAdminOverview, isLoading: overviewLoading } = api.csp.getCspAdminOverview.useQuery({ auditPage: overviewAuditPage });
 
   const { data: searchedUsers } = api.user.searchUsers.useQuery(
     { term: userSearchTerm },
@@ -186,6 +187,7 @@ export default function CspAdminQueuePage() {
       setDetailTarget(null);
       utils.csp.listBroadcasts.invalidate();
       utils.csp.getLiveStatus.invalidate();
+      utils.csp.getCspAdminOverview.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -201,6 +203,7 @@ export default function CspAdminQueuePage() {
       refetch();
       utils.csp.listBroadcasts.invalidate();
       utils.csp.getLiveStatus.invalidate();
+      utils.csp.getCspAdminOverview.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -223,6 +226,7 @@ export default function CspAdminQueuePage() {
       refetch();
       utils.csp.listBroadcasts.invalidate();
       utils.csp.getLiveStatus.invalidate();
+      utils.csp.getCspAdminOverview.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -235,6 +239,7 @@ export default function CspAdminQueuePage() {
       refetch();
       utils.csp.listBroadcasts.invalidate();
       utils.csp.getLiveStatus.invalidate();
+      utils.csp.getCspAdminOverview.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -349,6 +354,8 @@ export default function CspAdminQueuePage() {
         data={adminOverview}
         isLoading={overviewLoading}
         onRefresh={() => refetchAdminOverview()}
+        auditPage={overviewAuditPage}
+        onAuditPageChange={setOverviewAuditPage}
       />
 
       {/* Broadcast visibility diagnostics */}
