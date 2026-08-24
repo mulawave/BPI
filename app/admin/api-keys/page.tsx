@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Activity,
   Clock,
+  BookOpen,
 } from "lucide-react";
 
 export default function AdminApiKeysPage() {
@@ -91,12 +92,20 @@ export default function AdminApiKeysPage() {
             Manage API keys for external applications to verify SSC codes and fetch member details.
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-600 hover:to-teal-600"
-        >
-          <Plus className="h-4 w-4" /> Create Key
-        </button>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/api-keys/docs"
+            className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-slate-700 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-800"
+          >
+            <BookOpen className="h-4 w-4" /> API Reference
+          </Link>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-600 hover:to-teal-600"
+          >
+            <Plus className="h-4 w-4" /> Create Key
+          </button>
+        </div>
       </div>
 
       {/* Keys table */}
