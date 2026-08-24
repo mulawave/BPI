@@ -4297,3 +4297,38 @@ model CspAutoContributeLog {
   @@index([userId, createdAt])
   @@index([requestId])
 }
+
+// ─── External API (SSC Verification) ─────────────────────────
+
+/// Admin-issued API keys for external applications.
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  isActive   Boolean   @default(true)
+  rateLimit  Int       @default(60)
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  requests   ApiRequestLog[]
+
+  @@index([keyHash])
+}
+
+/// Audit log of every external API request.
+model ApiRequestLog {
+  id            String   @id @default(cuid())
+  apiKeyId      String
+  endpoint      String
+  sscQueried    String?
+  matchedUserId String?
+  status        Int
+  ipAddress     String?
+  createdAt     DateTime @default(now())
+  ApiKey        ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([apiKeyId, createdAt])
+  @@index([createdAt])
+}

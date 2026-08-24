@@ -40,6 +40,7 @@ import {
   School,
   Menu,
   X,
+  Key,
 } from "lucide-react";
 import { FiBookOpen } from "react-icons/fi";
 import { useEffect, useState } from "react";
@@ -124,6 +125,12 @@ const navigation = [
     href: "/admin/csp-donations", 
     icon: Award,
     description: "Record donations & badge tiers"
+  },
+  { 
+    name: "API Keys", 
+    href: "/admin/api-keys", 
+    icon: Key,
+    description: "External app SSC verification"
   },
   { 
     name: "Packages", 

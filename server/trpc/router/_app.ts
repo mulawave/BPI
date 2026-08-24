@@ -59,6 +59,7 @@ import { kycRouter } from "./kyc";
 import { adminPluginsRouter } from "./adminPlugins";
 import { promoCampaignRouter } from "./promoCampaign";
 import { ravenRouter } from "./raven";
+import { apiKeysRouter } from "./api-keys";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -120,6 +121,7 @@ export const appRouter = createTRPCRouter({
   kyc: kycRouter,
   adminPlugins: adminPluginsRouter,
   promoCampaign: promoCampaignRouter,
+  apiKeys: apiKeysRouter,
 
   // Legacy router, to be deprecated
 });
