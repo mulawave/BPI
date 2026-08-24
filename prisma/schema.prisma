@@ -4327,7 +4327,7 @@ model ApiRequestLog {
   status        Int
   ipAddress     String?
   createdAt     DateTime @default(now())
-  ApiKey        ApiKey?  @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  ApiKey        ApiKey?  @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
 
   @@index([apiKeyId, createdAt])
   @@index([createdAt])
