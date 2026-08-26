@@ -117,7 +117,7 @@ type MembershipOrder = typeof MEMBERSHIP_ORDER[number];
 
 function assertAdmin(session: any) {
   const role = session?.user?.role;
-  if (!role || (role !== "admin" && role !== "superadmin")) {
+  if (!role || (role !== "admin" && role !== "superadmin" && role !== "super_admin")) {
     throw new Error("FORBIDDEN");
   }
 }
@@ -3008,8 +3008,9 @@ export const cspRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const adminId = (ctx.session?.user as any)?.id as string;
       if (!adminId) throw new Error("UNAUTHORIZED");
-      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
-      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true, role: true } });
+      const effectiveRole = admin?.role || admin?.userType;
+      if (effectiveRole !== "admin" && effectiveRole !== "superadmin" && effectiveRole !== "super_admin") throw new Error("FORBIDDEN");
 
       const where = input.enabledOnly ? { isEnabled: true } : {};
       const [settings, total] = await Promise.all([
@@ -3044,8 +3045,9 @@ export const cspRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const adminId = (ctx.session?.user as any)?.id as string;
       if (!adminId) throw new Error("UNAUTHORIZED");
-      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
-      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true, role: true } });
+      const effectiveRole = admin?.role || admin?.userType;
+      if (effectiveRole !== "admin" && effectiveRole !== "superadmin" && effectiveRole !== "super_admin") throw new Error("FORBIDDEN");
 
       await prisma.adminSettings.upsert({
         where: { settingKey: "csp_auto_contribute_disabled" },
@@ -3061,8 +3063,9 @@ export const cspRouter = createTRPCRouter({
     .mutation(async ({ ctx }) => {
       const adminId = (ctx.session?.user as any)?.id as string;
       if (!adminId) throw new Error("UNAUTHORIZED");
-      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
-      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true, role: true } });
+      const effectiveRole = admin?.role || admin?.userType;
+      if (effectiveRole !== "admin" && effectiveRole !== "superadmin" && effectiveRole !== "super_admin") throw new Error("FORBIDDEN");
 
       const { runCspAutoContributeSweep } = await import("@/server/jobs/cspAutoContributeSweep");
       const result = await runCspAutoContributeSweep();
@@ -3074,8 +3077,9 @@ export const cspRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const adminId = (ctx.session?.user as any)?.id as string;
       if (!adminId) throw new Error("UNAUTHORIZED");
-      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
-      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true, role: true } });
+      const effectiveRole = admin?.role || admin?.userType;
+      if (effectiveRole !== "admin" && effectiveRole !== "superadmin" && effectiveRole !== "super_admin") throw new Error("FORBIDDEN");
 
       if (input.disabled) {
         // Disable this user's auto-contribute
@@ -3107,8 +3111,9 @@ export const cspRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const adminId = (ctx.session?.user as any)?.id as string;
       if (!adminId) throw new Error("UNAUTHORIZED");
-      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
-      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true, role: true } });
+      const effectiveRole = admin?.role || admin?.userType;
+      if (effectiveRole !== "admin" && effectiveRole !== "superadmin" && effectiveRole !== "super_admin") throw new Error("FORBIDDEN");
 
       const where = input.userId ? { userId: input.userId } : {};
       const [logs, total] = await Promise.all([
@@ -3137,8 +3142,9 @@ export const cspRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const adminId = (ctx.session?.user as any)?.id as string;
       if (!adminId) throw new Error("UNAUTHORIZED");
-      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
-      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true, role: true } });
+      const effectiveRole = admin?.role || admin?.userType;
+      if (effectiveRole !== "admin" && effectiveRole !== "superadmin" && effectiveRole !== "super_admin") throw new Error("FORBIDDEN");
 
       const where: any = {};
       if (input?.status) where.status = input.status;
@@ -3202,8 +3208,9 @@ export const cspRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const adminId = (ctx.session?.user as any)?.id as string;
       if (!adminId) throw new Error("UNAUTHORIZED");
-      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true } });
-      if (admin?.userType !== "admin") throw new Error("FORBIDDEN");
+      const admin = await prisma.user.findUnique({ where: { id: adminId }, select: { userType: true, role: true } });
+      const effectiveRole = admin?.role || admin?.userType;
+      if (effectiveRole !== "admin" && effectiveRole !== "superadmin" && effectiveRole !== "super_admin") throw new Error("FORBIDDEN");
 
       const where: any = {};
       if (input?.requestId) where.requestId = input.requestId;

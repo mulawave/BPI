@@ -41,7 +41,7 @@ import {
 
 function assertAdmin(session: any) {
   const role = session?.user?.role;
-  if (!role || (role !== "admin" && role !== "superadmin")) {
+  if (!role || (role !== "admin" && role !== "superadmin" && role !== "super_admin")) {
     throw new Error("FORBIDDEN");
   }
 }
