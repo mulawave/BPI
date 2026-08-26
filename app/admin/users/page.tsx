@@ -84,7 +84,7 @@ export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   const [search, setSearch] = useState(urlSearch);
-  const [roleFilter, setRoleFilter] = useState<"user" | "admin" | "super_admin" | undefined>();
+  const [roleFilter, setRoleFilter] = useState<"user" | "admin" | "super_admin" | "customer_rep" | undefined>();
   const [activatedFilter, setActivatedFilter] = useState<boolean | undefined>();
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
@@ -1173,7 +1173,7 @@ export default function UsersPage() {
                   value={roleFilter || ""}
                   onChange={(e) =>
                     setRoleFilter(
-                      e.target.value as "user" | "admin" | "super_admin" | undefined
+                      e.target.value as "user" | "admin" | "super_admin" | "customer_rep" | undefined
                     )
                   }
                   className="w-full px-4 py-2.5 border-2 border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 transition-all"
@@ -1182,6 +1182,7 @@ export default function UsersPage() {
                   <option value="user">User</option>
                   <option value="admin">Admin</option>
                   <option value="super_admin">Super Admin</option>
+                  <option value="customer_rep">Customer Rep</option>
                 </select>
               </div>
 

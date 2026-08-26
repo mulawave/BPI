@@ -82,6 +82,7 @@ async function getCachedAuthEnrichment(userId: string) {
         membershipActivatedAt: true,
         membershipExpiresAt: true,
         userType: true,
+        role: true,
       },
     });
 
@@ -113,12 +114,21 @@ async function getCachedAuthEnrichment(userId: string) {
     }
 
     const value = {
-      role: dbUser?.userType ?? "user",
+      role: dbUser?.role || dbUser?.userType || "user",
       hasActiveMembership: membershipAccess.membershipValid,
       membershipExpiresAt: membershipAccess.effectiveMembershipExpiresAt?.toISOString() ?? null,
       membershipDerivedFromActivation: membershipAccess.derivedFromActivation,
       hasActiveEmpowerment,
     };
+
+    // Backfill: if role field is still default "user" but userType indicates admin/super_admin,
+    // sync the role field to prevent legacy admin lockout.
+    if (dbUser && dbUser.role === "user" && (dbUser.userType === "admin" || dbUser.userType === "super_admin")) {
+      prisma.user.update({
+        where: { id: userId },
+        data: { role: dbUser.userType },
+      }).catch(() => {});
+    }
 
     authEnrichmentCache.set(userId, {
       value,
@@ -169,7 +179,7 @@ export const authConfig: NextAuthOptions = {
           id: user.id, 
           email: user.email ?? undefined, 
           name: user.name ?? undefined,
-          role: user.userType ?? "user"
+          role: user.role || user.userType || "user"
         };
       },
     }),

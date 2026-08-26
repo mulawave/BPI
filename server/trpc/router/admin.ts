@@ -1058,7 +1058,7 @@ export const adminRouter = createTRPCRouter({
         page: z.number().default(1),
         pageSize: z.number().default(50),
         search: z.string().optional(),
-        role: z.enum(["user", "admin", "super_admin"]).optional(),
+        role: z.enum(["user", "admin", "super_admin", "customer_rep"]).optional(),
         activated: z.boolean().optional(),
         sortBy: z.enum(["createdAt", "name", "email", "lastLogin"]).default("createdAt"),
         sortOrder: z.enum(["asc", "desc"]).default("desc"),
@@ -1547,7 +1547,7 @@ export const adminRouter = createTRPCRouter({
         data: z.object({
           name: z.string().optional(),
           email: z.string().email().optional(),
-          role: z.enum(["user", "admin", "super_admin"]).optional(),
+          role: z.enum(["user", "admin", "super_admin", "customer_rep"]).optional(),
           activated: z.boolean().optional(),
           verified: z.boolean().optional(),
           emailVerified: z.boolean().optional(),
@@ -1768,7 +1768,7 @@ export const adminRouter = createTRPCRouter({
     .input(
       z.object({
         userIds: z.array(z.string()),
-        role: z.enum(["user", "admin", "super_admin"]),
+        role: z.enum(["user", "admin", "super_admin", "customer_rep"]),
       }),
     )
     .mutation(async ({ input, ctx }) => {

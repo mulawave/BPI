@@ -12,9 +12,10 @@ interface AdminHeaderProps {
     email?: string | null;
     image?: string | null;
   };
+  role?: string;
 }
 
-export default function AdminHeader({ admin }: AdminHeaderProps) {
+export default function AdminHeader({ admin, role }: AdminHeaderProps) {
   const { theme, toggleTheme } = useTheme();
   const baseUrl = resolveClientBaseUrl();
 
@@ -24,7 +25,7 @@ export default function AdminHeader({ admin }: AdminHeaderProps) {
         {/* Left: Page Title (can be customized per page) */}
         <div>
           <h1 className="text-base font-bold premium-gradient-text sm:text-lg lg:text-2xl">
-            Admin Dashboard
+            {role === "customer_rep" ? "Rep Dashboard" : "Admin Dashboard"}
           </h1>
         </div>
 

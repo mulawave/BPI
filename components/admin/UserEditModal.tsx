@@ -33,7 +33,7 @@ export default function UserEditModal({
   const [formData, setFormData] = useState<{
     name: string;
     email: string;
-    role: "user" | "admin" | "super_admin";
+    role: "user" | "admin" | "super_admin" | "customer_rep";
     activated: boolean;
     verified: boolean;
     emailVerified: boolean;
@@ -42,7 +42,7 @@ export default function UserEditModal({
   }>({
     name: user?.name || "",
     email: user?.email || "",
-    role: (user?.role as "user" | "admin" | "super_admin") || "user",
+    role: (user?.role as "user" | "admin" | "super_admin" | "customer_rep") || "user",
     activated: user?.activated || false,
     verified: user?.verified || false,
     emailVerified: !!user?.emailVerified,
@@ -65,7 +65,7 @@ export default function UserEditModal({
     setFormData({
       name: user.name || "",
       email: user.email || "",
-      role: (user.role as "user" | "admin" | "super_admin") || "user",
+      role: (user.role as "user" | "admin" | "super_admin" | "customer_rep") || "user",
       activated: user.activated,
       verified: user.verified,
       emailVerified: !!user.emailVerified,
@@ -176,13 +176,14 @@ export default function UserEditModal({
                           <select
                             value={formData.role}
                             onChange={(e) =>
-                              setFormData({ ...formData, role: e.target.value as "user" | "admin" | "super_admin" })
+                              setFormData({ ...formData, role: e.target.value as "user" | "admin" | "super_admin" | "customer_rep" })
                             }
                             className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
                           >
                             <option value="user">User</option>
                             <option value="admin">Admin</option>
                             <option value="super_admin">Super Admin</option>
+                            <option value="customer_rep">Customer Rep</option>
                           </select>
                         </div>
 

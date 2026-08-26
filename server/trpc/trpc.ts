@@ -72,3 +72,12 @@ export const superAdminProcedure = protectedProcedure.use(async ({ ctx, next }) 
   }
   return next();
 });
+
+/** Procedure that allows admin, super_admin, and customer_rep roles. */
+export const customerRepProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const role = (ctx.session?.user as any)?.role;
+  if (role !== "admin" && role !== "super_admin" && role !== "customer_rep") {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Customer rep access required." });
+  }
+  return next();
+});

@@ -5,7 +5,7 @@
 
 import type { Session } from "next-auth";
 
-export type UserRole = "user" | "admin" | "super_admin";
+export type UserRole = "user" | "admin" | "super_admin" | "customer_rep";
 
 interface AdminUser {
   id: string;
@@ -84,4 +84,20 @@ export function getUserRole(session: Session | null): UserRole {
 export function hasAdminAccess(session: Session | null): boolean {
   const role = getUserRole(session);
   return role === "admin" || role === "super_admin";
+}
+
+/**
+ * Check if user has customer rep role
+ */
+export function isCustomerRep(user: AdminUser | null | undefined): boolean {
+  if (!user || !user.role) return false;
+  return user.role === "customer_rep";
+}
+
+/**
+ * Check if current session has any panel access (admin, super_admin, or customer_rep)
+ */
+export function hasPanelAccess(session: Session | null): boolean {
+  const role = getUserRole(session);
+  return role === "admin" || role === "super_admin" || role === "customer_rep";
 }

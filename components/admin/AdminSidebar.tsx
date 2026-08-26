@@ -312,20 +312,32 @@ const navigation = [
     icon: Palette,
     description: "Pages, policies, home layout"
   },
+  { 
+    name: "Customer Rep", 
+    href: "/admin/customer-rep", 
+    icon: Users,
+    description: "View users table"
+  },
 ];
 
 interface AdminSidebarProps {
   pendingCount?: number;
   pendingWithdrawalsCount?: number;
   pendingKycCount?: number;
+  role?: string;
 }
 
-export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount = 0, pendingKycCount = 0 }: AdminSidebarProps) {
+export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount = 0, pendingKycCount = 0, role }: AdminSidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [expandedMenus, setExpandedMenus] = useState<string[]>([]); // Default collapsed
+
+  const isCustomerRep = role === "customer_rep";
+  const visibleNavigation = isCustomerRep
+    ? navigation.filter((item) => item.href === "/admin/customer-rep")
+    : navigation;
 
   useEffect(() => {
     setPendingHref(null);
@@ -360,7 +372,7 @@ export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--secondary))] shadow-sm">
                   <ShieldCheck className="h-4 w-4 text-white" />
                 </div>
-                <span className="text-base font-semibold premium-gradient-text">Admin Menu</span>
+                <span className="text-base font-semibold premium-gradient-text">{isCustomerRep ? "Rep Menu" : "Admin Menu"}</span>
               </div>
 
               <button
@@ -374,7 +386,7 @@ export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount
             </div>
 
             <nav className="h-[calc(100%-8rem)] space-y-1 overflow-y-auto p-3">
-              {navigation.map((item) => {
+              {visibleNavigation.map((item) => {
                 const isActive = pathname === item.href || item.submenu?.some((sub) => pathname === sub.href);
                 const Icon = item.icon;
                 const itemBadgeCount = item.name === "Payments" ? pendingCount : item.name === "KYC" ? pendingKycCount : item.name === "Withdrawals" ? pendingWithdrawalsCount : 0;
@@ -480,7 +492,7 @@ export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount
                   <ShieldCheck className="h-5 w-5 text-white" />
                 </div>
                 <span className="text-lg font-bold premium-gradient-text">
-                  Admin Panel
+                  {isCustomerRep ? "Rep Panel" : "Admin Panel"}
                 </span>
               </motion.div>
             )}
@@ -503,7 +515,7 @@ export default function AdminSidebar({ pendingCount = 0, pendingWithdrawalsCount
             }`}
             aria-busy={pendingHref ? true : undefined}
           >
-            {navigation.map((item) => {
+            {visibleNavigation.map((item) => {
               const isActive = pathname === item.href || item.submenu?.some(sub => pathname === sub.href);
               const Icon = item.icon;
               const itemBadgeCount = item.name === "Payments" ? pendingCount : item.name === "KYC" ? pendingKycCount : item.name === "Withdrawals" ? pendingWithdrawalsCount : 0;

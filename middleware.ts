@@ -22,7 +22,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/static") ||
     pathname.includes(".");
   const role = (token as any)?.role;
-  const isAdmin = role === "admin" || role === "super_admin";
+  const isAdmin = role === "admin" || role === "super_admin" || role === "customer_rep";
 
   if (!isMaintenancePage && !isStaticOrApi && !isAdmin) {
     const maintenanceState = getCachedMaintenanceState();
@@ -46,10 +46,16 @@ export async function middleware(req: NextRequest) {
     // Check if user has admin role from token (avoid DB in middleware)
     const role = (token as any)?.role;
     const isAdmin = role === "admin" || role === "super_admin";
+    const isCustomerRep = role === "customer_rep";
 
-    if (!isAdmin) {
-      // Not an admin, redirect to user dashboard
+    if (!isAdmin && !isCustomerRep) {
+      // Not an admin or customer rep, redirect to user dashboard
       return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+
+    // Customer reps can only access /admin/customer-rep
+    if (isCustomerRep && !pathname.startsWith("/admin/customer-rep")) {
+      return NextResponse.redirect(new URL("/admin/customer-rep", req.url));
     }
 
     // Admin authenticated, allow access
@@ -114,7 +120,7 @@ export async function middleware(req: NextRequest) {
   // Admins and super admins do not require membership plans
   if (token) {
     const role = (token as any)?.role;
-    const isAdmin = role === "admin" || role === "super_admin";
+    const isAdmin = role === "admin" || role === "super_admin" || role === "customer_rep";
     const isImpersonation = (token as any)?.isImpersonation === true;
 
     if (!isAdmin && !isImpersonation) {

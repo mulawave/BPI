@@ -21,6 +21,7 @@ export const adminAuthRouter = createTRPCRouter({
         name: true,
         image: true,
         role: true,
+        userType: true,
       },
     });
 
@@ -28,17 +29,22 @@ export const adminAuthRouter = createTRPCRouter({
       return {
         isAdmin: false,
         isSuperAdmin: false,
+        isCustomerRep: false,
+        hasPanelAccess: false,
         role: "user" as const,
         user: null,
       };
     }
 
-    const role = user.role || "user";
+    // Use role field, fall back to userType for legacy users where role wasn't synced
+    const effectiveRole = user.role || user.userType || "user";
     
     return {
-      isAdmin: role === "admin" || role === "super_admin",
-      isSuperAdmin: role === "super_admin",
-      role: role as "user" | "admin" | "super_admin",
+      isAdmin: effectiveRole === "admin" || effectiveRole === "super_admin",
+      isSuperAdmin: effectiveRole === "super_admin",
+      isCustomerRep: effectiveRole === "customer_rep",
+      hasPanelAccess: effectiveRole === "admin" || effectiveRole === "super_admin" || effectiveRole === "customer_rep",
+      role: effectiveRole as "user" | "admin" | "super_admin" | "customer_rep",
       user: {
         id: user.id,
         email: user.email,

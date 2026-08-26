@@ -60,6 +60,7 @@ import { adminPluginsRouter } from "./adminPlugins";
 import { promoCampaignRouter } from "./promoCampaign";
 import { ravenRouter } from "./raven";
 import { apiKeysRouter } from "./api-keys";
+import { customerRepRouter } from "./customerRep";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -122,6 +123,7 @@ export const appRouter = createTRPCRouter({
   adminPlugins: adminPluginsRouter,
   promoCampaign: promoCampaignRouter,
   apiKeys: apiKeysRouter,
+  customerRep: customerRepRouter,
 
   // Legacy router, to be deprecated
 });

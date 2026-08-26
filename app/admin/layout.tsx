@@ -45,13 +45,13 @@ export default function AdminLayout({
       return;
     }
 
-    if (adminAccess && !adminAccess.isAdmin) {
+    if (adminAccess && !adminAccess.hasPanelAccess) {
       toast.error("Access denied. Admin privileges required.");
       router.push("/admin/login");
     }
   }, [status, adminAccess, isLoading, router]);
 
-  // Get pending payments count
+  // Get pending payments count (only for full admins, not customer reps)
   const { data: dashboardStats } = api.admin.getDashboardStats.useQuery(
     undefined,
     {
@@ -121,8 +121,8 @@ export default function AdminLayout({
     );
   }
 
-  // If authenticated but not admin, don't spin forever.
-  if (adminAccess && !adminAccess.isAdmin) {
+  // If authenticated but not admin and not customer rep, don't spin forever.
+  if (adminAccess && !adminAccess.hasPanelAccess) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
         <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -180,6 +180,7 @@ export default function AdminLayout({
         pendingCount={dashboardStats?.pendingPayments || 0}
         pendingWithdrawalsCount={dashboardStats?.pendingWithdrawals || 0}
         pendingKycCount={dashboardStats?.pendingKyc || 0}
+        role={adminAccess?.role}
       />
       
       <div className="lg:pl-[280px]">
@@ -189,6 +190,7 @@ export default function AdminLayout({
             email: session?.user?.email,
             image: session?.user?.image,
           }}
+          role={adminAccess?.role}
         />
         
         <main className="px-3 py-4 sm:px-4 sm:py-5 lg:px-6 lg:py-6">
