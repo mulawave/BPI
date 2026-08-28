@@ -63,6 +63,12 @@ async function getCachedAuthUserByEmail(email: string) {
   return request;
 }
 
+export function invalidateAuthUserLookup(email: string) {
+  const key = email.trim().toLowerCase();
+  authUserLookupCache.delete(key);
+  authUserLookupInFlight.delete(key);
+}
+
 async function getCachedAuthEnrichment(userId: string) {
   const cached = authEnrichmentCache.get(userId);
   if (cached && isFresh(cached.expiresAt)) {

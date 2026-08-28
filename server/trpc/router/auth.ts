@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { sendPasswordResetEmail, sendWelcomeEmail } from "@/lib/email";
 import { placeUserInThirdPartyMatrix } from "@/server/services/thirdPartyMatrix.service";
+import { invalidateAuthUserLookup } from "@/server/auth";
 
 const REFERRER_CACHE_TTL_MS = 60_000;
 const referrerInfoCache = new Map<string, { value: { name: string; firstname: string; lastname: string }; expiresAt: number }>();
@@ -48,10 +49,11 @@ export const authRouter = createTRPCRouter({
     .input(registerSchema)
     .mutation(async ({ ctx, input }) => {
       const { firstname, lastname, screenname, gender, email, password, ref_id } = input;
+      const normalizedEmail = email.trim().toLowerCase();
 
       // Check if user already exists
       const existingUser = await ctx.prisma.user.findUnique({
-        where: { email },
+        where: { email: normalizedEmail },
       });
 
       if (existingUser) {
@@ -138,7 +140,7 @@ export const authRouter = createTRPCRouter({
           firstname,
           lastname,
           gender,
-          email,
+          email: normalizedEmail,
           passwordHash,
           role: "user",
           inviteCode,
@@ -194,7 +196,7 @@ export const authRouter = createTRPCRouter({
     .input(z.object({ email: z.string().email() }))
     .query(async ({ ctx, input }) => {
       const user = await ctx.prisma.user.findUnique({
-        where: { email: input.email },
+        where: { email: input.email.trim().toLowerCase() },
       });
       return { exists: !!user };
     }),
@@ -212,7 +214,7 @@ export const authRouter = createTRPCRouter({
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ ctx, input }) => {
       const user = await ctx.prisma.user.findUnique({
-        where: { email: input.email },
+        where: { email: input.email.trim().toLowerCase() },
       });
 
       // Always return success for security (don't reveal if email exists)
@@ -289,9 +291,10 @@ export const authRouter = createTRPCRouter({
 
       try {
         // Update user password
-        await ctx.prisma.user.update({
+        const updatedUser = await ctx.prisma.user.update({
           where: { id: resetToken.userId },
           data: { passwordHash },
+          select: { email: true },
         });
 
         // Mark token as used
@@ -300,6 +303,12 @@ export const authRouter = createTRPCRouter({
           SET used = true
           WHERE id = ${resetToken.id}
         `;
+
+        // Invalidate the auth user lookup cache so the next login
+        // fetches the fresh passwordHash from the DB instead of a stale record.
+        if (updatedUser.email) {
+          invalidateAuthUserLookup(updatedUser.email);
+        }
 
         return { success: true, message: "Password has been reset successfully" };
 
