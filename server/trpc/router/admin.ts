@@ -15,6 +15,10 @@ import {
 } from "@/server/services/membershipPayments.service";
 import { createTRPCRouter, protectedProcedure, adminProcedure, superAdminProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
+import {
+  invalidateAuthUserLookup,
+  invalidateAuthEnrichment,
+} from "@/server/authCache";
 import type { Prisma } from "@prisma/client";
 import { initiateBankTransfer } from "@/lib/flutterwave";
 import { notifyWithdrawalStatus, notifyDepositStatus } from "@/server/services/notification.service";
@@ -1584,6 +1588,47 @@ export const adminRouter = createTRPCRouter({
       });
 
       return updated;
+    }),
+
+  forceResetPassword: adminProcedure
+    .input(z.object({
+      userId: z.string(),
+      temporaryPassword: z.string().min(8, "Temporary password must be at least 8 characters"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const user = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { id: true, email: true, name: true },
+      });
+
+      if (!user) throw new Error("User not found");
+
+      const tempHash = await hash(input.temporaryPassword, 12);
+
+      await prisma.user.update({
+        where: { id: input.userId },
+        data: { forcePasswordReset: true, passwordHash: tempHash },
+      });
+
+      if (user.email) {
+        invalidateAuthUserLookup(user.email);
+        invalidateAuthEnrichment(input.userId);
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: (ctx.session?.user as any)?.id || "system",
+          action: "FORCE_RESET_PASSWORD",
+          entity: "User",
+          entityId: input.userId,
+          changes: JSON.stringify({ forcePasswordReset: true }),
+          status: "success",
+          createdAt: new Date(),
+        },
+      });
+
+      return { success: true, message: `Temporary password set for ${user.name || user.email}. They will be asked to create a new password on next login.` };
     }),
 
   bulkUpdateUsers: adminProcedure

@@ -1912,6 +1912,7 @@ model User {
   level3Count                                                          Int                          @default(0)
   level4Count                                                          Int                          @default(0)
   role                                                                 String                       @default("user")
+  forcePasswordReset                                                   Boolean                      @default(false)
   passwordHash                                                         String?
   verificationCode                                                     String?
   resetToken                                                           String?

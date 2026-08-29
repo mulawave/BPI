@@ -96,6 +96,19 @@ export async function middleware(req: NextRequest) {
     pathname,
   );
 
+  // Force password reset: if the flag is set, user must create a new password
+  // before accessing any other page (except the reset page itself and auth routes).
+  // This check runs BEFORE the public-routes bypass so that flagged users cannot
+  // browse public pages either.
+  if (token && (token as any)?.forcePasswordReset === true) {
+    if (pathname === "/force-password-reset") {
+      return NextResponse.next();
+    }
+    if (pathname !== "/login" && pathname !== "/logout") {
+      return NextResponse.redirect(new URL("/force-password-reset", req.url));
+    }
+  }
+
   // Allow requests for API, auth, static files, and public pages
   if (
     pathname.startsWith("/api") ||

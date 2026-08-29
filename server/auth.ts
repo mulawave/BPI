@@ -9,30 +9,22 @@ import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { resolveAuthSecret } from "@/lib/authSecret";
 import { evaluateMembershipAccess } from "@/lib/membershipAccess";
 
-const AUTH_USER_LOOKUP_TTL_MS = 60_000;
+import {
+  getAuthUserLookupCache,
+  getAuthEnrichmentCache,
+  invalidateAuthUserLookup as _invalidateAuthUserLookup,
+  invalidateAuthEnrichment as _invalidateAuthEnrichment,
+  isFresh,
+} from "@/server/authCache";
+
+// Do not cache user lookups: the passwordHash changes during password reset
+// and any stale cache entry causes "invalid email or password" right after
+// a reset. Keep request coalescing via inFlight, but always re-fetch from DB.
+const AUTH_USER_LOOKUP_TTL_MS = 0;
 const AUTH_DB_CACHE_TTL_MS = 5 * 60 * 1000;
 
-const authUserLookupCache = new Map<string, { value: any; expiresAt: number }>();
-const authUserLookupInFlight = new Map<string, Promise<any>>();
-
-const authEnrichmentCache = new Map<
-  string,
-  {
-    value: {
-      role: string;
-      hasActiveMembership: boolean;
-      membershipExpiresAt: string | null;
-      membershipDerivedFromActivation: boolean;
-      hasActiveEmpowerment: boolean;
-    };
-    expiresAt: number;
-  }
->();
-const authEnrichmentInFlight = new Map<string, Promise<any>>();
-
-function isFresh(expiresAt: number) {
-  return expiresAt > Date.now();
-}
+const { cache: authUserLookupCache, inFlight: authUserLookupInFlight } = getAuthUserLookupCache();
+const { cache: authEnrichmentCache, inFlight: authEnrichmentInFlight } = getAuthEnrichmentCache();
 
 async function getCachedAuthUserByEmail(email: string) {
   const key = email.trim().toLowerCase();
@@ -64,9 +56,11 @@ async function getCachedAuthUserByEmail(email: string) {
 }
 
 export function invalidateAuthUserLookup(email: string) {
-  const key = email.trim().toLowerCase();
-  authUserLookupCache.delete(key);
-  authUserLookupInFlight.delete(key);
+  _invalidateAuthUserLookup(email);
+}
+
+export function invalidateAuthEnrichment(userId: string) {
+  _invalidateAuthEnrichment(userId);
 }
 
 async function getCachedAuthEnrichment(userId: string) {
@@ -89,6 +83,7 @@ async function getCachedAuthEnrichment(userId: string) {
         membershipExpiresAt: true,
         userType: true,
         role: true,
+        forcePasswordReset: true,
       },
     });
 
@@ -125,6 +120,7 @@ async function getCachedAuthEnrichment(userId: string) {
       membershipExpiresAt: membershipAccess.effectiveMembershipExpiresAt?.toISOString() ?? null,
       membershipDerivedFromActivation: membershipAccess.derivedFromActivation,
       hasActiveEmpowerment,
+      forcePasswordReset: dbUser?.forcePasswordReset === true,
     };
 
     // Backfill: if role field is still default "user" but userType indicates admin/super_admin,
@@ -185,7 +181,8 @@ export const authConfig: NextAuthOptions = {
           id: user.id, 
           email: user.email ?? undefined, 
           name: user.name ?? undefined,
-          role: user.role || user.userType || "user"
+          role: user.role || user.userType || "user",
+          forcePasswordReset: user.forcePasswordReset === true,
         };
       },
     }),
@@ -219,7 +216,9 @@ export const authConfig: NextAuthOptions = {
       // If user object exists (first time login), add user info to token
       if (user) {
         token.id = user.id;
+        token.email = (user as any).email ?? (token as any).email;
         token.role = (user as any).role ?? "user";
+        (token as any).forcePasswordReset = (user as any).forcePasswordReset ?? false;
         (token as any).isImpersonation = (user as any).isImpersonation ?? (token as any).isImpersonation ?? false;
         (token as any).impersonatedBy = (user as any).impersonatedBy ?? (token as any).impersonatedBy ?? null;
         (token as any).impersonatedByEmail = (user as any).impersonatedByEmail ?? (token as any).impersonatedByEmail ?? null;
@@ -241,6 +240,7 @@ export const authConfig: NextAuthOptions = {
           (token as any).membershipExpiresAt = enrichment.membershipExpiresAt;
           (token as any).membershipDerivedFromActivation = enrichment.membershipDerivedFromActivation;
           (token as any).hasActiveEmpowerment = enrichment.hasActiveEmpowerment;
+          (token as any).forcePasswordReset = enrichment.forcePasswordReset;
           token.role = enrichment.role;
         } catch (e) {
           // Preserve existing values rather than forcing false
@@ -271,6 +271,7 @@ export const authConfig: NextAuthOptions = {
       // Pass user info and membership flags from token to session
       if (token && session.user) {
         (session.user as any).id = token.id;
+        (session.user as any).email = (token as any).email ?? (session.user as any).email ?? null;
         (session.user as any).role = token.role;
         (session.user as any).hasActiveMembership = (token as any).hasActiveMembership ?? false;
         (session.user as any).membershipExpiresAt = (token as any).membershipExpiresAt ?? null;
@@ -280,6 +281,7 @@ export const authConfig: NextAuthOptions = {
         (session.user as any).impersonatedBy = (token as any).impersonatedBy ?? null;
         (session.user as any).impersonatedByEmail = (token as any).impersonatedByEmail ?? null;
         (session.user as any).impersonationSessionId = (token as any).impersonationSessionId ?? null;
+        (session.user as any).forcePasswordReset = (token as any).forcePasswordReset ?? false;
       }
       return session;
     }

@@ -7,10 +7,9 @@ import { usePathname } from "next/navigation";
 import { api } from "@/client/trpc";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
-  Home, BookOpen, LifeBuoy, Store, User, GraduationCap,
-  Crown, Trophy, Moon, Sun, Loader2, LogOut, Settings, Wallet, Gem,
+  Crown, User, Moon, Sun, LogOut, Settings, Wallet, Gem,
 } from "lucide-react";
-import { AiOutlineRobot } from "react-icons/ai";
+import { DesktopNav, MobileNavItems } from "@/components/shared/ShellNav";
 import { signOut } from "next-auth/react";
 import { resolveClientBaseUrl } from "@/lib/clientAppUrl";
 import { abortAllInFlightTrpcRequests } from "@/lib/trpcNavAbort";
@@ -26,18 +25,6 @@ interface EmpowermentShellProps {
   session: Session;
   children: ReactNode;
 }
-
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: Home },
-  { href: "/blog", label: "Blog", icon: BookOpen },
-  { href: "/csp", label: "CSP", icon: LifeBuoy },
-  { href: "/store", label: "Store", icon: Store },
-  { href: "/help", label: "Help", icon: AiOutlineRobot },
-  { href: "/empowerment", label: "Empowerment", icon: GraduationCap },
-  { href: "/elite-club", label: "Elite Club", icon: Crown },
-  { href: "/techquiz", label: "TechQuiz", icon: Trophy },
-  { href: "/settings", label: "Account", icon: User },
-];
 
 export default function EmpowermentShell({ session, children }: EmpowermentShellProps) {
   const pathname = usePathname();
@@ -101,19 +88,7 @@ export default function EmpowermentShell({ session, children }: EmpowermentShell
                 <span className="ml-1.5 text-[10px] uppercase tracking-[0.2em] font-semibold text-emerald-600 dark:text-emerald-400">Empowerment</span>
               </div>
             </Link>
-            <nav className="hidden lg:flex items-center gap-0.5">
-              {navItems.map((item) => {
-                const active = isActive(item.href);
-                const loading = navLoadingHref === item.href;
-                return (
-                  <Link key={item.href} href={item.href} onClick={() => handleNavClick(item.href)} className={`group relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${active ? "text-emerald-700 dark:text-emerald-300 bg-emerald-50/80 dark:bg-emerald-900/20" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/60 dark:hover:bg-slate-800/40"}`}>
-                    {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <item.icon className="w-3.5 h-3.5" />}
-                    <span>{item.label}</span>
-                    {active && <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-gradient-to-r from-emerald-500 to-amber-400 rounded-full" />}
-                  </Link>
-                );
-              })}
-            </nav>
+            <DesktopNav isActive={isActive} navLoadingHref={navLoadingHref} handleNavClick={handleNavClick} />
             <div className="flex items-center gap-3">
               <button onClick={toggleTheme} className="flex items-center justify-center h-9 w-9 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label="Toggle theme">
                 {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -187,16 +162,7 @@ export default function EmpowermentShell({ session, children }: EmpowermentShell
       </header>
       <nav className="lg:hidden sticky top-16 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200/60 dark:border-slate-800/60">
         <div className="flex items-center gap-1 overflow-x-auto px-3 py-2 no-scrollbar">
-          {navItems.map((item) => {
-            const active = isActive(item.href);
-            const loading = navLoadingHref === item.href;
-            return (
-              <Link key={item.href} href={item.href} onClick={() => handleNavClick(item.href)} className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all ${active ? "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20" : "text-slate-600 dark:text-slate-400"}`}>
-                {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <item.icon className="w-3 h-3" />}
-                {item.label}
-              </Link>
-            );
-          })}
+          <MobileNavItems isActive={isActive} navLoadingHref={navLoadingHref} handleNavClick={handleNavClick} />
         </div>
       </nav>
       <main className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 py-6 pb-0">

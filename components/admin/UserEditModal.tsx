@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
-import { MdClose, MdSave, MdPerson, MdEmail, MdAccountBalanceWallet } from "react-icons/md";
+import { MdClose, MdSave, MdPerson, MdEmail, MdAccountBalanceWallet, MdLockReset } from "react-icons/md";
 import toast from "react-hot-toast";
 import { createPortal } from "react-dom";
+import { FiAlertTriangle } from "react-icons/fi";
 
 interface UserEditModalProps {
   userId: string;
@@ -59,6 +60,20 @@ export default function UserEditModal({
       toast.error(error.message);
     },
   });
+
+  const forceResetMutation = api.admin.forceResetPassword.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message || "Password reset forced. User will be asked to create a new password on next login.");
+      setShowResetConfirm(false);
+    },
+    onError: (error) => {
+      toast.error(error.message);
+      setShowResetConfirm(false);
+    },
+  });
+
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [temporaryPassword, setTemporaryPassword] = useState("");
 
   // Update form data when user data loads
   if (user && formData.name === "" && user.name) {
@@ -231,6 +246,84 @@ export default function UserEditModal({
                           </label>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Force Password Reset */}
+                    <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-6 border border-red-200 dark:border-red-800/40">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                        <MdLockReset size={24} className="text-red-600 dark:text-red-400" />
+                        Force Password Reset
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                        Set a temporary password for this user. On their next login, they will enter this temporary password and then be required to create their own permanent password.
+                      </p>
+                      {!showResetConfirm ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowResetConfirm(true);
+                            setTemporaryPassword("");
+                          }}
+                          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2 text-sm font-medium"
+                        >
+                          <MdLockReset size={18} />
+                          Force Password Reset
+                        </button>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-300">
+                            <FiAlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                            <span>Are you sure? This will require <strong>{user?.name || user?.email}</strong> to create a new password on their next login.</span>
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                              Temporary Password
+                            </label>
+                            <div className="relative">
+                              <input
+                                type="password"
+                                value={temporaryPassword}
+                                onChange={(e) => setTemporaryPassword(e.target.value)}
+                                placeholder="Enter a temporary password"
+                                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none text-sm"
+                                minLength={8}
+                                required
+                              />
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Must be at least 8 characters. Share this with the user so they can log in.
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (temporaryPassword.length < 8) {
+                                  toast.error("Temporary password must be at least 8 characters");
+                                  return;
+                                }
+                                forceResetMutation.mutate({ userId, temporaryPassword });
+                              }}
+                              disabled={forceResetMutation.isPending}
+                              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {forceResetMutation.isPending ? "Processing..." : "Yes, Reset Password"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowResetConfirm(false);
+                                setTemporaryPassword("");
+                              }}
+                              className="px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm font-medium"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Wallets */}

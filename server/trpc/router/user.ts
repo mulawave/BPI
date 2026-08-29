@@ -9,6 +9,10 @@ import { sendVerificationEmail, sendWelcomeEmail } from "@/lib/email";
 import { TRPCError } from "@trpc/server";
 import { placeUserInThirdPartyMatrix } from "@/server/services/thirdPartyMatrix.service";
 import { evaluateMembershipAccess } from "@/lib/membershipAccess";
+import {
+  invalidateAuthUserLookup,
+  invalidateAuthEnrichment,
+} from "@/server/authCache";
 
 // Store verification codes temporarily (in production, use Redis or database)
 const verificationCodes = new Map<string, { code: string; expiresAt: Date }>();
@@ -521,5 +525,45 @@ export const userRouter = createTRPCRouter({
         create: { userId, preferences: merged },
       });
       return { success: true };
+    }),
+
+  completeForcePasswordReset: protectedProcedure
+    .input(z.object({
+      newPassword: z.string().min(8, "Password must be at least 8 characters"),
+      confirmPassword: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session!.user as any).id as string;
+
+      if (input.newPassword !== input.confirmPassword) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Passwords do not match" });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { forcePasswordReset: true, email: true },
+      });
+
+      if (!user?.forcePasswordReset) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "No password reset required" });
+      }
+
+      const passwordHash = await hash(input.newPassword, 12);
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash,
+          forcePasswordReset: false,
+        },
+      });
+
+      // Invalidate auth cache so the new password is effective immediately
+      if (user.email) {
+        invalidateAuthUserLookup(user.email);
+        invalidateAuthEnrichment(userId);
+      }
+
+      return { success: true, message: "Password updated successfully", email: user.email ?? null };
     }),
 });

@@ -329,18 +329,18 @@ export default function SettingsLayout({ session }: SettingsLayoutProps) {
                 transition={{ duration: 0.2 }}
               >
                 {/* Tab Header */}
-                <div className="mb-6">
-                  <div className="flex items-center gap-3 mb-2">
+                <div className="mb-6 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm p-4">
+                  <div className="flex items-center gap-3">
                     {activeTabConfig && (
                       <>
                         <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-red-100 dark:from-orange-900/30 dark:to-red-900/30 rounded-xl flex items-center justify-center">
                           <activeTabConfig.icon className="w-6 h-6 text-orange-600 dark:text-orange-400" />
                         </div>
                         <div>
-                          <h2 className="text-2xl font-bold text-white">
+                          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
                             {activeTabConfig.label}
                           </h2>
-                          <p className="text-sm text-emerald-100/80">
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
                             {activeTabConfig.description}
                           </p>
                         </div>
