@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/client/trpc";
 import { MdClose, MdSave, MdPerson, MdEmail, MdAccountBalanceWallet, MdLockReset } from "react-icons/md";
+import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import toast from "react-hot-toast";
 import { createPortal } from "react-dom";
 import { FiAlertTriangle } from "react-icons/fi";
@@ -74,6 +75,7 @@ export default function UserEditModal({
 
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [showTemporaryPassword, setShowTemporaryPassword] = useState(false);
 
   // Update form data when user data loads
   if (user && formData.name === "" && user.name) {
@@ -282,14 +284,22 @@ export default function UserEditModal({
                             </label>
                             <div className="relative">
                               <input
-                                type="password"
+                                type={showTemporaryPassword ? "text" : "password"}
                                 value={temporaryPassword}
                                 onChange={(e) => setTemporaryPassword(e.target.value)}
                                 placeholder="Enter a temporary password"
-                                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none text-sm"
+                                className="w-full px-4 pr-10 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none text-sm"
                                 minLength={8}
                                 required
                               />
+                              <button
+                                type="button"
+                                onClick={() => setShowTemporaryPassword(!showTemporaryPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors"
+                                aria-label={showTemporaryPassword ? "Hide password" : "Show password"}
+                              >
+                                {showTemporaryPassword ? <AiOutlineEyeInvisible size={18} /> : <AiOutlineEye size={18} />}
+                              </button>
                             </div>
                             <p className="text-xs text-gray-500 dark:text-gray-400">
                               Must be at least 8 characters. Share this with the user so they can log in.

@@ -2,13 +2,15 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { AiOutlineLock } from "react-icons/ai";
+import { AiOutlineLock, AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/client/trpc";
 
 export default function SetNewPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
   const [tokenValid, setTokenValid] = useState<boolean | null>(null);
@@ -115,28 +117,44 @@ export default function SetNewPasswordPage() {
                       <AiOutlineLock />
                     </span>
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       name="password"
                       placeholder="New password"
                       value={password}
                       onChange={e => setPassword(e.target.value)}
-                      className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] px-5 py-4 text-[1.1rem] text-[#232323] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] outline-none w-full"
+                      className="pl-10 pr-11 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] px-5 py-4 text-[1.1rem] text-[#232323] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] outline-none w-full"
                       required
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#b0b0b0] hover:text-[#0d3b29] transition-colors"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <AiOutlineEyeInvisible size={20} /> : <AiOutlineEye size={20} />}
+                    </button>
                   </div>
                   <div className="relative">
                     <span className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-full border border-[#b0b0b0] text-[#b0b0b0] text-xl pointer-events-none">
                       <AiOutlineLock />
                     </span>
                     <input
-                      type="password"
+                      type={showConfirmPassword ? "text" : "password"}
                       name="confirmPassword"
                       placeholder="Confirm new password"
                       value={confirmPassword}
                       onChange={e => setConfirmPassword(e.target.value)}
-                      className="pl-10 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] px-5 py-4 text-[1.1rem] text-[#232323] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] outline-none w-full"
+                      className="pl-10 pr-11 rounded-full border border-[#a6a6a6] bg-[#f4f4f4] px-5 py-4 text-[1.1rem] text-[#232323] font-sans font-light focus:border-[#0d3b29] placeholder-[#b0b0b0] outline-none w-full"
                       required
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#b0b0b0] hover:text-[#0d3b29] transition-colors"
+                      aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                    >
+                      {showConfirmPassword ? <AiOutlineEyeInvisible size={20} /> : <AiOutlineEye size={20} />}
+                    </button>
                   </div>
                   {error && <div className="text-red-600 text-xs text-center">{error}</div>}
                   <button
