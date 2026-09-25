@@ -105,13 +105,24 @@ async function seed() {
   };
 
   const passwords = { member: newPassword(), sponsor: newPassword(), admin: newPassword() };
+  // A complete profile, otherwise the dashboard is covered by the
+  // "complete your profile" overlay.
+  const profile = {
+    mobile: "+2348000000000",
+    address: "1 Review Street",
+    city: "Ikeja",
+    state: "Lagos",
+    country: "Nigeria",
+    gender: "other",
+    image: "/img/logo.png",
+  };
 
   const sponsor = await upsertUser({
     email: SPONSOR_EMAIL,
     name: "Review Sponsor",
     role: "user",
     password: passwords.sponsor,
-    data: { ...membership, firstname: "Review", lastname: "Sponsor" },
+    data: { ...membership, ...profile, firstname: "Review", lastname: "Sponsor" },
   });
 
   await upsertUser({
@@ -119,7 +130,7 @@ async function seed() {
     name: "Review Member",
     role: "user",
     password: passwords.member,
-    data: { ...membership, firstname: "Review", lastname: "Member", sponsorId: sponsor.id, wallet: 50000, community: 10000 },
+    data: { ...membership, ...profile, firstname: "Review", lastname: "Member", sponsorId: sponsor.id, wallet: 50000, community: 10000 },
   });
 
   await upsertUser({ email: ADMIN_EMAIL, name: "Review Admin", role: "admin", password: passwords.admin });

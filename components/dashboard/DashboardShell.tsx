@@ -110,7 +110,7 @@ export default function DashboardShell({ session, children }: DashboardShellProp
             <DesktopNav isActive={isActive} navLoadingHref={navLoadingHref} handleNavClick={handleNavClick} />
 
             <div className="flex items-center gap-3">
-              <div className="hidden xl:flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+              <div className="hidden 2xl:flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
                 <Calendar className="w-3.5 h-3.5" />
                 <span className="font-medium">{currentTime.toLocaleDateString()}</span>
                 <span className="font-mono tabular-nums tracking-tight">{currentTime.toLocaleTimeString()}</span>

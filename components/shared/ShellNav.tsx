@@ -62,7 +62,7 @@ export function DesktopNav({ isActive, navLoadingHref, handleNavClick }: ShellNa
             }`}
           >
             {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <item.icon className="w-3.5 h-3.5" />}
-            <span>{item.label}</span>
+            <span className="whitespace-nowrap">{item.label}</span>
             {active && (
               <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-gradient-to-r from-emerald-500 to-amber-400 rounded-full" />
             )}
