@@ -379,17 +379,6 @@ export async function activateMembershipAfterExternalPayment(params: {
     }
   }
 
-  // ── Post-commit: CSP auto-contribute trigger (best-effort) ──
-  // Note: This runs after the transaction commits, so prisma is the original PrismaClient, not a transaction client.
-  // The type cast is safe because runCspAutoContribute requires a full PrismaClient for its own transactions.
-  for (const userId of cspTriggerUserIds) {
-    try {
-      await runCspAutoContribute({ prisma: prisma as PrismaClient, userId });
-    } catch (err) {
-      console.error(`[MEMBERSHIP] CSP auto-contribute failed for user ${userId} (core activation succeeded):`, err);
-    }
-  }
-
   // ── Post-commit: Notifications (best-effort, skipped for free promo) ──
   for (let i = 0; i < (skipRewards ? 0 : referralChain.length); i++) {
     const referrer = referralChain[i];

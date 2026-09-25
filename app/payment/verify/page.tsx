@@ -10,7 +10,11 @@ import { useTheme } from "@/contexts/ThemeContext";
 import toast from "react-hot-toast";
 import { PaymentGateway } from "@/server/services/payment/types";
 
-type VerifyStatus = "verifying" | "success" | "error" | "missing-params";
+type VerifyStatus = "verifying" | "processing" | "success" | "error" | "missing-params";
+
+// While the gateway still reports the payment as in-flight, re-check a few times.
+const PROCESSING_RETRY_DELAY_MS = 10_000;
+const PROCESSING_MAX_RETRIES = 6;
 
 export default function PaymentVerifyPage() {
   const searchParams = useSearchParams();
@@ -27,9 +31,24 @@ export default function PaymentVerifyPage() {
   const [message, setMessage] = useState(errorMessage || "");
   const [transactionType, setTransactionType] = useState<string | null>(null);
   const verifyAttempted = useRef(false);
+  const retryCount = useRef(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (retryTimer.current) clearTimeout(retryTimer.current);
+  }, []);
 
   const verifyMutation = api.package.verifyExternalPayment.useMutation({
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
+      if ((data as { processing?: boolean }).processing) {
+        setStatus("processing");
+        setMessage(data.message || "Your payment is still being confirmed.");
+        if (retryCount.current < PROCESSING_MAX_RETRIES) {
+          retryCount.current += 1;
+          retryTimer.current = setTimeout(() => verifyMutation.mutate(variables), PROCESSING_RETRY_DELAY_MS);
+        }
+        return;
+      }
       setStatus("success");
       setTransactionType(data.transactionType);
       if (data.alreadyProcessed) {
@@ -94,6 +113,32 @@ export default function PaymentVerifyPage() {
               Please wait while we confirm your payment with{" "}
               {gateway === "paystack" ? "Paystack" : "Flutterwave"}...
             </p>
+          </>
+        )}
+
+        {/* Processing State — gateway has not confirmed yet */}
+        {status === "processing" && (
+          <>
+            <div className="w-20 h-20 mx-auto mb-6 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
+              <Loader2 className="w-10 h-10 animate-spin text-amber-600 dark:text-amber-400" />
+            </div>
+            <h2 className="text-xl font-bold text-foreground mb-2">
+              Confirming Your Payment
+            </h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              {message}
+            </p>
+            {reference && (
+              <p className="text-xs text-muted-foreground mb-4 font-mono bg-muted/50 dark:bg-muted/20 rounded px-3 py-2">
+                Ref: {reference}
+              </p>
+            )}
+            <Button
+              onClick={() => router.push("/dashboard")}
+              className="w-full bg-gradient-to-r from-bpi-primary to-bpi-secondary text-white"
+            >
+              Go to Dashboard
+            </Button>
           </>
         )}
 

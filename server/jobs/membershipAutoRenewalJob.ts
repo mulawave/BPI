@@ -1,8 +1,10 @@
 /**
  * Background Job: Membership Auto-Renewal Processor
  * 
- * This job runs periodically to automatically renew expired memberships
- * for users who are eligible and within the auto-renewal window.
+ * This job runs daily (server/cron-server.ts) to renew memberships that are
+ * about to expire or expired within the grace window. Each renewal is paid
+ * from the member's Main Wallet; members with insufficient balance are
+ * notified and retried on the next run.
  * 
  * Invocation:
  * - Via cron job or scheduled task
@@ -139,6 +141,23 @@ export async function runMembershipAutoRenewalJob(
                 `[AUTO-RENEWAL JOB] Failed to log audit for user ${candidate.id}:`,
                 logErr
               );
+            }
+          } else if (result.insufficientFunds) {
+            // Not an error: the member simply hasn't funded their wallet yet.
+            skipped++;
+            try {
+              await prisma.notification.create({
+                data: {
+                  id: randomUUID(),
+                  userId: candidate.id,
+                  title: "Membership auto-renewal pending",
+                  message: `${result.error} Your membership will renew automatically once your Main Wallet is funded.`,
+                  link: "/membership",
+                  isRead: false,
+                },
+              });
+            } catch (notifyErr) {
+              console.error(`[AUTO-RENEWAL JOB] Failed to notify user ${candidate.id}:`, notifyErr);
             }
           } else {
             failed++;

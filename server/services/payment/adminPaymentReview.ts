@@ -8,6 +8,8 @@ import { notifyDepositStatus } from "@/server/services/notification.service";
 import { generateReceiptLink } from "@/server/services/receipt.service";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { getNigerianRegion } from "@/lib/nigeria-regions";
+import { applyCspContribution } from "@/server/services/csp-ledger.service";
+import { runPostCreditAutomation } from "@/server/services/walletAutoDebit.service";
 import {
   claimPendingPayment,
   markPendingPaymentReviewed,
@@ -57,6 +59,7 @@ type ReviewDeps = {
   generateReceiptLink: typeof generateReceiptLink;
   notifyDepositStatus: typeof notifyDepositStatus;
   sendEmail: (job: EmailJob) => Promise<unknown>;
+  runPostCreditAutomation: (params: { userId: string; creditAmount: number }) => Promise<unknown>;
 };
 
 type ReviewPrismaClient = {
@@ -77,6 +80,10 @@ const defaultDeps: ReviewDeps = {
   async sendEmail(job) {
     const { sendEmail } = await import("@/lib/email");
     await sendEmail(job);
+  },
+  async runPostCreditAutomation({ userId, creditAmount }) {
+    const { prisma } = await import("@/lib/prisma");
+    await runPostCreditAutomation({ prisma, userId, creditAmount, trigger: "deposit", context: "admin-approved deposit" });
   },
 };
 
@@ -470,43 +477,19 @@ export async function executeAdminPaymentReview(params: {
       } else if (purpose === "CSP_CONTRIBUTION") {
         const cspRequestId = metadata.cspRequestId as string | undefined;
         if (cspRequestId) {
-          const cspRequest = await tx.cspSupportRequest.findUnique({ where: { id: cspRequestId } });
-          if (cspRequest) {
-            const newRaised = cspRequest.raisedAmount + payment.amount;
-            const nextCspStatus =
-              newRaised >= cspRequest.thresholdAmount ? "ready_for_release" : cspRequest.status;
-
-            await tx.cspSupportRequest.update({
-              where: { id: cspRequestId },
-              data: {
-                raisedAmount: { increment: payment.amount },
-                contributorsCount: { increment: 1 },
-                status: nextCspStatus,
-              },
-            });
-
-            await tx.cspContribution.create({
-              data: {
-                requestId: cspRequestId,
-                contributorId: payment.userId,
-                amount: payment.amount,
-                walletType: "wallet",
-              },
-            });
-
-            await tx.transaction.create({
-              data: {
-                id: randomUUID(),
-                userId: payment.userId,
-                transactionType: "CSP_CONTRIBUTION",
-                amount: -payment.amount,
-                description: `CSP crypto contribution to request ${cspRequestId} (admin verified)`,
-                status: "completed",
-                reference: paymentRef,
-                walletType: "main",
-              },
-            });
-          }
+          // Shared CSP ledger: funds the holding wallet so the contribution is
+          // included in the release. Money arrived externally (crypto) → no debit.
+          await applyCspContribution(tx, {
+            requestId: cspRequestId,
+            contributorId: payment.userId,
+            amount: payment.amount,
+            debitWallet: null,
+            contributionWalletType: "wallet",
+            transactionType: "CSP_CONTRIBUTION",
+            transactionDescription: `CSP crypto contribution to request ${cspRequestId} (admin verified)`,
+            transactionReference: paymentRef,
+            acceptStatuses: ["broadcasting", "ready_for_release"],
+          });
         }
       } else if (purpose === "STORE_PURCHASE") {
         await tx.transaction.create({
@@ -602,6 +585,18 @@ export async function executeAdminPaymentReview(params: {
       }
     } catch {
       // Email failures should not block approval after commit.
+    }
+  }
+
+  if (reviewResult.depositNotification?.status === "completed") {
+    // Same post-credit automation as gateway-confirmed deposits (auto-debit → CSP).
+    try {
+      await services.runPostCreditAutomation({
+        userId: payment.userId,
+        creditAmount: reviewResult.depositNotification.amount,
+      });
+    } catch {
+      // Best-effort: the deposit is already committed.
     }
   }
 

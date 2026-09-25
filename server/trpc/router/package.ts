@@ -7,6 +7,8 @@ import { distributeBptReward } from "@/server/services/rewards.service";
 import { PaymentProcessor } from "@/server/services/payment";
 import { resolveCryptoPaymentNetworkDetails } from "@/server/services/payment/cryptoPaymentDetails";
 import { PAYMENT_FULFILLMENT_TYPES } from "@/server/services/payment/paymentMetadata";
+import { fulfillDepositPayment, isGatewayAmountAcceptable } from "@/server/services/payment/depositFulfillment";
+import { classifyGatewayVerification } from "@/server/services/payment/gatewayOutcome";
 import { PaymentGateway, PaymentPurpose, PaymentStatus } from "@/server/services/payment/types";
 import { randomUUID } from "crypto";
 import { assertMockPaymentsAllowed } from "@/lib/mockPayments";
@@ -15,6 +17,7 @@ import { recordRevenue } from "@/server/services/revenue.service";
 import { getNigerianRegion } from "@/lib/nigeria-regions";
 import {
   claimPendingPayment,
+  markPendingPaymentNeedsReview,
   markPendingPaymentReviewed,
 } from "@/server/services/payment/pendingPaymentFulfillment";
 import { activateMembershipAfterExternalPayment, upgradeMembershipAfterExternalPayment } from "@/server/services/membershipPayments.service";
@@ -1683,148 +1686,25 @@ export const packageRouter = createTRPCRouter({
         throw new Error("This package does not support renewal.");
       }
 
-      // 3. Check if membership has expired or is close to expiry
-      const now = new Date();
-      const expiresAt = user.membershipExpiresAt;
-      
-      // EARLY RENEWAL PREVENTION: Must be within 30 days of expiration
-      if (!expiresAt) {
-        throw new Error("No expiration date found. Please contact support.");
-      }
-
-      const daysUntilExpiry = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      const RENEWAL_WINDOW_DAYS = 30;
-      
-      if (daysUntilExpiry > RENEWAL_WINDOW_DAYS) {
-        throw new Error(`Membership renewal available ${RENEWAL_WINDOW_DAYS} days before expiration. Your membership expires in ${daysUntilExpiry} days. Please renew after ${new Date(expiresAt.getTime() - RENEWAL_WINDOW_DAYS * 24 * 60 * 60 * 1000).toLocaleDateString()}.`);
-      }
-      
-      console.log(`[RENEWAL] Eligible for renewal: ${daysUntilExpiry} days until expiry`);
-
-      // TODO: Implement actual payment processing
-      const renewalFee = membershipPackage.renewalFee || membershipPackage.price;
-      const vat = renewalFee * 0.075;
-      const totalCost = renewalFee + vat;
-
-      // 4. Calculate new expiry date
-      const newExpiresAt = expiresAt && expiresAt > now 
-        ? new Date(expiresAt.getTime() + (membershipPackage.renewalCycle * 24 * 60 * 60 * 1000))
-        : new Date(now.getTime() + (membershipPackage.renewalCycle * 24 * 60 * 60 * 1000));
-
-      // 5. Get referral chain for renewal rewards
-      const referralChain = await getReferralChain(userId, 4);
-
-      // Track total rewards distributed
-      let totalCash = 0, totalPalliative = 0, totalBpt = 0, totalCashback = 0;
-      let totalHealth = 0, totalMeal = 0, totalSecurity = 0;
-
-      // 6. Distribute renewal rewards to referrers
-      for (let i = 0; i < referralChain.length; i++) {
-        const referrer = referralChain[i];
-        const level = (i + 1) as 1 | 2 | 3 | 4;
-
-        const cashReward = (membershipPackage as any)[`renewal_cash_l${level}`] || 0;
-        const palliativeReward = (membershipPackage as any)[`renewal_palliative_l${level}`] || 0;
-        const bptReward = (membershipPackage as any)[`renewal_bpt_l${level}`] || 0;
-        const cashbackReward = (membershipPackage as any)[`renewal_cashback_l${level}`] || 0;
-        const healthReward = (membershipPackage as any)[`renewal_health_l${level}`] || 0;
-        const mealReward = (membershipPackage as any)[`renewal_meal_l${level}`] || 0;
-        const securityReward = (membershipPackage as any)[`renewal_security_l${level}`] || 0;
-
-        // Build update data
-        const updateData: any = {};
-        if (cashReward > 0) { updateData.wallet = { increment: cashReward }; totalCash += cashReward; }
-        if (palliativeReward > 0) { updateData.palliative = { increment: palliativeReward }; totalPalliative += palliativeReward; }
-        if (cashbackReward > 0) { updateData.cashback = { increment: cashbackReward }; totalCashback += cashbackReward; }
-        if (healthReward > 0) { updateData.health = { increment: healthReward }; totalHealth += healthReward; }
-        if (mealReward > 0) { updateData.meal = { increment: mealReward }; totalMeal += mealReward; }
-        if (securityReward > 0) { updateData.security = { increment: securityReward }; totalSecurity += securityReward; }
-
-        if (Object.keys(updateData).length > 0) {
-          await prisma.user.update({
-            where: { id: referrer.id },
-            data: updateData,
-          });
-        }
-
-        // Distribute BPT rewards
-        if (bptReward > 0) {
-          await distributeBptReward(
-            referrer.id,
-            bptReward,
-            `RENEWAL_L${level}`,
-            `Renewal reward L${level} from ${membershipPackage.name} renewal`
-          );
-          totalBpt += bptReward;
-        }
-      }
-
-      // 7. Update user's membership expiry and renewal count
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          membershipExpiresAt: newExpiresAt,
-          renewalCount: { increment: 1 },
-        },
-      });
-
-      // 8. Create renewal history record
-      const renewalHistory = await prisma.renewalHistory.create({
-        data: {
-          id: randomUUID(),
-          userId,
-          packageId,
-          packageName: membershipPackage.name,
-          renewalNumber: user.renewalCount + 1,
-          renewalFee,
-          vat,
-          totalPaid: totalCost,
-          expiresAt: newExpiresAt,
-          cashDistributed: totalCash,
-          bptDistributed: totalBpt,
-          palliativeDistributed: totalPalliative,
-          cashbackDistributed: totalCashback,
-          healthDistributed: totalHealth,
-          mealDistributed: totalMeal,
-          securityDistributed: totalSecurity,
-        },
-      });
-
-      // Record revenue from membership renewal
-      const renewalProfitFiat = computeProfitFiat({
-        profitMode: ((membershipPackage.profitMode ?? "PERCENT") as any) as "PERCENT" | "FIXED" | "HYBRID",
-        profitPercent: Number(membershipPackage.profitPercent ?? 1),
-        profitFixedAmountFiat: Number(membershipPackage.profitFixedAmountFiat ?? 0),
-        baseFiat: Number(renewalFee ?? 0),
-      });
-      await recordRevenue(prisma, {
-        source: "MEMBERSHIP_RENEWAL",
-        amount: renewalProfitFiat,
-        currency: "NGN",
-        sourceId: `MEMBERSHIP_RENEWAL:${renewalHistory.id}`,
-        description: `Membership renewal: ${membershipPackage.name}`,
+      // Paid renewal: the fee + VAT is debited from the Main Wallet atomically
+      // with the expiry extension and upline rewards (shared with auto-renewal).
+      const { processAutoRenewal } = await import("@/server/services/membershipAutoRenewal.service");
+      const result = await processAutoRenewal(
+        prisma,
         userId,
-        packageId: membershipPackage.id,
-        programType: "MEMBERSHIP_RENEWAL",
-        country: (user as any).country ?? undefined,
-        state: (user as any).state ?? undefined,
-        region: (user as any).region ?? undefined,
-        metadata: {
-          totalPaid: totalCost,
-          renewalFee,
-          vat,
-          renewalNumber: user.renewalCount + 1,
-          renewalHistoryId: renewalHistory.id,
-        },
-      });
+        packageId !== user.activeMembershipPackageId ? packageId : undefined,
+      );
 
-      // Send renewal notification
-      await notifyMembershipRenewal(userId, membershipPackage.name, user.renewalCount + 1, newExpiresAt);
+      if (!result.success || !result.newExpiresAt) {
+        throw new Error(result.error || "Membership renewal failed.");
+      }
+
+      invalidateActiveMembershipCache(userId);
 
       return {
         success: true,
-        message: `Membership renewed successfully! Valid until ${newExpiresAt.toLocaleDateString()}`,
-        expiresAt: newExpiresAt,
+        message: `Membership renewed successfully! ₦${(result.amountCharged ?? 0).toLocaleString()} was debited from your Main Wallet. Valid until ${result.newExpiresAt.toLocaleDateString()}`,
+        expiresAt: result.newExpiresAt,
         renewalNumber: user.renewalCount + 1,
       };
     }),
@@ -3647,10 +3527,34 @@ export const packageRouter = createTRPCRouter({
 
       // Verify payment with the gateway
       const verification = await PaymentProcessor.verifyPayment(input.gateway, input.reference);
-      const successStates = [PaymentStatus.SUCCESS, PaymentStatus.SUCCESSFUL];
+      const outcome = classifyGatewayVerification(verification);
 
-      if (!verification.success || (verification.status && !successStates.includes(verification.status))) {
-        throw new Error(verification.error || verification.message || "Payment verification failed. Please contact support.");
+      if (outcome === "failed") {
+        throw new Error(verification.message || "Payment was not successful. Please try again or contact support.");
+      }
+
+      if (outcome === "pending") {
+        // Not confirmed yet (bank transfer in flight, gateway lag, API hiccup).
+        // The webhook and the recovery job will fulfil it automatically.
+        return {
+          success: true,
+          message: "Your payment is still being confirmed by the gateway. It will be applied automatically — you can safely leave this page.",
+          transactionType: pending.transactionType,
+          reference: input.reference,
+          alreadyProcessed: false,
+          processing: true,
+        };
+      }
+
+      if (!isGatewayAmountAcceptable(verification.amount, pending.amount)) {
+        await prisma.pendingPayment.update({
+          where: { id: pending.id },
+          data: {
+            reviewNotes: `Verification page: amount mismatch — gateway confirmed ₦${verification.amount}, expected ₦${pending.amount}. Manual review required.`,
+            updatedAt: new Date(),
+          },
+        });
+        throw new Error("The amount paid does not match this payment. Our team has been notified and will review it.");
       }
 
       const claim = await claimPendingPayment(prisma, {
@@ -3658,7 +3562,9 @@ export const packageRouter = createTRPCRouter({
         expectedUserId: userId,
         purpose: pending.transactionType,
         actor: `Payment verification page (${input.gateway})`,
-        claimableStatuses: ["pending", "processing"],
+        // "rejected" covers payments the recovery job expired before the
+        // customer finished paying; the gateway has now confirmed success.
+        claimableStatuses: ["pending", "processing", "rejected"],
       });
 
       if (claim.status === "already_processed") {
@@ -3881,35 +3787,27 @@ export const packageRouter = createTRPCRouter({
 
       // ── DEPOSIT / TOPUP ─────────────────────────────────────────
       if (transactionType === "DEPOSIT" || transactionType === "TOPUP") {
-        const transaction = await prisma.transaction.findFirst({
-          where: { reference: input.reference, userId, status: "pending", transactionType: "DEPOSIT" },
+        const deposit = await fulfillDepositPayment(prisma, {
+          pendingPaymentId: pending.id,
+          userId,
+          reference: input.reference,
+          note: `Auto-approved via payment verification page (${input.gateway})`,
         });
 
-        if (transaction) {
-          await prisma.$transaction([
-            prisma.user.update({
-              where: { id: userId },
-              data: { wallet: { increment: transaction.amount } },
-            }),
-            prisma.transaction.update({
-              where: { id: transaction.id },
-              data: { status: "completed" },
-            }),
-          ]);
-
-          await markPendingPaymentReviewed(prisma, {
+        if (deposit.status === "no_transaction") {
+          await markPendingPaymentNeedsReview(prisma, {
             paymentId: pending.id,
-            status: "approved",
-            note: `Auto-approved via payment verification page (${input.gateway})`,
+            note: "Verification page: payment confirmed but no deposit transaction was found. Manual review required.",
           });
+          throw new Error("Payment confirmed but the deposit record is missing. Our team has been notified.");
         }
 
         return {
           success: true,
-          message: "Wallet deposit processed successfully!",
+          message: deposit.status === "credited" ? "Wallet deposit processed successfully!" : "Payment already processed.",
           transactionType,
           reference: input.reference,
-          alreadyProcessed: false,
+          alreadyProcessed: deposit.status !== "credited",
         };
       }
 
@@ -4189,12 +4087,14 @@ export const packageRouter = createTRPCRouter({
 
         if (!result.success) return { success: false, error: result.error };
 
+        invalidateActiveMembershipCache(userId);
+
         return {
           success: true,
           renewalHistoryId: result.renewalHistoryId,
           newExpiresAt: result.newExpiresAt,
           totalRewardsDistributed: result.totalRewardsDistributed,
-          message: `Good news! Your membership has been automatically renewed. New expiry: ${result.newExpiresAt?.toLocaleDateString()}`,
+          message: `Your membership has been renewed. ₦${(result.amountCharged ?? 0).toLocaleString()} was debited from your Main Wallet. New expiry: ${result.newExpiresAt?.toLocaleDateString()}`,
         };
       } catch (err) {
         return {

@@ -6,8 +6,6 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "../../../../lib/prisma";
-import { notifyDepositStatus } from "@/server/services/notification.service";
-import { generateReceiptLink } from "@/server/services/receipt.service";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { getNigerianRegion } from "@/lib/nigeria-regions";
 import {
@@ -16,6 +14,7 @@ import {
   markPendingPaymentReviewed,
 } from "@/server/services/payment/pendingPaymentFulfillment";
 import { resolvePaymentFulfillmentType } from "@/server/services/payment/paymentMetadata";
+import { fulfillDepositPayment } from "@/server/services/payment/depositFulfillment";
 import {
   PaymentGatewayFactory,
   PaymentGateway,
@@ -28,7 +27,9 @@ async function claimPendingPayment(txRef: string, purpose: string, expectedUserI
     expectedUserId,
     purpose,
     actor: "Flutterwave webhook",
-    claimableStatuses: ["pending"],
+    // A verified success webhook may also fulfil a payment the recovery cron
+    // expired/rejected before the customer finished paying.
+    claimableStatuses: ["pending", "rejected"],
   });
 }
 
@@ -474,66 +475,37 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ status: "success" });
         }
 
-        // Find the pending deposit transaction
-        const transaction = await prisma.transaction.findFirst({
-          where: { reference: txRef, userId: claim.userId, status: "pending", transactionType: "DEPOSIT" },
-        });
+        try {
+          const deposit = await fulfillDepositPayment(prisma, {
+            pendingPaymentId: claim.paymentId,
+            userId: claim.userId,
+            reference: txRef,
+            note: "Auto-approved via Flutterwave webhook (payment verified)",
+          });
 
-        if (transaction) {
-          try {
-            await prisma.$transaction([
-              prisma.user.update({
-                where: { id: transaction.userId },
-                data: { wallet: { increment: transaction.amount } },
-              }),
-              prisma.transaction.update({
-                where: { id: transaction.id },
-                data: { status: "completed" },
-              }),
-              prisma.pendingPayment.update({
-                where: { id: claim.paymentId },
-                data: {
-                  status: "approved",
-                  reviewedAt: new Date(),
-                  reviewNotes: "Auto-approved via Flutterwave webhook (payment verified)",
-                },
-              }),
-            ]);
-          } catch (error) {
+          if (deposit.status === "no_transaction") {
             await markPaymentNeedsReview(
               claim.paymentId,
-              `Flutterwave deposit webhook failed after claim and needs manual review: ${error instanceof Error ? error.message : "Unknown error"}`
+              "Flutterwave deposit webhook claimed a payment but no pending deposit transaction was found. Manual review required."
             );
-            throw error;
+            await writeProcessingWarning(txRef, purpose, amount, "Claimed payment had no matching pending deposit transaction.");
+            console.warn("⚠️  [FLUTTERWAVE-WEBHOOK] Deposit transaction not found:", txRef);
+          } else {
+            console.log("✅ [FLUTTERWAVE-WEBHOOK] Deposit processed & auto-approved:", deposit.status);
           }
-
-          // Generate receipt
-          const receiptUrl = generateReceiptLink(transaction.id, "deposit");
-
-          // Send success notification
-          await notifyDepositStatus(
-            transaction.userId,
-            "completed",
-            transaction.amount,
-            txRef,
-            receiptUrl
-          );
-
-          console.log("✅ [FLUTTERWAVE-WEBHOOK] Deposit processed & auto-approved");
-        } else {
+        } catch (error) {
           await markPaymentNeedsReview(
             claim.paymentId,
-            "Flutterwave deposit webhook claimed a payment but no pending deposit transaction was found. Manual review required."
+            `Flutterwave deposit webhook failed after claim and needs manual review: ${error instanceof Error ? error.message : "Unknown error"}`
           );
-          await writeProcessingWarning(txRef, purpose, amount, "Claimed payment had no matching pending deposit transaction.");
-          console.warn("⚠️  [FLUTTERWAVE-WEBHOOK] Deposit transaction not found:", txRef);
+          throw error;
         }
       } else {
         // Purpose unknown from metadata — attempt recovery from PendingPayment record
         console.warn("⚠️  [FLUTTERWAVE-WEBHOOK] Unknown payment purpose from metadata:", fulfillmentType || purpose, "— attempting PendingPayment lookup");
 
         const fallbackPending = await prisma.pendingPayment.findFirst({
-          where: { gatewayReference: txRef, status: { in: ["pending", "processing"] } },
+          where: { gatewayReference: txRef, status: { in: ["pending", "processing", "rejected"] } },
           select: { id: true, transactionType: true, userId: true, metadata: true },
           orderBy: { createdAt: "desc" },
         });
@@ -608,38 +580,22 @@ export async function POST(req: NextRequest) {
             const claim = await claimPendingPayment(txRef, "DEPOSIT", recoveredUserId);
             if (claim.status === "claimed") {
               if (await verifyPaymentAmount(claim.paymentId, amount, txRef, "DEPOSIT")) {
-                const transaction = await prisma.transaction.findFirst({
-                  where: { reference: txRef, userId: recoveredUserId, status: "pending", transactionType: "DEPOSIT" },
-                });
-                if (transaction) {
-                  try {
-                    await prisma.$transaction([
-                      prisma.user.update({
-                        where: { id: transaction.userId },
-                        data: { wallet: { increment: transaction.amount } },
-                      }),
-                      prisma.transaction.update({
-                        where: { id: transaction.id },
-                        data: { status: "completed" },
-                      }),
-                      prisma.pendingPayment.update({
-                        where: { id: claim.paymentId },
-                        data: {
-                          status: "approved",
-                          reviewedAt: new Date(),
-                          reviewNotes: "Auto-approved via Flutterwave webhook (deposit purpose recovered from PendingPayment record)",
-                        },
-                      }),
-                    ]);
-                    await notifyDepositStatus(transaction.userId, "completed", transaction.amount, txRef, generateReceiptLink(transaction.id, "deposit"));
+                try {
+                  const deposit = await fulfillDepositPayment(prisma, {
+                    pendingPaymentId: claim.paymentId,
+                    userId: recoveredUserId,
+                    reference: txRef,
+                    note: "Auto-approved via Flutterwave webhook (deposit purpose recovered from PendingPayment record)",
+                  });
+                  if (deposit.status === "no_transaction") {
+                    await markPaymentNeedsReview(claim.paymentId, "Flutterwave fallback deposit recovery: no pending deposit transaction found.");
+                    console.warn("⚠️  [FLUTTERWAVE-WEBHOOK] Fallback deposit: no pending transaction for:", txRef);
+                  } else {
                     console.log("✅ [FLUTTERWAVE-WEBHOOK] Deposit processed via fallback recovery");
-                  } catch (error) {
-                    await markPaymentNeedsReview(claim.paymentId, `Flutterwave fallback deposit failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-                    console.error("❌ [FLUTTERWAVE-WEBHOOK] Fallback deposit failed:", error);
                   }
-                } else {
-                  await markPaymentNeedsReview(claim.paymentId, "Flutterwave fallback deposit recovery: no pending deposit transaction found.");
-                  console.warn("⚠️  [FLUTTERWAVE-WEBHOOK] Fallback deposit: no pending transaction for:", txRef);
+                } catch (error) {
+                  await markPaymentNeedsReview(claim.paymentId, `Flutterwave fallback deposit failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+                  console.error("❌ [FLUTTERWAVE-WEBHOOK] Fallback deposit failed:", error);
                 }
               }
             }

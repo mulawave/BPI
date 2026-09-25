@@ -290,9 +290,33 @@ export async function getRenewalPackage(
   };
 }
 
+/** Transaction types for renewal referral rewards (REFERRAL_* so they appear in referral earnings/reports). */
+export const RENEWAL_REWARD_TX_TYPES = {
+  cash: (level: number) => `REFERRAL_RENEWAL_CASH_L${level}`,
+  palliative: (level: number) => `REFERRAL_RENEWAL_PALLIATIVE_L${level}`,
+  cashback: (level: number) => `REFERRAL_RENEWAL_CASHBACK_L${level}`,
+};
+
+const RENEWAL_TX_MAX_WAIT_MS = 30_000;
+const RENEWAL_TX_TIMEOUT_MS = 90_000;
+
+export class RenewalInsufficientFundsError extends Error {
+  constructor(public required: number, public available: number) {
+    super(
+      `Insufficient Main Wallet balance for renewal. Required ₦${required.toLocaleString()}, available ₦${available.toLocaleString()}. Please fund your wallet.`
+    );
+  }
+}
+
 /**
- * Process auto-renewal for a user
- * Handles reward distribution, state updates, and persistence
+ * Process a paid membership renewal for a user.
+ *
+ * The renewal cost (fee + VAT) is debited from the member's Main (cash)
+ * wallet in the same database transaction that extends the membership and
+ * credits the upline renewal rewards — so a renewal is never granted, and no
+ * rewards are paid, unless the member actually paid. The debit is conditional
+ * on the balance and on the membership expiry not having changed, which makes
+ * concurrent calls (cron + button + admin) safe: only one can succeed.
  */
 export async function processAutoRenewal(
   prismaLike: PrismaClient | any,
@@ -302,6 +326,8 @@ export async function processAutoRenewal(
   success: boolean;
   renewalHistoryId?: string;
   newExpiresAt?: Date;
+  amountCharged?: number;
+  insufficientFunds?: boolean;
   totalRewardsDistributed?: {
     cash: number;
     bpt: number;
@@ -335,6 +361,9 @@ export async function processAutoRenewal(
         id: true,
         email: true,
         name: true,
+        wallet: true,
+        country: true,
+        state: true,
         activeMembershipPackageId: true,
         membershipActivatedAt: true,
         membershipExpiresAt: true,
@@ -354,142 +383,191 @@ export async function processAutoRenewal(
       return { success: false, error: "Membership package not found" };
     }
 
+    const totalCost = Math.round(renewalPackageInfo.totalCost * 100) / 100;
+    if ((user.wallet ?? 0) < totalCost) {
+      throw new RenewalInsufficientFundsError(totalCost, user.wallet ?? 0);
+    }
+
     // 4. Calculate new expiry date
     const now = new Date();
     const expiresAt = eligibility.membershipExpiresAt || user.membershipExpiresAt || now;
-    const newExpiresAt =
-      expiresAt > now
-        ? new Date(
-            expiresAt.getTime() +
-              membershipPackage.renewalCycle * 24 * 60 * 60 * 1000
-          )
-        : new Date(
-            now.getTime() +
-              membershipPackage.renewalCycle * 24 * 60 * 60 * 1000
-          );
+    const cycleMs = membershipPackage.renewalCycle * 24 * 60 * 60 * 1000;
+    const newExpiresAt = new Date((expiresAt > now ? expiresAt.getTime() : now.getTime()) + cycleMs);
 
     // 5. Get referral chain for reward distribution
     const referralChain = await getReferralChain(userId, 4);
+    const renewalReference = `RENEWAL-${userId.slice(0, 8)}-${now.getTime()}`;
+    const renewalNumber = (user.renewalCount ?? 0) + 1;
 
-    // Track rewards
-    let totalCash = 0,
-      totalPalliative = 0,
-      totalBpt = 0,
-      totalCashback = 0;
-    let totalHealth = 0,
-      totalMeal = 0,
-      totalSecurity = 0,
-      totalShelter = 0;
+    const totals = { cash: 0, palliative: 0, bpt: 0, cashback: 0, health: 0, meal: 0, security: 0, shelter: 0 };
+    const cashRewardsByReferrer: Array<{ referrerId: string; amount: number }> = [];
+    const bptRewards: Array<{ referrerId: string; level: number; amount: number }> = [];
 
-    // 6. Distribute renewal rewards to referrers (levels 1-4)
-    for (let i = 0; i < referralChain.length; i++) {
-      const referrer = referralChain[i];
-      const level = (i + 1) as 1 | 2 | 3 | 4;
+    const runInTx = async (tx: any) => {
+      // 6. Charge the member — conditional on balance and on the expiry being
+      //    unchanged since we read it (prevents double renewal/double charge).
+      const charged = await tx.user.updateMany({
+        where: {
+          id: userId,
+          wallet: { gte: totalCost },
+          membershipExpiresAt: user.membershipExpiresAt,
+        },
+        data: {
+          wallet: { decrement: totalCost },
+          membershipExpiresAt: newExpiresAt,
+          renewalCount: { increment: 1 },
+          ...(renewalPackageInfo.packageId !== user.activeMembershipPackageId
+            ? { activeMembershipPackageId: renewalPackageInfo.packageId }
+            : {}),
+        },
+      });
 
-      const cashReward =
-        (membershipPackage as any)[`renewal_cash_l${level}`] || 0;
-      const palliativeReward =
-        (membershipPackage as any)[`renewal_palliative_l${level}`] || 0;
-      const bptReward =
-        (membershipPackage as any)[`renewal_bpt_l${level}`] || 0;
-      const cashbackReward =
-        (membershipPackage as any)[`renewal_cashback_l${level}`] || 0;
-      const healthReward =
-        (membershipPackage as any)[`renewal_health_l${level}`] || 0;
-      const mealReward = (membershipPackage as any)[`renewal_meal_l${level}`] || 0;
-      const securityReward =
-        (membershipPackage as any)[`renewal_security_l${level}`] || 0;
-      const shelterReward =
-        (membershipPackage as any)[`shelter_l${level}`] || 0;
-
-      // Build update data
-      const updateData: any = {};
-      if (cashReward > 0) {
-        updateData.wallet = { increment: cashReward };
-        totalCash += cashReward;
-      }
-      if (palliativeReward > 0) {
-        updateData.palliative = { increment: palliativeReward };
-        totalPalliative += palliativeReward;
-      }
-      if (cashbackReward > 0) {
-        updateData.cashback = { increment: cashbackReward };
-        totalCashback += cashbackReward;
-      }
-      if (healthReward > 0) {
-        updateData.health = { increment: healthReward };
-        totalHealth += healthReward;
-      }
-      if (mealReward > 0) {
-        updateData.meal = { increment: mealReward };
-        totalMeal += mealReward;
-      }
-      if (securityReward > 0) {
-        updateData.security = { increment: securityReward };
-        totalSecurity += securityReward;
-      }
-      if (shelterReward > 0) {
-        updateData.shelter = { increment: shelterReward };
-        totalShelter += shelterReward;
+      if (charged.count === 0) {
+        const fresh = await tx.user.findUnique({ where: { id: userId }, select: { wallet: true } });
+        if ((fresh?.wallet ?? 0) < totalCost) {
+          throw new RenewalInsufficientFundsError(totalCost, fresh?.wallet ?? 0);
+        }
+        throw new Error("Membership was renewed or changed by another request. Please refresh.");
       }
 
-      if (Object.keys(updateData).length > 0) {
-        await prismaLike.user.update({
-          where: { id: referrer.id },
-          data: updateData,
+      await tx.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          transactionType: "MEMBERSHIP_RENEWAL",
+          amount: -totalCost,
+          description: `${renewalPackageInfo.packageName} membership renewal #${renewalNumber} (paid from Main Wallet)`,
+          status: "completed",
+          reference: renewalReference,
+          walletType: "main",
+        },
+      });
+
+      if (renewalPackageInfo.vat > 0) {
+        await tx.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "VAT",
+            amount: renewalPackageInfo.vat,
+            description: `VAT on ${renewalPackageInfo.packageName} membership renewal`,
+            status: "completed",
+            reference: `VAT-${renewalReference}`,
+            walletType: "main",
+          },
         });
       }
 
-      // Distribute BPT rewards
-      if (bptReward > 0) {
-        try {
-          await distributeBptReward(
-            referrer.id,
-            bptReward,
-            `AUTO_RENEWAL_L${level}`,
-            `Auto-renewal reward L${level} from ${membershipPackage.name} renewal`
-          );
-          totalBpt += bptReward;
-        } catch (err) {
-          console.error(`[AUTO-RENEWAL] BPT reward distribution failed for referrer ${referrer.id}:`, err);
+      // 7. Distribute renewal rewards to referrers (levels 1-4)
+      for (let i = 0; i < referralChain.length; i++) {
+        const referrer = referralChain[i];
+        const level = (i + 1) as 1 | 2 | 3 | 4;
+        const pkg = membershipPackage as any;
+
+        const cashReward = pkg[`renewal_cash_l${level}`] || 0;
+        const palliativeReward = pkg[`renewal_palliative_l${level}`] || 0;
+        const bptReward = pkg[`renewal_bpt_l${level}`] || 0;
+        const cashbackReward = pkg[`renewal_cashback_l${level}`] || 0;
+        const healthReward = pkg[`renewal_health_l${level}`] || 0;
+        const mealReward = pkg[`renewal_meal_l${level}`] || 0;
+        const securityReward = pkg[`renewal_security_l${level}`] || 0;
+        const shelterReward = pkg[`shelter_l${level}`] || 0;
+
+        const updateData: any = {};
+        if (cashReward > 0) { updateData.wallet = { increment: cashReward }; totals.cash += cashReward; }
+        if (palliativeReward > 0) { updateData.palliative = { increment: palliativeReward }; totals.palliative += palliativeReward; }
+        if (cashbackReward > 0) { updateData.cashback = { increment: cashbackReward }; totals.cashback += cashbackReward; }
+        if (healthReward > 0) { updateData.health = { increment: healthReward }; totals.health += healthReward; }
+        if (mealReward > 0) { updateData.meal = { increment: mealReward }; totals.meal += mealReward; }
+        if (securityReward > 0) { updateData.security = { increment: securityReward }; totals.security += securityReward; }
+        if (shelterReward > 0) { updateData.shelter = { increment: shelterReward }; totals.shelter += shelterReward; }
+
+        if (Object.keys(updateData).length > 0) {
+          await tx.user.update({ where: { id: referrer.id }, data: updateData });
         }
+
+        const rewardTx: Array<[string, number, string]> = [
+          [RENEWAL_REWARD_TX_TYPES.cash(level), cashReward, "Cash Wallet"],
+          [RENEWAL_REWARD_TX_TYPES.palliative(level), palliativeReward, "Palliative Wallet"],
+          [RENEWAL_REWARD_TX_TYPES.cashback(level), cashbackReward, "Cashback Wallet"],
+        ];
+        for (const [transactionType, amount, label] of rewardTx) {
+          if (amount <= 0) continue;
+          await tx.transaction.create({
+            data: {
+              id: randomUUID(),
+              userId: referrer.id,
+              transactionType,
+              amount,
+              description: `L${level} ${label} renewal reward from ${membershipPackage.name} renewal (Referral ID: ${userId})`,
+              status: "completed",
+              reference: `${renewalReference}-L${level}-${transactionType}`,
+            },
+          });
+        }
+
+        if (cashReward > 0) cashRewardsByReferrer.push({ referrerId: referrer.id, amount: cashReward });
+        if (bptReward > 0) bptRewards.push({ referrerId: referrer.id, level, amount: bptReward });
+      }
+
+      // 8. Create renewal history record
+      return tx.renewalHistory.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          packageId: renewalPackageInfo.packageId,
+          packageName: renewalPackageInfo.packageName,
+          renewalNumber,
+          renewalFee: renewalPackageInfo.renewalFee,
+          vat: renewalPackageInfo.vat,
+          totalPaid: totalCost,
+          expiresAt: newExpiresAt,
+          cashDistributed: totals.cash,
+          bptDistributed: bptRewards.reduce((sum, r) => sum + r.amount, 0),
+          palliativeDistributed: totals.palliative,
+          cashbackDistributed: totals.cashback,
+          healthDistributed: totals.health,
+          mealDistributed: totals.meal,
+          securityDistributed: totals.security,
+        },
+      });
+    };
+
+    const renewalHistory =
+      typeof prismaLike.$transaction === "function"
+        ? await prismaLike.$transaction(runInTx, { maxWait: RENEWAL_TX_MAX_WAIT_MS, timeout: RENEWAL_TX_TIMEOUT_MS })
+        : await runInTx(prismaLike);
+
+    // ── Post-commit (best-effort) ──
+
+    // BPT rewards use their own transaction (price lookup + buyback split).
+    for (const reward of bptRewards) {
+      try {
+        await distributeBptReward(
+          reward.referrerId,
+          reward.amount,
+          `AUTO_RENEWAL_L${reward.level}`,
+          `Renewal reward L${reward.level} from ${membershipPackage.name} renewal`
+        );
+        totals.bpt += reward.amount;
+      } catch (err) {
+        console.error(`[AUTO-RENEWAL] BPT reward distribution failed for referrer ${reward.referrerId}:`, err);
       }
     }
 
-    // 7. Update user's membership expiry, renewal count, and package (if upgrading)
-    await prismaLike.user.update({
-      where: { id: userId },
-      data: {
-        membershipExpiresAt: newExpiresAt,
-        renewalCount: { increment: 1 },
-        activeMembershipPackageId:
-          renewalPackageInfo.packageId !== user.activeMembershipPackageId
-            ? renewalPackageInfo.packageId
-            : undefined,
-      },
-    });
-
-    // 8. Create renewal history record
-    const renewalHistory = await prismaLike.renewalHistory.create({
-      data: {
-        id: randomUUID(),
-        userId,
-        packageId: renewalPackageInfo.packageId,
-        packageName: renewalPackageInfo.packageName,
-        renewalNumber: user.renewalCount + 1,
-        renewalFee: renewalPackageInfo.renewalFee,
-        vat: renewalPackageInfo.vat,
-        totalPaid: renewalPackageInfo.totalCost,
-        expiresAt: newExpiresAt,
-        cashDistributed: totalCash,
-        bptDistributed: totalBpt,
-        palliativeDistributed: totalPalliative,
-        cashbackDistributed: totalCashback,
-        healthDistributed: totalHealth,
-        mealDistributed: totalMeal,
-        securityDistributed: totalSecurity,
-      },
-    });
+    // Referral cash rewards trigger the referrer's auto-debit (→ CSP) like activation rewards do.
+    if (typeof prismaLike.$transaction === "function") {
+      const { runPostCreditAutomation } = await import("./walletAutoDebit.service");
+      for (const reward of cashRewardsByReferrer) {
+        await runPostCreditAutomation({
+          prisma: prismaLike,
+          userId: reward.referrerId,
+          creditAmount: reward.amount,
+          trigger: "reward",
+          context: `renewal reward ${renewalHistory.id}`,
+        });
+      }
+    }
 
     // 9. Record revenue from membership renewal
     const renewalProfitFiat = computeProfitFiat({
@@ -499,38 +577,37 @@ export async function processAutoRenewal(
       baseFiat: Number(renewalPackageInfo.renewalFee ?? 0),
     });
 
-    try {
-      await recordRevenue(prismaLike, {
-        source: "MEMBERSHIP_RENEWAL",
-        amount: renewalProfitFiat,
-        currency: "NGN",
-        sourceId: `AUTO_RENEWAL:${renewalHistory.id}`,
-        description: `Auto-renewal: ${renewalPackageInfo.packageName}`,
-        userId,
-        packageId: membershipPackage.id,
-        programType: "MEMBERSHIP_RENEWAL",
-        metadata: {
-          totalPaid: renewalPackageInfo.totalCost,
-          renewalFee: renewalPackageInfo.renewalFee,
-          vat: renewalPackageInfo.vat,
-          renewalNumber: user.renewalCount + 1,
-          renewalHistoryId: renewalHistory.id,
-          isAutoRenewal: true,
-          isUpgrade: renewalPackageInfo.isUpgrade,
-        },
-      });
-    } catch (err) {
-      console.error(`[AUTO-RENEWAL] Revenue recording failed for user ${userId}:`, err);
+    if (renewalProfitFiat > 0) {
+      try {
+        await recordRevenue(prismaLike, {
+          source: "MEMBERSHIP_RENEWAL",
+          amount: renewalProfitFiat,
+          currency: "NGN",
+          sourceId: `AUTO_RENEWAL:${renewalHistory.id}`,
+          description: `Membership renewal: ${renewalPackageInfo.packageName}`,
+          userId,
+          packageId: membershipPackage.id,
+          programType: "MEMBERSHIP_RENEWAL",
+          country: user.country ?? undefined,
+          state: user.state ?? undefined,
+          metadata: {
+            totalPaid: totalCost,
+            renewalFee: renewalPackageInfo.renewalFee,
+            vat: renewalPackageInfo.vat,
+            renewalNumber,
+            renewalHistoryId: renewalHistory.id,
+            paymentReference: renewalReference,
+            isUpgrade: renewalPackageInfo.isUpgrade,
+          },
+        });
+      } catch (err) {
+        console.error(`[AUTO-RENEWAL] Revenue recording failed for user ${userId}:`, err);
+      }
     }
 
     // 10. Send renewal notification
     try {
-      await notifyMembershipRenewal(
-        userId,
-        renewalPackageInfo.packageName,
-        user.renewalCount + 1,
-        newExpiresAt
-      );
+      await notifyMembershipRenewal(userId, renewalPackageInfo.packageName, renewalNumber, newExpiresAt);
     } catch (err) {
       console.error(`[AUTO-RENEWAL] Notification failed for user ${userId}:`, err);
     }
@@ -539,18 +616,13 @@ export async function processAutoRenewal(
       success: true,
       renewalHistoryId: renewalHistory.id,
       newExpiresAt,
-      totalRewardsDistributed: {
-        cash: totalCash,
-        bpt: totalBpt,
-        palliative: totalPalliative,
-        cashback: totalCashback,
-        health: totalHealth,
-        meal: totalMeal,
-        security: totalSecurity,
-        shelter: totalShelter,
-      },
+      amountCharged: totalCost,
+      totalRewardsDistributed: totals,
     };
   } catch (err) {
+    if (err instanceof RenewalInsufficientFundsError) {
+      return { success: false, insufficientFunds: true, error: err.message };
+    }
     console.error(`[AUTO-RENEWAL] Process failed for user ${userId}:`, err);
     return {
       success: false,
@@ -559,8 +631,14 @@ export async function processAutoRenewal(
   }
 }
 
+/** Days after expiry during which the background job keeps attempting renewal. */
+export const AUTO_RENEWAL_GRACE_DAYS = 30;
+/** Days before expiry at which the background job renews, so access never lapses. */
+export const AUTO_RENEWAL_LEAD_DAYS = 1;
+
 /**
- * Get users eligible for auto-renewal (expired memberships within last year)
+ * Get users due for auto-renewal (expiring within AUTO_RENEWAL_LEAD_DAYS or
+ * expired within the last AUTO_RENEWAL_GRACE_DAYS)
  */
 export async function getAutoRenewalCandidates(
   prismaLike: PrismaClient | any,
@@ -576,7 +654,10 @@ export async function getAutoRenewalCandidates(
   }>
 > {
   const now = new Date();
-  const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+  // Renew members whose membership ends within the next day (so access does not
+  // lapse) up to 30 days after expiry — the documented auto-renewal window.
+  const windowStart = new Date(now.getTime() - AUTO_RENEWAL_GRACE_DAYS * 24 * 60 * 60 * 1000);
+  const windowEnd = new Date(now.getTime() + AUTO_RENEWAL_LEAD_DAYS * 24 * 60 * 60 * 1000);
 
   const rawUsers = await prismaLike.user.findMany({
     where: {
@@ -584,8 +665,8 @@ export async function getAutoRenewalCandidates(
       OR: [
         {
           membershipExpiresAt: {
-            lte: now,
-            gte: oneYearAgo,
+            lte: windowEnd,
+            gte: windowStart,
           },
         },
         {
@@ -633,7 +714,7 @@ export async function getAutoRenewalCandidates(
         renewalCycleDays: renewalCycleByPackageId.get(user.activeMembershipPackageId),
       });
 
-      if (!expiresAt || expiresAt > now || expiresAt < oneYearAgo) {
+      if (!expiresAt || expiresAt > windowEnd || expiresAt < windowStart) {
         return null;
       }
 

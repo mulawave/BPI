@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PaymentGatewayFactory, PaymentGateway } from "@/server/services/payment";
+import { classifyGatewayVerification } from "@/server/services/payment/gatewayOutcome";
 
 export async function GET(req: NextRequest) {
   console.log("🔄 Paystack callback received");
@@ -54,14 +55,32 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Only show a failure when Paystack says the charge definitively failed.
+    // Bank transfers are often still "ongoing" at redirect time — let the
+    // verify page poll; the webhook / recovery job will credit it.
+    if (classifyGatewayVerification(verification) === "failed") {
+      return NextResponse.redirect(
+        new URL(
+          `/payment/verify?gateway=paystack&ref=${encodeURIComponent(reference)}&message=${encodeURIComponent(verification.message || "Payment failed")}`,
+          req.url
+        )
+      );
+    }
+
     return NextResponse.redirect(
-      new URL(
-        `/payment/verify?gateway=paystack&ref=${encodeURIComponent(reference)}&message=${encodeURIComponent(verification.message || "Payment failed")}`,
-        req.url
-      )
+      new URL(`/payment/verify?gateway=paystack&ref=${encodeURIComponent(reference)}`, req.url)
     );
   } catch (error) {
     console.error("❌ Paystack callback processing error:", error);
+
+    const reference = req.nextUrl.searchParams.get("reference") || req.nextUrl.searchParams.get("trxref");
+    if (reference) {
+      // Verification could not run here (e.g. Paystack API hiccup); the verify
+      // page retries it and the webhook / recovery job remain as backstops.
+      return NextResponse.redirect(
+        new URL(`/payment/verify?gateway=paystack&ref=${encodeURIComponent(reference)}`, req.url)
+      );
+    }
 
     return NextResponse.redirect(
       new URL(

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { membershipAutoRenewalCronHandler } from "@/server/jobs/membershipAutoRenewalJob";
+import { verifyCronAuth } from "@/lib/cron";
 
 /**
  * Membership Auto-Renewal Cron Handler
@@ -12,32 +13,17 @@ import { membershipAutoRenewalCronHandler } from "@/server/jobs/membershipAutoRe
  * This endpoint automatically processes expired memberships that are
  * within the auto-renewal window (0-30 days after expiration).
  * 
- * Query Parameters:
- * - authorizedKey: Secret key for authorization (optional, can be env var AUTH_CRON_SECRET)
+ * Security: requires `Authorization: Bearer <CRON_SECRET>`.
  * 
  * Returns: AutoRenewalJobResult with processing statistics
  */
 export async function POST(request: NextRequest) {
   try {
-    // Verify authorization
-    const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.AUTH_CRON_SECRET || process.env.CRON_SECRET;
-    
-    // Allow Vercel's automatic cron calls and authorized requests
-    const isVercelCron = request.headers.get("user-agent")?.includes("vercel-cron");
-    const isAuthorized =
-      isVercelCron ||
-      (cronSecret &&
-        authHeader &&
-        (authHeader === `Bearer ${cronSecret}` ||
-          authHeader === cronSecret));
-
-    if (!isAuthorized && cronSecret) {
+    // Verify authorization (CRON_SECRET required; no user-agent bypass).
+    const authError = verifyCronAuth(request);
+    if (authError) {
       console.warn("[AUTO-RENEWAL CRON] Unauthorized request attempt");
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return authError;
     }
 
     // Log job start
@@ -73,7 +59,7 @@ export async function GET() {
       message: "Membership auto-renewal cron endpoint is running",
       endpoints: {
         trigger: "POST /api/cron/membership-auto-renewal",
-        authorization: "Bearer {AUTH_CRON_SECRET}",
+        authorization: "Bearer {CRON_SECRET}",
       },
     },
     { status: 200 }
