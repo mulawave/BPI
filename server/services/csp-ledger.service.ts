@@ -55,6 +55,32 @@ export const CSP_EXTENSION_BY_AMOUNT = [
   { threshold: 40000, hours: 24 },
 ] as const;
 
+/**
+ * Statuses from which funds can be released. "closed" covers campaigns whose
+ * countdown ended with contributions but that were never paid out.
+ */
+export const CSP_RELEASABLE_STATUSES = ["broadcasting", "ready_for_release", "closed"];
+
+/**
+ * Ends a campaign whose countdown has expired. A campaign that raised money
+ * waits for admin release ("ready_for_release") so the funds are never
+ * stranded; one that raised nothing is closed. Returns the new status, or
+ * null when the request was no longer broadcasting.
+ */
+export async function closeExpiredCspRequest(db: Db, requestId: string): Promise<"ready_for_release" | "closed" | null> {
+  const request = await db.cspSupportRequest.findUnique({
+    where: { id: requestId },
+    select: { raisedAmount: true },
+  });
+  if (!request) return null;
+  const status = request.raisedAmount > 0 ? "ready_for_release" : "closed";
+  const updated = await db.cspSupportRequest.updateMany({
+    where: { id: requestId, status: "broadcasting" },
+    data: { status },
+  });
+  return updated.count > 0 ? status : null;
+}
+
 export function cspHoldingWalletName(requestId: string) {
   return `CSP Holding - ${requestId}`;
 }
@@ -333,6 +359,8 @@ export type CspReleasePreview = {
   sponsorRedirectedToReserve: number;
   shares: CspReleaseShares;
   pct: CspFeePercentages;
+  /** A payout was already recorded for this request (e.g. by the pre-ledger release code). */
+  alreadyReleased: boolean;
 };
 
 async function resolveSponsor(db: Db, sponsorId: string | null | undefined) {
@@ -348,11 +376,12 @@ async function buildReleasePlan(db: Db, requestId: string): Promise<CspReleasePr
   });
   if (!request) throw new Error("Support request not found");
 
-  const [ledger, holding, pct, sponsorId] = await Promise.all([
+  const [ledger, holding, pct, sponsorId, priorRelease] = await Promise.all([
     db.cspContribution.aggregate({ where: { requestId }, _sum: { amount: true } }),
     db.systemWallet.findUnique({ where: { name: cspHoldingWalletName(requestId) }, select: { balanceNgn: true } }),
     loadCspFeePercentages(db),
     resolveSponsor(db, request.User?.sponsorId),
+    db.auditLog.findFirst({ where: { action: "CSP_RELEASE_FUNDS", entityId: requestId }, select: { id: true } }),
   ]);
 
   const total = Math.floor(ledger._sum.amount ?? 0);
@@ -381,6 +410,7 @@ async function buildReleasePlan(db: Db, requestId: string): Promise<CspReleasePr
     sponsorRedirectedToReserve,
     shares,
     pct,
+    alreadyReleased: priorRelease != null,
   };
 }
 
@@ -415,7 +445,7 @@ export async function executeCspRelease(
     // state; this also stops new contributions (they require "broadcasting").
     const claimed = await tx.cspSupportRequest.updateMany({
       where: { id: input.requestId, status: { in: input.releasableStatuses } },
-      data: { status: "released", releasedAt, isActive: false, broadcastExpiresAt: null },
+      data: { status: "released", releasedAt, fulfilledAt: releasedAt, isActive: false, broadcastExpiresAt: null },
     });
     if (claimed.count === 0) {
       const current = await tx.cspSupportRequest.findUnique({ where: { id: input.requestId }, select: { status: true } });
@@ -425,6 +455,8 @@ export async function executeCspRelease(
     }
 
     const plan = await buildReleasePlan(tx, input.requestId);
+    // Requests paid out by the old release code were left "closed"; never pay twice.
+    if (plan.alreadyReleased) throw new Error("Funds have already been released for this request");
     if (plan.total <= 0) throw new Error("No funds available to release yet");
     if (sumShares(plan.shares) !== plan.total) throw new Error("CSP release split does not balance; aborting");
 

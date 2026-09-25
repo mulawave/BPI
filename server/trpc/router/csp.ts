@@ -36,6 +36,8 @@ import { loadTierConfig, type TierConfig } from "@/server/services/csp-config.se
 import { getCspAdminOverview as fetchCspAdminOverview } from "@/server/services/csp-admin-overview.service";
 import {
   applyCspContribution,
+  closeExpiredCspRequest,
+  CSP_RELEASABLE_STATUSES,
   CspContributionError,
   ensureSystemWallet,
   executeCspRelease,
@@ -1388,9 +1390,14 @@ export const cspRouter = createTRPCRouter({
 
     const now = new Date();
 
-    // Auto-close expired non-default broadcasts before listing
+    // End expired non-default broadcasts before listing. Campaigns that raised
+    // money wait for admin release; closing them stranded the funds.
     await prisma.cspSupportRequest.updateMany({
-      where: { isAdminDefault: false, status: "broadcasting", broadcastExpiresAt: { lt: now } },
+      where: { isAdminDefault: false, status: "broadcasting", broadcastExpiresAt: { lt: now }, raisedAmount: { gt: 0 } },
+      data: { status: "ready_for_release" },
+    });
+    await prisma.cspSupportRequest.updateMany({
+      where: { isAdminDefault: false, status: "broadcasting", broadcastExpiresAt: { lt: now }, raisedAmount: { lte: 0 } },
       data: { status: "closed" },
     });
 
@@ -1475,7 +1482,7 @@ export const cspRouter = createTRPCRouter({
 
       // Admin default requests don't have expiry; regular requests do
       if (!request.isAdminDefault && request.broadcastExpiresAt && request.broadcastExpiresAt.getTime() < Date.now()) {
-        await prisma.cspSupportRequest.updateMany({ where: { id: request.id, status: "broadcasting" }, data: { status: "closed" } });
+        await closeExpiredCspRequest(prisma, request.id);
         throw new Error("Broadcast window has expired");
       }
 
@@ -1533,7 +1540,7 @@ export const cspRouter = createTRPCRouter({
           ? await prisma.cspSupportRequest.findFirst({
               where: {
                 userId: contributorId,
-                status: "closed",
+                status: { in: ["closed", "released"] },
                 fulfilledAt: { not: null },
               },
               orderBy: { fulfilledAt: "desc" },
@@ -1625,7 +1632,7 @@ export const cspRouter = createTRPCRouter({
       const release = await executeCspRelease(prisma, {
         requestId: input.requestId,
         adminUserId,
-        releasableStatuses: ["broadcasting", "ready_for_release"],
+        releasableStatuses: CSP_RELEASABLE_STATUSES,
         tierModelEnabled: tierConfig.tierModelEnabled,
         defaultCoolingMonths: tierConfig.defaultCoolingMonthsMin,
       });
@@ -1790,7 +1797,7 @@ export const cspRouter = createTRPCRouter({
 
       if (!request) throw new Error("Request not found");
       if (!request.isAdminDefault) throw new Error("Only admin default requests can be marked complete");
-      if (request.status === "released" || request.status === "closed") {
+      if (request.status === "released") {
         throw new Error("This default request has already been completed");
       }
 
@@ -1801,7 +1808,7 @@ export const cspRouter = createTRPCRouter({
         const release = await executeCspRelease(prisma, {
           requestId: request.id,
           adminUserId: (ctx.session?.user as any)?.id as string | undefined,
-          releasableStatuses: ["broadcasting", "ready_for_release"],
+          releasableStatuses: CSP_RELEASABLE_STATUSES,
           tierModelEnabled: tierConfig.tierModelEnabled,
           defaultCoolingMonths: tierConfig.defaultCoolingMonthsMin,
           auditExtra: { adminDefault: true },
@@ -2009,7 +2016,7 @@ export const cspRouter = createTRPCRouter({
     const activeCooldownRequest = await prisma.cspSupportRequest.findFirst({
       where: {
         userId,
-        status: "closed",
+        status: { in: ["closed", "released"] },
         fulfilledAt: { not: null },
       },
       orderBy: { fulfilledAt: "desc" },

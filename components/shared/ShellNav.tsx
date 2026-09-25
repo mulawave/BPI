@@ -2,13 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Loader2, ChevronDown, Home, BookOpen, LifeBuoy, Store, User, GraduationCap, Crown, Trophy, Puzzle } from "lucide-react";
+import { Loader2, ChevronDown, Home, BookOpen, LifeBuoy, Store, User, GraduationCap, Crown, Trophy, Puzzle, Globe } from "lucide-react";
 import { AiOutlineRobot } from "react-icons/ai";
 
 export const mainNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: Home },
   { href: "/blog", label: "Blog", icon: BookOpen },
   { href: "/csp", label: "CSP", icon: LifeBuoy },
+  { href: "/third-party", label: "Third-Party", icon: Globe },
   { href: "/store", label: "Store", icon: Store },
   { href: "/help", label: "Help", icon: AiOutlineRobot },
   { href: "/settings", label: "Account", icon: User },

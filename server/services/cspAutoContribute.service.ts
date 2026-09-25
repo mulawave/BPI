@@ -274,7 +274,7 @@ async function trackWaitReduction(
       const activeCooldownRequest = await prisma.cspSupportRequest.findFirst({
         where: {
           userId: contributorId,
-          status: "closed",
+          status: { in: ["closed", "released"] },
           fulfilledAt: { not: null },
         },
         orderBy: { fulfilledAt: "desc" },

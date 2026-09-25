@@ -10,6 +10,9 @@
      was released. Auto-contributions never funded the request's holding
      wallet, and release paid min(holding, raised), so beneficiaries were
      under-paid.
+  3. CSP campaigns whose countdown ended with contributions and which were
+     closed without ever being paid out. They can now be released from
+     Admin → CSP (open the request → Release funds).
 
   Usage:
     npx tsx scripts/reconcilePaymentsAndCsp.ts               # report only
@@ -143,10 +146,43 @@ async function reconcileCspReleases() {
   }
 }
 
+async function reportStrandedCspCampaigns() {
+  const closed = await prisma.cspSupportRequest.findMany({
+    where: { status: "closed", raisedAmount: { gt: 0 } },
+    select: { id: true, raisedAmount: true, updatedAt: true, User: { select: { email: true } } },
+    orderBy: { updatedAt: "asc" },
+  });
+
+  const rows: Array<Record<string, unknown>> = [];
+  for (const request of closed) {
+    const released = await prisma.auditLog.findFirst({
+      where: { action: "CSP_RELEASE_FUNDS", entityId: request.id },
+      select: { id: true },
+    });
+    if (released) continue;
+    const ledger = await prisma.cspContribution.aggregate({ where: { requestId: request.id }, _sum: { amount: true } });
+    rows.push({
+      requestId: request.id,
+      beneficiary: request.User?.email ?? "?",
+      closedAt: request.updatedAt.toISOString(),
+      contributed: ledger._sum.amount ?? 0,
+    });
+  }
+
+  console.log(`\n== Closed CSP campaigns never paid out (${rows.length}) ==`);
+  if (rows.length === 0) {
+    console.log("None found.");
+  } else {
+    console.table(rows);
+    console.log("Release these from Admin → CSP: open the request and use Release funds.");
+  }
+}
+
 async function main() {
   console.log(`Reconciliation (${apply ? "APPLY deposits" : "report only"}), lookback ${days} days`);
   await reconcileGatewayPayments();
   await reconcileCspReleases();
+  await reportStrandedCspCampaigns();
 }
 
 main()

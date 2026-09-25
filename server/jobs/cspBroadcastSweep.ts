@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { notifyCspBroadcastExtended, notifyCspBroadcastExpiring } from "@/server/services/notification.service";
-import { ensureMemberStanding } from "@/server/services/csp-tier.service";
+import { notifyCspBroadcastExtended, notifyCspBroadcastExpiring, notifyCspRequestProcessed } from "@/server/services/notification.service";
+import { closeExpiredCspRequest } from "@/server/services/csp-ledger.service";
 import { loadTierConfig } from "@/server/services/csp-config.service";
 
 type TierConfig = {
@@ -16,6 +16,7 @@ export { loadTierConfig };
 type BroadcastSweepCandidate = {
   id: string;
   userId: string;
+  category: string;
   raisedAmount: number;
   thresholdAmount: number;
   minFulfilmentPct: number | null;
@@ -60,12 +61,6 @@ export function decideCspBroadcastSweepAction(input: {
   };
 }
 
-function addMonths(date: Date, months: number) {
-  const next = new Date(date);
-  next.setMonth(next.getMonth() + months);
-  return next;
-}
-
 function addHours(date: Date, hours: number) {
   const next = new Date(date);
   next.setHours(next.getHours() + hours);
@@ -100,6 +95,7 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
     select: {
       id: true,
       userId: true,
+      category: true,
       raisedAmount: true,
       thresholdAmount: true,
       minFulfilmentPct: true,
@@ -110,6 +106,7 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
 
   let extended = 0;
   let closed = 0;
+  let awaitingRelease = 0;
   let skipped = 0;
   let failed = 0;
 
@@ -172,29 +169,14 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
           return { action: "extended" as const };
         }
 
-        const fulfilledAt = startedAt;
-        const coolingEndsAt = addMonths(fulfilledAt, config.defaultCoolingMonthsMin);
+        // Countdown over. A campaign that raised money now waits for admin
+        // release — previously it was closed, which stranded the funds (release
+        // only accepted live campaigns) and started the member's waiting period
+        // although nothing was paid. The waiting period now starts at release.
+        const newStatus = await closeExpiredCspRequest(tx, current.id);
+        if (!newStatus) return { action: "skipped" as const };
 
-        await ensureMemberStanding(tx, current.userId);
-
-        await tx.cspSupportRequest.update({
-          where: { id: current.id },
-          data: {
-            status: "closed",
-            fulfilledAt,
-          },
-        });
-
-        await tx.cspMemberStanding.update({
-          where: { userId: current.userId },
-          data: {
-            lastSupportReleasedAt: fulfilledAt,
-            coolingEndsAt,
-            coolingMonthsBase: config.defaultCoolingMonthsMin,
-          },
-        });
-
-        return { action: "closed" as const };
+        return { action: "closed" as const, awaitingRelease: newStatus === "ready_for_release" };
       });
 
       if (outcome.action === "extended") {
@@ -202,6 +184,14 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
         await notifyCspBroadcastExtended(candidate.userId, config.autoExtensionHours);
       } else if (outcome.action === "closed") {
         closed++;
+        if (outcome.awaitingRelease) {
+          awaitingRelease++;
+          try {
+            await notifyCspRequestProcessed(candidate.userId, candidate.category, candidate.raisedAmount, "countdown ended — awaiting admin release");
+          } catch (notifyErr) {
+            console.error(`[CSP BROADCAST SWEEP] Notification failed for ${candidate.id}:`, notifyErr);
+          }
+        }
       } else {
         skipped++;
       }
@@ -258,6 +248,6 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
     closed,
     skipped,
     failed,
-    summary: `Processed ${candidates.length} broadcast(s): ${extended} extended, ${closed} closed, ${skipped} skipped, ${failed} failed`,
+    summary: `Processed ${candidates.length} broadcast(s): ${extended} extended, ${closed} ended (${awaitingRelease} awaiting admin release), ${skipped} skipped, ${failed} failed`,
   };
 }

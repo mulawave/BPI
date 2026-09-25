@@ -181,7 +181,9 @@ export default function CspAdminQueuePage() {
 
   const releasableDetail =
     !!detailTarget &&
-    (detailTarget.status === "broadcasting" || detailTarget.status === "ready_for_release") &&
+    (detailTarget.status === "broadcasting" ||
+      detailTarget.status === "ready_for_release" ||
+      detailTarget.status === "closed") &&
     detailTarget.raisedAmount > 0;
   const { data: releasePreview, isFetching: releasePreviewLoading, error: releasePreviewError } =
     api.csp.previewRelease.useQuery(
@@ -1453,7 +1455,10 @@ export default function CspAdminQueuePage() {
                     {releasePreviewError && (
                       <p className="text-sm text-rose-600">{releasePreviewError.message}</p>
                     )}
-                    {releasePreview && (
+                    {releasePreview?.alreadyReleased && (
+                      <p className="text-sm text-muted-foreground">These funds were already paid out. There is nothing left to release.</p>
+                    )}
+                    {releasePreview && !releasePreview.alreadyReleased && (
                       <>
                         <div className="flex justify-between">
                           <span className="text-sm text-muted-foreground">Total contributed (ledger):</span>
@@ -1536,7 +1541,7 @@ export default function CspAdminQueuePage() {
                     Extend Broadcast
                   </button>
                 )}
-                {releasableDetail && (
+                {releasableDetail && !releasePreview?.alreadyReleased && (
                   <button
                     onClick={() => {
                       const payout = releasePreview ? ` Beneficiary receives ₦${formatAmount(releasePreview.shares.recipient)} of ₦${formatAmount(releasePreview.total)}.` : "";

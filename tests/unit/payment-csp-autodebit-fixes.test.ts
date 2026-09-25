@@ -15,6 +15,8 @@ import {
 } from "@/server/services/payment/gatewayOutcome";
 import { fulfillDepositPayment, isGatewayAmountAcceptable } from "@/server/services/payment/depositFulfillment";
 import {
+  closeExpiredCspRequest,
+  CSP_RELEASABLE_STATUSES,
   computeAutoExtendHours,
   computeCspReleaseShares,
   sumShares,
@@ -225,6 +227,50 @@ describe("CSP release split", () => {
     assert.equal(computeAutoExtendHours(39000, 40500), 24);
     assert.equal(computeAutoExtendHours(40500, 41000), 0);
     assert.equal(computeAutoExtendHours(95000, 101000), 168);
+  });
+});
+
+describe("Expired CSP campaigns never strand funds", () => {
+  function fakeDb(request: { status: string; raisedAmount: number }) {
+    return {
+      cspSupportRequest: {
+        async findUnique() { return { raisedAmount: request.raisedAmount }; },
+        async updateMany({ where, data }: any) {
+          if (request.status !== where.status) return { count: 0 };
+          request.status = data.status;
+          return { count: 1 };
+        },
+      },
+    } as any;
+  }
+
+  it("moves a campaign with contributions to awaiting release", async () => {
+    const request = { status: "broadcasting", raisedAmount: 7500 };
+    assert.equal(await closeExpiredCspRequest(fakeDb(request), "r1"), "ready_for_release");
+    assert.equal(request.status, "ready_for_release");
+  });
+
+  it("closes a campaign that raised nothing", async () => {
+    const request = { status: "broadcasting", raisedAmount: 0 };
+    assert.equal(await closeExpiredCspRequest(fakeDb(request), "r1"), "closed");
+  });
+
+  it("leaves campaigns that are no longer broadcasting alone", async () => {
+    const request = { status: "released", raisedAmount: 7500 };
+    assert.equal(await closeExpiredCspRequest(fakeDb(request), "r1"), null);
+    assert.equal(request.status, "released");
+  });
+
+  it("closed campaigns that were never paid out can be released, but never twice", () => {
+    assert.ok(CSP_RELEASABLE_STATUSES.includes("closed"));
+    const ledger = read("server/services/csp-ledger.service.ts");
+    assert.match(ledger, /if \(plan\.alreadyReleased\) throw/);
+  });
+
+  it("the sweep and the broadcast list no longer strand funded campaigns", () => {
+    assert.match(read("server/jobs/cspBroadcastSweep.ts"), /closeExpiredCspRequest\(tx, current\.id\)/);
+    assert.doesNotMatch(read("server/jobs/cspBroadcastSweep.ts"), /coolingEndsAt/);
+    assert.match(read("server/trpc/router/csp.ts"), /raisedAmount: \{ gt: 0 \} \},\s*data: \{ status: "ready_for_release" \}/);
   });
 });
 
