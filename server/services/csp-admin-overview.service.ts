@@ -4,7 +4,8 @@ export async function getCspAdminOverview(auditPage: number, auditLimit: number)
   const [totalDonatedAgg, ongoingBroadcasts, totalRequests, releasedRequests, topContributorsRaw] = await Promise.all([
     prisma.cspContribution.aggregate({ _sum: { amount: true } }),
     prisma.cspSupportRequest.findMany({
-      where: { status: "broadcasting", isActive: true },
+      // Include fully funded requests awaiting release so they don't vanish from the overview.
+      where: { status: { in: ["broadcasting", "ready_for_release"] }, isActive: true },
       select: { id: true, raisedAmount: true, thresholdAmount: true, requestedAmount: true, category: true, User: { select: { id: true, name: true, email: true, image: true } } },
     }),
     prisma.cspSupportRequest.count(),

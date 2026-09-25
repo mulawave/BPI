@@ -13,6 +13,8 @@ import { prisma } from "@/lib/prisma";
 import { startNewsletterRuntime } from "@/server/trpc/router/admin";
 import { runCspAutoContributeSweep } from "@/server/jobs/cspAutoContributeSweep";
 import { runCspBroadcastSweep } from "@/server/jobs/cspBroadcastSweep";
+import { runRecoverStuckPayments } from "@/server/jobs/recoverStuckPayments";
+import { membershipAutoRenewalCronHandler } from "@/server/jobs/membershipAutoRenewalJob";
 import fs from "fs";
 import path from "path";
 
@@ -375,6 +377,24 @@ async function distributeExecutivePool() {
 }
 
 /**
+ * Run a job unless the previous run of the same job is still in progress
+ * (node-cron does not prevent overlapping executions).
+ */
+const runningJobs = new Set<string>();
+async function runExclusive(name: string, job: () => Promise<void>) {
+  if (runningJobs.has(name)) {
+    console.warn(`⏭️  [CRON] Skipping ${name}: previous run still in progress`);
+    return;
+  }
+  runningJobs.add(name);
+  try {
+    await job();
+  } finally {
+    runningJobs.delete(name);
+  }
+}
+
+/**
  * Start cron jobs
  */
 function startCronJobs() {
@@ -404,13 +424,15 @@ function startCronJobs() {
   // feature keeps running at intervals instead of only firing once on an event.
   cron.schedule("*/15 * * * *", async () => {
     console.log("\n⏰ [CRON] Triggered: CSP Auto-Contribute Sweep");
-    try {
-      const result = await runCspAutoContributeSweep();
-      console.log(`✅ [CSP-AUTO-CONTRIBUTE] ${result.summary}`);
-    } catch (error) {
-      console.error("❌ [CRON] CSP auto-contribute sweep failed:", error);
-      await notifyAdminOfError(error, "CSP Auto-Contribute Sweep");
-    }
+    await runExclusive("csp-auto-contribute", async () => {
+      try {
+        const result = await runCspAutoContributeSweep();
+        console.log(`✅ [CSP-AUTO-CONTRIBUTE] ${result.summary}`);
+      } catch (error) {
+        console.error("❌ [CRON] CSP auto-contribute sweep failed:", error);
+        await notifyAdminOfError(error, "CSP Auto-Contribute Sweep");
+      }
+    });
   }, {
     timezone: "Africa/Lagos"
   });
@@ -429,10 +451,50 @@ function startCronJobs() {
     timezone: "Africa/Lagos"
   });
 
+  // Stuck Payment Recovery — every 5 minutes.
+  // Verifies gateway payments (Paystack / Flutterwave / automated bank transfer /
+  // provider crypto) whose webhook never fulfilled them and completes them, so
+  // paid members get value without admin approval.
+  cron.schedule("*/5 * * * *", async () => {
+    await runExclusive("recover-stuck-payments", async () => {
+      try {
+        const result = await runRecoverStuckPayments();
+        if (result.total > 0) {
+          console.log(`✅ [PAYMENT-RECOVERY] ${result.message}: ${result.recovered} recovered`);
+        }
+      } catch (error) {
+        console.error("❌ [CRON] Stuck payment recovery failed:", error);
+        await notifyAdminOfError(error, "Stuck Payment Recovery");
+      }
+    });
+  }, {
+    timezone: "Africa/Lagos"
+  });
+
+  // Membership Auto-Renewal — daily at 06:10 WAT.
+  // Renews memberships expiring within a day / expired within 30 days, paid
+  // from the member's Main Wallet (members without funds are notified).
+  cron.schedule("10 6 * * *", async () => {
+    console.log("\n⏰ [CRON] Triggered: Membership Auto-Renewal");
+    await runExclusive("membership-auto-renewal", async () => {
+      try {
+        const result = await membershipAutoRenewalCronHandler();
+        console.log(`✅ [AUTO-RENEWAL] ${result.summary}`);
+      } catch (error) {
+        console.error("❌ [CRON] Membership auto-renewal failed:", error);
+        await notifyAdminOfError(error, "Membership Auto-Renewal");
+      }
+    });
+  }, {
+    timezone: "Africa/Lagos"
+  });
+
   console.log("\n✅ Cron jobs scheduled:");
   console.log("   • Executive Pool Distribution: Friday at 8:00 AM (0 8 * * 5)");
   console.log("   • CSP Auto-Contribute Sweep: every 15 minutes (*/15 * * * *)");
   console.log("   • CSP Broadcast Sweep: every 10 minutes (*/10 * * * *)");
+  console.log("   • Stuck Payment Recovery: every 5 minutes (*/5 * * * *)");
+  console.log("   • Membership Auto-Renewal: daily at 6:10 AM (10 6 * * *)");
   console.log("\n⏳ Waiting for scheduled tasks...\n");
 
   // Keep process alive

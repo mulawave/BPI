@@ -2,13 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Loader2, ChevronDown, Home, BookOpen, LifeBuoy, Store, User, GraduationCap, Crown, Trophy, Puzzle } from "lucide-react";
+import { Loader2, ChevronDown, Home, BookOpen, LifeBuoy, Store, User, GraduationCap, Crown, Trophy, Puzzle, Globe } from "lucide-react";
 import { AiOutlineRobot } from "react-icons/ai";
 
 export const mainNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: Home },
   { href: "/blog", label: "Blog", icon: BookOpen },
   { href: "/csp", label: "CSP", icon: LifeBuoy },
+  { href: "/third-party", label: "Third-Party", icon: Globe },
   { href: "/store", label: "Store", icon: Store },
   { href: "/help", label: "Help", icon: AiOutlineRobot },
   { href: "/settings", label: "Account", icon: User },
@@ -61,7 +62,7 @@ export function DesktopNav({ isActive, navLoadingHref, handleNavClick }: ShellNa
             }`}
           >
             {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <item.icon className="w-3.5 h-3.5" />}
-            <span>{item.label}</span>
+            <span className="whitespace-nowrap">{item.label}</span>
             {active && (
               <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-gradient-to-r from-emerald-500 to-amber-400 rounded-full" />
             )}

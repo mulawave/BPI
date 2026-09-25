@@ -44,6 +44,8 @@
     "backup:git": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gitAutoBackup.ps1",
     "backup:schedule": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/scheduleGitAutoBackup.ps1",
     "migrate:legacy-blogs": "npx tsx scripts/migrateLegacyBlogs.ts",
+    "reconcile:payments-csp": "npx tsx scripts/reconcilePaymentsAndCsp.ts",
+    "seed:review-accounts": "npx tsx scripts/seedReviewAccounts.ts",
     "lint": "next lint"
   },
   "prisma": {

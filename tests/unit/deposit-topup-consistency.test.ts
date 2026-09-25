@@ -20,7 +20,7 @@ const adminPaymentReviewSource = fs.readFileSync(
   "utf8",
 );
 const recoverStuckPaymentsSource = fs.readFileSync(
-  path.resolve(process.cwd(), "app/api/cron/recover-stuck-payments/route.ts"),
+  path.resolve(process.cwd(), "server/jobs/recoverStuckPayments.ts"),
   "utf8",
 );
 
@@ -62,10 +62,7 @@ describe("Deposit and TOPUP path consistency", () => {
       packageRouterSource,
       /if \(transactionType === "DEPOSIT" \|\| transactionType === "TOPUP"\)/,
     );
-    assert.match(
-      packageRouterSource,
-      /where: \{ reference: input\.reference, userId, status: "pending", transactionType: "DEPOSIT" \}/,
-    );
+    assert.match(packageRouterSource, /fulfillDepositPayment\(prisma, \{/);
   });
 
   it("recovers stuck wallet funding through one DEPOSIT transaction lookup", () => {
@@ -73,9 +70,6 @@ describe("Deposit and TOPUP path consistency", () => {
       recoverStuckPaymentsSource,
       /payment\.transactionType === "DEPOSIT" \|\| payment\.transactionType === "TOPUP"/,
     );
-    assert.match(
-      recoverStuckPaymentsSource,
-      /where: \{ reference: ref, userId, status: "pending", transactionType: "DEPOSIT" \}/,
-    );
+    assert.match(recoverStuckPaymentsSource, /fulfillDepositPayment\(prisma, \{/);
   });
 });

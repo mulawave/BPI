@@ -244,6 +244,9 @@ describe("Admin payment approval atomicity", () => {
             async sendEmail() {
               return undefined;
             },
+            async runPostCreditAutomation() {
+              return undefined;
+            },
           },
         }),
       /induced failure after wallet increment/,
@@ -276,6 +279,7 @@ describe("Admin payment approval atomicity", () => {
 
     const notifications: unknown[][] = [];
     const revenueCalls: Array<{ amount: number; source: string }> = [];
+    const autoDebitCalls: Array<{ userId: string; creditAmount: number }> = [];
 
     const updated = await executeAdminPaymentReview({
       prisma: prisma as any,
@@ -283,6 +287,9 @@ describe("Admin payment approval atomicity", () => {
       action: "approve",
       reviewerId: "admin-1",
       deps: {
+        async runPostCreditAutomation(params) {
+          autoDebitCalls.push(params);
+        },
         async claimPendingPayment() {
           return makeClaimedPaymentResult();
         },
@@ -318,6 +325,8 @@ describe("Admin payment approval atomicity", () => {
       "REF-DEP-1",
       "/receipts/REF-DEP-1",
     ]);
+    // Admin-approved deposits trigger the same auto-debit as gateway deposits.
+    assert.deepStrictEqual(autoDebitCalls, [{ userId: "user-1", creditAmount: 1000 }]);
   });
 
   it("treats legacy TOPUP approvals the same as DEPOSIT approvals", async () => {
@@ -361,6 +370,9 @@ describe("Admin payment approval atomicity", () => {
           return undefined;
         },
         async sendEmail() {
+          return undefined;
+        },
+        async runPostCreditAutomation() {
           return undefined;
         },
       },

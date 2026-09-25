@@ -13,6 +13,8 @@
  * - Skips the user's own requests
  * - Records CspContribution + CspAutoContributeLog + transaction records
  * - Reconciles member standing contribution right (tier progression)
+ * - Uses the shared CSP ledger (csp-ledger.service) so every contribution funds
+ *   the request's holding wallet and is released in full
  * - Applies paid auto-extension thresholds when contribution crosses milestones
  * - Sends notifications to both contributor and request owner
  * - Tracks wait-reduction progress for contributors in cooldown
@@ -21,8 +23,8 @@
 
 import { randomUUID } from "crypto";
 import type { PrismaClient } from "@prisma/client";
-import { reconcileMemberStandingContributionRight } from "@/server/services/csp-tier.service";
 import { notifyCspContributionReceived, notifyCspBroadcastExtended } from "@/server/services/notification.service";
+import { applyCspContribution, CspContributionError } from "@/server/services/csp-ledger.service";
 
 export interface AutoContributeResult {
   totalContributed: number;
@@ -118,14 +120,18 @@ export async function runCspAutoContribute(params: {
   let currentBalance = user.community;
   let disabledDueToBalance = false;
 
-  // Round-robin: contribute minAmountPerRequest to each request, repeat until done
+  // Round-robin: contribute minAmountPerRequest to each request, repeat until done.
+  // Each contribution goes through the shared CSP ledger, which re-checks the
+  // balance and request state atomically, funds the request's holding wallet
+  // and derives status/extension from the fresh totals.
+  const closedRequestIds = new Set<string>();
   let madeProgress = true;
   while (madeProgress) {
     madeProgress = false;
 
     for (const request of targetRequests) {
+      if (closedRequestIds.has(request.id)) continue;
       if (currentBalance < minAmountPerRequest) {
-        // Out of funds — disable
         disabledDueToBalance = true;
         break;
       }
@@ -137,108 +143,43 @@ export async function runCspAutoContribute(params: {
       const contributeAmount = Math.min(minAmountPerRequest, remaining, Math.floor(currentBalance));
       if (contributeAmount < 1) continue;
 
-      // A4: Auto-extension thresholds (same as manual contribute)
-      const EXTENSION_BY_AMOUNT = [
-        { threshold: 100000, hours: 168 },
-        { threshold: 80000,  hours: 72 },
-        { threshold: 60000,  hours: 48 },
-        { threshold: 40000,  hours: 24 },
-      ];
-      const newRaisedAmount = request.raisedAmount + contributeAmount;
-      let autoExtendHours = 0;
-      for (const tier of EXTENSION_BY_AMOUNT) {
-        if (request.raisedAmount < tier.threshold && newRaisedAmount >= tier.threshold) {
-          autoExtendHours = tier.hours;
-          break;
-        }
-      }
-
-      // Execute the contribution in a transaction
       const balanceBefore = currentBalance;
-      const txResult = await prisma.$transaction(async (tx) => {
-        // C5: Atomic balance check — only debit if sufficient funds
-        const freshUser = await tx.user.findUnique({
-          where: { id: userId },
-          select: { community: true },
-        });
-        if (!freshUser || freshUser.community < contributeAmount) {
-          return { skipped: true as const };
-        }
-
-        // Debit community wallet
-        await tx.user.update({
-          where: { id: userId },
-          data: { community: { decrement: contributeAmount } },
-        });
-
-        // Create CSP contribution record (same as manual)
-        await tx.cspContribution.create({
-          data: {
+      let applied: Awaited<ReturnType<typeof applyCspContribution>>;
+      try {
+        applied = await prisma.$transaction(async (tx) => {
+          const result = await applyCspContribution(tx, {
             requestId: request.id,
             contributorId: userId,
             amount: contributeAmount,
-            walletType: "community",
-          },
-        });
-
-        // A3: Reconcile member standing contribution right (tier progression)
-        await reconcileMemberStandingContributionRight(tx, userId);
-
-        // Update request raised amount
-        const newStatus = newRaisedAmount >= request.thresholdAmount
-          ? "ready_for_release"
-          : request.status;
-
-        // A4: Auto-extend broadcast if a contribution threshold is crossed
-        let newExpiry = request.broadcastExpiresAt;
-        if (autoExtendHours > 0 && !request.isAdminDefault && newStatus !== "ready_for_release") {
-          const baseDate = newExpiry && newExpiry > new Date() ? newExpiry : new Date();
-          newExpiry = new Date(baseDate.getTime() + autoExtendHours * 60 * 60 * 1000);
-          await tx.cspBroadcastExtension.create({
-            data: { requestId: request.id, type: "paid", value: newRaisedAmount, hoursGranted: autoExtendHours },
-          });
-        }
-
-        await tx.cspSupportRequest.update({
-          where: { id: request.id },
-          data: {
-            raisedAmount: { increment: contributeAmount },
-            contributorsCount: { increment: 1 },
-            status: newStatus,
-            ...(newExpiry !== request.broadcastExpiresAt ? { broadcastExpiresAt: newExpiry } : {}),
-          },
-        });
-
-        // Record transaction
-        await tx.transaction.create({
-          data: {
-            id: randomUUID(),
-            userId,
+            debitWallet: "community",
+            contributionWalletType: "community",
             transactionType: "CSP_AUTO_CONTRIBUTION",
-            amount: -contributeAmount,
-            description: `Auto-contribute to CSP request ${request.id}`,
-            status: "completed",
-            walletType: "community",
-          },
+            transactionDescription: `Auto-contribute to CSP request ${request.id}`,
+          });
+
+          await tx.cspAutoContributeLog.create({
+            data: {
+              userId,
+              requestId: request.id,
+              amount: contributeAmount,
+              balanceBefore,
+              balanceAfter: balanceBefore - contributeAmount,
+            },
+          });
+
+          return result;
         });
-
-        // Log
-        await tx.cspAutoContributeLog.create({
-          data: {
-            userId,
-            requestId: request.id,
-            amount: contributeAmount,
-            balanceBefore,
-            balanceAfter: balanceBefore - contributeAmount,
-          },
-        });
-
-        return { skipped: false as const, autoExtendHours };
-      });
-
-      if (txResult.skipped) {
-        disabledDueToBalance = true;
-        break;
+      } catch (err) {
+        if (err instanceof CspContributionError) {
+          if (err.message.startsWith("Insufficient")) {
+            disabledDueToBalance = true;
+            break;
+          }
+          // Request closed, released or fully funded since we listed it.
+          closedRequestIds.add(request.id);
+          continue;
+        }
+        throw err;
       }
 
       currentBalance -= contributeAmount;
@@ -246,6 +187,7 @@ export async function runCspAutoContribute(params: {
       contribByRequest.set(request.id, alreadyContributed + contributeAmount);
       requestsContributed++;
       madeProgress = true;
+      if (applied.reachedThreshold) closedRequestIds.add(request.id);
 
       // Notify user of successful contribution
       await prisma.notification.create({
@@ -260,11 +202,11 @@ export async function runCspAutoContribute(params: {
       });
 
       // A5: Notify the request owner that they received a contribution
-      await notifyCspContributionReceived(request.userId, contributeAmount);
+      await notifyCspContributionReceived(applied.requestOwnerId, contributeAmount);
 
       // A4: Notify request owner if broadcast was auto-extended
-      if (txResult.autoExtendHours > 0) {
-        await notifyCspBroadcastExtended(request.userId, txResult.autoExtendHours);
+      if (applied.autoExtendHours > 0) {
+        await notifyCspBroadcastExtended(applied.requestOwnerId, applied.autoExtendHours);
       }
 
       // A6: Wait-reduction tracking for contributors in cooldown
@@ -332,7 +274,7 @@ async function trackWaitReduction(
       const activeCooldownRequest = await prisma.cspSupportRequest.findFirst({
         where: {
           userId: contributorId,
-          status: "closed",
+          status: { in: ["closed", "released"] },
           fulfilledAt: { not: null },
         },
         orderBy: { fulfilledAt: "desc" },

@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { webhookLimiter, applyRateLimit } from "@/lib/rateLimit";
-import { notifyDepositStatus } from "@/server/services/notification.service";
-import { generateReceiptLink } from "@/server/services/receipt.service";
 import { recordRevenue } from "@/server/services/revenue.service";
 import {
   claimPendingPayment as claimPendingPaymentForFulfillment,
@@ -11,6 +9,7 @@ import {
   markPendingPaymentReviewed,
 } from "@/server/services/payment/pendingPaymentFulfillment";
 import { resolvePaymentFulfillmentType } from "@/server/services/payment/paymentMetadata";
+import { fulfillDepositPayment } from "@/server/services/payment/depositFulfillment";
 import { getNigerianRegion } from "@/lib/nigeria-regions";
 import crypto from "crypto";
 
@@ -20,7 +19,10 @@ async function claimPendingPayment(reference: string, purpose: string, expectedU
     expectedUserId,
     purpose,
     actor: "Paystack webhook",
-    claimableStatuses: ["pending"],
+    // A signature-verified charge.success is proof of payment, so it may also
+    // fulfil a payment the recovery cron expired/rejected before the customer
+    // finished paying (e.g. a slow bank transfer).
+    claimableStatuses: ["pending", "rejected"],
   });
 }
 
@@ -420,66 +422,37 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ message: 'Webhook acknowledged' }, { status: 200 });
         }
 
-        // Find the transaction
-        const transaction = await prisma.transaction.findFirst({
-          where: { reference, userId: claim.userId, status: 'pending', transactionType: 'DEPOSIT' },
-        });
+        try {
+          const deposit = await fulfillDepositPayment(prisma, {
+            pendingPaymentId: claim.paymentId,
+            userId: claim.userId,
+            reference,
+            note: 'Auto-approved via Paystack webhook (payment verified)',
+          });
 
-        if (transaction) {
-          try {
-            await prisma.$transaction([
-              prisma.user.update({
-                where: { id: transaction.userId },
-                data: { wallet: { increment: transaction.amount } },
-              }),
-              prisma.transaction.update({
-                where: { id: transaction.id },
-                data: { status: 'completed' },
-              }),
-              prisma.pendingPayment.update({
-                where: { id: claim.paymentId },
-                data: {
-                  status: 'approved',
-                  reviewedAt: new Date(),
-                  reviewNotes: 'Auto-approved via Paystack webhook (payment verified)',
-                },
-              }),
-            ]);
-          } catch (error) {
+          if (deposit.status === 'no_transaction') {
             await markPaymentNeedsReview(
               claim.paymentId,
-              `Paystack deposit webhook failed after claim and needs manual review: ${error instanceof Error ? error.message : 'Unknown error'}`
+              'Paystack deposit webhook claimed a payment but no pending deposit transaction was found. Manual review required.'
             );
-            throw error;
+            await writeProcessingWarning(reference, purpose, amount / 100, 'Claimed payment had no matching pending deposit transaction.');
+            console.warn('⚠️  [PAYSTACK-WEBHOOK] Transaction not found or already processed:', reference);
+          } else {
+            console.log('✅ [PAYSTACK-WEBHOOK] Deposit processed & auto-approved:', deposit.status);
           }
-
-          // Generate receipt
-          const receiptUrl = generateReceiptLink(transaction.id, 'deposit');
-
-          // Send success notification
-          await notifyDepositStatus(
-            transaction.userId,
-            'completed',
-            transaction.amount,
-            reference,
-            receiptUrl
-          );
-
-          console.log('✅ [PAYSTACK-WEBHOOK] Deposit processed & auto-approved');
-        } else {
+        } catch (error) {
           await markPaymentNeedsReview(
             claim.paymentId,
-            'Paystack deposit webhook claimed a payment but no pending deposit transaction was found. Manual review required.'
+            `Paystack deposit webhook failed after claim and needs manual review: ${error instanceof Error ? error.message : 'Unknown error'}`
           );
-          await writeProcessingWarning(reference, purpose, amount / 100, 'Claimed payment had no matching pending deposit transaction.');
-          console.warn('⚠️  [PAYSTACK-WEBHOOK] Transaction not found or already processed:', reference);
+          throw error;
         }
       } else {
         // Purpose unknown from metadata — attempt recovery from PendingPayment record
         console.warn('⚠️  [PAYSTACK-WEBHOOK] Unknown payment purpose from metadata:', fulfillmentType || purpose, '— attempting PendingPayment lookup');
 
         const fallbackPending = await prisma.pendingPayment.findFirst({
-          where: { gatewayReference: reference, status: { in: ['pending', 'processing'] } },
+          where: { gatewayReference: reference, status: { in: ['pending', 'processing', 'rejected'] } },
           select: { id: true, transactionType: true, userId: true, metadata: true },
           orderBy: { createdAt: 'desc' },
         });
@@ -554,38 +527,22 @@ export async function POST(req: NextRequest) {
             const claim = await claimPendingPayment(reference, 'DEPOSIT', recoveredUserId);
             if (claim.status === 'claimed') {
               if (await verifyPaymentAmount(claim.paymentId, amount / 100, reference, 'DEPOSIT')) {
-                const transaction = await prisma.transaction.findFirst({
-                  where: { reference, userId: recoveredUserId, status: 'pending', transactionType: 'DEPOSIT' },
-                });
-                if (transaction) {
-                  try {
-                    await prisma.$transaction([
-                      prisma.user.update({
-                        where: { id: transaction.userId },
-                        data: { wallet: { increment: transaction.amount } },
-                      }),
-                      prisma.transaction.update({
-                        where: { id: transaction.id },
-                        data: { status: 'completed' },
-                      }),
-                      prisma.pendingPayment.update({
-                        where: { id: claim.paymentId },
-                        data: {
-                          status: 'approved',
-                          reviewedAt: new Date(),
-                          reviewNotes: 'Auto-approved via Paystack webhook (deposit purpose recovered from PendingPayment record)',
-                        },
-                      }),
-                    ]);
-                    await notifyDepositStatus(transaction.userId, 'completed', transaction.amount, reference, generateReceiptLink(transaction.id, 'deposit'));
+                try {
+                  const deposit = await fulfillDepositPayment(prisma, {
+                    pendingPaymentId: claim.paymentId,
+                    userId: recoveredUserId,
+                    reference,
+                    note: 'Auto-approved via Paystack webhook (deposit purpose recovered from PendingPayment record)',
+                  });
+                  if (deposit.status === 'no_transaction') {
+                    await markPaymentNeedsReview(claim.paymentId, 'Paystack fallback deposit recovery: no pending deposit transaction found.');
+                    console.warn('⚠️  [PAYSTACK-WEBHOOK] Fallback deposit: no pending transaction for:', reference);
+                  } else {
                     console.log('✅ [PAYSTACK-WEBHOOK] Deposit processed via fallback recovery');
-                  } catch (error) {
-                    await markPaymentNeedsReview(claim.paymentId, `Paystack fallback deposit failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                    console.error('❌ [PAYSTACK-WEBHOOK] Fallback deposit failed:', error);
                   }
-                } else {
-                  await markPaymentNeedsReview(claim.paymentId, 'Paystack fallback deposit recovery: no pending deposit transaction found.');
-                  console.warn('⚠️  [PAYSTACK-WEBHOOK] Fallback deposit: no pending transaction for:', reference);
+                } catch (error) {
+                  await markPaymentNeedsReview(claim.paymentId, `Paystack fallback deposit failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                  console.error('❌ [PAYSTACK-WEBHOOK] Fallback deposit failed:', error);
                 }
               }
             }

@@ -185,7 +185,24 @@ export default function PremiumDashboard({ session }: PremiumDashboardProps) {
   const blogTotal = latestBlogPosts?.total ?? 0;
   // DERIVED_END
   useEffect(() => { if (!iL) { setLoadingTimedOut(false); return; } const t = setTimeout(() => setLoadingTimedOut(true), 10000); return () => clearTimeout(t); }, [iL]);
-  useEffect(() => { if (searchParams.get("open") !== "third-party-matrix") return; setIsThirdPartyMatrixModalOpen(true); const n = new URLSearchParams(searchParams.toString()); n.delete("open"); router.replace(`${window.location.pathname}?${n.toString()}`); }, [searchParams, router]);
+  useEffect(() => { const open = searchParams.get("open"); if (open !== "third-party-matrix" && open !== "third-party") return; if (open === "third-party") setIsThirdPartyModalOpen(true); else setIsThirdPartyMatrixModalOpen(true); const n = new URLSearchParams(searchParams.toString()); n.delete("open"); router.replace(`${window.location.pathname}?${n.toString()}`); }, [searchParams, router]);
+  const referralShareText = "Join me on BeepAgro Africa (BPI) and grow with our community.";
+  const shareRef = async () => {
+    if (!rL) return;
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({ title: "Join BPI", text: referralShareText, url: rL });
+        return;
+      }
+    } catch {
+      return; // share sheet dismissed
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(`${referralShareText} ${rL}`)}`, "_blank", "noopener,noreferrer");
+  };
+  const scrollToInvite = () => {
+    document.getElementById("referral-invite")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    (document.getElementById("referral-invite-first-name") as HTMLInputElement | null)?.focus({ preventScroll: true });
+  };
   const copyRef = () => { if (!rL) return; navigator.clipboard.writeText(rL); setCopiedReferral(true); toast.success("Referral link copied!"); setTimeout(() => setCopiedReferral(false), 2000); };
   const f = (v: number) => showBalance ? formatAmount(convertAmount(v)) : '••••••';
   const fS = (v: number) => { if (!showBalance) return '••••'; const c = convertAmount(v); if (c >= 1_000_000) return `${(c / 1_000_000).toFixed(1)}M`; if (c >= 1_000) return `${(c / 1_000).toFixed(1)}K`; return formatAmount(c); };
@@ -335,6 +352,26 @@ export default function PremiumDashboard({ session }: PremiumDashboardProps) {
         </div>
       </div>
       {/* HERO_END */}
+      {/* REFERRAL_BAR */}
+      {rL && (
+        <div className="rounded-2xl border border-emerald-200/80 dark:border-emerald-800/40 bg-white dark:bg-slate-900/50 shadow-md dark:shadow-emerald-950/20 p-4 flex flex-col lg:flex-row lg:items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-emerald-600/10 dark:bg-emerald-500/15 flex items-center justify-center"><Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /></div>
+            <div>
+              <p className="text-sm font-bold text-slate-900 dark:text-white">Your referral link</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Share it to grow your community and earn referral rewards.</p>
+            </div>
+          </div>
+          <div className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 px-3 py-2">
+            <p className="text-xs font-medium text-slate-800 dark:text-slate-200 break-all select-all">{rL}</p>
+          </div>
+          <div className="flex flex-wrap gap-2 shrink-0">
+            <button onClick={copyRef} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 text-xs font-semibold transition-colors">{copiedReferral ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}{copiedReferral ? "Copied" : "Copy"}</button>
+            <button onClick={shareRef} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 px-3 py-2 text-xs font-semibold transition-colors"><Share2 className="w-3.5 h-3.5" />Share</button>
+            <button onClick={scrollToInvite} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 px-3 py-2 text-xs font-semibold transition-colors"><Send className="w-3.5 h-3.5" />Invite</button>
+          </div>
+        </div>
+      )}
       {/* FOUR_CARD_GRID */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* CARD 1: BPI Deals */}
@@ -590,6 +627,12 @@ export default function PremiumDashboard({ session }: PremiumDashboardProps) {
         </div>
         {/* RIGHT_COL */}
         <div className="space-y-6">
+          <ThirdPartyOpportunitiesCard
+            summary={thirdPartySummary}
+            availablePlatforms={availablePlatforms}
+            onOpenModal={() => setIsThirdPartyModalOpen(true)}
+            onOpenMatrix={() => setIsThirdPartyMatrixModalOpen(true)}
+          />
           {/* RIGHT_END */}
           {needsActivation && (
             <div className="rounded-2xl border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 p-4">
@@ -672,10 +715,10 @@ export default function PremiumDashboard({ session }: PremiumDashboardProps) {
                   ))}
                 </div>
               )}
-              <div className="border-t border-slate-100 dark:border-slate-800 pt-3 space-y-2">
+              <div id="referral-invite" className="border-t border-slate-100 dark:border-slate-800 pt-3 space-y-2">
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500">Invite by Email (0.5 BPT per invite)</p>
                 <div className="grid grid-cols-2 gap-2">
-                  <input value={inviteFirstName} onChange={e => setInviteFirstName(e.target.value)} placeholder="First name" className="rounded-lg border border-slate-200 dark:border-slate-800 bg-transparent px-2.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                  <input id="referral-invite-first-name" value={inviteFirstName} onChange={e => setInviteFirstName(e.target.value)} placeholder="First name" className="rounded-lg border border-slate-200 dark:border-slate-800 bg-transparent px-2.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
                   <input value={inviteLastName} onChange={e => setInviteLastName(e.target.value)} placeholder="Last name" className="rounded-lg border border-slate-200 dark:border-slate-800 bg-transparent px-2.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
                 </div>
                 <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="Email address" className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-transparent px-2.5 py-1.5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
@@ -705,12 +748,6 @@ export default function PremiumDashboard({ session }: PremiumDashboardProps) {
               </div>
             </div>
           )}
-          <ThirdPartyOpportunitiesCard
-            summary={thirdPartySummary}
-            availablePlatforms={availablePlatforms}
-            onOpenModal={() => setIsThirdPartyModalOpen(true)}
-            onOpenMatrix={() => setIsThirdPartyMatrixModalOpen(true)}
-          />
         </div>
       </div>
       {/* MODALS_START */}

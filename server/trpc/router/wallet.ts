@@ -4,16 +4,19 @@ import { prisma } from "@/lib/prisma";
 import { notifyDepositStatus, notifyWithdrawalStatus } from "@/server/services/notification.service";
 import { generateReceiptLink } from "@/server/services/receipt.service";
 import { randomUUID } from "crypto";
-import { initiateBankTransfer, initializeFlutterwavePayment, verifyFlutterwavePayment } from "@/lib/flutterwave";
-import { initializePaystackPayment, verifyPaystackPayment } from "@/lib/paystack";
+import { initiateBankTransfer, initializeFlutterwavePayment } from "@/lib/flutterwave";
+import { initializePaystackPayment } from "@/lib/paystack";
 import { sendWithdrawalRequestToAdmins } from "@/lib/email";
 import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { assertMockPaymentsAllowed } from "@/lib/mockPayments";
 import { PAYMENT_FULFILLMENT_TYPES } from "@/server/services/payment/paymentMetadata";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { initiateBasqetUsdtPayout } from "@/server/services/payment/BasqetClient";
-import { processWalletAutoDebit } from "@/server/services/walletAutoDebit.service";
-import { runCspAutoContribute } from "@/server/services/cspAutoContribute.service";
+import { runPostCreditAutomation } from "@/server/services/walletAutoDebit.service";
+import { PaymentProcessor } from "@/server/services/payment/PaymentProcessor";
+import { PaymentGateway } from "@/server/services/payment/types";
+import { fulfillDepositPayment, isGatewayAmountAcceptable } from "@/server/services/payment/depositFulfillment";
+import { classifyGatewayVerification } from "@/server/services/payment/gatewayOutcome";
 
 // Default admin settings (will be overridden by DB settings)
 const DEFAULT_CASH_WITHDRAWAL_FEE = 100;
@@ -80,7 +83,12 @@ export const walletRouter = createTRPCRouter({
       const userName = [user.firstname, user.lastname].filter(Boolean).join(" ") || user.name || "User";
       
       const baseUrl = (await resolveAppBaseUrl()).replace(/\/$/, '');
+      // Gateway redirects land on the callback routes, which forward to
+      // /payment/verify so the deposit is verified and credited immediately
+      // (the webhook and recovery job remain as backstops).
       const callbackUrl = `${baseUrl}/dashboard?payment=success`;
+      const paystackCallbackUrl = `${baseUrl}/api/webhooks/paystack/callback`;
+      const flutterwaveCallbackUrl = `${baseUrl}/api/webhooks/flutterwave/callback`;
 
       // Handle Paystack payments
       if (paymentGateway === 'paystack') {
@@ -97,7 +105,7 @@ export const walletRouter = createTRPCRouter({
           email: user.email,
           amount: Math.round(totalAmount * 100), // Convert to kobo
           reference: txReference,
-          callbackUrl,
+          callbackUrl: paystackCallbackUrl,
           metadata: {
             userId,
             depositAmount: amount,
@@ -170,7 +178,7 @@ export const walletRouter = createTRPCRouter({
           txRef: txReference,
           amount: totalAmount,
           currency: 'NGN',
-          redirectUrl: callbackUrl,
+          redirectUrl: flutterwaveCallbackUrl,
           customer: {
             email: user.email,
             name: userName,
@@ -302,7 +310,7 @@ export const walletRouter = createTRPCRouter({
           email: user.email,
           amount: Math.round(totalAmount * 100),
           reference: txReference,
-          callbackUrl,
+          callbackUrl: paystackCallbackUrl,
           channels: ["bank_transfer"],
           metadata: {
             userId,
@@ -583,20 +591,8 @@ export const walletRouter = createTRPCRouter({
           // Send success notification with receipt
           await notifyDepositStatus(userId, "completed", amount, txReference, receiptUrl);
 
-          // Auto-debit to community wallet if configured
-          // Note: This runs in the same transactional context as the deposit
-          const autoDebitResult = await processWalletAutoDebit({ prisma, userId, creditAmount: amount, trigger: "deposit" });
-
-          // Trigger CSP auto-contribute if applicable
-          // Note: This runs after the deposit transaction commits, as CSP auto-contribute uses its own transaction
-          // Best-effort: failures here do not affect the deposit success
-          if (autoDebitResult.shouldTriggerCspAutoContribute) {
-            try {
-              await runCspAutoContribute({ prisma, userId });
-            } catch (err) {
-              console.error(`[WALLET] CSP auto-contribute failed for user ${userId} (deposit succeeded):`, err);
-            }
-          }
+          // Auto-debit to community wallet (and CSP auto-contribute) if configured
+          await runPostCreditAutomation({ prisma, userId, creditAmount: amount, trigger: "deposit", context: `mock deposit ${txReference}` });
 
           return {
             success: true,
@@ -882,12 +878,16 @@ export const walletRouter = createTRPCRouter({
       try {
         // Deduct from source wallet
         console.log("🔄 [WITHDRAWAL] Deducting from wallet...");
-        await prisma.user.update({
-          where: { id: userId },
+        // Conditional debit: concurrent withdrawals can never overdraw the wallet.
+        const debited = await prisma.user.updateMany({
+          where: { id: userId, [sourceWallet]: { gte: totalDeduction } },
           data: {
             [sourceWallet]: { decrement: totalDeduction }
           }
         });
+        if (debited.count === 0) {
+          throw new Error("Insufficient balance for this withdrawal");
+        }
         console.log("✅ [WITHDRAWAL] Wallet deducted successfully");
 
         // Create withdrawal transaction
@@ -1457,13 +1457,16 @@ export const walletRouter = createTRPCRouter({
       }
 
       // Perform atomic transfer
-      await prisma.user.update({
-        where: { id: userId },
+      const moved = await prisma.user.updateMany({
+        where: { id: userId, [fromWallet]: { gte: amount } },
         data: {
           [fromWallet]: { decrement: amount },
           [toWallet]: { increment: amount }
         }
       });
+      if (moved.count === 0) {
+        throw new Error(`Insufficient balance in ${fromWallet} wallet.`);
+      }
 
       // Create transaction record - store actual transfer amount for display
       const txReference = `IWT-${Date.now()}`;
@@ -1658,22 +1661,25 @@ export const walletRouter = createTRPCRouter({
       const recipientWalletField = sourceWallet === 'cashback' ? 'cashback' : 'wallet';
 
       // Perform atomic transfer (sender -> recipient)
-      await prisma.$transaction([
-        // Deduct from sender
-        prisma.user.update({
-          where: { id: userId },
+      await prisma.$transaction(async (tx) => {
+        // Deduct from sender only if the balance still covers it (no overdraw on concurrent requests)
+        const debited = await tx.user.updateMany({
+          where: { id: userId, [sourceWallet]: { gte: amount } },
           data: {
             [sourceWallet]: { decrement: amount }
           }
-        }),
+        });
+        if (debited.count === 0) {
+          throw new Error(`Insufficient balance in ${sourceWallet} wallet.`);
+        }
         // Add to recipient's wallet (cashback->cashback, otherwise main wallet)
-        prisma.user.update({
+        await tx.user.update({
           where: { id: recipient.id },
           data: {
             [recipientWalletField]: { increment: amount }
           }
-        })
-      ]);
+        });
+      });
 
       // Create transaction for sender
       const senderTxReference = `TXF-SENT-${Date.now()}`;
@@ -1781,105 +1787,73 @@ export const walletRouter = createTRPCRouter({
 
       const { reference, gateway } = input;
 
-      // Find the pending transaction
-      const transaction = await prisma.transaction.findFirst({
-        where: {
-          reference,
-          userId,
-          status: "pending",
-        },
+      const pending = await prisma.pendingPayment.findFirst({
+        where: { gatewayReference: reference, userId, transactionType: { in: ["DEPOSIT", "TOPUP"] } },
+        orderBy: { createdAt: "desc" },
       });
 
-      if (!transaction) {
+      if (!pending) {
         throw new Error("Transaction not found or already processed");
       }
 
-      let verificationResult: any;
-      let paymentStatus: string;
-      let amountPaid: number;
-
-      // Verify with appropriate gateway
-      if (gateway === 'paystack') {
-        const gatewayConfig = await prisma.paymentGatewayConfig.findFirst({
-          where: { gatewayName: 'paystack', isActive: true },
-        });
-
-        if (!gatewayConfig?.secretKey) {
-          throw new Error("Paystack configuration not found");
-        }
-
-        verificationResult = await verifyPaystackPayment(gatewayConfig.secretKey, reference);
-        paymentStatus = verificationResult.data.status;
-        amountPaid = verificationResult.data.amount / 100; // Convert from kobo
-      } else if (gateway === 'flutterwave') {
-        const gatewayConfig = await prisma.paymentGatewayConfig.findFirst({
-          where: { gatewayName: 'flutterwave', isActive: true },
-        });
-
-        if (!gatewayConfig?.secretKey) {
-          throw new Error("Flutterwave configuration not found");
-        }
-
-        verificationResult = await verifyFlutterwavePayment(gatewayConfig.secretKey, reference);
-        paymentStatus = verificationResult.status;
-        amountPaid = verificationResult.amount;
-      } else {
-        throw new Error("Unsupported gateway");
+      if (pending.status === "approved" || pending.status === "completed") {
+        return { success: true, message: "Deposit already processed.", alreadyProcessed: true };
       }
 
-      // Check if payment was successful
-      if (paymentStatus !== 'success' && paymentStatus !== 'successful') {
-        await prisma.transaction.update({
-          where: { id: transaction.id },
-          data: { status: "failed" },
-        });
+      const verification = await PaymentProcessor.verifyPayment(
+        gateway === 'paystack' ? PaymentGateway.PAYSTACK : PaymentGateway.FLUTTERWAVE,
+        reference,
+      );
+      const outcome = classifyGatewayVerification(verification);
 
-        await notifyDepositStatus(userId, "failed", transaction.amount, reference);
-
-        throw new Error(`Payment ${paymentStatus}. Please try again.`);
+      if (outcome === "pending") {
+        return {
+          success: true,
+          processing: true,
+          message: "Payment is still being confirmed. Your wallet will be credited automatically.",
+        };
       }
 
-      // Credit user wallet
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          wallet: { increment: transaction.amount },
-        },
+      if (outcome === "failed") {
+        throw new Error("Payment was not successful. Please try again.");
+      }
+
+      if (!isGatewayAmountAcceptable(verification.amount, pending.amount)) {
+        await prisma.pendingPayment.update({
+          where: { id: pending.id },
+          data: {
+            reviewNotes: `wallet.verifyPayment: amount mismatch — gateway confirmed ₦${verification.amount}, expected ₦${pending.amount}. Manual review required.`,
+            updatedAt: new Date(),
+          },
+        });
+        throw new Error("The amount paid does not match this deposit. Our team will review it.");
+      }
+
+      // Idempotent: shared with the webhooks, verify page and recovery job.
+      const deposit = await fulfillDepositPayment(prisma, {
+        pendingPaymentId: pending.id,
+        userId,
+        reference,
+        note: `Auto-approved via wallet.verifyPayment (${gateway})`,
       });
 
-      // Update transaction status
-      await prisma.transaction.update({
-        where: { id: transaction.id },
-        data: { status: "completed" },
-      });
-
-      // Generate receipt
-      const receiptUrl = generateReceiptLink(transaction.id, 'deposit');
-
-      // Send success notification
-      await notifyDepositStatus(userId, "completed", transaction.amount, reference, receiptUrl);
-
-      // Auto-debit to community wallet if configured
-      // Note: This runs in the same transactional context as the deposit
-      const autoDebitResult = await processWalletAutoDebit({ prisma, userId, creditAmount: transaction.amount, trigger: "deposit" });
-
-      // Trigger CSP auto-contribute if applicable
-      // Note: This runs after the deposit transaction commits, as CSP auto-contribute uses its own transaction
-      // Best-effort: failures here do not affect the deposit success
-      if (autoDebitResult.shouldTriggerCspAutoContribute) {
-        try {
-          await runCspAutoContribute({ prisma, userId });
-        } catch (err) {
-          console.error(`[WALLET] CSP auto-contribute failed for user ${userId} (deposit succeeded):`, err);
-        }
+      if (deposit.status === "no_transaction") {
+        throw new Error("Deposit record not found. Please contact support.");
       }
 
       return {
         success: true,
-        message: `Deposit of ₦${transaction.amount.toLocaleString()} successful!`,
-        amountDeposited: transaction.amount,
-        receiptUrl,
-        transactionId: transaction.id,
+        message: deposit.status === "credited"
+          ? `Deposit of ₦${deposit.amount.toLocaleString()} successful!`
+          : "Deposit already processed.",
+        alreadyProcessed: deposit.status !== "credited",
+        ...(deposit.status === "credited"
+          ? {
+              amountDeposited: deposit.amount,
+              receiptUrl: generateReceiptLink(deposit.transactionId, 'deposit'),
+              transactionId: deposit.transactionId,
+            }
+          : {}),
       };
     }),
 

@@ -179,9 +179,21 @@ export default function CspAdminQueuePage() {
     onError: (err) => toast.error(err.message),
   });
 
+  const releasableDetail =
+    !!detailTarget &&
+    (detailTarget.status === "broadcasting" ||
+      detailTarget.status === "ready_for_release" ||
+      detailTarget.status === "closed") &&
+    detailTarget.raisedAmount > 0;
+  const { data: releasePreview, isFetching: releasePreviewLoading, error: releasePreviewError } =
+    api.csp.previewRelease.useQuery(
+      { requestId: detailTarget?.id ?? "" },
+      { enabled: releasableDetail },
+    );
+
   const releaseMutation = api.csp.releaseFunds.useMutation({
-    onSuccess: () => {
-      toast.success("Funds released with 80/20 split");
+    onSuccess: (res) => {
+      toast.success(`Released ₦${formatAmount(res.released)} — beneficiary received ₦${formatAmount(res.shares.recipient)}`);
       refetch();
       refetchDefaults();
       setDetailTarget(null);
@@ -1432,6 +1444,65 @@ export default function CspAdminQueuePage() {
                 </div>
               </div>
 
+              {/* Release breakdown — exactly what "Release funds" will pay out */}
+              {releasableDetail && (
+                <div>
+                  <h4 className="text-sm font-semibold text-muted-foreground mb-3">Release Breakdown</h4>
+                  <div className="bg-muted/30 rounded-lg p-4 space-y-2">
+                    {releasePreviewLoading && !releasePreview && (
+                      <p className="text-sm text-muted-foreground">Calculating payout…</p>
+                    )}
+                    {releasePreviewError && (
+                      <p className="text-sm text-rose-600">{releasePreviewError.message}</p>
+                    )}
+                    {releasePreview?.alreadyReleased && (
+                      <p className="text-sm text-muted-foreground">These funds were already paid out. There is nothing left to release.</p>
+                    )}
+                    {releasePreview && !releasePreview.alreadyReleased && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-muted-foreground">Total contributed (ledger):</span>
+                          <span className="text-sm font-bold text-foreground">₦{formatAmount(releasePreview.total)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-muted-foreground">
+                            Beneficiary (Main Cash Wallet){releasePreview.fullyFunded ? " — requested amount" : ""}:
+                          </span>
+                          <span className="text-sm font-bold text-emerald-600">₦{formatAmount(releasePreview.shares.recipient)}</span>
+                        </div>
+                        {([
+                          ["Sponsor (referral reward)", releasePreview.shares.sponsor],
+                          ["BPI Profit Pool", releasePreview.shares.admin],
+                          ["State wallet", releasePreview.shares.state],
+                          ["Management wallet", releasePreview.shares.management],
+                          ["Reserve wallet", releasePreview.shares.reserve],
+                        ] as const).map(([label, value]) => (
+                          <div key={label} className="flex justify-between">
+                            <span className="text-xs text-muted-foreground">{label}:</span>
+                            <span className="text-xs font-medium text-foreground">₦{formatAmount(value)}</span>
+                          </div>
+                        ))}
+                        {!releasePreview.hasSponsor && releasePreview.sponsorRedirectedToReserve > 0 && (
+                          <p className="text-xs text-amber-600">
+                            Beneficiary has no sponsor — the ₦{formatAmount(releasePreview.sponsorRedirectedToReserve)} sponsor share goes to the reserve wallet.
+                          </p>
+                        )}
+                        {releasePreview.total !== releasePreview.raisedAmount && (
+                          <p className="text-xs text-amber-600">
+                            Displayed raised amount (₦{formatAmount(releasePreview.raisedAmount)}) differs from the contribution ledger; the ledger total is released.
+                          </p>
+                        )}
+                        {!releasePreview.fullyFunded && (
+                          <p className="text-xs text-muted-foreground">
+                            Target not reached — configured percentages apply to the total raised.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="flex gap-3 pt-4 border-t border-border">
                 {detailTarget.status === "pending" && !detailTarget.isAdminDefault && (
@@ -1470,10 +1541,15 @@ export default function CspAdminQueuePage() {
                     Extend Broadcast
                   </button>
                 )}
-                {detailTarget.raisedAmount > 0 && (
+                {releasableDetail && !releasePreview?.alreadyReleased && (
                   <button
-                    onClick={() => releaseMutation.mutate({ requestId: detailTarget.id })}
-                    disabled={releaseMutation.isPending}
+                    onClick={() => {
+                      const payout = releasePreview ? ` Beneficiary receives ₦${formatAmount(releasePreview.shares.recipient)} of ₦${formatAmount(releasePreview.total)}.` : "";
+                      if (window.confirm(`Release funds for this request?${payout} This cannot be undone.`)) {
+                        releaseMutation.mutate({ requestId: detailTarget.id });
+                      }
+                    }}
+                    disabled={releaseMutation.isPending || releasePreviewLoading}
                     className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-60"
                   >
                     <ShieldCheck className="h-4 w-4" />

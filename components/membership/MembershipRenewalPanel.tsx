@@ -206,7 +206,13 @@ export default function MembershipRenewalPanel() {
         {/* Auto-Renew Button */}
         {canRenew && (
           <button
-            onClick={() => autoRenewalMutation.mutate({})}
+            onClick={() => {
+              const total = (previewQuery.data as { totalCost?: number } | undefined)?.totalCost;
+              const cost = total ? `₦${total.toLocaleString()} (fee + VAT)` : "the renewal fee + VAT";
+              if (window.confirm(`Renew now? ${cost} will be debited from your Main Wallet.`)) {
+                autoRenewalMutation.mutate({});
+              }
+            }}
             disabled={autoRenewalMutation.isPending}
             className="flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
           >
