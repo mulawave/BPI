@@ -97,7 +97,7 @@ export default function CspAdminQueuePage() {
   const [detailTarget, setDetailTarget] = useState<QueueItem | null>(null);
   const [rejectTarget, setRejectTarget] = useState<QueueItem | null>(null);
   const [rejectReason, setRejectReason] = useState("");
-  const [cooldownMonths, setCooldownMonths] = useState<6 | 12 | 24 | 36>(12);
+  const [cooldownMonths, setCooldownMonths] = useState<6 | 12 | 24>(24);
   const [userSearchTerm, setUserSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<{ id: string; name: string | null; email: string } | null>(null);
 
@@ -136,6 +136,13 @@ export default function CspAdminQueuePage() {
   const { data: cspCountries, refetch: refetchCountries } = api.csp.listCspCountries.useQuery();
   const { data: eligibilityConfig, refetch: refetchEligibilityConfig } = api.csp.getCspEligibilityConfig.useQuery();
   const { data: tierConfig, refetch: refetchTierConfig } = api.csp.getCspTierConfig.useQuery();
+
+  // Pre-select the configured default waiting period each time a request is opened for approval.
+  React.useEffect(() => {
+    if (!approveTarget) return;
+    const configured = tierConfig?.defaultCoolingMonthsMin;
+    setCooldownMonths(configured === 6 || configured === 12 || configured === 24 ? configured : 24);
+  }, [approveTarget, tierConfig?.defaultCoolingMonthsMin]);
   const { data: cspTiers, refetch: refetchCspTiers } = api.csp.adminListCspTiers.useQuery();
   const { data: ruleChangeLogs, refetch: refetchRuleChangeLogs, isFetching: isRuleChangeLogsFetching } = api.csp.adminListCspRuleChangeLogs.useQuery({
     page: ruleLogPage,
@@ -1073,7 +1080,7 @@ export default function CspAdminQueuePage() {
               <label className="text-sm font-semibold text-foreground">Cooldown Period (after release)</label>
               <p className="text-xs text-muted-foreground">How long before this member can make another request once funds are released.</p>
               <div className="grid grid-cols-4 gap-2">
-                {([6, 12, 24, 36] as const).map((m) => (
+                {([24, 12, 6] as const).map((m) => (
                   <button
                     key={m}
                     onClick={() => setCooldownMonths(m)}
@@ -1678,12 +1685,12 @@ const TIER_FIELD_INFO: Record<string, FieldHint> = {
   defaultBroadcastHours: { text: "Default broadcast duration (hours) for new requests. Set 0 to disable timed broadcast.", recommended: "48" },
   autoExtensionHours: { text: "Hours added each time an under-fulfilled broadcast is auto-extended. Set 0 to disable.", recommended: "48" },
   maxAutoExtensions: { text: "Maximum number of automatic extensions before a request is closed. Set 0 to disable auto-extension.", recommended: "3" },
-  defaultCoolingMonthsMin: { text: "Minimum cooling period (months) before a member can raise again. Set 0 for no minimum.", recommended: "12" },
+  defaultCoolingMonthsMin: { text: "Default waiting period (months) applied when a request is approved; admins can choose 12 or 6 instead.", recommended: "24" },
   defaultCoolingMonthsMax: { text: "Maximum cooling period (months) between requests.", recommended: "24" },
-  sponsorshipRequiredCount: { text: "Number of sponsored members required to earn reduced cooling. Set 0 to disable.", recommended: "100" },
+  sponsorshipRequiredCount: { text: "Number of sponsored members required to earn reduced cooling. Set 0 to disable.", recommended: "10" },
   sponsorshipReducedCoolingMonths: { text: "Cooling period (months) applied once the sponsor count is met.", recommended: "6" },
-  sponsorshipRequiresKyc: { text: "Require KYC for the sponsor-based cooling reduction to apply.", recommended: "Off" },
-  sponsorshipRequiresRegularPlus: { text: "Require Regular Plus tier for the sponsor-based cooling reduction.", recommended: "Off" },
+  sponsorshipRequiresKyc: { text: "Require KYC for the sponsor-based cooling reduction to apply.", recommended: "On" },
+  sponsorshipRequiresRegularPlus: { text: "Require Regular Plus tier for the sponsor-based cooling reduction.", recommended: "On" },
   sponsorshipAutoApply: { text: "Automatically apply the reduced cooling period once a member is eligible.", recommended: "Off" },
   badgeGiftingEnabled: { text: "Allow members to gift their Time Reduction Badges to other members.", recommended: "On" },
 };
@@ -1888,12 +1895,12 @@ function TierConfigForm({ config, onSave, isPending }: { config: TierConfig | un
     defaultBroadcastHours: config?.defaultBroadcastHours ?? 48,
     autoExtensionHours: config?.autoExtensionHours ?? 48,
     maxAutoExtensions: config?.maxAutoExtensions ?? 3,
-    defaultCoolingMonthsMin: config?.defaultCoolingMonthsMin ?? 12,
+    defaultCoolingMonthsMin: config?.defaultCoolingMonthsMin ?? 24,
     defaultCoolingMonthsMax: config?.defaultCoolingMonthsMax ?? 24,
-    sponsorshipRequiredCount: config?.sponsorshipRequiredCount ?? 100,
+    sponsorshipRequiredCount: config?.sponsorshipRequiredCount ?? 10,
     sponsorshipReducedCoolingMonths: config?.sponsorshipReducedCoolingMonths ?? 6,
-    sponsorshipRequiresKyc: config?.sponsorshipRequiresKyc ?? false,
-    sponsorshipRequiresRegularPlus: config?.sponsorshipRequiresRegularPlus ?? false,
+    sponsorshipRequiresKyc: config?.sponsorshipRequiresKyc ?? true,
+    sponsorshipRequiresRegularPlus: config?.sponsorshipRequiresRegularPlus ?? true,
     sponsorshipAutoApply: config?.sponsorshipAutoApply ?? false,
     badgeGiftingEnabled: config?.badgeGiftingEnabled ?? true,
     reason: "",

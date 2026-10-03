@@ -1247,7 +1247,7 @@ export const cspRouter = createTRPCRouter({
     .input(z.object({
       requestId: z.string(),
       broadcastHours: z.number().int().positive().optional(),
-      cooldownMonths: z.union([z.literal(6), z.literal(12), z.literal(24), z.literal(36)]).optional(),
+      cooldownMonths: z.union([z.literal(6), z.literal(12), z.literal(24)]).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       assertAdmin(ctx.session);

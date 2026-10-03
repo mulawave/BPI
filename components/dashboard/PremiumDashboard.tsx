@@ -174,7 +174,7 @@ export default function PremiumDashboard({ session }: PremiumDashboardProps) {
   const isNigerian = !isAdmin && !ud?.allowUsdFeatures && (ud?.country?.toLowerCase() === 'nigeria' || ud?.hasBankAccounts === true);
   const isUsdBlocked = isUsdMode && isNigerian;
   const isWithdrawBanned = ud?.withdrawBanned === true;
-  const membershipAccess = evaluateMembershipAccess({ activeMembershipPackageId: ud?.activeMembershipPackageId, membershipActivatedAt: ud?.membershipActivatedAt, membershipExpiresAt: ud?.membershipExpiresAt, renewalCycleDays: ud?.activeMembership?.renewalCycle });
+  const membershipAccess = evaluateMembershipAccess({ activeMembershipPackageId: ud?.activeMembershipPackageId, membershipActivatedAt: ud?.membershipActivatedAt, membershipExpiresAt: ud?.membershipExpiresAt, renewalCycleDays: ud?.activeMembership?.renewalCycle, graceDays: ud?.membershipGraceDays });
   const isImpersonating = (session.user as any)?.isImpersonation === true;
   const needsActivation = !isImpersonating && !isLoadingProfile && !!ud && !membershipAccess.membershipValid;
   const profileCompleteStatus = checkProfileCompletion({ firstname: ud?.firstname, lastname: ud?.lastname, email: ud?.email, mobile: ud?.mobile, address: ud?.address, city: ud?.city, state: ud?.state, country: ud?.country, gender: ud?.gender, image: ud?.image });

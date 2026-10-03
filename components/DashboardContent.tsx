@@ -666,6 +666,7 @@ function DashboardContentInner({ session, customContent, hideChrome }: Dashboard
     membershipActivatedAt: userDetails?.membershipActivatedAt,
     membershipExpiresAt: userDetails?.membershipExpiresAt,
     renewalCycleDays: userDetails?.activeMembership?.renewalCycle,
+    graceDays: (userDetails as any)?.membershipGraceDays,
   });
   const needsActivation = !isImpersonating && !isLoadingDetails && !isErrorDetails && !!userDetails && !membershipAccess.membershipValid;
 

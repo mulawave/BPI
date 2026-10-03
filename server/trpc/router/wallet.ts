@@ -638,6 +638,7 @@ export const walletRouter = createTRPCRouter({
       if (!userId) throw new Error("UNAUTHORIZED");
 
       const { amount, withdrawalType, sourceWallet, pin, bankCode, accountNumber, accountName, bnbWalletAddress, usdtAddress } = input;
+      if (sourceWallet === 'community') throw new Error("Community Wallet funds can only be used for CSP contributions and cannot be withdrawn or moved.");
 
       // USDT withdrawal: non-Nigerian check + country requirement
       if (withdrawalType === 'usdt') {
@@ -1316,6 +1317,7 @@ export const walletRouter = createTRPCRouter({
       if (!userId) throw new Error("UNAUTHORIZED");
 
       const { amount, fromWallet, toWallet, pin, reason } = input;
+      if (fromWallet === 'community') throw new Error("Community Wallet funds can only be used for CSP contributions and cannot be withdrawn or moved.");
 
       if (fromWallet === toWallet) {
         throw new Error("Cannot transfer to the same wallet");
@@ -1549,6 +1551,7 @@ export const walletRouter = createTRPCRouter({
       if (!userId) throw new Error("UNAUTHORIZED");
 
       const { amount, recipientIdentifier, sourceWallet, note, pin } = input;
+      if (sourceWallet === 'community') throw new Error("Community Wallet funds can only be used for CSP contributions and cannot be withdrawn or moved.");
 
       // SECURITY: Verify PIN before processing transfer
       const sender = await prisma.user.findUnique({

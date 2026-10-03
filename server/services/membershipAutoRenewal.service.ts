@@ -190,12 +190,8 @@ export async function validateAutoRenewalEligibility(
 }
 
 /**
- * Get the renewal package for a user based on their current membership
- * Rules:
- * - Regular → Regular Plus (upgrade)
- * - Regular Plus → Regular Plus (same)
- * - Gold Plus → Gold Plus (same)
- * - Platinum Plus → Platinum Plus (same)
+ * Get the renewal package for a user based on their current membership.
+ * Members renew at their current level unless they choose an upgrade.
  */
 export async function getRenewalPackage(
   prismaLike: PrismaClient | any,
@@ -262,19 +258,10 @@ export async function getRenewalPackage(
     };
   }
 
-  // No upgrade specified - use same package (or auto-upgrade from Regular to Regular Plus)
-  let renewalPackage = currentPackage;
-
-  // Auto-upgrade from Regular to Regular Plus
-  if (currentPackage.name === "Regular") {
-    const regularPlus = await prismaLike.membershipPackage.findFirst({
-      where: { name: "Regular Plus", isActive: true },
-    });
-
-    if (regularPlus) {
-      renewalPackage = regularPlus;
-    }
-  }
+  // No upgrade specified: renew at the member's current level. (Corporate
+  // decision 29/09/2026: Regular members are no longer moved to Regular Plus
+  // automatically at renewal.)
+  const renewalPackage = currentPackage;
 
   const renewalFee = renewalPackage.renewalFee || renewalPackage.price;
   const vat = renewalFee * 0.075;

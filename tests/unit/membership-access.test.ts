@@ -82,14 +82,34 @@ describe("evaluateMembershipAccess", () => {
     assert.ok(typeof result.daysUntilExpiry === "number" && result.daysUntilExpiry > 0);
   });
 
-  it("reports expired membership with past expiry", () => {
+  it("keeps access during the grace period after expiry", () => {
     const result = evaluateMembershipAccess({
       activeMembershipPackageId: "pkg-1",
       membershipExpiresAt: pastDate,
     });
+    assert.equal(result.membershipValid, true);
+    assert.equal(result.isExpired, true);
+    assert.equal(result.inGracePeriod, true);
+    assert.ok(typeof result.daysUntilExpiry === "number" && result.daysUntilExpiry <= 0);
+  });
+
+  it("reports expired membership once the grace period has ended", () => {
+    const result = evaluateMembershipAccess({
+      activeMembershipPackageId: "pkg-1",
+      membershipExpiresAt: new Date(Date.now() - 16 * DAY_MS),
+    });
     assert.equal(result.membershipValid, false);
     assert.equal(result.isExpired, true);
-    assert.ok(typeof result.daysUntilExpiry === "number" && result.daysUntilExpiry <= 0);
+    assert.equal(result.inGracePeriod, false);
+  });
+
+  it("honours a configured grace period", () => {
+    const result = evaluateMembershipAccess({
+      activeMembershipPackageId: "pkg-1",
+      membershipExpiresAt: pastDate,
+      graceDays: 0,
+    });
+    assert.equal(result.membershipValid, false);
   });
 
   it("reports no membership when packageId is null", () => {

@@ -30,12 +30,16 @@ export const TIER_CONFIG_DEFAULTS: TierConfig = {
   defaultBroadcastHours: 48,
   autoExtensionHours: 48,
   maxAutoExtensions: 3,
-  defaultCoolingMonthsMin: 12,
+  // Corporate decision 29/09/2026: default waiting period 24 months; admins may
+  // assign 12 or 6 when approving.
+  defaultCoolingMonthsMin: 24,
   defaultCoolingMonthsMax: 24,
-  sponsorshipRequiredCount: 100,
+  // Corporate decision 29/09/2026: 10 sponsored members (adjustable), each with
+  // KYC done and Regular Plus membership, reduce the wait to six months.
+  sponsorshipRequiredCount: 10,
   sponsorshipReducedCoolingMonths: 6,
-  sponsorshipRequiresKyc: false,
-  sponsorshipRequiresRegularPlus: false,
+  sponsorshipRequiresKyc: true,
+  sponsorshipRequiresRegularPlus: true,
   sponsorshipAutoApply: false,
   badgeGiftingEnabled: true,
 };
