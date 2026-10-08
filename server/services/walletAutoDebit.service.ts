@@ -26,6 +26,7 @@
 import { randomUUID } from "crypto";
 import type { PrismaClient, Prisma } from "@prisma/client";
 import { runCspAutoContribute } from "@/server/services/cspAutoContribute.service";
+import { loadRenewalReservePolicy, splitAutoDebitForReserve, DEFAULT_RENEWAL_RESERVE_POLICY } from "@/server/services/renewalReserve.service";
 
 type TxClient = PrismaClient | Prisma.TransactionClient;
 
@@ -36,6 +37,11 @@ export type AutoDebitSettingLike = { isEnabled: boolean; percentage: number; app
 export type AutoDebitPolicy = {
   /** Compulsory minimum percentage. 0 makes Auto-Debit optional again. */
   minPercentage: number;
+  /**
+   * Percentage a member starts at before they have saved their own choice
+   * (corporate decision, follow-up Q5). Must be >= minPercentage.
+   */
+  startingPercentage: number;
   /** Whether members may apply Auto-Debit to deposits at all. */
   depositsEnabled: boolean;
   /** Whether Auto-Debit applies to released CSP funds. */
@@ -44,12 +50,14 @@ export type AutoDebitPolicy = {
 
 export const AUTO_DEBIT_POLICY_KEYS = {
   minPercentage: "auto_debit_min_percentage",
+  startingPercentage: "auto_debit_starting_percentage",
   depositsEnabled: "auto_debit_deposits_enabled",
   cspPayoutEnabled: "auto_debit_csp_payout_enabled",
 } as const;
 
 export const DEFAULT_AUTO_DEBIT_POLICY: AutoDebitPolicy = {
   minPercentage: 10,
+  startingPercentage: 15,
   depositsEnabled: true,
   cspPayoutEnabled: true,
 };
@@ -61,12 +69,18 @@ export async function loadAutoDebitPolicy(db: TxClient): Promise<AutoDebitPolicy
   });
   const map = new Map(rows.map((r) => [r.settingKey, r.settingValue]));
   const min = Number(map.get(AUTO_DEBIT_POLICY_KEYS.minPercentage));
+  const starting = Number(map.get(AUTO_DEBIT_POLICY_KEYS.startingPercentage));
   const bool = (key: string, def: boolean) => {
     const v = map.get(key);
     return v == null ? def : v === "true";
   };
+  const minPercentage = Number.isFinite(min) && min >= 0 && min <= 100 ? min : DEFAULT_AUTO_DEBIT_POLICY.minPercentage;
+  const startingPercentage = Number.isFinite(starting) && starting >= 0 && starting <= 100
+    ? Math.max(starting, minPercentage)
+    : Math.max(DEFAULT_AUTO_DEBIT_POLICY.startingPercentage, minPercentage);
   return {
-    minPercentage: Number.isFinite(min) && min >= 0 && min <= 100 ? min : DEFAULT_AUTO_DEBIT_POLICY.minPercentage,
+    minPercentage,
+    startingPercentage,
     depositsEnabled: bool(AUTO_DEBIT_POLICY_KEYS.depositsEnabled, DEFAULT_AUTO_DEBIT_POLICY.depositsEnabled),
     cspPayoutEnabled: bool(AUTO_DEBIT_POLICY_KEYS.cspPayoutEnabled, DEFAULT_AUTO_DEBIT_POLICY.cspPayoutEnabled),
   };
@@ -74,16 +88,18 @@ export async function loadAutoDebitPolicy(db: TxClient): Promise<AutoDebitPolicy
 
 /**
  * The percentage actually applied: the member's choice, raised to the
- * compulsory minimum. Members without a saved setting get the minimum.
- * When the admin minimum is 0, Auto-Debit is optional and only applies to
- * members who switched it on.
+ * compulsory minimum. A member with no saved setting yet starts at the
+ * admin's starting percentage (corporate decision, follow-up Q5), not just
+ * the bare minimum. When the admin minimum is 0, Auto-Debit is optional and
+ * only applies to members who switched it on.
  */
 export function effectiveAutoDebitPercentage(
   setting: AutoDebitSettingLike | null | undefined,
   policy: AutoDebitPolicy = DEFAULT_AUTO_DEBIT_POLICY,
 ): number {
   const min = Math.min(Math.max(policy.minPercentage, 0), 100);
-  const chosen = setting && (setting.isEnabled || min > 0) ? setting.percentage : 0;
+  if (!setting) return min > 0 ? Math.min(Math.max(policy.startingPercentage, min), 100) : 0;
+  const chosen = setting.isEnabled || min > 0 ? setting.percentage : 0;
   return Math.min(Math.max(chosen, min), 100);
 }
 
@@ -157,13 +173,22 @@ export async function processWalletAutoDebit(params: {
   if (debitAmount <= 0) return { transferred: 0, shouldTriggerCspAutoContribute: false };
   const percentage = effectiveAutoDebitPercentage(setting, policy);
 
+  // Corporate decision (follow-up Q6): only "reward" credits (referral
+  // commissions, CSP sponsor share) feed the Renewal Reserve. Deposits and
+  // released CSP funds go to the Community Wallet in full.
+  const reservePolicy = trigger === "reward" ? await loadRenewalReservePolicy(prisma) : DEFAULT_RENEWAL_RESERVE_POLICY;
+  const { toCommunity, toReserve } = trigger === "reward"
+    ? splitAutoDebitForReserve(debitAmount, reservePolicy)
+    : { toCommunity: debitAmount, toReserve: 0 };
+
   // Atomic conditional move: only succeeds if the cash wallet still holds the
   // amount at write time, so concurrent withdrawals can never drive it negative.
   const moved = await prisma.user.updateMany({
     where: { id: userId, wallet: { gte: debitAmount } },
     data: {
       wallet: { decrement: debitAmount },
-      community: { increment: debitAmount },
+      community: { increment: toCommunity },
+      ...(toReserve > 0 ? { reserve: { increment: toReserve } } : {}),
     },
   });
 
@@ -176,7 +201,7 @@ export async function processWalletAutoDebit(params: {
       userId,
       transactionType: "AUTO_DEBIT_TO_COMMUNITY",
       amount: -debitAmount,
-      description: `Auto-transfer ${percentage}% of ₦${creditAmount.toLocaleString()} to Community Wallet (${TRIGGER_LABEL[trigger]})`,
+      description: `Auto-transfer ${percentage}% of ₦${creditAmount.toLocaleString()} to Community Wallet${toReserve > 0 ? " and Renewal Reserve" : ""} (${TRIGGER_LABEL[trigger]})`,
       status: "completed",
       walletType: "main",
     },
@@ -187,12 +212,26 @@ export async function processWalletAutoDebit(params: {
       id: randomUUID(),
       userId,
       transactionType: "AUTO_DEBIT_TO_COMMUNITY",
-      amount: debitAmount,
+      amount: toCommunity,
       description: `Auto-transfer received from Cash Wallet (${percentage}% of ₦${creditAmount.toLocaleString()})`,
       status: "completed",
       walletType: "community",
     },
   });
+
+  if (toReserve > 0) {
+    await prisma.transaction.create({
+      data: {
+        id: randomUUID(),
+        userId,
+        transactionType: "AUTO_DEBIT_TO_RESERVE",
+        amount: toReserve,
+        description: `Auto-transfer to Renewal Reserve (${reservePolicy.reservePercentOfAutoDebit}% of this Auto-Debit)`,
+        status: "completed",
+        walletType: "reserve",
+      },
+    });
+  }
 
   // Check if CSP auto-contribute should be triggered
   let shouldTriggerCspAutoContribute = false;

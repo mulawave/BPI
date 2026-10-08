@@ -20,14 +20,20 @@ function PolicyCard() {
   const utils = api.useUtils();
   const { data: policy, isLoading } = api.csp.adminGetAutoDebitPolicy.useQuery();
   const [minPercentage, setMinPercentage] = useState(10);
+  const [startingPercentage, setStartingPercentage] = useState(15);
   const [depositsEnabled, setDepositsEnabled] = useState(true);
   const [cspPayoutEnabled, setCspPayoutEnabled] = useState(true);
+  const [reservePercentOfAutoDebit, setReservePercentOfAutoDebit] = useState(30);
+  const [withdrawalFloor, setWithdrawalFloor] = useState(500000);
 
   useEffect(() => {
     if (!policy) return;
     setMinPercentage(policy.minPercentage);
+    setStartingPercentage(policy.startingPercentage);
     setDepositsEnabled(policy.depositsEnabled);
     setCspPayoutEnabled(policy.cspPayoutEnabled);
+    setReservePercentOfAutoDebit(policy.reservePercentOfAutoDebit);
+    setWithdrawalFloor(policy.withdrawalFloor);
   }, [policy]);
 
   const save = api.csp.adminSaveAutoDebitPolicy.useMutation({
@@ -41,8 +47,11 @@ function PolicyCard() {
   const changed =
     !!policy &&
     (policy.minPercentage !== minPercentage ||
+      policy.startingPercentage !== startingPercentage ||
       policy.depositsEnabled !== depositsEnabled ||
-      policy.cspPayoutEnabled !== cspPayoutEnabled);
+      policy.cspPayoutEnabled !== cspPayoutEnabled ||
+      policy.reservePercentOfAutoDebit !== reservePercentOfAutoDebit ||
+      policy.withdrawalFloor !== withdrawalFloor);
 
   return (
     <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5 space-y-4">
@@ -69,6 +78,20 @@ function PolicyCard() {
               Auto-Debit optional.
             </span>
           </label>
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Starting percentage (%)</span>
+            <input
+              type="number"
+              min={minPercentage}
+              max={100}
+              value={startingPercentage}
+              onChange={(e) => setStartingPercentage(Math.min(100, Math.max(minPercentage, Math.round(Number(e.target.value) || 0))))}
+              className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
+            />
+            <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+              What a member starts at before they save their own choice. Must be at least the compulsory minimum.
+            </span>
+          </label>
           <label className="flex items-start gap-3">
             <input type="checkbox" checked={depositsEnabled} onChange={(e) => setDepositsEnabled(e.target.checked)} className="mt-1" />
             <span>
@@ -87,15 +110,111 @@ function PolicyCard() {
               </span>
             </span>
           </label>
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Renewal Reserve share of Auto-Debit (%)</span>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={reservePercentOfAutoDebit}
+              onChange={(e) => setReservePercentOfAutoDebit(Math.min(100, Math.max(0, Math.round(Number(e.target.value) || 0))))}
+              className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
+            />
+            <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+              Of each reward Auto-Debit (referral commissions, CSP sponsor share), this share goes to the Renewal
+              Reserve instead of the Community Wallet. Deposits and CSP payouts always go to the Community Wallet
+              in full.
+            </span>
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Renewal Reserve withdrawal floor (₦)</span>
+            <input
+              type="number"
+              min={0}
+              step={1000}
+              value={withdrawalFloor}
+              onChange={(e) => setWithdrawalFloor(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+              className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
+            />
+            <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+              Members can only move the amount above this balance from the Renewal Reserve to their Main Wallet.
+            </span>
+          </label>
         </div>
       )}
       <div className="flex justify-end">
         <button
-          onClick={() => save.mutate({ minPercentage, depositsEnabled, cspPayoutEnabled })}
+          onClick={() => save.mutate({ minPercentage, startingPercentage, depositsEnabled, cspPayoutEnabled, reservePercentOfAutoDebit, withdrawalFloor })}
           disabled={!changed || save.isPending}
           className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
         >
           {save.isPending ? "Saving..." : "Save rules"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function DefaultBeneficiariesCard() {
+  const utils = api.useUtils();
+  const { data, isLoading } = api.csp.adminGetDefaultBeneficiaries.useQuery();
+  const [emailsText, setEmailsText] = useState("");
+
+  useEffect(() => {
+    if (data) setEmailsText(data.emails.join(", "));
+  }, [data]);
+
+  const save = api.csp.adminSaveDefaultBeneficiaries.useMutation({
+    onSuccess: () => {
+      toast.success("Default beneficiaries saved");
+      utils.csp.adminGetDefaultBeneficiaries.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const emails = emailsText.split(",").map((e) => e.trim()).filter(Boolean);
+  const changed = !!data && JSON.stringify(data.emails) !== JSON.stringify(emails);
+
+  return (
+    <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5 space-y-4">
+      <div>
+        <h2 className="font-semibold text-gray-900 dark:text-white">Default beneficiaries</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          Receive a CSP sponsor share with no sponsor, and redirected commissions from expired members. Split equally.
+          Only a super admin can change this list.
+        </p>
+      </div>
+      {isLoading ? (
+        <div className="h-16 animate-pulse bg-gray-100 dark:bg-gray-700 rounded" />
+      ) : (
+        <>
+          <input
+            value={emailsText}
+            onChange={(e) => setEmailsText(e.target.value)}
+            placeholder="email1@example.com, email2@example.com"
+            className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
+          />
+          <div className="space-y-1">
+            {data?.resolved.map((r) => (
+              <div key={r.userId} className="text-xs text-gray-600 dark:text-gray-300">
+                {r.user?.name || r.user?.email || r.userId} — {r.sharePercent.toFixed(1)}% share
+              </div>
+            ))}
+            {data && data.resolved.length < data.emails.length && (
+              <div className="text-xs text-rose-600">
+                {data.emails.length - data.resolved.length} of these emails don&apos;t match a member account yet.
+              </div>
+            )}
+          </div>
+        </>
+      )}
+      <div className="flex justify-end">
+        <button
+          onClick={() => save.mutate({ emails })}
+          disabled={!changed || save.isPending || emails.length === 0}
+          className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {save.isPending ? "Saving..." : "Save beneficiaries"}
         </button>
       </div>
     </section>
@@ -162,6 +281,7 @@ export default function AdminAutoDebitPage() {
         )}
 
         <PolicyCard />
+        <DefaultBeneficiariesCard />
 
         <section className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
           <div className="p-4 grid gap-3 md:grid-cols-[1fr_auto_auto_auto] items-end border-b border-gray-200 dark:border-gray-700">

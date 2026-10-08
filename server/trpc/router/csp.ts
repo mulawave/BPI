@@ -45,6 +45,13 @@ import {
   CSP_EXPIRED_MEMBER_MESSAGE,
 } from "@/server/services/csp-ledger.service";
 import { loadAutoDebitPolicy, AUTO_DEBIT_POLICY_KEYS } from "@/server/services/walletAutoDebit.service";
+import { loadRenewalReservePolicy, RENEWAL_RESERVE_POLICY_KEYS, withdrawReserveExcess, withdrawableReserveAmount } from "@/server/services/renewalReserve.service";
+import {
+  loadDefaultBeneficiaryEmails,
+  saveDefaultBeneficiaryEmails,
+  resolveDefaultBeneficiaries,
+  DEFAULT_BENEFICIARY_SETTINGS_KEY,
+} from "@/server/services/defaultBeneficiaries.service";
 import { afterCspRelease } from "@/server/services/csp-release-effects.service";
 
 // Hardcoded fallback defaults – overridden by AdminSettings when set
@@ -2800,26 +2807,75 @@ export const cspRouter = createTRPCRouter({
       return { success: true, newEndsAt };
     }),
 
+  /**
+   * Default beneficiaries (corporate decision Q28, 29/09/2026; follow-up
+   * Q10, 06-07/10/2026): who receives a CSP sponsor share with no sponsor,
+   * and redirected referral commissions from expired members. Viewable by
+   * any admin; only a super admin may change the list.
+   */
+  adminGetDefaultBeneficiaries: protectedProcedure.query(async ({ ctx }) => {
+    assertAdmin(ctx.session);
+    const [emails, resolved] = await Promise.all([
+      loadDefaultBeneficiaryEmails(prisma),
+      resolveDefaultBeneficiaries(prisma),
+    ]);
+    const users = resolved.length
+      ? await prisma.user.findMany({ where: { id: { in: resolved.map((r) => r.userId) } }, select: { id: true, name: true, email: true } })
+      : [];
+    return {
+      emails,
+      resolved: resolved.map((r) => ({ ...r, user: users.find((u) => u.id === r.userId) ?? null })),
+    };
+  }),
+
+  adminSaveDefaultBeneficiaries: protectedProcedure
+    .input(z.object({ emails: z.array(z.string().email()).min(1).max(5) }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const adminId = (ctx.session?.user as any)?.id as string;
+      const adminRole = (ctx.session?.user as any)?.role as string | undefined;
+      await saveDefaultBeneficiaryEmails(prisma, { emails: input.emails, adminUserId: adminId, adminRole });
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId,
+          action: "DEFAULT_BENEFICIARIES_UPDATED",
+          entity: "AdminSettings",
+          entityId: DEFAULT_BENEFICIARY_SETTINGS_KEY,
+          metadata: { emails: input.emails },
+          status: "success",
+        },
+      });
+      return { success: true };
+    }),
+
   /** Admin: compulsory Auto-Debit rules (corporate decisions 29/09 and 06/10/2026). */
   adminGetAutoDebitPolicy: protectedProcedure.query(async ({ ctx }) => {
     assertAdmin(ctx.session);
-    return loadAutoDebitPolicy(prisma);
+    const [autoDebit, reserve] = await Promise.all([loadAutoDebitPolicy(prisma), loadRenewalReservePolicy(prisma)]);
+    return { ...autoDebit, ...reserve };
   }),
 
   adminSaveAutoDebitPolicy: protectedProcedure
     .input(z.object({
       minPercentage: z.number().int().min(0).max(100),
+      startingPercentage: z.number().int().min(0).max(100),
       depositsEnabled: z.boolean(),
       cspPayoutEnabled: z.boolean(),
+      reservePercentOfAutoDebit: z.number().int().min(0).max(100),
+      withdrawalFloor: z.number().int().min(0),
     }))
     .mutation(async ({ ctx, input }) => {
       assertAdmin(ctx.session);
       const adminId = (ctx.session?.user as any)?.id as string;
-      const before = await loadAutoDebitPolicy(prisma);
+      const [before, beforeReserve] = await Promise.all([loadAutoDebitPolicy(prisma), loadRenewalReservePolicy(prisma)]);
       const values: Array<[string, string]> = [
         [AUTO_DEBIT_POLICY_KEYS.minPercentage, String(input.minPercentage)],
+        [AUTO_DEBIT_POLICY_KEYS.startingPercentage, String(input.startingPercentage)],
         [AUTO_DEBIT_POLICY_KEYS.depositsEnabled, input.depositsEnabled ? "true" : "false"],
         [AUTO_DEBIT_POLICY_KEYS.cspPayoutEnabled, input.cspPayoutEnabled ? "true" : "false"],
+        [RENEWAL_RESERVE_POLICY_KEYS.reservePercentOfAutoDebit, String(input.reservePercentOfAutoDebit)],
+        [RENEWAL_RESERVE_POLICY_KEYS.withdrawalFloor, String(input.withdrawalFloor)],
       ];
       await prisma.$transaction(values.map(([settingKey, settingValue]) =>
         prisma.adminSettings.upsert({
@@ -2835,7 +2891,7 @@ export const cspRouter = createTRPCRouter({
           action: "AUTO_DEBIT_POLICY_UPDATED",
           entity: "AdminSettings",
           entityId: "auto_debit_policy",
-          metadata: { before, after: input },
+          metadata: { before: { ...before, ...beforeReserve }, after: input },
           status: "success",
         },
       });

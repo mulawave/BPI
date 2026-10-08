@@ -22,6 +22,8 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { ensureMemberStanding, reconcileMemberStandingContributionRight } from "@/server/services/csp-tier.service";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { getNigerianRegion } from "@/lib/nigeria-regions";
+import { creditDefaultBeneficiaries } from "@/server/services/defaultBeneficiaries.service";
+import { creditCommissionOrRedirect } from "@/server/services/commissionRedirect.service";
 
 type Tx = Prisma.TransactionClient;
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -509,7 +511,16 @@ export async function executeCspRelease(
 
     await tx.user.update({ where: { id: request.userId }, data: { wallet: { increment: shares.recipient } } });
     if (plan.sponsorId && shares.sponsor > 0) {
-      await tx.user.update({ where: { id: plan.sponsorId }, data: { wallet: { increment: shares.sponsor } } });
+      // Corporate decision (follow-up Q8a/b, 06-07/10/2026): redirects to the
+      // default beneficiaries if the sponsor has been expired more than 7 days.
+      await creditCommissionOrRedirect(tx, {
+        recipientId: plan.sponsorId,
+        amount: shares.sponsor,
+        description: `CSP sponsor (referral) reward from support request ${request.id}`,
+        transactionType: CSP_SPONSOR_REWARD_TX_TYPE,
+        reference: `CSP-SPONSOR-${request.id}`,
+        now: releasedAt,
+      });
     }
 
     // Corporate decision (Q29, option C): the BPI Profit Pool share is company
@@ -530,16 +541,29 @@ export async function executeCspRelease(
       });
     }
 
+    // Corporate decision (Q28, 29/09/2026; follow-up Q10, 06/10/2026): the
+    // no-sponsor portion of `shares.reserve` goes to the default
+    // beneficiaries, not the CSP Reserve Wallet. The rest of the configured
+    // reserve share still goes to the CSP Reserve Wallet.
+    const reserveForPool = shares.reserve - plan.sponsorRedirectedToReserve;
     const pools: Array<[string, string, number]> = [
       ["CSP State Wallet", "STATE_REVENUE_POOL", shares.state],
       ["CSP Management Wallet", "CSP_MANAGEMENT_RESERVE", shares.management],
-      ["CSP Reserve Wallet", "CSP_RESERVE", shares.reserve],
+      ["CSP Reserve Wallet", "CSP_RESERVE", reserveForPool],
     ];
     for (const [name, type, amount] of pools) {
       const wallet = await ensureSystemWallet(tx, name, type);
       if (amount > 0) {
         await tx.systemWallet.update({ where: { id: wallet.id }, data: { balanceNgn: { increment: amount } } });
       }
+    }
+    if (plan.sponsorRedirectedToReserve > 0) {
+      await creditDefaultBeneficiaries(tx, {
+        amount: plan.sponsorRedirectedToReserve,
+        description: `CSP sponsor share (no sponsor) for request ${request.id}`,
+        transactionType: "CSP_SPONSOR_REDIRECT",
+        reference: `CSP-SPONSOR-REDIRECT-${request.id}`,
+      });
     }
 
     await tx.transaction.create({
@@ -555,20 +579,8 @@ export async function executeCspRelease(
       },
     });
 
-    if (plan.sponsorId && shares.sponsor > 0) {
-      await tx.transaction.create({
-        data: {
-          id: randomUUID(),
-          userId: plan.sponsorId,
-          transactionType: CSP_SPONSOR_REWARD_TX_TYPE,
-          amount: shares.sponsor,
-          description: `CSP sponsor (referral) reward from support request ${request.id}`,
-          status: "completed",
-          walletType: "wallet",
-          reference: `CSP-SPONSOR-${request.id}`,
-        },
-      });
-    }
+    // The sponsor share's wallet credit and transaction record (or its
+    // redirect to the default beneficiaries) were already written above.
 
     // Holding inflows shown to the beneficiary are now settled.
     await tx.transaction.updateMany({

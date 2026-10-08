@@ -244,10 +244,19 @@ export async function runCspAutoContribute(params: {
 }
 
 /**
- * A6: Tracks monthly contribution for wait-period reduction.
- * If a contributor has an active cooldown, their monthly contribution is tracked.
- * When they hit the monthly cap (₦10,000), 1 month is deducted from their cooldown.
+ * Corporate decision (follow-up Q15, 07/10/2026): the old rule (₦10,000
+ * contributed in a month takes one month off) is replaced. A member in a
+ * CSP waiting period has it reduced to 6 months once their total
+ * contribution during the waiting period reaches a multiplier (default 3x,
+ * admin setting) of everything they themselves contributed before they
+ * received support. This reuses the CspWaitReductionLog table with a fixed
+ * sentinel monthKey (no schema change): amountContrib holds the running
+ * cumulative total during this cooldown, monthReduced marks whether the
+ * reduction has already been applied (so it only fires once).
  */
+const WAIT_REDUCTION_3X_KEY = "3X-TOTAL";
+const WAIT_REDUCTION_TARGET_MONTHS = 6;
+
 async function trackWaitReduction(
   prisma: PrismaClient,
   contributorId: string,
@@ -260,23 +269,24 @@ async function trackWaitReduction(
     });
     const tierModelEnabled = tierModelRow?.settingValue === "true";
 
-    // Load wait reduction monthly target
-    const targetRow = await prisma.adminSettings.findUnique({
-      where: { settingKey: "csp_wait_reduction_monthly_target" },
+    // Load the multiplier (default 3x)
+    const multiplierRow = await prisma.adminSettings.findUnique({
+      where: { settingKey: "csp_wait_reduction_multiplier" },
     });
-    const MONTHLY_CAP = targetRow ? parseInt(targetRow.settingValue, 10) : 10000;
-    if (!Number.isFinite(MONTHLY_CAP) || MONTHLY_CAP <= 0) return;
+    const multiplier = multiplierRow ? parseFloat(multiplierRow.settingValue) : 3;
+    if (!Number.isFinite(multiplier) || multiplier <= 0) return;
 
     const now = new Date();
 
     // Find the contributor's active cooldown
     let cooldownRequestId: string | null = null;
     let activeCooldownEndsAt: Date | null = null;
+    let cooldownStartedAt: Date | null = null;
 
     if (tierModelEnabled) {
       const standing = await prisma.cspMemberStanding.findUnique({
         where: { userId: contributorId },
-        select: { coolingEndsAt: true },
+        select: { coolingEndsAt: true, lastSupportReleasedAt: true },
       });
       if (!standing?.coolingEndsAt || standing.coolingEndsAt <= now) return;
 
@@ -287,10 +297,11 @@ async function trackWaitReduction(
           fulfilledAt: { not: null },
         },
         orderBy: { fulfilledAt: "desc" },
-        select: { id: true },
+        select: { id: true, fulfilledAt: true },
       });
       cooldownRequestId = activeCooldownRequest?.id ?? null;
       activeCooldownEndsAt = standing.coolingEndsAt;
+      cooldownStartedAt = standing.lastSupportReleasedAt ?? activeCooldownRequest?.fulfilledAt ?? null;
     } else {
       const activeCooldown = await prisma.cspSupportRequest.findFirst({
         where: {
@@ -299,67 +310,74 @@ async function trackWaitReduction(
           cooldownEndsAt: { gt: now },
         },
         orderBy: { releasedAt: "desc" },
-        select: { id: true, cooldownEndsAt: true },
+        select: { id: true, cooldownEndsAt: true, releasedAt: true },
       });
       if (!activeCooldown?.cooldownEndsAt) return;
       cooldownRequestId = activeCooldown.id;
       activeCooldownEndsAt = activeCooldown.cooldownEndsAt;
+      cooldownStartedAt = activeCooldown.releasedAt ?? null;
     }
 
-    if (!cooldownRequestId || !activeCooldownEndsAt) return;
-
-    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    if (!cooldownRequestId || !activeCooldownEndsAt || !cooldownStartedAt) return;
 
     const existing = await prisma.cspWaitReductionLog.findUnique({
       where: {
         userId_requestId_monthKey: {
           userId: contributorId,
           requestId: cooldownRequestId,
-          monthKey,
+          monthKey: WAIT_REDUCTION_3X_KEY,
         },
       },
     });
+    const alreadyApplied = existing?.monthReduced ?? false;
+    if (alreadyApplied) return;
 
-    const prevAmount = existing?.amountContrib ?? 0;
-    const newAmount = Math.min(prevAmount + contributionAmount, MONTHLY_CAP);
-    const alreadyReduced = existing?.monthReduced ?? false;
-    const justHitCap = !alreadyReduced && newAmount >= MONTHLY_CAP;
+    const cumulativeDuringCooldown = Math.round((existing?.amountContrib ?? 0) + contributionAmount);
+
+    // Everything this member contributed to other campaigns before they
+    // themselves received support (corporate decision, follow-up Q15).
+    const preSupportAgg = await prisma.cspContribution.aggregate({
+      where: { contributorId, createdAt: { lt: cooldownStartedAt } },
+      _sum: { amount: true },
+    });
+    const preSupportTotal = preSupportAgg._sum.amount ?? 0;
+    const target = preSupportTotal * multiplier;
+    const hitTarget = target > 0 && cumulativeDuringCooldown >= target;
 
     await prisma.cspWaitReductionLog.upsert({
       where: {
         userId_requestId_monthKey: {
           userId: contributorId,
           requestId: cooldownRequestId,
-          monthKey,
+          monthKey: WAIT_REDUCTION_3X_KEY,
         },
       },
-      update: {
-        amountContrib: newAmount,
-        monthReduced: alreadyReduced || justHitCap,
-        updatedAt: now,
-      },
+      update: { amountContrib: cumulativeDuringCooldown, monthReduced: hitTarget, updatedAt: now },
       create: {
         userId: contributorId,
         requestId: cooldownRequestId,
-        monthKey,
-        amountContrib: newAmount,
-        monthReduced: justHitCap,
+        monthKey: WAIT_REDUCTION_3X_KEY,
+        amountContrib: cumulativeDuringCooldown,
+        monthReduced: hitTarget,
       },
     });
 
-    if (justHitCap) {
-      const newCooldownEnd = new Date(activeCooldownEndsAt);
-      newCooldownEnd.setMonth(newCooldownEnd.getMonth() - 1);
-      if (tierModelEnabled) {
-        await prisma.cspMemberStanding.update({
-          where: { userId: contributorId },
-          data: { coolingEndsAt: newCooldownEnd },
-        });
-      } else {
-        await prisma.cspSupportRequest.update({
-          where: { id: cooldownRequestId },
-          data: { cooldownEndsAt: newCooldownEnd },
-        });
+    if (hitTarget) {
+      const newCooldownEnd = new Date(cooldownStartedAt);
+      newCooldownEnd.setMonth(newCooldownEnd.getMonth() + WAIT_REDUCTION_TARGET_MONTHS);
+      // Never lengthen the cooldown — only apply if it's actually sooner.
+      if (newCooldownEnd < activeCooldownEndsAt) {
+        if (tierModelEnabled) {
+          await prisma.cspMemberStanding.update({
+            where: { userId: contributorId },
+            data: { coolingEndsAt: newCooldownEnd, coolingMonthsBase: WAIT_REDUCTION_TARGET_MONTHS },
+          });
+        } else {
+          await prisma.cspSupportRequest.update({
+            where: { id: cooldownRequestId },
+            data: { cooldownEndsAt: newCooldownEnd, cooldownMonths: WAIT_REDUCTION_TARGET_MONTHS },
+          });
+        }
       }
     }
   } catch (err) {

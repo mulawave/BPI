@@ -1,6 +1,21 @@
 import { prisma } from "@/lib/prisma";
 
+/**
+ * Corporate decision (follow-up Q11, 07/10/2026): when the CSP "2x" minimum-
+ * funding rule is built (a campaign must raise 2x a tier's contribution
+ * amount before the 48-hour close countdown starts), the 2x should double
+ * the member's TIER contribution amount, not their exact individual
+ * contribution. Not wired into the broadcast countdown yet — recorded here
+ * for that build.
+ */
+export const CSP_TWO_X_RULE_BASE = "tier_contribution_amount" as const;
+
 export interface TierConfig {
+  /**
+   * Master switch for the CSP tier model. Corporate decision (follow-up
+   * Q12, 07/10/2026): stays off at this release; an admin switches it on
+   * once tier values have been reviewed.
+   */
   tierModelEnabled: boolean;
   contributionMultiplier: number;
   minContributionRight: number;

@@ -1896,6 +1896,7 @@ model User {
   cashback                                                             Float                        @default(0)
   studentCashback                                                      Float                        @default(0)
   community                                                            Float                        @default(0)
+  reserve                                                              Float                        @default(0)
   shareholder                                                          Float                        @default(0)
   shelter                                                              Float                        @default(0)
   education                                                            Float                        @default(0)
@@ -1926,6 +1927,7 @@ model User {
   sponsorId                                                            String?
   membershipActivatedAt                                                DateTime?
   membershipExpiresAt                                                  DateTime?
+  membershipGraceAnchorAt                                              DateTime?
   renewalCount                                                         Int                          @default(0)
   security                                                             Float                        @default(0)
   inviteCode                                                           String?                      @unique

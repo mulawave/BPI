@@ -82,6 +82,7 @@ async function getCachedAuthEnrichment(userId: string) {
         activeMembershipPackageId: true,
         membershipActivatedAt: true,
         membershipExpiresAt: true,
+        membershipGraceAnchorAt: true,
         userType: true,
         role: true,
         forcePasswordReset: true,
@@ -101,6 +102,7 @@ async function getCachedAuthEnrichment(userId: string) {
       membershipExpiresAt: dbUser?.membershipExpiresAt,
       renewalCycleDays: membershipPackage?.renewalCycle,
       graceDays: await loadMembershipGraceDays(prisma),
+      graceAnchorAt: dbUser?.membershipGraceAnchorAt,
     });
 
     let hasActiveEmpowerment = false;

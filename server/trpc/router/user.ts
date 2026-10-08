@@ -87,6 +87,7 @@ export const userRouter = createTRPCRouter({
           activeMembershipPackageId: true,
           membershipActivatedAt: true,
           membershipExpiresAt: true,
+          membershipGraceAnchorAt: true,
           level1Count: true,
           level2Count: true,
           level3Count: true,
@@ -126,6 +127,7 @@ export const userRouter = createTRPCRouter({
         membershipExpiresAt: user.membershipExpiresAt,
         renewalCycleDays: activeMembership?.renewalCycle,
         graceDays: membershipGraceDays,
+        graceAnchorAt: user.membershipGraceAnchorAt,
       });
 
       // Check if user has bank accounts on file (indicates Nigerian identity)

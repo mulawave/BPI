@@ -10,6 +10,7 @@ import {
 } from "@/server/services/notification.service";
 import { processWalletAutoDebit, runPostCreditAutomation } from "@/server/services/walletAutoDebit.service";
 import { runCspAutoContribute } from "@/server/services/cspAutoContribute.service";
+import { creditCommissionOrRedirect } from "@/server/services/commissionRedirect.service";
 
 const MYNGUL_PACKAGES = [
   "Gold Plus",
@@ -160,7 +161,6 @@ export async function activateMembershipAfterExternalPayment(params: {
       const referrerData = referrerDataMap.get(referrer.id);
 
       const updateData: any = {};
-      if (cashReward > 0) updateData.wallet = { increment: cashReward };
 
       const hasShelter = (referrerData?.isShelter === 1) || ((referrerData?.shelter ?? 0) > 0);
 
@@ -183,26 +183,23 @@ export async function activateMembershipAfterExternalPayment(params: {
         await tx.user.update({ where: { id: referrer.id }, data: updateData });
       }
 
-      // Auto-debit referral cash reward to community wallet if configured
+      // Corporate decision (follow-up Q8a/b, 06-07/10/2026): redirects to the
+      // default beneficiaries once this referrer has been expired more than
+      // 7 days. Auto-Debit only applies when the referrer is actually credited.
       if (cashReward > 0) {
-        const autoDebitResult = await processWalletAutoDebit({ prisma: tx, userId: referrer.id, creditAmount: cashReward, trigger: "reward" });
-        if (autoDebitResult.shouldTriggerCspAutoContribute) {
-          cspTriggerUserIds.add(referrer.id);
-        }
-      }
-
-      if (cashReward > 0) {
-        await tx.transaction.create({
-          data: {
-            id: randomUUID(),
-            userId: referrer.id,
-            transactionType: `REFERRAL_CASH_L${level}`,
-            amount: cashReward,
-            description: `L${level} Cash Wallet referral reward from ${membershipPackage.name} activation by ${safeActivatorName} (Referral ID: ${userId})`,
-            status: "completed",
-            reference: `REF-CASH-${packageId}-L${level}-${timestamp}`,
-          },
+        const { redirected } = await creditCommissionOrRedirect(tx, {
+          recipientId: referrer.id,
+          amount: cashReward,
+          description: `L${level} Cash Wallet referral reward from ${membershipPackage.name} activation by ${safeActivatorName} (Referral ID: ${userId})`,
+          transactionType: `REFERRAL_CASH_L${level}`,
+          reference: `REF-CASH-${packageId}-L${level}-${timestamp}`,
         });
+        if (!redirected) {
+          const autoDebitResult = await processWalletAutoDebit({ prisma: tx, userId: referrer.id, creditAmount: cashReward, trigger: "reward" });
+          if (autoDebitResult.shouldTriggerCspAutoContribute) {
+            cspTriggerUserIds.add(referrer.id);
+          }
+        }
       }
 
       if (palliativeReward > 0) {
@@ -566,7 +563,6 @@ export async function upgradeMembershipAfterExternalPayment(params: {
         const referrerData = referrerDataMap.get(referrerId);
 
         const updateData: any = {};
-        if (bonuses.cash > 0) updateData.wallet = { increment: bonuses.cash };
 
         if (bonuses.palliative > 0) {
           if (referrerData?.palliativeActivated && referrerData.selectedPalliative) {
@@ -581,24 +577,43 @@ export async function upgradeMembershipAfterExternalPayment(params: {
 
         if (bonuses.cashback > 0) updateData.cashback = { increment: bonuses.cashback };
 
-        await tx.user.update({ where: { id: referrerId }, data: updateData });
+        if (Object.keys(updateData).length > 0) {
+          await tx.user.update({ where: { id: referrerId }, data: updateData });
+        }
 
-        await tx.transaction.create({
-          data: {
-            id: randomUUID(),
-            userId: referrerId,
-            transactionType: `membership_upgrade_bonus_l${level}`,
-            amount: bonuses.cash + bonuses.palliative + bonuses.cashback + bonuses.bpt,
+        if (bonuses.palliative + bonuses.cashback + bonuses.bpt > 0) {
+          await tx.transaction.create({
+            data: {
+              id: randomUUID(),
+              userId: referrerId,
+              transactionType: `membership_upgrade_bonus_l${level}`,
+              amount: bonuses.palliative + bonuses.cashback + bonuses.bpt,
+              description: `Referral bonus (differential) for ${newPackage.name} upgrade - Level ${level}`,
+              status: "completed",
+              reference: `UPGRADE-${Date.now()}-L${level}`,
+            },
+          });
+        }
+
+        // Corporate decision (follow-up Q8a/b, 06-07/10/2026): the cash
+        // portion redirects to the default beneficiaries once this referrer
+        // has been expired more than 7 days.
+        let cashRedirected = false;
+        if (bonuses.cash > 0) {
+          const result = await creditCommissionOrRedirect(tx, {
+            recipientId: referrerId,
+            amount: bonuses.cash,
             description: `Referral bonus (differential) for ${newPackage.name} upgrade - Level ${level}`,
-            status: "completed",
-            reference: `UPGRADE-${Date.now()}-L${level}`,
-          },
-        });
+            transactionType: `membership_upgrade_bonus_l${level}`,
+            reference: `UPGRADE-${Date.now()}-L${level}-CASH`,
+          });
+          cashRedirected = result.redirected;
+        }
 
         if (bonuses.bpt > 0) {
           deferredBpt.push({ referrerId, amount: bonuses.bpt });
         }
-        if (bonuses.cash > 0) {
+        if (bonuses.cash > 0 && !cashRedirected) {
           deferredAutoDebit.push({ referrerId, amount: bonuses.cash });
         }
         deferredNotifications.push({

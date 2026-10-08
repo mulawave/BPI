@@ -50,6 +50,14 @@ export function evaluateMembershipAccess(input: {
   membershipActivatedAt?: MaybeDate;
   renewalCycleDays?: number | null;
   graceDays?: number | null;
+  /**
+   * Corporate decision (follow-up Q8c, 06/10/2026): when set, the grace
+   * period (access and, separately, commissions) counts from this date
+   * instead of the member's real expiry date. Used once at release to give
+   * already-expired members a fresh grace window; renewal logic is
+   * unaffected and keeps using the real expiry date.
+   */
+  graceAnchorAt?: MaybeDate;
   now?: Date;
 }) {
   const now = input.now ?? new Date();
@@ -63,7 +71,9 @@ export function evaluateMembershipAccess(input: {
     renewalCycleDays: input.renewalCycleDays,
   });
 
-  const graceEndsAt = expiresAt ? new Date(expiresAt.getTime() + graceDays * DAY_IN_MS) : null;
+  const graceAnchorAt = toValidDate(input.graceAnchorAt);
+  const graceBase = graceAnchorAt && expiresAt && graceAnchorAt.getTime() > expiresAt.getTime() ? graceAnchorAt : expiresAt;
+  const graceEndsAt = graceBase ? new Date(graceBase.getTime() + graceDays * DAY_IN_MS) : null;
   const isExpired = hasMembershipPackage && !!expiresAt && expiresAt.getTime() <= now.getTime();
   // Access continues through the grace period after expiry, then stops until renewal.
   const membershipValid = hasMembershipPackage && !!graceEndsAt && graceEndsAt.getTime() > now.getTime();

@@ -13,6 +13,7 @@ import { PAYMENT_FULFILLMENT_TYPES } from "@/server/services/payment/paymentMeta
 import { recordRevenue } from "@/server/services/revenue.service";
 import { initiateBasqetUsdtPayout } from "@/server/services/payment/BasqetClient";
 import { runPostCreditAutomation, loadAutoDebitPolicy, effectiveAutoDebitPercentage } from "@/server/services/walletAutoDebit.service";
+import { loadRenewalReservePolicy, withdrawableReserveAmount, withdrawReserveExcess } from "@/server/services/renewalReserve.service";
 import { PaymentProcessor } from "@/server/services/payment/PaymentProcessor";
 import { PaymentGateway } from "@/server/services/payment/types";
 import { fulfillDepositPayment, isGatewayAmountAcceptable } from "@/server/services/payment/depositFulfillment";
@@ -1823,14 +1824,18 @@ export const walletRouter = createTRPCRouter({
       }
 
       if (!isGatewayAmountAcceptable(verification.amount, pending.amount)) {
+        // Underpayment (corporate decision, follow-up Q4): the member deposits
+        // the difference, then an admin approves this deposit once the top-up
+        // arrives.
+        const shortfall = Math.max(0, Math.round((pending.amount - (verification.amount ?? 0)) * 100) / 100);
         await prisma.pendingPayment.update({
           where: { id: pending.id },
           data: {
-            reviewNotes: `wallet.verifyPayment: amount mismatch — gateway confirmed ₦${verification.amount}, expected ₦${pending.amount}. Manual review required.`,
+            reviewNotes: `wallet.verifyPayment: amount mismatch — gateway confirmed ₦${verification.amount}, expected ₦${pending.amount} (short by ₦${shortfall}). Awaiting a make-up deposit, then admin approval.`,
             updatedAt: new Date(),
           },
         });
-        throw new Error("The amount paid does not match this deposit. Our team will review it.");
+        throw new Error(`You paid ₦${shortfall.toLocaleString()} less than required. Please make a deposit for the difference, then our team will approve this deposit.`);
       }
 
       // Idempotent: shared with the webhooks, verify page and recovery job.
@@ -1969,7 +1974,7 @@ export const walletRouter = createTRPCRouter({
     return {
       // Compulsory Auto-Debit is always on; the percentage shown is the one applied.
       isEnabled: compulsory ? true : (setting?.isEnabled ?? false),
-      percentage: effectiveAutoDebitPercentage(setting, policy) || (setting?.percentage ?? 10),
+      percentage: effectiveAutoDebitPercentage(setting, policy) || (setting?.percentage ?? policy.startingPercentage),
       applyToRewards: true,
       applyToDeposits: policy.depositsEnabled && !!setting?.isEnabled && !!setting?.applyToDeposits,
       compulsory,
@@ -1977,6 +1982,35 @@ export const walletRouter = createTRPCRouter({
       depositsAllowed: policy.depositsEnabled,
       appliesToCspPayout: policy.cspPayoutEnabled,
     };
+  }),
+
+  // ============================================
+  // RENEWAL RESERVE
+  // ============================================
+  getReserveBalance: protectedProcedure.query(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id as string;
+    if (!userId) throw new Error("UNAUTHORIZED");
+    const [user, policy] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { reserve: true } }),
+      loadRenewalReservePolicy(prisma),
+    ]);
+    const balance = user?.reserve ?? 0;
+    return {
+      balance,
+      withdrawalFloor: policy.withdrawalFloor,
+      withdrawable: withdrawableReserveAmount(balance, policy),
+    };
+  }),
+
+  /** Moves the amount above the withdrawal floor from the Renewal Reserve to the Main Wallet. */
+  withdrawReserve: protectedProcedure.mutation(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id as string;
+    if (!userId) throw new Error("UNAUTHORIZED");
+    const amount = await withdrawReserveExcess(prisma, { userId });
+    if (amount <= 0) {
+      throw new Error("Nothing above the Renewal Reserve floor is available to move yet.");
+    }
+    return { success: true, amount };
   }),
 
   saveAutoDebitSettings: protectedProcedure

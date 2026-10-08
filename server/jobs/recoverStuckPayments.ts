@@ -21,7 +21,7 @@ import {
   markPendingPaymentReviewed,
 } from "@/server/services/payment/pendingPaymentFulfillment";
 import { fulfillDepositPayment, isGatewayAmountAcceptable } from "@/server/services/payment/depositFulfillment";
-import { classifyGatewayVerification, recoveryActionForUnpaid } from "@/server/services/payment/gatewayOutcome";
+import { classifyGatewayVerification, recoveryActionForUnpaid, unpaidExpiryMsFor } from "@/server/services/payment/gatewayOutcome";
 import { settleOverpayment } from "@/server/services/payment/paymentPolicy";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { getNigerianRegion } from "@/lib/nigeria-regions";
@@ -109,7 +109,8 @@ export async function runRecoverStuckPayments(): Promise<RecoverStuckPaymentsRes
         if (outcome !== "success") {
           // Never expire on a verification/network error — retry next run.
           const ageMs = now.getTime() - payment.createdAt.getTime();
-          const action = verification.error ? "wait" : recoveryActionForUnpaid(outcome, ageMs);
+          const expiryMs = unpaidExpiryMsFor(payment.paymentMethod, (payment.metadata as Record<string, any> | null)?.automated);
+          const action = verification.error ? "wait" : recoveryActionForUnpaid(outcome, ageMs, expiryMs);
 
           if (action === "wait") {
             // Customer may still be paying (abandoned checkout, transfer in flight,
@@ -128,7 +129,7 @@ export async function runRecoverStuckPayments(): Promise<RecoverStuckPaymentsRes
               status: "rejected",
               reviewNotes: action === "reject"
                 ? `Auto-rejected by recovery cron: gateway reported the payment as failed at ${now.toISOString()}`
-                : `Auto-expired by recovery cron: no successful payment after 24h (${now.toISOString()}). A later successful gateway webhook will still fulfil it.`,
+                : `Auto-expired by recovery cron: no successful payment after ${Math.round(expiryMs / 3600000)}h (${now.toISOString()}). A later successful gateway webhook will still fulfil it automatically.`,
               updatedAt: now,
             },
           });
