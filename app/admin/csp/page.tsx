@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/client/trpc";
 import CspWaitingPeriodTool from "@/components/admin/CspWaitingPeriodTool";
+import CspTopUpSettingsCard from "@/components/admin/CspTopUpSettingsCard";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/server/trpc/router/_app";
 import toast from "react-hot-toast";
@@ -931,6 +932,7 @@ export default function CspAdminQueuePage() {
 
       {/* ─── Manual waiting-period reduction ─────────────────────────────── */}
       <CspWaitingPeriodTool />
+      <CspTopUpSettingsCard />
 
       {/* ─── CSP Tier Table (per-tier values) ─────────────────────────────── */}
       <div className="rounded-2xl border border-border bg-card/70 p-6 shadow-sm">

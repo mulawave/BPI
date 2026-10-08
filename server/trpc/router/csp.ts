@@ -53,6 +53,7 @@ import {
   DEFAULT_BENEFICIARY_SETTINGS_KEY,
 } from "@/server/services/defaultBeneficiaries.service";
 import { afterCspRelease } from "@/server/services/csp-release-effects.service";
+import { loadCspTopUpSettings, purchaseTopUp, attachPreExtension, CSP_TOPUP_SETTINGS_KEYS } from "@/server/services/cspTopUp.service";
 
 // Hardcoded fallback defaults – overridden by AdminSettings when set
 const DEFAULTS = {
@@ -1194,6 +1195,10 @@ export const cspRouter = createTRPCRouter({
         });
       }
 
+      // Corporate decision (follow-up Q13, 07/10/2026): a pre-purchased time
+      // extension is valid only for the member's next request.
+      await attachPreExtension(prisma, { userId, requestId: request.id });
+
       return { requestId: request.id, status: request.status, requestedAmount, thresholdAmount };
     }),
 
@@ -1404,6 +1409,53 @@ export const cspRouter = createTRPCRouter({
       isActive: req.isActive,
     }));
   }),
+
+  /** CSP top-up: current settings and prices (follow-up Q13, 07/10/2026). */
+  getTopUpSettings: protectedProcedure.query(async () => {
+    const settings = await loadCspTopUpSettings(prisma);
+    return settings;
+  }),
+
+  /** Buy a 24h or 48h time extension, paid from the Main Wallet. */
+  purchaseTopUp: protectedProcedure
+    .input(z.object({ hours: z.union([z.literal(24), z.literal(48)]), requestId: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = (ctx.session?.user as any)?.id as string | undefined;
+      if (!userId) throw new Error("UNAUTHORIZED");
+      const result = await purchaseTopUp(prisma, { userId, hours: input.hours, requestId: input.requestId });
+      return { success: true, ...result };
+    }),
+
+  /** Admin: CSP top-up settings. */
+  adminGetTopUpSettings: protectedProcedure.query(async ({ ctx }) => {
+    assertAdmin(ctx.session);
+    return loadCspTopUpSettings(prisma);
+  }),
+
+  adminSaveTopUpSettings: protectedProcedure
+    .input(z.object({
+      enabled: z.boolean(),
+      price24h: z.number().int().min(0),
+      price48h: z.number().int().min(0),
+      maxExtraHours: z.number().int().min(0),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const values: Array<[string, string]> = [
+        [CSP_TOPUP_SETTINGS_KEYS.enabled, input.enabled ? "true" : "false"],
+        [CSP_TOPUP_SETTINGS_KEYS.price24h, String(input.price24h)],
+        [CSP_TOPUP_SETTINGS_KEYS.price48h, String(input.price48h)],
+        [CSP_TOPUP_SETTINGS_KEYS.maxExtraHours, String(input.maxExtraHours)],
+      ];
+      await prisma.$transaction(values.map(([settingKey, settingValue]) =>
+        prisma.adminSettings.upsert({
+          where: { settingKey },
+          update: { settingValue, updatedAt: new Date() },
+          create: { id: randomUUID(), settingKey, settingValue, updatedAt: new Date() },
+        }),
+      ));
+      return { success: true };
+    }),
 
   contribute: protectedProcedure
     .input(
@@ -1712,6 +1764,102 @@ export const cspRouter = createTRPCRouter({
 
       return { requestId: request.id, status: request.status };
     }),
+
+  /**
+   * Admin-only: Special Community Support (follow-up Q17, 07/10/2026). No
+   * profit motive (e.g. a borehole for a state or LGA) — 100% of what is
+   * raised goes to the BPI project account when released, with no 20% fee,
+   * no sponsor share, and contributions don't count toward the
+   * contributor's own eligibility or get picked up by Auto-Contribute.
+   */
+  createSpecialSupportRequest: protectedProcedure
+    .input(z.object({
+      amount: z.number().int().positive(),
+      purpose: z.string().min(3),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const adminId = (ctx.session?.user as any)?.id as string;
+
+      let systemUser = await prisma.user.findFirst({ where: { email: "csp-system@beepagroafrica.com" } });
+      if (!systemUser) {
+        systemUser = await prisma.user.create({
+          data: {
+            id: randomUUID(),
+            email: "csp-system@beepagroafrica.com",
+            name: "CSP System",
+            userType: "user",
+            activated: true,
+          },
+        });
+      }
+
+      const request = await prisma.cspSupportRequest.create({
+        data: {
+          userId: systemUser.id,
+          category: "special",
+          amount: input.amount,
+          requestedAmount: input.amount,
+          purpose: input.purpose,
+          notes: input.notes,
+          status: "broadcasting",
+          thresholdAmount: input.amount,
+          raisedAmount: 0,
+          contributorsCount: 0,
+          isAdminDefault: true,
+          isSpecialSupport: true,
+          isActive: true,
+          approvedBy: adminId ?? "admin",
+          approvedAt: new Date(),
+          broadcastExpiresAt: null,
+        },
+      });
+
+      return { requestId: request.id, status: request.status };
+    }),
+
+  /** Public: Special Community Support campaigns with their supporters (name + amount), per corporate decision. */
+  listSpecialSupportRequests: protectedProcedure.query(async () => {
+    const requests = await prisma.cspSupportRequest.findMany({
+      where: { isSpecialSupport: true },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        purpose: true,
+        notes: true,
+        status: true,
+        thresholdAmount: true,
+        raisedAmount: true,
+        releasedAt: true,
+        createdAt: true,
+        Contributions: {
+          orderBy: { createdAt: "desc" },
+          select: {
+            amount: true,
+            createdAt: true,
+            Contributor: { select: { id: true, name: true, firstname: true, lastname: true } },
+          },
+        },
+      },
+    });
+
+    return requests.map((r) => ({
+      id: r.id,
+      purpose: r.purpose,
+      notes: r.notes,
+      status: r.status,
+      thresholdAmount: r.thresholdAmount,
+      raisedAmount: r.raisedAmount,
+      releasedAt: r.releasedAt,
+      createdAt: r.createdAt,
+      supporters: r.Contributions.map((c) => ({
+        name: c.Contributor?.name || [c.Contributor?.firstname, c.Contributor?.lastname].filter(Boolean).join(" ") || "A BPI member",
+        amount: c.amount,
+        contributedAt: c.createdAt,
+      })),
+    }));
+  }),
 
   // Admin-only: Toggle active status of default requests
   toggleAdminDefaultRequest: protectedProcedure

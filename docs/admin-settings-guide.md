@@ -85,62 +85,40 @@ A member's waiting period drops to 6 months once their contributions to other ca
 
 ---
 
-## Waiting for corporate
+## 7. CSP time extensions (top-up) — Admin → CSP, "CSP time extensions" card
 
-These items are not built yet — they are new products (healthcare card,
-Special Community Support, CSP top-up) that need their own design pass, not
-a quick patch. The decisions already made for them are recorded at the end
-of this guide so they aren't lost:
+| Setting | Default | What it does |
+|---|---|---|
+| Enabled | Off | Members can only buy time extensions once an admin turns this on. |
+| 24h price (₦) | 10,000 | Fee for a 24-hour extension. |
+| 48h price (₦) | 20,000 | Fee for a 48-hour extension. |
+| Max extra hours per request | 48 | Total extra broadcast time a single request can gain from extensions. |
 
-- The time-extension (top-up) feature itself
-- Healthcare card
-- Special Community Support
-- The "How CSP works" page (text from the CEO)
+Paid from the member's Main Wallet. The fee goes to the member's own Community Wallet and the extension only takes effect once that amount has been contributed (manually or by Auto-Contribute) to a live campaign before its countdown ends — otherwise it is forfeited when the countdown ends or the request releases. A "pre-extension" (bought with no request yet) attaches to the member's very next request and is forfeited if not used then. Member-facing: `components/csp/CspTopUpButton.tsx` (not yet wired into the main CSP dashboard card — usable standalone).
 
----
+## 8. Healthcare Card — Admin → Healthcare Card
 
-## Decisions recorded for features not yet built
+| Setting | Default | What it does |
+|---|---|---|
+| Subscription price (₦/year) | 30,000 | Yearly fee. |
+| Yearly cover (₦) | 300,000 | Resets (does not carry over) on each renewal. |
+| Share to Community Wallet (₦) | 10,000 | The rest of the price goes to the BPI Health & Project Account. |
+| Monthly usage min/max (%) | 10 / 20 | Bounds on how much of the cover can be used per month. |
+| Require Regular Plus from tier # | 2 | Regular is only eligible at Tier 1; Regular Plus+ required from this tier up. |
+| Discount, tiers 1-3 / 4-6 / 7+ (%) | 10 / 20 / 40 | Discount on covered services, by the member's CSP tier. |
 
-These corporate decisions are settled, but the underlying feature does not
-exist in the codebase yet and needs its own design/build pass rather than a
-quick patch. Recorded here so the decision isn't lost before that work starts.
+Member page: `/healthcare` — subscribe/renew, see the card's SSC code and QR, cover remaining and current discount. Admin page: `/admin/healthcare` — settings, manage centres and their services (mark a service "discount only" for products excluded from the cover — the member pays the provider directly at the discounted price), and record a redemption by scanning or typing a member's SSC code. Covered services deduct from the member's cover (capped monthly and yearly) and BPI settles the centre separately (reconciled by an admin, not an automatic bank transfer); discount-only services never touch the cover.
 
-### CSP top-up (time extension) — follow-up Q13
-- Only 24h and 48h extension options; price for each is an admin setting
-  (suggested ₦10,000 / ₦20,000).
-- The fee is payable from the member's Main Wallet balance or a fresh
-  gateway payment — member's choice.
-- A pre-purchased extension (bought before making a request) is valid only
-  for the member's next CSP request; otherwise forfeited.
-- Maximum 48 extra hours on top of the 48-hour countdown.
-- The fee goes to the member's Community Wallet and only takes effect once
-  that amount has been contributed to live campaigns; it does not count
-  towards the member's own tier contribution.
+## 9. Special Community Support — Admin → Special Community Support
 
-### CSP "2x" minimum-funding rule — follow-up Q11/Q22/Q25
-- A campaign stays open until it raises 2x the member's **tier** contribution
-  amount (not their exact individual contribution), then a 48-hour countdown
-  to the tier's maximum cap begins.
-- See `CSP_TWO_X_RULE_BASE` in `server/services/csp-config.service.ts`.
+Admin-only campaigns with no profit motive (e.g. a borehole for a state or LGA). 100% of what is raised goes to the BPI Health & Project Account when released — no 20% fee, no sponsor share. Contributions don't count toward a contributor's own CSP eligibility and aren't picked up by Auto-Contribute (members must give manually). Supporters' names and amounts are shown publicly on the campaign.
 
-### Healthcare card — follow-up Q16
-- ₦30,000 subscription fee: ₦10,000 to the member's Community Wallet, ₦20,000
-  to the BPI health project account (same dedicated account as Special
-  Community Support, below).
-- ₦300,000 cover; usage capped between 10% and 20% of the cover per month
-  (₦30,000–₦60,000/month), both admin settings.
-- BPI pays the health centre directly for covered services; the member does
-  not pay and claim back.
-- Tier-based discount; Tier 1 is Regular, Tier 2 and above require Regular
-  Plus or higher.
+## 10. The BPI Health & Project Account
 
-### Special Community Support — follow-up Q17
-- Admin-only campaigns (e.g. a borehole for a state or LGA), no profit
-  motive, same rules as other admin campaigns otherwise (Auto-Debit and
-  Auto-Contribute apply).
-- Funds are held in one dedicated BPI project account; an admin manually
-  disburses to the contractor/project. No automatic payout.
+A single system wallet (`server/services/bpiProjectAccount.service.ts`) holds the ₦20,000 health-project share of each Healthcare Card subscription and all Special Community Support payouts. An admin manually disburses from it to the contractor, provider or programme — there is no automatic transfer to an external account.
 
-These four items need a short design pass (data model for the health card
-and its usage tracking in particular) before they can be built. Everything
-else in this guide is live.
+## Still open
+
+- The "How CSP works" page (text from the CEO).
+- The CSP "2x" minimum-funding rule (follow-up Q11/Q22/Q25) is recorded as a decision (`CSP_TWO_X_RULE_BASE` in `server/services/csp-config.service.ts`) but not wired into the broadcast countdown — it changes *when a campaign's countdown starts*, which needs its own careful pass against the live broadcast-sweep logic.
+- A known simplification: a contribution a member makes specifically to cover their own time-extension fee still counts toward their CSP tier contribution-right (corporate said it should not); carving that out needs tracking which ledger rows are "topping up an extension" versus ordinary contributions.

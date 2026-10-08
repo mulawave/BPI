@@ -267,6 +267,9 @@ describe("Expired CSP campaigns never strand funds", () => {
           return { count: 1 };
         },
       },
+      cspTopUpPurchase: {
+        async updateMany() { return { count: 0 }; },
+      },
     } as any;
   }
 

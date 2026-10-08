@@ -103,6 +103,9 @@ export async function runCspAutoContribute(params: {
     where: {
       status: "broadcasting",
       userId: { not: userId },
+      // Corporate decision (follow-up Q17, 07/10/2026): Auto-Contribute does
+      // not apply to Special Community Support campaigns.
+      isSpecialSupport: false,
       OR: [
         { isAdminDefault: true },
         { broadcastExpiresAt: { gt: new Date() } },
