@@ -1,6 +1,8 @@
 ﻿import { z } from "zod";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
+import { runPostCreditAutomation } from "@/server/services/walletAutoDebit.service";
+import { settleOverpayment } from "@/server/services/payment/paymentPolicy";
 import type { Prisma, MembershipPackage } from "@prisma/client";
 import { getReferralChain } from "@/server/services/referral.service";
 import { distributeBptReward } from "@/server/services/rewards.service";
@@ -783,6 +785,17 @@ export const packageRouter = createTRPCRouter({
           });
         }
 
+        // Compulsory Auto-Debit on the activation referral cash reward
+        if (cashReward > 0) {
+          await runPostCreditAutomation({
+            prisma,
+            userId: referrer.id,
+            creditAmount: cashReward,
+            trigger: "reward",
+            context: `activation referral reward L${level} (${membershipPackage.name})`,
+          });
+        }
+
         // Distribute BPT rewards using the 50/50 split service
         let userBptShare = 0;
         if (bptReward > 0) {
@@ -1179,6 +1192,17 @@ export const packageRouter = createTRPCRouter({
           await prisma.user.update({
             where: { id: referrer.id },
             data: updateData,
+          });
+        }
+
+        // Compulsory Auto-Debit on the activation referral cash reward
+        if (cashReward > 0) {
+          await runPostCreditAutomation({
+            prisma,
+            userId: referrer.id,
+            creditAmount: cashReward,
+            trigger: "reward",
+            context: `activation referral reward L${level} (${membershipPackage.name})`,
           });
         }
 
@@ -3055,6 +3079,17 @@ export const packageRouter = createTRPCRouter({
             data: updateData,
           });
 
+          // Compulsory Auto-Debit on the upgrade referral cash bonus
+          if (bonuses.cash > 0) {
+            await runPostCreditAutomation({
+              prisma,
+              userId: referrerId,
+              creditAmount: bonuses.cash,
+              trigger: "reward",
+              context: `upgrade referral bonus L${level}`,
+            });
+          }
+
           // Distribute BPT (50% to user, 50% to admin pool)
           if (bonuses.bpt > 0) {
             await distributeBptReward(referrerId, bonuses.bpt);
@@ -3591,6 +3626,15 @@ export const packageRouter = createTRPCRouter({
       if (claim.status === "missing") {
         throw new Error("No payment record found for this reference.");
       }
+
+      // Overpayment: the difference goes to the Main Wallet (corporate decision).
+      await settleOverpayment(prisma, {
+        userId,
+        reference: input.reference,
+        paidNgn: verification.amount,
+        dueNgn: pending.amount,
+        source: `verification page (${input.gateway})`,
+      });
 
       const pendingMetadata = (pending.metadata as Record<string, any> | undefined) || {};
       const transactionType = pending.transactionType;

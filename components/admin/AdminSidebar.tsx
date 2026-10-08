@@ -121,6 +121,12 @@ const navigation = [
     description: "Approve & extend CSP requests"
   },
   { 
+    name: "Auto-Debit Alerts", 
+    href: "/admin/auto-debit", 
+    icon: Activity,
+    description: "Auto-Debit rules & failed automations"
+  },
+  { 
     name: "CSP Donations", 
     href: "/admin/csp-donations", 
     icon: Award,

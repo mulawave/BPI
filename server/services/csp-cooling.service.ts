@@ -25,6 +25,10 @@ export type SponsorProgressConfig = {
   sponsorshipRequiresKyc: boolean;
   sponsorshipRequiresRegularPlus: boolean;
   sponsorshipAutoApply: boolean;
+  /** Sponsored members must hold a current (unexpired) membership. */
+  sponsorshipRequiresActive?: boolean;
+  /** Minimum lifetime CSP contribution (₦) each sponsored member must have made. */
+  sponsorshipMinContribution?: number;
 };
 
 type CoolingDb = Pick<
@@ -101,9 +105,10 @@ export function computeSponsorCoolingReduction(params: {
 }
 
 export async function loadDirectSponsorCount(
-  db: Pick<PrismaClient, "referral" | "user" | "kycSubmission" | "membershipPackage">,
+  db: Pick<PrismaClient, "referral" | "user" | "kycSubmission" | "membershipPackage" | "cspContribution">,
   userId: string,
   config: SponsorProgressConfig,
+  now: Date = new Date(),
 ) {
   const referrals = await db.referral.findMany({
     where: { referrerId: userId },
@@ -138,9 +143,25 @@ export async function loadDirectSponsorCount(
             },
           }
         : {}),
+      ...(config.sponsorshipRequiresActive
+        ? { membershipExpiresAt: { gt: now } }
+        : {}),
     },
     select: { id: true, activeMembershipPackageId: true },
   });
+
+  const minContribution = Math.max(0, config.sponsorshipMinContribution ?? 0);
+  const contributedEnough = new Set<string>();
+  if (minContribution > 0 && directUsers.length > 0) {
+    const sums = await db.cspContribution.groupBy({
+      by: ["contributorId"],
+      where: { contributorId: { in: directUsers.map((u) => u.id) } },
+      _sum: { amount: true },
+    });
+    for (const row of sums as Array<{ contributorId: string; _sum: { amount: number | null } }>) {
+      if ((row._sum.amount ?? 0) >= minContribution) contributedEnough.add(row.contributorId);
+    }
+  }
 
   const latestKycRows = config.sponsorshipRequiresKyc
     ? await db.kycSubmission.findMany({
@@ -166,7 +187,9 @@ export async function loadDirectSponsorCount(
     const kycOk =
       !config.sponsorshipRequiresKyc || latestKycByUser.get(user.id) === "approved";
 
-    if (regularPlusOk && kycOk) {
+    const contributionOk = minContribution <= 0 || contributedEnough.has(user.id);
+
+    if (regularPlusOk && kycOk && contributionOk) {
       directSponsorCount++;
     }
   }

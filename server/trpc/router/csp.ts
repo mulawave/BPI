@@ -2,8 +2,6 @@ import { z } from "zod";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
-import { recordRevenue } from "@/server/services/revenue.service";
-import { getNigerianRegion } from "@/lib/nigeria-regions";
 import {
   notifyCspBroadcastExtended,
   notifyCspContributionReceived,
@@ -43,9 +41,11 @@ import {
   executeCspRelease,
   loadCspFeePercentages,
   previewCspRelease,
-  type CspReleaseResult,
+  isCspMembershipCurrent,
+  CSP_EXPIRED_MEMBER_MESSAGE,
 } from "@/server/services/csp-ledger.service";
-import { runPostCreditAutomation } from "@/server/services/walletAutoDebit.service";
+import { loadAutoDebitPolicy, AUTO_DEBIT_POLICY_KEYS } from "@/server/services/walletAutoDebit.service";
+import { afterCspRelease } from "@/server/services/csp-release-effects.service";
 
 // Hardcoded fallback defaults – overridden by AdminSettings when set
 const DEFAULTS = {
@@ -230,67 +230,6 @@ function computeEligibilityFlags(params: {
   return { eligible, hasMembership, hasDirects, hasContrib, hasDistinct, globalPath };
 }
 
-/** Post-commit side effects of a CSP release (best-effort; the release is already committed). */
-async function afterCspRelease(release: CspReleaseResult) {
-  const request = await prisma.cspSupportRequest.findUnique({
-    where: { id: release.requestId },
-    select: { id: true, userId: true, category: true, requestedAmount: true, User: { select: { email: true, state: true } } },
-  });
-  if (!request) return;
-
-  const systemShare = release.shares.admin + release.shares.state + release.shares.management + release.shares.reserve;
-  if (systemShare > 0) {
-    try {
-      await recordRevenue(prisma, {
-        source: "COMMUNITY_SUPPORT",
-        amount: systemShare,
-        currency: "NGN",
-        sourceId: request.id,
-        description: `CSP release system share for request ${request.id}`,
-        userId: request.userId,
-        programType: "CSP",
-        state: request.User?.state ?? undefined,
-        region: getNigerianRegion(request.User?.state),
-        metadata: { requestId: request.id, totalReleased: release.total, shares: release.shares },
-      });
-    } catch (err: any) {
-      if (err?.code !== "P2002") console.error("[CSP] Revenue recording failed after release:", err);
-    }
-  }
-
-  // Sponsor share is a referral reward credited to the cash wallet → auto-debit applies.
-  if (release.sponsorId && release.shares.sponsor > 0) {
-    await runPostCreditAutomation({
-      prisma,
-      userId: release.sponsorId,
-      creditAmount: release.shares.sponsor,
-      trigger: "reward",
-      context: `CSP sponsor reward ${request.id}`,
-    });
-  }
-
-  try {
-    await notifyCspRequestProcessed(request.userId, request.category, release.shares.recipient, "released");
-  } catch (e) {
-    console.error("[CSP] Release notification failed:", e);
-  }
-  if (request.User?.email) {
-    try {
-      await sendCspLifecycleEmail(request.User.email, "processed", {
-        category: request.category,
-        amount: release.shares.recipient,
-        status: "released",
-        requestedAmount: request.requestedAmount ?? undefined,
-        totalRaised: release.total,
-        fullyFunded: release.fullyFunded,
-        shares: release.shares,
-      });
-    } catch (e) {
-      console.error("[CSP] Lifecycle email failed:", e);
-    }
-  }
-}
-
 export const cspRouter = createTRPCRouter({
   getEligibility: protectedProcedure.query(async ({ ctx }) => {
     const userId = (ctx.session?.user as any)?.id as string | undefined;
@@ -421,7 +360,8 @@ export const cspRouter = createTRPCRouter({
     const userCountryIsActivated = userCountryRecord?.isNationalActive ?? false;
     const hasAnyActivatedCountry = anyActivatedCountry !== null;
     const kycApproved = latestKycSubmission?.status === "approved";
-    const autoDebitEnabled = autoDebitSetting?.isEnabled ?? false;
+    // Compulsory Auto-Debit counts as on for every member.
+    const autoDebitEnabled = (await loadAutoDebitPolicy(prisma)).minPercentage > 0 || (autoDebitSetting?.isEnabled ?? false);
     const autoContributeEnabled = autoContributeSetting?.isEnabled ?? false;
     const tierSnapshot = buildTierSnapshot(activeTiers, memberStanding.contributionRight);
     const sponsorProgress = tierConfig.tierModelEnabled
@@ -435,6 +375,8 @@ export const cspRouter = createTRPCRouter({
               sponsorshipRequiresKyc: tierConfig.sponsorshipRequiresKyc,
               sponsorshipRequiresRegularPlus: tierConfig.sponsorshipRequiresRegularPlus,
               sponsorshipAutoApply: tierConfig.sponsorshipAutoApply,
+              sponsorshipRequiresActive: tierConfig.sponsorshipRequiresActive,
+              sponsorshipMinContribution: tierConfig.sponsorshipMinContribution,
             },
             { autoApply: tierConfig.sponsorshipAutoApply }
           )
@@ -991,12 +933,16 @@ export const cspRouter = createTRPCRouter({
         loadTierConfig(prisma),
         prisma.user.findUnique({
           where: { id: userId },
-          select: { activeMembershipPackageId: true, membershipActivatedAt: true, country: true, community: true, email: true },
+          select: { activeMembershipPackageId: true, membershipActivatedAt: true, membershipExpiresAt: true, country: true, community: true, email: true },
         }),
         prisma.membershipPackage.findMany({
           select: { id: true, name: true, price: true },
         }),
       ]);
+
+      if (tierConfig.blockExpiredMembers && user?.activeMembershipPackageId && !isCspMembershipCurrent(user)) {
+        throw new Error(CSP_EXPIRED_MEMBER_MESSAGE);
+      }
 
       const membershipLookup = buildMembershipPriceLookup(membershipPackages);
       const membershipName = user?.activeMembershipPackageId
@@ -1163,7 +1109,8 @@ export const cspRouter = createTRPCRouter({
         tierResult = validateTierSupportRequest(tiers, standing.contributionRight, requestedAmount);
 
         const kycApproved = latestKyc?.status === "approved";
-        const autoDebitEnabled = autoDebit?.isEnabled ?? false;
+        // Compulsory Auto-Debit counts as on for every member.
+        const autoDebitEnabled = (await loadAutoDebitPolicy(prisma)).minPercentage > 0 || (autoDebit?.isEnabled ?? false);
         const autoContributeEnabled = autoContribute?.isEnabled ?? false;
 
         if (!hasCspWaiver) {
@@ -1463,10 +1410,18 @@ export const cspRouter = createTRPCRouter({
       const contributorId = (ctx.session?.user as any)?.id as string | undefined;
       if (!contributorId) throw new Error("UNAUTHORIZED");
 
-      const [config, tierConfig] = await Promise.all([
+      const [config, tierConfig, contributor] = await Promise.all([
         loadEligibilityConfig(prisma),
         loadTierConfig(prisma),
+        prisma.user.findUnique({
+          where: { id: contributorId },
+          select: { activeMembershipPackageId: true, membershipExpiresAt: true },
+        }),
       ]);
+
+      if (tierConfig.blockExpiredMembers && contributor?.activeMembershipPackageId && !isCspMembershipCurrent(contributor)) {
+        throw new Error(CSP_EXPIRED_MEMBER_MESSAGE);
+      }
 
       if (input.amount < config.minPerContribution) {
         throw new Error(`Minimum contribution is ₦${config.minPerContribution.toLocaleString()}`);
@@ -1635,6 +1590,7 @@ export const cspRouter = createTRPCRouter({
         releasableStatuses: CSP_RELEASABLE_STATUSES,
         tierModelEnabled: tierConfig.tierModelEnabled,
         defaultCoolingMonths: tierConfig.defaultCoolingMonthsMin,
+        holdIfBeneficiaryExpired: tierConfig.holdReleaseForExpiredMembers,
       });
 
       await afterCspRelease(release);
@@ -1961,6 +1917,8 @@ export const cspRouter = createTRPCRouter({
                 sponsorshipRequiresKyc: tierConfig.sponsorshipRequiresKyc,
                 sponsorshipRequiresRegularPlus: tierConfig.sponsorshipRequiresRegularPlus,
                 sponsorshipAutoApply: tierConfig.sponsorshipAutoApply,
+                sponsorshipRequiresActive: tierConfig.sponsorshipRequiresActive,
+                sponsorshipMinContribution: tierConfig.sponsorshipMinContribution,
               },
               { autoApply: false }
             )
@@ -2297,7 +2255,12 @@ export const cspRouter = createTRPCRouter({
       sponsorshipRequiresKyc: z.boolean().optional(),
       sponsorshipRequiresRegularPlus: z.boolean().optional(),
       sponsorshipAutoApply: z.boolean().optional(),
+      sponsorshipRequiresActive: z.boolean().optional(),
+      sponsorshipMinContribution: z.number().int().min(0).optional(),
       badgeGiftingEnabled: z.boolean().optional(),
+      blockExpiredMembers: z.boolean().optional(),
+      holdReleaseForExpiredMembers: z.boolean().optional(),
+      autoReleaseOnCountdownEnd: z.boolean().optional(),
       reason: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -2322,7 +2285,12 @@ export const cspRouter = createTRPCRouter({
         csp_sponsorship_requires_kyc: input.sponsorshipRequiresKyc,
         csp_sponsorship_requires_regular_plus: input.sponsorshipRequiresRegularPlus,
         csp_sponsorship_auto_apply: input.sponsorshipAutoApply,
+        csp_sponsorship_requires_active: input.sponsorshipRequiresActive,
+        csp_sponsorship_min_contribution: input.sponsorshipMinContribution,
         csp_badge_gifting_enabled: input.badgeGiftingEnabled,
+        csp_block_expired_members: input.blockExpiredMembers,
+        csp_hold_release_expired_members: input.holdReleaseForExpiredMembers,
+        csp_auto_release_on_countdown_end: input.autoReleaseOnCountdownEnd,
       };
       const entries = Object.entries(mapping).filter(([, v]) => v !== undefined);
       const currentRows = await prisma.adminSettings.findMany({ where: { settingKey: { in: entries.map(([key]) => key) } } });
@@ -2534,6 +2502,8 @@ export const cspRouter = createTRPCRouter({
             sponsorshipRequiresKyc: tierConfig.sponsorshipRequiresKyc,
             sponsorshipRequiresRegularPlus: tierConfig.sponsorshipRequiresRegularPlus,
             sponsorshipAutoApply: tierConfig.sponsorshipAutoApply,
+            sponsorshipRequiresActive: tierConfig.sponsorshipRequiresActive,
+            sponsorshipMinContribution: tierConfig.sponsorshipMinContribution,
           },
           {
             forceApply: true,
@@ -2701,6 +2671,239 @@ export const cspRouter = createTRPCRouter({
       });
 
       return { success: true, globalDisabled: input.disabled };
+    }),
+
+  /** Admin: look up a member's CSP waiting period (for manual reduction). */
+  adminLookupWaitingPeriod: protectedProcedure
+    .input(z.object({ query: z.string().trim().min(2).max(200) }))
+    .query(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: input.query },
+            { email: { equals: input.query, mode: "insensitive" } },
+            { username: { equals: input.query, mode: "insensitive" } },
+          ],
+        },
+        select: { id: true, name: true, email: true, username: true },
+      });
+      if (!user) return null;
+      const [standing, latestReleased] = await Promise.all([
+        prisma.cspMemberStanding.findUnique({
+          where: { userId: user.id },
+          select: { coolingEndsAt: true, coolingMonthsBase: true, lastSupportReleasedAt: true },
+        }),
+        prisma.cspSupportRequest.findFirst({
+          where: { userId: user.id, status: "released" },
+          orderBy: { releasedAt: "desc" },
+          select: { id: true, releasedAt: true, cooldownEndsAt: true, cooldownMonths: true },
+        }),
+      ]);
+      const ends = [standing?.coolingEndsAt, latestReleased?.cooldownEndsAt].filter((d): d is Date => d instanceof Date);
+      const currentEndsAt = ends.length ? new Date(Math.max(...ends.map((d) => d.getTime()))) : null;
+      return {
+        user,
+        releasedAt: standing?.lastSupportReleasedAt ?? latestReleased?.releasedAt ?? null,
+        currentEndsAt,
+        inWaitingPeriod: Boolean(currentEndsAt && currentEndsAt > new Date()),
+      };
+    }),
+
+  /**
+   * Admin: reduce a member's waiting period manually, e.g. to support a member
+   * in an emergency (corporate decision 07/10/2026). Only ever shortens it;
+   * the reason is recorded.
+   */
+  adminReduceWaitingPeriod: protectedProcedure
+    .input(z.object({
+      userId: z.string(),
+      mode: z.enum(["end_now", "months"]),
+      months: z.number().int().min(0).max(24).optional(),
+      reason: z.string().trim().min(5, "Please give a reason").max(500),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const adminUserId = (ctx.session?.user as any)?.id as string;
+      const now = new Date();
+      const [standing, latestReleased] = await Promise.all([
+        prisma.cspMemberStanding.findUnique({ where: { userId: input.userId } }),
+        prisma.cspSupportRequest.findFirst({
+          where: { userId: input.userId, status: "released" },
+          orderBy: { releasedAt: "desc" },
+          select: { id: true, releasedAt: true, cooldownEndsAt: true },
+        }),
+      ]);
+      const releasedAt = standing?.lastSupportReleasedAt ?? latestReleased?.releasedAt ?? null;
+      let newEndsAt: Date;
+      if (input.mode === "end_now") {
+        newEndsAt = now;
+      } else {
+        if (input.months == null) throw new Error("Choose the number of months.");
+        if (!releasedAt) throw new Error("This member has no released support, so there is no waiting period to reduce.");
+        newEndsAt = new Date(releasedAt);
+        newEndsAt.setMonth(newEndsAt.getMonth() + input.months);
+      }
+
+      const previous = [standing?.coolingEndsAt, latestReleased?.cooldownEndsAt].filter((d): d is Date => d instanceof Date);
+      const currentEndsAt = previous.length ? new Date(Math.max(...previous.map((d) => d.getTime()))) : null;
+      if (!currentEndsAt || currentEndsAt <= now) throw new Error("This member is not in a waiting period.");
+      if (newEndsAt >= currentEndsAt) throw new Error("The new end date must be earlier than the current one.");
+
+      await prisma.$transaction(async (tx) => {
+        if (standing?.coolingEndsAt && standing.coolingEndsAt > newEndsAt) {
+          await tx.cspMemberStanding.update({ where: { userId: input.userId }, data: { coolingEndsAt: newEndsAt } });
+        }
+        if (latestReleased?.cooldownEndsAt && latestReleased.cooldownEndsAt > newEndsAt) {
+          await tx.cspSupportRequest.update({ where: { id: latestReleased.id }, data: { cooldownEndsAt: newEndsAt } });
+        }
+        await tx.cspRuleChangeLog.create({
+          data: {
+            id: randomUUID(),
+            adminUserId,
+            ruleKey: `csp_manual_waiting_reduction:${input.userId}`,
+            previousValue: currentEndsAt.toISOString(),
+            newValue: newEndsAt.toISOString(),
+            reason: input.reason,
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            id: randomUUID(),
+            userId: adminUserId,
+            action: "CSP_WAITING_PERIOD_REDUCED",
+            entity: "User",
+            entityId: input.userId,
+            metadata: { previousEndsAt: currentEndsAt.toISOString(), newEndsAt: newEndsAt.toISOString(), reason: input.reason },
+            status: "success",
+          },
+        });
+      });
+
+      try {
+        await prisma.notification.create({
+          data: {
+            id: randomUUID(),
+            userId: input.userId,
+            title: "CSP waiting period reduced",
+            message: newEndsAt <= now
+              ? "Your CSP waiting period has been ended by an administrator. You can make a new request when you are eligible."
+              : `Your CSP waiting period has been reduced by an administrator. It now ends on ${newEndsAt.toLocaleDateString("en-NG")}.`,
+            link: "/csp",
+            isRead: false,
+          },
+        });
+      } catch (err) {
+        console.error("[CSP] Waiting-period reduction notification failed:", err);
+      }
+
+      return { success: true, newEndsAt };
+    }),
+
+  /** Admin: compulsory Auto-Debit rules (corporate decisions 29/09 and 06/10/2026). */
+  adminGetAutoDebitPolicy: protectedProcedure.query(async ({ ctx }) => {
+    assertAdmin(ctx.session);
+    return loadAutoDebitPolicy(prisma);
+  }),
+
+  adminSaveAutoDebitPolicy: protectedProcedure
+    .input(z.object({
+      minPercentage: z.number().int().min(0).max(100),
+      depositsEnabled: z.boolean(),
+      cspPayoutEnabled: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const adminId = (ctx.session?.user as any)?.id as string;
+      const before = await loadAutoDebitPolicy(prisma);
+      const values: Array<[string, string]> = [
+        [AUTO_DEBIT_POLICY_KEYS.minPercentage, String(input.minPercentage)],
+        [AUTO_DEBIT_POLICY_KEYS.depositsEnabled, input.depositsEnabled ? "true" : "false"],
+        [AUTO_DEBIT_POLICY_KEYS.cspPayoutEnabled, input.cspPayoutEnabled ? "true" : "false"],
+      ];
+      await prisma.$transaction(values.map(([settingKey, settingValue]) =>
+        prisma.adminSettings.upsert({
+          where: { settingKey },
+          update: { settingValue, updatedAt: new Date() },
+          create: { id: randomUUID(), settingKey, settingValue, updatedAt: new Date() },
+        }),
+      ));
+      await prisma.auditLog.create({
+        data: {
+          id: randomUUID(),
+          userId: adminId,
+          action: "AUTO_DEBIT_POLICY_UPDATED",
+          entity: "AdminSettings",
+          entityId: "auto_debit_policy",
+          metadata: { before, after: input },
+          status: "success",
+        },
+      });
+      return { success: true };
+    }),
+
+  /** Admin alerts: failed Auto-Debits and Auto-Contributions, with search and filters. */
+  adminGetAutomationFailures: protectedProcedure
+    .input(z.object({
+      kind: z.enum(["all", "AUTO_DEBIT_FAILED", "AUTO_CONTRIBUTE_FAILED"]).default("all"),
+      search: z.string().trim().max(200).optional(),
+      from: z.string().optional(),
+      to: z.string().optional(),
+      page: z.number().int().min(1).default(1),
+      limit: z.number().int().min(1).max(100).default(25),
+    }))
+    .query(async ({ ctx, input }) => {
+      assertAdmin(ctx.session);
+      const kinds = input.kind === "all" ? ["AUTO_DEBIT_FAILED", "AUTO_CONTRIBUTE_FAILED"] : [input.kind];
+      const createdAt: { gte?: Date; lte?: Date } = {};
+      if (input.from) createdAt.gte = new Date(input.from);
+      if (input.to) {
+        const to = new Date(input.to);
+        to.setHours(23, 59, 59, 999);
+        createdAt.lte = to;
+      }
+      const search = input.search || undefined;
+      const where: any = {
+        action: { in: kinds },
+        ...(createdAt.gte || createdAt.lte ? { createdAt } : {}),
+        ...(search
+          ? {
+              OR: [
+                { errorMessage: { contains: search, mode: "insensitive" } },
+                { User: { email: { contains: search, mode: "insensitive" } } },
+                { User: { name: { contains: search, mode: "insensitive" } } },
+                { User: { username: { contains: search, mode: "insensitive" } } },
+              ],
+            }
+          : {}),
+      };
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const [rows, total, last24h] = await Promise.all([
+        prisma.auditLog.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip: (input.page - 1) * input.limit,
+          take: input.limit,
+          include: { User: { select: { id: true, name: true, email: true, username: true, wallet: true, community: true } } },
+        }),
+        prisma.auditLog.count({ where }),
+        prisma.auditLog.count({ where: { action: { in: ["AUTO_DEBIT_FAILED", "AUTO_CONTRIBUTE_FAILED"] }, createdAt: { gte: since24h } } }),
+      ]);
+      return {
+        rows: rows.map((r) => ({
+          id: r.id,
+          kind: r.action,
+          createdAt: r.createdAt,
+          reason: r.errorMessage ?? (r.metadata as any)?.reason ?? "",
+          context: (r.metadata as any)?.context ?? "",
+          amount: (r.metadata as any)?.amount ?? null,
+          user: r.User,
+        })),
+        total,
+        last24h,
+        page: input.page,
+        totalPages: Math.max(1, Math.ceil(total / input.limit)),
+      };
     }),
 
   /** Manually trigger the recurring auto-contribute sweep (admin). */

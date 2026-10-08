@@ -4,6 +4,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from "next/server";
+import { assessPaidAmount, settleOverpayment } from "@/server/services/payment/paymentPolicy";
 import { randomUUID } from "crypto";
 import { prisma } from "../../../../lib/prisma";
 import { recordRevenue } from "@/server/services/revenue.service";
@@ -63,11 +64,20 @@ async function writeProcessingWarning(txRef: string, purpose: string, amount: nu
   });
 }
 
-/** Verify that the webhook amount matches the stored pending payment amount. Returns true if OK or no record to compare. */
+/**
+ * Check the webhook amount against the stored pending payment. Exact (±₦1) or
+ * no record → OK. Overpaid → OK, and the difference is credited to the Main
+ * Wallet (corporate decision). Underpaid → held for admin review.
+ */
 async function verifyPaymentAmount(paymentId: string, receivedAmountNgn: number, txRef: string, purpose: string): Promise<boolean> {
-  const pending = await prisma.pendingPayment.findUnique({ where: { id: paymentId }, select: { amount: true } });
-  if (!pending || !pending.amount || pending.amount <= 0) return true;
-  if (Math.abs(receivedAmountNgn - pending.amount) <= 1) return true;
+  const pending = await prisma.pendingPayment.findUnique({ where: { id: paymentId }, select: { amount: true, userId: true } });
+  if (!pending || !pending.amount || pending.amount <= 0) return true; // no stored amount to compare
+  const assessment = assessPaidAmount(receivedAmountNgn, pending.amount);
+  if (assessment.kind === "exact") return true;
+  if (assessment.kind === "over") {
+    await settleOverpayment(prisma, { userId: pending.userId, reference: txRef, paidNgn: receivedAmountNgn, dueNgn: pending.amount, source: "flutterwave webhook" });
+    return true;
+  }
   await markPaymentNeedsReview(
     paymentId,
     `Amount mismatch: received ₦${receivedAmountNgn}, expected ₦${pending.amount}. Requires manual review.`,

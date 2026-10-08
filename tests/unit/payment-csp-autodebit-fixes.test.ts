@@ -22,7 +22,10 @@ import {
   sumShares,
   type CspFeePercentages,
 } from "@/server/services/csp-ledger.service";
-import { computeAutoDebitAmount } from "@/server/services/walletAutoDebit.service";
+import { computeAutoDebitAmount, effectiveAutoDebitPercentage, DEFAULT_AUTO_DEBIT_POLICY } from "@/server/services/walletAutoDebit.service";
+import { assessPaidAmount, paystackPaidNgn } from "@/server/services/payment/paymentPolicy";
+import { dueReminderStage } from "@/server/jobs/membershipRenewalReminders";
+import { isCspMembershipCurrent } from "@/server/services/csp-ledger.service";
 import { processAutoRenewal } from "@/server/services/membershipAutoRenewal.service";
 
 const DEFAULT_PCT: CspFeePercentages = {
@@ -223,6 +226,23 @@ describe("CSP release split", () => {
     assert.equal(sumShares(shares), 13500);
   });
 
+  it("admin-created campaigns always pay 80/20 of what was raised", () => {
+    const { shares, fullyFunded } = computeCspReleaseShares({
+      total: 50000, raisedAmount: 50000, thresholdAmount: 50000, requestedAmount: 50000, pct: DEFAULT_PCT, hasSponsor: true, flatSplit: true,
+    });
+    assert.equal(fullyFunded, false);
+    assert.equal(shares.recipient, 40000);
+    assert.equal(shares.admin, 2500);
+    assert.equal(sumShares(shares), 50000);
+  });
+
+  it("Profit Pool share is revenue only; other system shares go to CSP wallets only", () => {
+    const ledger = read("server/services/csp-ledger.service.ts");
+    assert.ok(!ledger.includes('"CSP Admin Wallet"'));
+    assert.ok(/recordRevenue\(tx, \{[\s\S]*?amount: shares\.admin,/.test(ledger));
+    assert.ok(!read("server/trpc/router/csp.ts").includes("recordRevenue("));
+  });
+
   it("paid auto-extension only fires when a milestone is crossed", () => {
     assert.equal(computeAutoExtendHours(39000, 40500), 24);
     assert.equal(computeAutoExtendHours(40500, 41000), 0);
@@ -291,11 +311,45 @@ describe("CSP contributions all use the shared ledger", () => {
 describe("Wallet auto-debit", () => {
   const setting = { isEnabled: true, percentage: 10, applyToDeposits: true, applyToRewards: false };
 
-  it("computes the configured percentage for enabled triggers only", () => {
+  it("is compulsory on rewards at the admin minimum, even without a saved setting", () => {
+    assert.equal(computeAutoDebitAmount(null, 10000, "reward"), 1000);
+    assert.equal(computeAutoDebitAmount({ ...setting, isEnabled: false, applyToRewards: false }, 10000, "reward"), 1000);
+    assert.equal(computeAutoDebitAmount({ ...setting, percentage: 5 }, 10000, "reward"), 1000);
+    assert.equal(computeAutoDebitAmount({ ...setting, percentage: 25 }, 10000, "reward"), 2500);
+    assert.equal(effectiveAutoDebitPercentage({ ...setting, percentage: 3 }), 10);
+  });
+
+  it("applies to deposits only when the member opted in and admins allow it", () => {
     assert.equal(computeAutoDebitAmount(setting, 10000, "deposit"), 1000);
-    assert.equal(computeAutoDebitAmount(setting, 10000, "reward"), 0);
+    assert.equal(computeAutoDebitAmount({ ...setting, applyToDeposits: false }, 10000, "deposit"), 0);
     assert.equal(computeAutoDebitAmount({ ...setting, isEnabled: false }, 10000, "deposit"), 0);
     assert.equal(computeAutoDebitAmount(null, 10000, "deposit"), 0);
+    assert.equal(computeAutoDebitAmount(setting, 10000, "deposit", { ...DEFAULT_AUTO_DEBIT_POLICY, depositsEnabled: false }), 0);
+  });
+
+  it("applies to released CSP funds unless switched off by admin", () => {
+    assert.equal(computeAutoDebitAmount(null, 50000, "csp_payout"), 5000);
+    assert.equal(computeAutoDebitAmount(null, 50000, "csp_payout", { ...DEFAULT_AUTO_DEBIT_POLICY, cspPayoutEnabled: false }), 0);
+  });
+
+  it("a 0% admin minimum makes Auto-Debit optional again", () => {
+    const optional = { ...DEFAULT_AUTO_DEBIT_POLICY, minPercentage: 0 };
+    assert.equal(computeAutoDebitAmount(null, 10000, "reward", optional), 0);
+    assert.equal(computeAutoDebitAmount({ ...setting, isEnabled: false }, 10000, "reward", optional), 0);
+    assert.equal(computeAutoDebitAmount(setting, 10000, "reward", optional), 1000);
+  });
+
+  it("covers activation, upgrade, crypto deposit and CSP release credits", () => {
+    assert.ok((read("server/trpc/router/package.ts").match(/runPostCreditAutomation\(\{/g) ?? []).length >= 3);
+    assert.match(read("server/services/membershipPayments.service.ts"), /upgrade referral bonus/);
+    assert.match(read("app/api/webhooks/crypto/route.ts"), /trigger: "deposit"/);
+    assert.match(read("server/services/csp-release-effects.service.ts"), /trigger: "csp_payout"/);
+  });
+
+  it("the save procedure enforces the compulsory minimum", () => {
+    const src = read("server/trpc/router/wallet.ts");
+    assert.match(src, /Auto-Debit cannot be lower than/);
+    assert.match(src, /isEnabled: compulsory \? true : input\.isEnabled/);
   });
 
   it("runs on every deposit fulfilment path", () => {
@@ -353,5 +407,53 @@ describe("Paid membership renewal", () => {
     assert.equal(result.success, false);
     assert.equal(result.insufficientFunds, true);
     assert.equal(writes, 0);
+  });
+});
+
+describe("Payment amounts", () => {
+  it("classifies exact, over- and under-payments with a ₦1 tolerance", () => {
+    assert.equal(assessPaidAmount(10000.5, 10000).kind, "exact");
+    assert.deepEqual(assessPaidAmount(10500, 10000), { kind: "over", excess: 500, shortfall: 0 });
+    assert.deepEqual(assessPaidAmount(9000, 10000), { kind: "under", excess: 0, shortfall: 1000 });
+    assert.equal(assessPaidAmount(null, 10000).kind, "unknown");
+  });
+
+  it("Paystack fees passed to the customer are not an overpayment", () => {
+    assert.equal(paystackPaidNgn({ amount: 1015000, requested_amount: 1000000 }), 10000);
+    assert.equal(paystackPaidNgn({ amount: 1050000 }), 10500);
+  });
+
+  it("webhooks credit overpayments and hold underpayments", () => {
+    for (const file of ["app/api/webhooks/paystack/route.ts", "app/api/webhooks/flutterwave/route.ts"]) {
+      const src = read(file);
+      assert.match(src, /settleOverpayment\(prisma/);
+      assert.match(src, /markPaymentNeedsReview\(/);
+    }
+    assert.match(read("app/api/webhooks/paystack/route.ts"), /verifyPaymentAmount\(claim\.paymentId, paidNgn,/);
+  });
+});
+
+describe("Membership renewal reminders and expired members", () => {
+  const day = 24 * 60 * 60 * 1000;
+  it("sends reminders 7 days, 3 days and 24 hours before renewal", () => {
+    const now = new Date("2026-10-08T06:00:00Z");
+    assert.equal(dueReminderStage(new Date(now.getTime() + 7 * day - 3600_000), now), 7);
+    assert.equal(dueReminderStage(new Date(now.getTime() + 3 * day - 3600_000), now), 3);
+    assert.equal(dueReminderStage(new Date(now.getTime() + 20 * 3600_000), now), 1);
+    assert.equal(dueReminderStage(new Date(now.getTime() + 5 * day - 3600_000), now), null);
+  });
+
+  it("an expired membership is not current for CSP", () => {
+    const now = new Date();
+    assert.equal(isCspMembershipCurrent({ activeMembershipPackageId: "p", membershipExpiresAt: new Date(now.getTime() + day) }, now), true);
+    assert.equal(isCspMembershipCurrent({ activeMembershipPackageId: "p", membershipExpiresAt: new Date(now.getTime() - day) }, now), false);
+    assert.equal(isCspMembershipCurrent({ activeMembershipPackageId: null, membershipExpiresAt: null }, now), false);
+  });
+
+  it("requests, contributions and release respect the expired-member rules", () => {
+    const csp = read("server/trpc/router/csp.ts");
+    assert.equal((csp.match(/throw new Error\(CSP_EXPIRED_MEMBER_MESSAGE\)/g) ?? []).length, 2);
+    assert.match(csp, /holdIfBeneficiaryExpired: tierConfig\.holdReleaseForExpiredMembers/);
+    assert.match(read("server/jobs/cspBroadcastSweep.ts"), /config\.autoReleaseOnCountdownEnd/);
   });
 });

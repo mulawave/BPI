@@ -24,7 +24,8 @@
 import { randomUUID } from "crypto";
 import type { PrismaClient } from "@prisma/client";
 import { notifyCspContributionReceived, notifyCspBroadcastExtended } from "@/server/services/notification.service";
-import { applyCspContribution, CspContributionError } from "@/server/services/csp-ledger.service";
+import { applyCspContribution, CspContributionError, isCspMembershipCurrent } from "@/server/services/csp-ledger.service";
+import { loadTierConfig } from "@/server/services/csp-config.service";
 
 export interface AutoContributeResult {
   totalContributed: number;
@@ -67,8 +68,16 @@ export async function runCspAutoContribute(params: {
   // Get user's community wallet balance
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { community: true },
+    select: { community: true, activeMembershipPackageId: true, membershipExpiresAt: true },
   });
+
+  // Corporate decision 06/10/2026: expired members cannot use CSP until they renew.
+  if (user?.activeMembershipPackageId && !isCspMembershipCurrent(user)) {
+    const tierConfig = await loadTierConfig(prisma);
+    if (tierConfig.blockExpiredMembers) {
+      return { totalContributed: 0, requestsContributed: 0, disabledDueToBalance: false };
+    }
+  }
 
   if (!user || user.community < minAmountPerRequest) {
     // Not enough funds this run. Leave auto-contribute ENABLED so the recurring

@@ -8,7 +8,7 @@ import {
   notifyMembershipActivation,
   notifyReferralReward,
 } from "@/server/services/notification.service";
-import { processWalletAutoDebit } from "@/server/services/walletAutoDebit.service";
+import { processWalletAutoDebit, runPostCreditAutomation } from "@/server/services/walletAutoDebit.service";
 import { runCspAutoContribute } from "@/server/services/cspAutoContribute.service";
 
 const MYNGUL_PACKAGES = [
@@ -543,6 +543,7 @@ export async function upgradeMembershipAfterExternalPayment(params: {
 
   // ── Deferred side-effects collectors ──
   const deferredBpt: Array<{ referrerId: string; amount: number }> = [];
+  const deferredAutoDebit: Array<{ referrerId: string; amount: number }> = [];
   const deferredNotifications: Array<{ referrerId: string; total: number; level: number }> = [];
 
   // ── Atomic transaction: all financial writes ──
@@ -596,6 +597,9 @@ export async function upgradeMembershipAfterExternalPayment(params: {
 
         if (bonuses.bpt > 0) {
           deferredBpt.push({ referrerId, amount: bonuses.bpt });
+        }
+        if (bonuses.cash > 0) {
+          deferredAutoDebit.push({ referrerId, amount: bonuses.cash });
         }
         deferredNotifications.push({
           referrerId,
@@ -716,6 +720,17 @@ export async function upgradeMembershipAfterExternalPayment(params: {
 
     return { upgradePin };
   }, { maxWait: MEMBERSHIP_TX_MAX_WAIT_MS, timeout: MEMBERSHIP_TX_TIMEOUT_MS });
+
+  // ── Post-commit: Auto-Debit on upgrade referral cash bonuses (best-effort) ──
+  for (const item of deferredAutoDebit) {
+    await runPostCreditAutomation({
+      prisma: prisma as PrismaClient,
+      userId: item.referrerId,
+      creditAmount: item.amount,
+      trigger: "reward",
+      context: `upgrade referral bonus (${newPackage.name})`,
+    });
+  }
 
   // ── Post-commit: BPT distribution (best-effort) ──
   for (const item of deferredBpt) {

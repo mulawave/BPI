@@ -12,10 +12,11 @@ import { assertMockPaymentsAllowed } from "@/lib/mockPayments";
 import { PAYMENT_FULFILLMENT_TYPES } from "@/server/services/payment/paymentMetadata";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { initiateBasqetUsdtPayout } from "@/server/services/payment/BasqetClient";
-import { runPostCreditAutomation } from "@/server/services/walletAutoDebit.service";
+import { runPostCreditAutomation, loadAutoDebitPolicy, effectiveAutoDebitPercentage } from "@/server/services/walletAutoDebit.service";
 import { PaymentProcessor } from "@/server/services/payment/PaymentProcessor";
 import { PaymentGateway } from "@/server/services/payment/types";
 import { fulfillDepositPayment, isGatewayAmountAcceptable } from "@/server/services/payment/depositFulfillment";
+import { settleOverpayment } from "@/server/services/payment/paymentPolicy";
 import { classifyGatewayVerification } from "@/server/services/payment/gatewayOutcome";
 
 // Default admin settings (will be overridden by DB settings)
@@ -1844,6 +1845,17 @@ export const walletRouter = createTRPCRouter({
         throw new Error("Deposit record not found. Please contact support.");
       }
 
+      if (deposit.status === "credited") {
+        // Overpayment: the difference goes to the Main Wallet (corporate decision).
+        await settleOverpayment(prisma, {
+          userId,
+          reference,
+          paidNgn: verification.amount,
+          dueNgn: pending.amount,
+          source: `wallet.verifyPayment (${gateway})`,
+        });
+      }
+
       return {
         success: true,
         message: deposit.status === "credited"
@@ -1948,15 +1960,22 @@ export const walletRouter = createTRPCRouter({
     const userId = (ctx.session?.user as any)?.id as string;
     if (!userId) throw new Error("UNAUTHORIZED");
 
-    const setting = await prisma.walletAutoDebitSetting.findUnique({
-      where: { userId },
-    });
+    const [setting, policy] = await Promise.all([
+      prisma.walletAutoDebitSetting.findUnique({ where: { userId } }),
+      loadAutoDebitPolicy(prisma),
+    ]);
+    const compulsory = policy.minPercentage > 0;
 
-    return setting ?? {
-      isEnabled: false,
-      percentage: 10,
+    return {
+      // Compulsory Auto-Debit is always on; the percentage shown is the one applied.
+      isEnabled: compulsory ? true : (setting?.isEnabled ?? false),
+      percentage: effectiveAutoDebitPercentage(setting, policy) || (setting?.percentage ?? 10),
       applyToRewards: true,
-      applyToDeposits: false,
+      applyToDeposits: policy.depositsEnabled && !!setting?.isEnabled && !!setting?.applyToDeposits,
+      compulsory,
+      minPercentage: policy.minPercentage,
+      depositsAllowed: policy.depositsEnabled,
+      appliesToCspPayout: policy.cspPayoutEnabled,
     };
   }),
 
@@ -1971,21 +1990,23 @@ export const walletRouter = createTRPCRouter({
       const userId = (ctx.session?.user as any)?.id as string;
       if (!userId) throw new Error("UNAUTHORIZED");
 
+      const policy = await loadAutoDebitPolicy(prisma);
+      const compulsory = policy.minPercentage > 0;
+      if (input.percentage < policy.minPercentage) {
+        throw new Error(`Auto-Debit cannot be lower than ${policy.minPercentage}%.`);
+      }
+      // Compulsory Auto-Debit cannot be switched off, and always applies to rewards.
+      const data = {
+        isEnabled: compulsory ? true : input.isEnabled,
+        percentage: input.percentage,
+        applyToRewards: true,
+        applyToDeposits: policy.depositsEnabled ? input.applyToDeposits : false,
+      };
+
       const setting = await prisma.walletAutoDebitSetting.upsert({
         where: { userId },
-        create: {
-          userId,
-          isEnabled: input.isEnabled,
-          percentage: input.percentage,
-          applyToRewards: input.applyToRewards,
-          applyToDeposits: input.applyToDeposits,
-        },
-        update: {
-          isEnabled: input.isEnabled,
-          percentage: input.percentage,
-          applyToRewards: input.applyToRewards,
-          applyToDeposits: input.applyToDeposits,
-        },
+        create: { userId, ...data },
+        update: data,
       });
 
       return { success: true, setting };

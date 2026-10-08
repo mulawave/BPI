@@ -22,6 +22,7 @@ import {
 } from "@/server/services/payment/pendingPaymentFulfillment";
 import { fulfillDepositPayment, isGatewayAmountAcceptable } from "@/server/services/payment/depositFulfillment";
 import { classifyGatewayVerification, recoveryActionForUnpaid } from "@/server/services/payment/gatewayOutcome";
+import { settleOverpayment } from "@/server/services/payment/paymentPolicy";
 import { recordRevenue } from "@/server/services/revenue.service";
 import { getNigerianRegion } from "@/lib/nigeria-regions";
 
@@ -172,6 +173,15 @@ export async function runRecoverStuckPayments(): Promise<RecoverStuckPaymentsRes
 
         const meta = (payment.metadata as Record<string, any>) || {};
         const userId = payment.userId;
+
+        // Overpayment: the difference goes to the Main Wallet (corporate decision).
+        await settleOverpayment(prisma, {
+          userId,
+          reference: ref,
+          paidNgn: verification.amount,
+          dueNgn: payment.amount,
+          source: "recovery cron",
+        });
 
         // ── MEMBERSHIP ──────────────────────────────────────────
         if (payment.transactionType === "MEMBERSHIP") {

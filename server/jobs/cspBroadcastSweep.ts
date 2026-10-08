@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { notifyCspBroadcastExtended, notifyCspBroadcastExpiring, notifyCspRequestProcessed } from "@/server/services/notification.service";
-import { closeExpiredCspRequest } from "@/server/services/csp-ledger.service";
+import { closeExpiredCspRequest, CSP_RELEASABLE_STATUSES, executeCspRelease } from "@/server/services/csp-ledger.service";
+import { afterCspRelease } from "@/server/services/csp-release-effects.service";
 import { loadTierConfig } from "@/server/services/csp-config.service";
 
 type TierConfig = {
@@ -107,6 +108,7 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
   let extended = 0;
   let closed = 0;
   let awaitingRelease = 0;
+  let released = 0;
   let skipped = 0;
   let failed = 0;
 
@@ -185,11 +187,36 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
       } else if (outcome.action === "closed") {
         closed++;
         if (outcome.awaitingRelease) {
-          awaitingRelease++;
-          try {
-            await notifyCspRequestProcessed(candidate.userId, candidate.category, candidate.raisedAmount, "countdown ended — awaiting admin release");
-          } catch (notifyErr) {
-            console.error(`[CSP BROADCAST SWEEP] Notification failed for ${candidate.id}:`, notifyErr);
+          // Admin setting (corporate decision 06/10/2026): release automatically
+          // when the countdown ends; otherwise an admin releases it.
+          let autoReleased = false;
+          if (config.autoReleaseOnCountdownEnd) {
+            try {
+              const release = await executeCspRelease(prisma, {
+                requestId: candidate.id,
+                releasableStatuses: CSP_RELEASABLE_STATUSES,
+                tierModelEnabled: config.tierModelEnabled,
+                defaultCoolingMonths: config.defaultCoolingMonthsMin,
+                holdIfBeneficiaryExpired: config.holdReleaseForExpiredMembers,
+                auditExtra: { automatic: true, trigger: "countdown_end" },
+              });
+              await afterCspRelease(release);
+              autoReleased = true;
+              released++;
+            } catch (releaseErr) {
+              console.warn(
+                `[CSP BROADCAST SWEEP] Automatic release did not run for ${candidate.id}; left for admin release:`,
+                releaseErr instanceof Error ? releaseErr.message : releaseErr,
+              );
+            }
+          }
+          if (!autoReleased) {
+            awaitingRelease++;
+            try {
+              await notifyCspRequestProcessed(candidate.userId, candidate.category, candidate.raisedAmount, "countdown ended — awaiting admin release");
+            } catch (notifyErr) {
+              console.error(`[CSP BROADCAST SWEEP] Notification failed for ${candidate.id}:`, notifyErr);
+            }
           }
         }
       } else {
@@ -248,6 +275,6 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
     closed,
     skipped,
     failed,
-    summary: `Processed ${candidates.length} broadcast(s): ${extended} extended, ${closed} ended (${awaitingRelease} awaiting admin release), ${skipped} skipped, ${failed} failed`,
+    summary: `Processed ${candidates.length} broadcast(s): ${extended} extended, ${closed} ended (${released} released automatically, ${awaitingRelease} awaiting admin release), ${skipped} skipped, ${failed} failed`,
   };
 }

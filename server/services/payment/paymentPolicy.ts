@@ -1,36 +1,15 @@
 /**
- * Payment rules decided by BPI corporate (Decisions Required, 27/09/2026).
- *
- *  - Unpaid payments expire after 1 hour (admin setting
- *    `payment_unpaid_expiry_minutes`).
- *  - A payment the gateway confirms after it expired is NOT applied
- *    automatically: it is held with status "needs_approval" for an admin.
- *  - Overpayment: the amount due is fulfilled and the difference is credited
- *    to the member's Main Wallet. Underpayment: held for admin review.
+ * Payment amount rules decided by BPI corporate (Q5, 27/09/2026; follow-up 7,
+ * 06/10/2026): an overpayment fulfils the amount due and the difference is
+ * credited to the member's Main Wallet; an underpayment is held for admin
+ * review.
  */
 
 import { randomUUID } from "crypto";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 
-type Db = PrismaClient | Prisma.TransactionClient;
-
-export const DEFAULT_UNPAID_EXPIRY_MINUTES = 60;
-export const NEEDS_APPROVAL_STATUS = "needs_approval";
-/** Statuses a payment can be in when a late gateway confirmation arrives. */
-export const LATE_PAYMENT_STATUSES = ["expired", "rejected"];
 /** Amount tolerance (₦) before a payment counts as over- or under-paid. */
 export const AMOUNT_TOLERANCE_NGN = 1;
-
-export async function loadUnpaidExpiryMs(db: Db): Promise<number> {
-  try {
-    const row = await db.adminSettings.findUnique({ where: { settingKey: "payment_unpaid_expiry_minutes" } });
-    const minutes = Number(row?.settingValue);
-    if (Number.isFinite(minutes) && minutes > 0) return minutes * 60 * 1000;
-  } catch {
-    // fall through to default
-  }
-  return DEFAULT_UNPAID_EXPIRY_MINUTES * 60 * 1000;
-}
 
 export type AmountAssessment =
   | { kind: "exact"; excess: 0; shortfall: 0 }
@@ -59,6 +38,8 @@ export async function creditOverpayment(
   if (!(input.excess > 0)) return false;
   const txReference = `OVERPAY-${input.reference}`;
   return prisma.$transaction(async (tx) => {
+    // Serialise concurrent callers (webhook, verify page, cron) for this reference.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${txReference}))`;
     const existing = await tx.transaction.findFirst({
       where: { userId: input.userId, reference: txReference, transactionType: "OVERPAYMENT_CREDIT" },
       select: { id: true },
@@ -82,58 +63,50 @@ export async function creditOverpayment(
 }
 
 /**
- * A gateway confirmed a payment that had already expired (or been rejected).
- * Per corporate decision it is held for admin approval instead of being
- * applied: status → "needs_approval", and its pending transactions are
- * reopened so an approval completes them normally.
+ * Overpayment rule (corporate decision Q5 / follow-up 7): the amount due is
+ * fulfilled and the difference is credited to the Main Wallet. The difference
+ * is treated as a deposit, so deposit Auto-Debit applies when the member has
+ * opted in. Idempotent per payment reference; never throws.
  */
-export async function holdLatePaymentForApproval(
+export async function settleOverpayment(
   prisma: PrismaClient,
-  input: { reference: string; paidAmount?: number | null; source: string; userId?: string },
-): Promise<{ held: boolean; paymentId?: string; userId?: string }> {
-  const payment = await prisma.pendingPayment.findFirst({
-    where: {
-      gatewayReference: input.reference,
-      status: { in: LATE_PAYMENT_STATUSES },
-      ...(input.userId ? { userId: input.userId } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, userId: true, status: true, amount: true },
-  });
-  if (!payment) return { held: false };
-
-  const now = new Date();
-  const updated = await prisma.pendingPayment.updateMany({
-    where: { id: payment.id, status: { in: LATE_PAYMENT_STATUSES } },
-    data: {
-      status: NEEDS_APPROVAL_STATUS,
-      reviewNotes: `${input.source}: gateway confirmed payment${input.paidAmount != null ? ` of ₦${input.paidAmount}` : ""} after it had ${payment.status === "expired" ? "expired" : "been rejected"}. Awaiting admin approval.`,
-      updatedAt: now,
-    },
-  });
-  if (updated.count === 0) return { held: false };
-
-  await prisma.transaction.updateMany({
-    where: { reference: input.reference, userId: payment.userId, status: "failed" },
-    data: { status: "pending" },
-  });
-
+  input: { userId: string; reference: string; paidNgn: number | null | undefined; dueNgn: number | null | undefined; source: string },
+): Promise<number> {
+  const assessment = assessPaidAmount(input.paidNgn, input.dueNgn);
+  if (assessment.kind !== "over") return 0;
   try {
-    await prisma.auditLog.create({
-      data: {
-        id: randomUUID(),
-        userId: payment.userId,
-        action: "PAYMENT_LATE_NEEDS_APPROVAL",
-        entity: "PendingPayment",
-        entityId: payment.id,
-        changes: JSON.stringify({ reference: input.reference, previousStatus: payment.status, paidAmount: input.paidAmount ?? null, due: payment.amount, source: input.source }),
-        status: "warning",
-        createdAt: now,
-      },
+    const credited = await creditOverpayment(prisma, {
+      userId: input.userId,
+      reference: input.reference,
+      excess: assessment.excess,
+      source: input.source,
     });
-  } catch {
-    // audit is best-effort
+    if (!credited) return 0;
+    const { runPostCreditAutomation } = await import("@/server/services/walletAutoDebit.service");
+    await runPostCreditAutomation({
+      prisma,
+      userId: input.userId,
+      creditAmount: assessment.excess,
+      trigger: "deposit",
+      context: `overpayment on ${input.reference}`,
+    });
+    return assessment.excess;
+  } catch (err) {
+    console.error(`[PAYMENT-POLICY] Overpayment credit failed for ${input.reference} (${input.source}):`, err);
+    return 0;
   }
+}
 
-  return { held: true, paymentId: payment.id, userId: payment.userId };
+/**
+ * The amount a Paystack transaction actually paid towards our charge. When
+ * fees are passed to the customer, `amount` includes Paystack's fee and
+ * `requested_amount` is what we asked for; the fee is not an overpayment.
+ * Both values are in kobo; returns naira.
+ */
+export function paystackPaidNgn(data: { amount?: number | null; requested_amount?: number | null }): number | null {
+  const amount = Number(data.amount);
+  if (!Number.isFinite(amount)) return null;
+  const requested = Number(data.requested_amount);
+  const paid = Number.isFinite(requested) && requested > 0 ? Math.min(requested, amount) : amount;
+  return paid / 100;
 }

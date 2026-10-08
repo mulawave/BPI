@@ -17,7 +17,12 @@ export interface TierConfig {
   sponsorshipRequiresKyc: boolean;
   sponsorshipRequiresRegularPlus: boolean;
   sponsorshipAutoApply: boolean;
+  sponsorshipRequiresActive: boolean;
+  sponsorshipMinContribution: number;
   badgeGiftingEnabled: boolean;
+  blockExpiredMembers: boolean;
+  holdReleaseForExpiredMembers: boolean;
+  autoReleaseOnCountdownEnd: boolean;
 }
 
 export const TIER_CONFIG_DEFAULTS: TierConfig = {
@@ -40,8 +45,22 @@ export const TIER_CONFIG_DEFAULTS: TierConfig = {
   sponsorshipReducedCoolingMonths: 6,
   sponsorshipRequiresKyc: true,
   sponsorshipRequiresRegularPlus: true,
-  sponsorshipAutoApply: false,
+  // Corporate decision 07/10/2026: the reduction applies automatically once
+  // the member has the required number of direct sponsored members who are
+  // Regular Plus or higher, KYC-verified, active and have contributed at
+  // least ₦10,000 (Tier 1).
+  sponsorshipAutoApply: true,
+  sponsorshipRequiresActive: true,
+  sponsorshipMinContribution: 10000,
   badgeGiftingEnabled: true,
+  // Corporate decision 06/10/2026: a member whose membership has expired
+  // cannot use CSP, and the release of their live campaign is held until they
+  // renew.
+  blockExpiredMembers: true,
+  holdReleaseForExpiredMembers: true,
+  // Corporate decision 06/10/2026: an admin releases campaigns when the
+  // countdown ends; automatic release is an option, off by default.
+  autoReleaseOnCountdownEnd: false,
 };
 
 const TIER_CONFIG_KEYS = [
@@ -61,7 +80,12 @@ const TIER_CONFIG_KEYS = [
   "csp_sponsorship_requires_kyc",
   "csp_sponsorship_requires_regular_plus",
   "csp_sponsorship_auto_apply",
+  "csp_sponsorship_requires_active",
+  "csp_sponsorship_min_contribution",
   "csp_badge_gifting_enabled",
+  "csp_block_expired_members",
+  "csp_hold_release_expired_members",
+  "csp_auto_release_on_countdown_end",
 ];
 
 function parseIntSetting(value: string | null | undefined, fallback: number) {
@@ -102,6 +126,11 @@ export async function loadTierConfig(db: typeof prisma = prisma): Promise<TierCo
     sponsorshipRequiresKyc: parseBoolSetting(m.get("csp_sponsorship_requires_kyc"), TIER_CONFIG_DEFAULTS.sponsorshipRequiresKyc),
     sponsorshipRequiresRegularPlus: parseBoolSetting(m.get("csp_sponsorship_requires_regular_plus"), TIER_CONFIG_DEFAULTS.sponsorshipRequiresRegularPlus),
     sponsorshipAutoApply: parseBoolSetting(m.get("csp_sponsorship_auto_apply"), TIER_CONFIG_DEFAULTS.sponsorshipAutoApply),
+    sponsorshipRequiresActive: parseBoolSetting(m.get("csp_sponsorship_requires_active"), TIER_CONFIG_DEFAULTS.sponsorshipRequiresActive),
+    sponsorshipMinContribution: parseIntSetting(m.get("csp_sponsorship_min_contribution"), TIER_CONFIG_DEFAULTS.sponsorshipMinContribution),
     badgeGiftingEnabled: parseBoolSetting(m.get("csp_badge_gifting_enabled"), TIER_CONFIG_DEFAULTS.badgeGiftingEnabled),
+    blockExpiredMembers: parseBoolSetting(m.get("csp_block_expired_members"), TIER_CONFIG_DEFAULTS.blockExpiredMembers),
+    holdReleaseForExpiredMembers: parseBoolSetting(m.get("csp_hold_release_expired_members"), TIER_CONFIG_DEFAULTS.holdReleaseForExpiredMembers),
+    autoReleaseOnCountdownEnd: parseBoolSetting(m.get("csp_auto_release_on_countdown_end"), TIER_CONFIG_DEFAULTS.autoReleaseOnCountdownEnd),
   };
 }

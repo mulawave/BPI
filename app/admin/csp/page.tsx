@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/client/trpc";
+import CspWaitingPeriodTool from "@/components/admin/CspWaitingPeriodTool";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/server/trpc/router/_app";
 import toast from "react-hot-toast";
@@ -928,6 +929,9 @@ export default function CspAdminQueuePage() {
         )}
       </div>
 
+      {/* ─── Manual waiting-period reduction ─────────────────────────────── */}
+      <CspWaitingPeriodTool />
+
       {/* ─── CSP Tier Table (per-tier values) ─────────────────────────────── */}
       <div className="rounded-2xl border border-border bg-card/70 p-6 shadow-sm">
         <button
@@ -1691,7 +1695,12 @@ const TIER_FIELD_INFO: Record<string, FieldHint> = {
   sponsorshipReducedCoolingMonths: { text: "Cooling period (months) applied once the sponsor count is met.", recommended: "6" },
   sponsorshipRequiresKyc: { text: "Require KYC for the sponsor-based cooling reduction to apply.", recommended: "On" },
   sponsorshipRequiresRegularPlus: { text: "Require Regular Plus tier for the sponsor-based cooling reduction.", recommended: "On" },
-  sponsorshipAutoApply: { text: "Automatically apply the reduced cooling period once a member is eligible.", recommended: "Off" },
+  sponsorshipAutoApply: { text: "Automatically apply the reduced cooling period once a member is eligible.", recommended: "On" },
+  sponsorshipRequiresActive: { text: "Only count sponsored members whose membership is current (not expired).", recommended: "On" },
+  sponsorshipMinContribution: { text: "Minimum total CSP contribution (₦) each sponsored member must have made to count. Set 0 to disable.", recommended: "10,000" },
+  blockExpiredMembers: { text: "Members whose membership has expired cannot raise requests or contribute until they renew.", recommended: "On" },
+  holdReleaseForExpiredMembers: { text: "Hold the release of a campaign while the beneficiary's membership is expired; release once they renew.", recommended: "On" },
+  autoReleaseOnCountdownEnd: { text: "Release campaigns automatically when the countdown ends (80/20 of what was raised). When off, an admin releases them.", recommended: "Off" },
   badgeGiftingEnabled: { text: "Allow members to gift their Time Reduction Badges to other members.", recommended: "On" },
 };
 
@@ -1901,8 +1910,13 @@ function TierConfigForm({ config, onSave, isPending }: { config: TierConfig | un
     sponsorshipReducedCoolingMonths: config?.sponsorshipReducedCoolingMonths ?? 6,
     sponsorshipRequiresKyc: config?.sponsorshipRequiresKyc ?? true,
     sponsorshipRequiresRegularPlus: config?.sponsorshipRequiresRegularPlus ?? true,
-    sponsorshipAutoApply: config?.sponsorshipAutoApply ?? false,
+    sponsorshipAutoApply: config?.sponsorshipAutoApply ?? true,
+    sponsorshipRequiresActive: config?.sponsorshipRequiresActive ?? true,
+    sponsorshipMinContribution: config?.sponsorshipMinContribution ?? 10000,
     badgeGiftingEnabled: config?.badgeGiftingEnabled ?? true,
+    blockExpiredMembers: config?.blockExpiredMembers ?? true,
+    holdReleaseForExpiredMembers: config?.holdReleaseForExpiredMembers ?? true,
+    autoReleaseOnCountdownEnd: config?.autoReleaseOnCountdownEnd ?? false,
     reason: "",
   });
 
@@ -1925,7 +1939,12 @@ function TierConfigForm({ config, onSave, isPending }: { config: TierConfig | un
       sponsorshipRequiresKyc: config.sponsorshipRequiresKyc,
       sponsorshipRequiresRegularPlus: config.sponsorshipRequiresRegularPlus,
       sponsorshipAutoApply: config.sponsorshipAutoApply,
+      sponsorshipRequiresActive: config.sponsorshipRequiresActive,
+      sponsorshipMinContribution: config.sponsorshipMinContribution,
       badgeGiftingEnabled: config.badgeGiftingEnabled,
+      blockExpiredMembers: config.blockExpiredMembers,
+      holdReleaseForExpiredMembers: config.holdReleaseForExpiredMembers,
+      autoReleaseOnCountdownEnd: config.autoReleaseOnCountdownEnd,
       reason: "",
     });
   }, [config]);
@@ -2008,7 +2027,21 @@ function TierConfigForm({ config, onSave, isPending }: { config: TierConfig | un
           {boolField("sponsorshipRequiresKyc", "Sponsor reduction requires KYC")}
           {boolField("sponsorshipRequiresRegularPlus", "Sponsor reduction requires Regular Plus")}
           {boolField("sponsorshipAutoApply", "Auto-apply sponsor reduction")}
+          {boolField("sponsorshipRequiresActive", "Sponsored members must be active")}
+          {numberField("sponsorshipMinContribution", "Sponsored member min. contribution (₦)")}
           {boolField("badgeGiftingEnabled", "Enable badge gifting")}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
+          <TimerReset className="h-4 w-4 text-rose-600" />
+          Expired members & release
+        </h3>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {boolField("blockExpiredMembers", "Block CSP for expired members")}
+          {boolField("holdReleaseForExpiredMembers", "Hold release while beneficiary is expired")}
+          {boolField("autoReleaseOnCountdownEnd", "Release automatically when countdown ends")}
         </div>
       </div>
 

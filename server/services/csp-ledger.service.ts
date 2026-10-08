@@ -20,6 +20,8 @@
 import { randomUUID } from "crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { ensureMemberStanding, reconcileMemberStandingContributionRight } from "@/server/services/csp-tier.service";
+import { recordRevenue } from "@/server/services/revenue.service";
+import { getNigerianRegion } from "@/lib/nigeria-regions";
 
 type Tx = Prisma.TransactionClient;
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -146,6 +148,10 @@ export async function ensureSystemWallet(db: Db, name: string, walletType: strin
  * Path B — partially funded: configured percentages apply to the total and
  *   the beneficiary receives the remainder (≈ recipient %).
  *
+ * `flatSplit` forces Path B. Admin-created campaigns use it: per corporate
+ * decision (06/10/2026) they pay 80% of what was raised and the 20% is split
+ * across the pools, whatever the funding level.
+ *
  * The sponsor share is redirected to the reserve when there is no sponsor, so
  * the shares always sum exactly to `total`.
  */
@@ -156,11 +162,13 @@ export function computeCspReleaseShares(params: {
   requestedAmount: number | null;
   pct: CspFeePercentages;
   hasSponsor: boolean;
+  flatSplit?: boolean;
 }): { shares: CspReleaseShares; fullyFunded: boolean; sponsorRedirectedToReserve: number } {
-  const { total, raisedAmount, thresholdAmount, requestedAmount, pct, hasSponsor } = params;
+  const { total, raisedAmount, thresholdAmount, requestedAmount, pct, hasSponsor, flatSplit } = params;
   const safeTotal = Math.max(0, Math.floor(total));
 
   const fullyFunded =
+    !flatSplit &&
     thresholdAmount > 0 &&
     raisedAmount >= thresholdAmount &&
     requestedAmount != null &&
@@ -393,6 +401,7 @@ async function buildReleasePlan(db: Db, requestId: string): Promise<CspReleasePr
     requestedAmount: request.requestedAmount,
     pct,
     hasSponsor: sponsorId != null,
+    flatSplit: request.isAdminDefault,
   });
 
   return {
@@ -422,6 +431,22 @@ export async function previewCspRelease(db: Db, requestId: string) {
 export type CspReleaseResult = CspReleasePreview & { releasedAt: Date; cooldownEndsAt: Date | null };
 
 /**
+ * Whether a member's membership is current for CSP purposes. A member with a
+ * package but no recorded expiry is treated as current (legacy data).
+ */
+export function isCspMembershipCurrent(
+  user: { activeMembershipPackageId: string | null; membershipExpiresAt: Date | null } | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!user?.activeMembershipPackageId) return false;
+  return !user.membershipExpiresAt || user.membershipExpiresAt > now;
+}
+
+export const CSP_EXPIRED_MEMBER_MESSAGE = "Your membership has expired. Renew your membership to use CSP again.";
+export const CSP_RELEASE_HELD_MESSAGE =
+  "Release is on hold: the beneficiary's membership has expired. It can be released once they renew.";
+
+/**
  * Releases a request's funds exactly once.
  *
  * `finalStatus` is "released" for normal releases; admin-default requests use
@@ -436,10 +461,22 @@ export async function executeCspRelease(
     tierModelEnabled: boolean;
     defaultCoolingMonths: number;
     auditExtra?: Record<string, unknown>;
+    /** Corporate decision 06/10/2026: hold the release while the beneficiary's membership is expired. */
+    holdIfBeneficiaryExpired?: boolean;
   },
 ): Promise<CspReleaseResult> {
   return prisma.$transaction(async (tx) => {
     const releasedAt = new Date();
+
+    if (input.holdIfBeneficiaryExpired) {
+      const target = await tx.cspSupportRequest.findUnique({
+        where: { id: input.requestId },
+        select: { isAdminDefault: true, User: { select: { activeMembershipPackageId: true, membershipExpiresAt: true } } },
+      });
+      if (target && !target.isAdminDefault && !isCspMembershipCurrent(target.User, releasedAt)) {
+        throw new Error(CSP_RELEASE_HELD_MESSAGE);
+      }
+    }
 
     // Atomic claim: only one release can move the request out of a releasable
     // state; this also stops new contributions (they require "broadcasting").
@@ -462,7 +499,7 @@ export async function executeCspRelease(
 
     const request = await tx.cspSupportRequest.findUniqueOrThrow({
       where: { id: input.requestId },
-      select: { id: true, userId: true, category: true, cooldownMonths: true },
+      select: { id: true, userId: true, category: true, cooldownMonths: true, User: { select: { state: true } } },
     });
     const { shares } = plan;
 
@@ -475,8 +512,25 @@ export async function executeCspRelease(
       await tx.user.update({ where: { id: plan.sponsorId }, data: { wallet: { increment: shares.sponsor } } });
     }
 
+    // Corporate decision (Q29, option C): the BPI Profit Pool share is company
+    // revenue only; the State, Management and Reserve shares go to their CSP
+    // wallets only. Each naira is counted once.
+    if (shares.admin > 0) {
+      await recordRevenue(tx, {
+        source: "COMMUNITY_SUPPORT",
+        amount: shares.admin,
+        currency: "NGN",
+        sourceId: request.id,
+        description: `CSP release Profit Pool share for request ${request.id}`,
+        userId: request.userId,
+        programType: "CSP",
+        state: request.User?.state ?? undefined,
+        region: getNigerianRegion(request.User?.state),
+        metadata: { requestId: request.id, totalReleased: plan.total, shares },
+      });
+    }
+
     const pools: Array<[string, string, number]> = [
-      ["CSP Admin Wallet", "EXECUTIVE_POOL", shares.admin],
       ["CSP State Wallet", "STATE_REVENUE_POOL", shares.state],
       ["CSP Management Wallet", "CSP_MANAGEMENT_RESERVE", shares.management],
       ["CSP Reserve Wallet", "CSP_RESERVE", shares.reserve],

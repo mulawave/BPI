@@ -8,6 +8,8 @@ This document explains how the Community Support Program (CSP) works today, usin
 
 Every value marked *(configurable)* can be changed by an admin under **Admin → CSP**. The number shown is the default.
 
+> **Update (October 2026):** several rules below have since changed following corporate's decisions (compulsory Auto-Debit, 24-month waiting period, 80/20 on admin campaigns, accounting of system shares, expired members). See [admin-settings-guide.md](admin-settings-guide.md) for the current settings.
+
 ---
 
 ## 1. Auto-Debit and Auto-Contribute (feedback item 1)
