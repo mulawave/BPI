@@ -1,5 +1,5 @@
 import { initializePaystackPayment, verifyPaystackPayment } from "@/lib/paystack";
-import { paystackPaidNgn } from "./paymentPolicy";
+import { paystackPaidNgn } from "./paystackAmount";
 import {
   GatewayConfig,
   IPaymentGateway,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { assessPaidAmount, settleOverpayment, paystackPaidNgn } from "@/server/services/payment/paymentPolicy";
+import { assessPaidAmount, settleOverpayment } from "@/server/services/payment/paymentPolicy";
+import { paystackPaidNgn } from "@/server/services/payment/paystackAmount";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { webhookLimiter, applyRateLimit } from "@/lib/rateLimit";

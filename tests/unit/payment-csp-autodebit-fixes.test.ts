@@ -23,7 +23,8 @@ import {
   type CspFeePercentages,
 } from "@/server/services/csp-ledger.service";
 import { computeAutoDebitAmount, effectiveAutoDebitPercentage, DEFAULT_AUTO_DEBIT_POLICY } from "@/server/services/walletAutoDebit.service";
-import { assessPaidAmount, paystackPaidNgn } from "@/server/services/payment/paymentPolicy";
+import { assessPaidAmount } from "@/server/services/payment/paymentPolicy";
+import { paystackPaidNgn } from "@/server/services/payment/paystackAmount";
 import { dueReminderStage } from "@/server/jobs/membershipRenewalReminders";
 import { isCspMembershipCurrent } from "@/server/services/csp-ledger.service";
 import { processAutoRenewal } from "@/server/services/membershipAutoRenewal.service";
