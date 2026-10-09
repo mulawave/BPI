@@ -61,6 +61,7 @@ import { promoCampaignRouter } from "./promoCampaign";
 import { ravenRouter } from "./raven";
 import { apiKeysRouter } from "./api-keys";
 import { customerRepRouter } from "./customerRep";
+import { healthcareRouter } from "./healthcare";
 
 export const appRouter = createTRPCRouter({
   health: healthRouter,
@@ -112,6 +113,7 @@ export const appRouter = createTRPCRouter({
   adminFinancial: adminFinancialRouter,
   content: contentRouter,
   csp: cspRouter,
+  healthcare: healthcareRouter,
   eliteClub: eliteClubRouter,
   store: storeRouter,
   help: helpRouter,

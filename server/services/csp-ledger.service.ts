@@ -20,6 +20,12 @@
 import { randomUUID } from "crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { ensureMemberStanding, reconcileMemberStandingContributionRight } from "@/server/services/csp-tier.service";
+import { recordRevenue } from "@/server/services/revenue.service";
+import { getNigerianRegion } from "@/lib/nigeria-regions";
+import { creditDefaultBeneficiaries } from "@/server/services/defaultBeneficiaries.service";
+import { creditCommissionOrRedirect } from "@/server/services/commissionRedirect.service";
+import { ensureBpiProjectAccount } from "@/server/services/bpiProjectAccount.service";
+import { tryApplyTopUp } from "@/server/services/cspTopUp.service";
 
 type Tx = Prisma.TransactionClient;
 type Db = PrismaClient | Prisma.TransactionClient;
@@ -78,6 +84,14 @@ export async function closeExpiredCspRequest(db: Db, requestId: string): Promise
     where: { id: requestId, status: "broadcasting" },
     data: { status },
   });
+  if (updated.count > 0) {
+    // Corporate decision (follow-up Q13, 07/10/2026): an unmet time-extension
+    // purchase is forfeited when the countdown ends — never carried forward.
+    await db.cspTopUpPurchase.updateMany({
+      where: { requestId, status: "pending" },
+      data: { status: "forfeited" },
+    });
+  }
   return updated.count > 0 ? status : null;
 }
 
@@ -146,6 +160,10 @@ export async function ensureSystemWallet(db: Db, name: string, walletType: strin
  * Path B — partially funded: configured percentages apply to the total and
  *   the beneficiary receives the remainder (≈ recipient %).
  *
+ * `flatSplit` forces Path B. Admin-created campaigns use it: per corporate
+ * decision (06/10/2026) they pay 80% of what was raised and the 20% is split
+ * across the pools, whatever the funding level.
+ *
  * The sponsor share is redirected to the reserve when there is no sponsor, so
  * the shares always sum exactly to `total`.
  */
@@ -156,11 +174,13 @@ export function computeCspReleaseShares(params: {
   requestedAmount: number | null;
   pct: CspFeePercentages;
   hasSponsor: boolean;
+  flatSplit?: boolean;
 }): { shares: CspReleaseShares; fullyFunded: boolean; sponsorRedirectedToReserve: number } {
-  const { total, raisedAmount, thresholdAmount, requestedAmount, pct, hasSponsor } = params;
+  const { total, raisedAmount, thresholdAmount, requestedAmount, pct, hasSponsor, flatSplit } = params;
   const safeTotal = Math.max(0, Math.floor(total));
 
   const fullyFunded =
+    !flatSplit &&
     thresholdAmount > 0 &&
     raisedAmount >= thresholdAmount &&
     requestedAmount != null &&
@@ -330,7 +350,17 @@ export async function applyCspContribution(
     },
   });
 
-  await reconcileMemberStandingContributionRight(tx, input.contributorId);
+  // Corporate decision (follow-up Q17, 07/10/2026): contributions to Special
+  // Community Support campaigns do not count toward the contributor's own
+  // CSP eligibility.
+  if (!request.isSpecialSupport) {
+    await reconcileMemberStandingContributionRight(tx, input.contributorId);
+  }
+
+  // Corporate decision (follow-up Q13, 07/10/2026): if this contributor has
+  // a pending time-extension purchase on this request, count this
+  // contribution towards it and apply the extra hours once it's covered.
+  await tryApplyTopUp(tx, { requestId: input.requestId, contributorId: input.contributorId, contributionAmount: amount });
 
   return {
     contributionId: contribution.id,
@@ -393,6 +423,7 @@ async function buildReleasePlan(db: Db, requestId: string): Promise<CspReleasePr
     requestedAmount: request.requestedAmount,
     pct,
     hasSponsor: sponsorId != null,
+    flatSplit: request.isAdminDefault,
   });
 
   return {
@@ -422,6 +453,22 @@ export async function previewCspRelease(db: Db, requestId: string) {
 export type CspReleaseResult = CspReleasePreview & { releasedAt: Date; cooldownEndsAt: Date | null };
 
 /**
+ * Whether a member's membership is current for CSP purposes. A member with a
+ * package but no recorded expiry is treated as current (legacy data).
+ */
+export function isCspMembershipCurrent(
+  user: { activeMembershipPackageId: string | null; membershipExpiresAt: Date | null } | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!user?.activeMembershipPackageId) return false;
+  return !user.membershipExpiresAt || user.membershipExpiresAt > now;
+}
+
+export const CSP_EXPIRED_MEMBER_MESSAGE = "Your membership has expired. Renew your membership to use CSP again.";
+export const CSP_RELEASE_HELD_MESSAGE =
+  "Release is on hold: the beneficiary's membership has expired. It can be released once they renew.";
+
+/**
  * Releases a request's funds exactly once.
  *
  * `finalStatus` is "released" for normal releases; admin-default requests use
@@ -436,10 +483,22 @@ export async function executeCspRelease(
     tierModelEnabled: boolean;
     defaultCoolingMonths: number;
     auditExtra?: Record<string, unknown>;
+    /** Corporate decision 06/10/2026: hold the release while the beneficiary's membership is expired. */
+    holdIfBeneficiaryExpired?: boolean;
   },
 ): Promise<CspReleaseResult> {
   return prisma.$transaction(async (tx) => {
     const releasedAt = new Date();
+
+    if (input.holdIfBeneficiaryExpired) {
+      const target = await tx.cspSupportRequest.findUnique({
+        where: { id: input.requestId },
+        select: { isAdminDefault: true, User: { select: { activeMembershipPackageId: true, membershipExpiresAt: true } } },
+      });
+      if (target && !target.isAdminDefault && !isCspMembershipCurrent(target.User, releasedAt)) {
+        throw new Error(CSP_RELEASE_HELD_MESSAGE);
+      }
+    }
 
     // Atomic claim: only one release can move the request out of a releasable
     // state; this also stops new contributions (they require "broadcasting").
@@ -453,6 +512,11 @@ export async function executeCspRelease(
       if (current.status === "released") throw new Error("Funds have already been released for this request");
       throw new Error(`Cannot release funds for a request with status "${current.status}"`);
     }
+    // An unmet time-extension purchase is forfeited once the request releases.
+    await tx.cspTopUpPurchase.updateMany({
+      where: { requestId: input.requestId, status: "pending" },
+      data: { status: "forfeited" },
+    });
 
     const plan = await buildReleasePlan(tx, input.requestId);
     // Requests paid out by the old release code were left "closed"; never pay twice.
@@ -462,7 +526,7 @@ export async function executeCspRelease(
 
     const request = await tx.cspSupportRequest.findUniqueOrThrow({
       where: { id: input.requestId },
-      select: { id: true, userId: true, category: true, cooldownMonths: true },
+      select: { id: true, userId: true, category: true, cooldownMonths: true, isSpecialSupport: true, User: { select: { state: true } } },
     });
     const { shares } = plan;
 
@@ -470,22 +534,81 @@ export async function executeCspRelease(
     const holding = await ensureSystemWallet(tx, cspHoldingWalletName(request.id), "CSP_HOLDING");
     await tx.systemWallet.update({ where: { id: holding.id }, data: { balanceNgn: 0 } });
 
+    // Corporate decision (follow-up Q17, 07/10/2026): Special Community
+    // Support has no profit motive. The full amount raised goes to the BPI
+    // project account; there is no 20% fee, no sponsor share and nothing is
+    // recorded as revenue.
+    if (request.isSpecialSupport) {
+      const projectWallet = await ensureBpiProjectAccount(tx);
+      await tx.systemWallet.update({ where: { id: projectWallet.id }, data: { balanceNgn: { increment: plan.total } } });
+      await tx.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId: request.userId,
+          transactionType: "CSP_SPECIAL_SUPPORT_PAYOUT",
+          amount: plan.total,
+          description: `Special Community Support released to the BPI project account (request ${request.id})`,
+          status: "completed",
+          walletType: "project_account",
+          reference: `CSP-PAYOUT-${request.id}`,
+        },
+      });
+    } else {
     await tx.user.update({ where: { id: request.userId }, data: { wallet: { increment: shares.recipient } } });
     if (plan.sponsorId && shares.sponsor > 0) {
-      await tx.user.update({ where: { id: plan.sponsorId }, data: { wallet: { increment: shares.sponsor } } });
+      // Corporate decision (follow-up Q8a/b, 06-07/10/2026): redirects to the
+      // default beneficiaries if the sponsor has been expired more than 7 days.
+      await creditCommissionOrRedirect(tx, {
+        recipientId: plan.sponsorId,
+        amount: shares.sponsor,
+        description: `CSP sponsor (referral) reward from support request ${request.id}`,
+        transactionType: CSP_SPONSOR_REWARD_TX_TYPE,
+        reference: `CSP-SPONSOR-${request.id}`,
+        now: releasedAt,
+      });
     }
 
+    // Corporate decision (Q29, option C): the BPI Profit Pool share is company
+    // revenue only; the State, Management and Reserve shares go to their CSP
+    // wallets only. Each naira is counted once.
+    if (shares.admin > 0) {
+      await recordRevenue(tx, {
+        source: "COMMUNITY_SUPPORT",
+        amount: shares.admin,
+        currency: "NGN",
+        sourceId: request.id,
+        description: `CSP release Profit Pool share for request ${request.id}`,
+        userId: request.userId,
+        programType: "CSP",
+        state: request.User?.state ?? undefined,
+        region: getNigerianRegion(request.User?.state),
+        metadata: { requestId: request.id, totalReleased: plan.total, shares },
+      });
+    }
+
+    // Corporate decision (Q28, 29/09/2026; follow-up Q10, 06/10/2026): the
+    // no-sponsor portion of `shares.reserve` goes to the default
+    // beneficiaries, not the CSP Reserve Wallet. The rest of the configured
+    // reserve share still goes to the CSP Reserve Wallet.
+    const reserveForPool = shares.reserve - plan.sponsorRedirectedToReserve;
     const pools: Array<[string, string, number]> = [
-      ["CSP Admin Wallet", "EXECUTIVE_POOL", shares.admin],
       ["CSP State Wallet", "STATE_REVENUE_POOL", shares.state],
       ["CSP Management Wallet", "CSP_MANAGEMENT_RESERVE", shares.management],
-      ["CSP Reserve Wallet", "CSP_RESERVE", shares.reserve],
+      ["CSP Reserve Wallet", "CSP_RESERVE", reserveForPool],
     ];
     for (const [name, type, amount] of pools) {
       const wallet = await ensureSystemWallet(tx, name, type);
       if (amount > 0) {
         await tx.systemWallet.update({ where: { id: wallet.id }, data: { balanceNgn: { increment: amount } } });
       }
+    }
+    if (plan.sponsorRedirectedToReserve > 0) {
+      await creditDefaultBeneficiaries(tx, {
+        amount: plan.sponsorRedirectedToReserve,
+        description: `CSP sponsor share (no sponsor) for request ${request.id}`,
+        transactionType: "CSP_SPONSOR_REDIRECT",
+        reference: `CSP-SPONSOR-REDIRECT-${request.id}`,
+      });
     }
 
     await tx.transaction.create({
@@ -501,19 +624,8 @@ export async function executeCspRelease(
       },
     });
 
-    if (plan.sponsorId && shares.sponsor > 0) {
-      await tx.transaction.create({
-        data: {
-          id: randomUUID(),
-          userId: plan.sponsorId,
-          transactionType: CSP_SPONSOR_REWARD_TX_TYPE,
-          amount: shares.sponsor,
-          description: `CSP sponsor (referral) reward from support request ${request.id}`,
-          status: "completed",
-          walletType: "wallet",
-          reference: `CSP-SPONSOR-${request.id}`,
-        },
-      });
+    // The sponsor share's wallet credit and transaction record (or its
+    // redirect to the default beneficiaries) were already written above.
     }
 
     // Holding inflows shown to the beneficiary are now settled.
@@ -563,13 +675,14 @@ export async function executeCspRelease(
           raisedAmountBefore: plan.raisedAmount,
           holdingBalanceBefore: plan.holdingBalance,
           holdingShortfall: plan.holdingShortfall,
-          recipientCredited: shares.recipient,
-          creditedWallet: "wallet",
-          creditedWalletLabel: "Main Cash Wallet",
+          isSpecialSupport: request.isSpecialSupport,
+          recipientCredited: request.isSpecialSupport ? plan.total : shares.recipient,
+          creditedWallet: request.isSpecialSupport ? "project_account" : "wallet",
+          creditedWalletLabel: request.isSpecialSupport ? "BPI Project Account" : "Main Cash Wallet",
           fullyFunded: plan.fullyFunded,
-          sponsorId: plan.sponsorId,
-          sponsorRedirectedToReserve: plan.sponsorRedirectedToReserve,
-          shares,
+          sponsorId: request.isSpecialSupport ? null : plan.sponsorId,
+          sponsorRedirectedToReserve: request.isSpecialSupport ? 0 : plan.sponsorRedirectedToReserve,
+          shares: request.isSpecialSupport ? null : shares,
           pct: plan.pct,
           cooldownMonths: request.cooldownMonths ?? null,
           cooldownEndsAt,

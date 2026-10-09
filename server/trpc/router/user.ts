@@ -9,6 +9,7 @@ import { sendVerificationEmail, sendWelcomeEmail } from "@/lib/email";
 import { TRPCError } from "@trpc/server";
 import { placeUserInThirdPartyMatrix } from "@/server/services/thirdPartyMatrix.service";
 import { evaluateMembershipAccess } from "@/lib/membershipAccess";
+import { loadMembershipGraceDays } from "@/lib/membershipGrace";
 import {
   invalidateAuthUserLookup,
   invalidateAuthEnrichment,
@@ -86,6 +87,7 @@ export const userRouter = createTRPCRouter({
           activeMembershipPackageId: true,
           membershipActivatedAt: true,
           membershipExpiresAt: true,
+          membershipGraceAnchorAt: true,
           level1Count: true,
           level2Count: true,
           level3Count: true,
@@ -118,11 +120,14 @@ export const userRouter = createTRPCRouter({
           });
       }
 
+      const membershipGraceDays = await loadMembershipGraceDays(prisma);
       const membershipAccess = evaluateMembershipAccess({
         activeMembershipPackageId: user.activeMembershipPackageId,
         membershipActivatedAt: user.membershipActivatedAt,
         membershipExpiresAt: user.membershipExpiresAt,
         renewalCycleDays: activeMembership?.renewalCycle,
+        graceDays: membershipGraceDays,
+        graceAnchorAt: user.membershipGraceAnchorAt,
       });
 
       // Check if user has bank accounts on file (indicates Nigerian identity)
@@ -134,6 +139,7 @@ export const userRouter = createTRPCRouter({
         ...user,
         activeMembership: membershipAccess.membershipValid ? activeMembership : null,
         membershipAccess,
+        membershipGraceDays,
         hasBankAccounts: bankAccountCount > 0,
       };
     } catch (error) {

@@ -17,6 +17,9 @@ export default function WalletAutoDebitSettings() {
   const utils = api.useUtils();
 
   const { data: settings, isLoading } = api.wallet.getAutoDebitSettings.useQuery();
+  const compulsory = settings?.compulsory ?? false;
+  const minPercentage = Math.max(1, settings?.minPercentage ?? 1);
+  const depositsAllowed = settings?.depositsAllowed ?? true;
 
   const saveMutation = api.wallet.saveAutoDebitSettings.useMutation({
     onSuccess: () => {
@@ -39,11 +42,16 @@ export default function WalletAutoDebitSettings() {
   }, [settings]);
 
   const handleSave = () => {
-    if (percentage < 1 || percentage > 100) {
-      toast.error('Percentage must be between 1% and 100%');
+    if (percentage < minPercentage || percentage > 100) {
+      toast.error(`Percentage must be between ${minPercentage}% and 100%`);
       return;
     }
-    saveMutation.mutate({ isEnabled, percentage, applyToRewards, applyToDeposits });
+    saveMutation.mutate({
+      isEnabled: compulsory ? true : isEnabled,
+      percentage,
+      applyToRewards: compulsory ? true : applyToRewards,
+      applyToDeposits: depositsAllowed && applyToDeposits,
+    });
   };
 
   const handleChange = (setter: (v: any) => void, value: any) => {
@@ -95,19 +103,33 @@ export default function WalletAutoDebitSettings() {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => handleChange(setIsEnabled, !isEnabled)}
-            className="focus:outline-none"
-          >
-            {isEnabled ? (
-              <ToggleRight className="w-10 h-10 text-emerald-500" />
-            ) : (
-              <ToggleLeft className="w-10 h-10 text-gray-400" />
-            )}
-          </button>
+          {compulsory ? (
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+              Always on
+            </span>
+          ) : (
+            <button
+              onClick={() => handleChange(setIsEnabled, !isEnabled)}
+              className="focus:outline-none"
+            >
+              {isEnabled ? (
+                <ToggleRight className="w-10 h-10 text-emerald-500" />
+              ) : (
+                <ToggleLeft className="w-10 h-10 text-gray-400" />
+              )}
+            </button>
+          )}
         </div>
 
-        {isEnabled && (
+        {compulsory && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Auto-Debit is compulsory for all members. At least {minPercentage}% of each referral reward,
+            CSP sponsor share{settings?.appliesToCspPayout ? ' and CSP support you receive' : ''} goes to your
+            Community Wallet. You can choose a higher percentage.
+          </p>
+        )}
+
+        {(compulsory || isEnabled) && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -121,9 +143,9 @@ export default function WalletAutoDebitSettings() {
               <div className="flex items-center gap-4">
                 <input
                   type="range"
-                  min="1"
+                  min={minPercentage}
                   max="100"
-                  value={percentage}
+                  value={Math.max(percentage, minPercentage)}
                   onChange={(e) => handleChange(setPercentage, Number(e.target.value))}
                   className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                 />
@@ -157,19 +179,24 @@ export default function WalletAutoDebitSettings() {
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleChange(setApplyToRewards, !applyToRewards)}
-                  className="focus:outline-none"
-                >
-                  {applyToRewards ? (
-                    <ToggleRight className="w-8 h-8 text-emerald-500" />
-                  ) : (
-                    <ToggleLeft className="w-8 h-8 text-gray-400" />
-                  )}
-                </button>
+                {compulsory ? (
+                  <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Always</span>
+                ) : (
+                  <button
+                    onClick={() => handleChange(setApplyToRewards, !applyToRewards)}
+                    className="focus:outline-none"
+                  >
+                    {applyToRewards ? (
+                      <ToggleRight className="w-8 h-8 text-emerald-500" />
+                    ) : (
+                      <ToggleLeft className="w-8 h-8 text-gray-400" />
+                    )}
+                  </button>
+                )}
               </div>
 
-              {/* Deposits */}
+              {/* Deposits (optional for members, can be switched off by admin) */}
+              {depositsAllowed && (
               <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
                 <div className="flex items-center gap-3">
                   <ArrowRight className="w-4 h-4 text-purple-500" />
@@ -193,6 +220,7 @@ export default function WalletAutoDebitSettings() {
                   )}
                 </button>
               </div>
+              )}
             </div>
 
             {/* Info banner */}

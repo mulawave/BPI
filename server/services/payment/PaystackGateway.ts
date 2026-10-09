@@ -1,4 +1,5 @@
 import { initializePaystackPayment, verifyPaystackPayment } from "@/lib/paystack";
+import { paystackPaidNgn } from "./paystackAmount";
 import {
   GatewayConfig,
   IPaymentGateway,
@@ -64,7 +65,8 @@ export class PaystackGateway implements IPaymentGateway {
       success: isSuccess,
       status: isSuccess ? PaymentStatus.SUCCESS : PaymentStatus.FAILED,
       transactionId: reference,
-      amount: result.data?.amount ? result.data.amount / 100 : 0,
+      // Excludes Paystack fees passed to the customer, so they are never treated as an overpayment.
+      amount: paystackPaidNgn(result.data ?? {}) ?? 0,
       reference: result.data?.reference || reference,
       gatewayReference: result.data?.reference,
       currency: "NGN",

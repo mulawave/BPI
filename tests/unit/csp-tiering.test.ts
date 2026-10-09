@@ -77,6 +77,9 @@ describe("ensureMemberStanding", () => {
           return standing;
         },
       },
+      cspTopUpPurchase: {
+        findMany: async () => [],
+      },
     } as any;
 
     const first = await ensureMemberStanding(db, userId);
@@ -92,5 +95,30 @@ describe("ensureMemberStanding", () => {
     const third = await ensureMemberStanding(db, userId);
     assert.equal(third.contributionRight, 55);
     assert.equal(third.currentTierNumber, 1);
+  });
+
+  it("excludes contributions that went towards covering the member's own top-up fee (follow-up Q13)", async () => {
+    const userId = "user-2";
+    let standing: { userId: string; contributionRight: number; currentTierNumber: number | null } | null = null;
+
+    const db = {
+      cspTier: { findMany: async () => tiers },
+      cspContribution: {
+        aggregate: async () => ({ _sum: { amount: 100 } }),
+      },
+      cspMemberStanding: {
+        findUnique: async () => standing,
+        create: async ({ data }: any) => { standing = { ...data }; return standing; },
+        update: async ({ data }: any) => { standing = { ...(standing ?? { userId }), ...data }; return standing; },
+      },
+      cspTopUpPurchase: {
+        // Bought a ₦30 extension; ₦30 of the ₦100 contributed went towards
+        // that fee and must not count towards the tier contribution-right.
+        findMany: async () => [{ contributedAmount: 30, amountPaid: 30 }],
+      },
+    } as any;
+
+    const result = await ensureMemberStanding(db, userId);
+    assert.equal(result.contributionRight, 70);
   });
 });

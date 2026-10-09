@@ -2,6 +2,7 @@
 // Each provider sends different webhook formats; this route detects and processes them.
 
 import { NextRequest, NextResponse } from "next/server";
+import { runPostCreditAutomation } from "@/server/services/walletAutoDebit.service";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import crypto from "crypto";
@@ -501,6 +502,9 @@ async function processConfirmedCryptoPayment(result: WebhookResult) {
     where: { id: userId },
     data: { wallet: { increment: depositAmount } },
   });
+
+  // Deposit Auto-Debit applies when the member opted in
+  await runPostCreditAutomation({ prisma, userId, creditAmount: depositAmount, trigger: "deposit", context: `crypto deposit ${reference}` });
 
   // Update transaction to completed
   if (transaction) {

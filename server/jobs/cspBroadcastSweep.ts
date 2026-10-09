@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { notifyCspBroadcastExtended, notifyCspBroadcastExpiring, notifyCspRequestProcessed } from "@/server/services/notification.service";
-import { closeExpiredCspRequest } from "@/server/services/csp-ledger.service";
+import { closeExpiredCspRequest, CSP_RELEASABLE_STATUSES, executeCspRelease } from "@/server/services/csp-ledger.service";
+import { afterCspRelease } from "@/server/services/csp-release-effects.service";
 import { loadTierConfig } from "@/server/services/csp-config.service";
 
 type TierConfig = {
@@ -20,6 +21,7 @@ type BroadcastSweepCandidate = {
   raisedAmount: number;
   thresholdAmount: number;
   minFulfilmentPct: number | null;
+  tierContributionRight: number | null;
   autoExtendCount: number;
   broadcastExpiresAt: Date | null;
 };
@@ -49,8 +51,18 @@ export function decideCspBroadcastSweepAction(input: {
   minFulfilmentPct: number | null;
   autoExtendCount: number;
   maxAutoExtensions: number;
+  /**
+   * Corporate decision (follow-up Q11, 07/10/2026): a campaign must raise
+   * 2x the member's TIER contribution amount (not their exact individual
+   * contribution, and not the request's own threshold/markup amount)
+   * before the close countdown is allowed to end. When present, this
+   * replaces the legacy minFulfilmentPct-of-threshold requirement.
+   */
+  tierContributionRight?: number | null;
 }): BroadcastSweepDecision {
-  const requiredFulfilment = Math.ceil(((input.minFulfilmentPct ?? 0) / 100) * input.thresholdAmount);
+  const requiredFulfilment = input.tierContributionRight
+    ? 2 * input.tierContributionRight
+    : Math.ceil(((input.minFulfilmentPct ?? 0) / 100) * input.thresholdAmount);
   const canAutoExtend = input.autoExtendCount < input.maxAutoExtensions;
   const action = input.raisedAmount < requiredFulfilment && canAutoExtend ? "extend" : "close";
 
@@ -99,6 +111,7 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
       raisedAmount: true,
       thresholdAmount: true,
       minFulfilmentPct: true,
+      tierContributionRight: true,
       autoExtendCount: true,
       broadcastExpiresAt: true,
     },
@@ -107,6 +120,7 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
   let extended = 0;
   let closed = 0;
   let awaitingRelease = 0;
+  let released = 0;
   let skipped = 0;
   let failed = 0;
 
@@ -123,6 +137,7 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
             raisedAmount: true,
             thresholdAmount: true,
             minFulfilmentPct: true,
+            tierContributionRight: true,
             autoExtendCount: true,
             broadcastExpiresAt: true,
           },
@@ -142,6 +157,7 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
           raisedAmount: current.raisedAmount,
           thresholdAmount: current.thresholdAmount,
           minFulfilmentPct: current.minFulfilmentPct,
+          tierContributionRight: current.tierContributionRight,
           autoExtendCount: current.autoExtendCount,
           maxAutoExtensions: config.maxAutoExtensions,
         });
@@ -185,11 +201,36 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
       } else if (outcome.action === "closed") {
         closed++;
         if (outcome.awaitingRelease) {
-          awaitingRelease++;
-          try {
-            await notifyCspRequestProcessed(candidate.userId, candidate.category, candidate.raisedAmount, "countdown ended — awaiting admin release");
-          } catch (notifyErr) {
-            console.error(`[CSP BROADCAST SWEEP] Notification failed for ${candidate.id}:`, notifyErr);
+          // Admin setting (corporate decision 06/10/2026): release automatically
+          // when the countdown ends; otherwise an admin releases it.
+          let autoReleased = false;
+          if (config.autoReleaseOnCountdownEnd) {
+            try {
+              const release = await executeCspRelease(prisma, {
+                requestId: candidate.id,
+                releasableStatuses: CSP_RELEASABLE_STATUSES,
+                tierModelEnabled: config.tierModelEnabled,
+                defaultCoolingMonths: config.defaultCoolingMonthsMin,
+                holdIfBeneficiaryExpired: config.holdReleaseForExpiredMembers,
+                auditExtra: { automatic: true, trigger: "countdown_end" },
+              });
+              await afterCspRelease(release);
+              autoReleased = true;
+              released++;
+            } catch (releaseErr) {
+              console.warn(
+                `[CSP BROADCAST SWEEP] Automatic release did not run for ${candidate.id}; left for admin release:`,
+                releaseErr instanceof Error ? releaseErr.message : releaseErr,
+              );
+            }
+          }
+          if (!autoReleased) {
+            awaitingRelease++;
+            try {
+              await notifyCspRequestProcessed(candidate.userId, candidate.category, candidate.raisedAmount, "countdown ended — awaiting admin release");
+            } catch (notifyErr) {
+              console.error(`[CSP BROADCAST SWEEP] Notification failed for ${candidate.id}:`, notifyErr);
+            }
           }
         }
       } else {
@@ -248,6 +289,6 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
     closed,
     skipped,
     failed,
-    summary: `Processed ${candidates.length} broadcast(s): ${extended} extended, ${closed} ended (${awaitingRelease} awaiting admin release), ${skipped} skipped, ${failed} failed`,
+    summary: `Processed ${candidates.length} broadcast(s): ${extended} extended, ${closed} ended (${released} released automatically, ${awaitingRelease} awaiting admin release), ${skipped} skipped, ${failed} failed`,
   };
 }

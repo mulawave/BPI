@@ -6985,9 +6985,19 @@ export const adminRouter = createTRPCRouter({
         ? Math.round(((recentUsers - previousUsers) / previousUsers) * 100)
         : 0;
 
-    // Pending payments
+    // Pending payments needing admin action (corporate decision, follow-up
+    // Q3): manual bank-transfer proof-of-payment submissions and
+    // amount-mismatch flags. Automated gateway payments awaiting
+    // confirmation are excluded — the webhook/recovery cron resolve those
+    // without an admin.
     const pendingPayments = await prisma.pendingPayment.count({
-      where: { status: "pending" },
+      where: {
+        status: "pending",
+        OR: [
+          { proofOfPayment: { not: null } },
+          { reviewNotes: { not: null } },
+        ],
+      },
     });
 
     // Pending withdrawals

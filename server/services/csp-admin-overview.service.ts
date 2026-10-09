@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { loadAutoDebitPolicy } from "@/server/services/walletAutoDebit.service";
 
 export async function getCspAdminOverview(auditPage: number, auditLimit: number) {
   const [totalDonatedAgg, ongoingBroadcasts, totalRequests, releasedRequests, topContributorsRaw] = await Promise.all([
@@ -34,6 +35,7 @@ export async function getCspAdminOverview(auditPage: number, auditLimit: number)
     ? await prisma.membershipPackage.findMany({ where: { id: { in: membershipPackageIds } }, select: { id: true, name: true } })
     : [];
   const membershipMap = new Map(membershipPackages.map((p) => [p.id, p.name]));
+  const autoDebitCompulsory = (await loadAutoDebitPolicy(prisma)).minPercentage > 0;
   const autoDebitMap = new Map(autoDebitSettings.map((s) => [s.userId, s.isEnabled]));
   const autoContributeMap = new Map(autoContributeSettings.map((s) => [s.userId, s.isEnabled]));
   const userMap = new Map(topContributorUsers.map((u) => [u.id, u]));
@@ -48,7 +50,7 @@ export async function getCspAdminOverview(auditPage: number, auditLimit: number)
       cashWalletBalance: user?.wallet ?? 0,
       communityWalletBalance: user?.community ?? 0,
       isAutoContribute: autoContributeMap.get(c.contributorId) ?? false,
-      isAutoDebit: autoDebitMap.get(c.contributorId) ?? false,
+      isAutoDebit: autoDebitCompulsory || (autoDebitMap.get(c.contributorId) ?? false),
       activated: user?.activated ?? false,
       membershipPlan: user?.activeMembershipPackageId ? (membershipMap.get(user.activeMembershipPackageId) ?? "Unknown") : "None",
       totalDonated: c._sum.amount ?? 0,

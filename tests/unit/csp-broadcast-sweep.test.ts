@@ -56,4 +56,32 @@ describe("decideCspBroadcastSweepAction", () => {
     assert.equal(result.action, "close");
     assert.equal(result.requiredFulfilment, 0);
   });
+
+  it("the 2x tier rule (follow-up Q11) requires 2x the tier contribution amount, overriding minFulfilmentPct", () => {
+    const result = decideCspBroadcastSweepAction({
+      raisedAmount: 15000,
+      thresholdAmount: 100000,
+      minFulfilmentPct: 30,
+      tierContributionRight: 10000,
+      autoExtendCount: 0,
+      maxAutoExtensions: 3,
+    });
+
+    assert.equal(result.requiredFulfilment, 20000);
+    assert.equal(result.action, "extend");
+  });
+
+  it("the 2x tier rule closes once raised amount reaches 2x the tier contribution amount", () => {
+    const result = decideCspBroadcastSweepAction({
+      raisedAmount: 20000,
+      thresholdAmount: 100000,
+      minFulfilmentPct: 30,
+      tierContributionRight: 10000,
+      autoExtendCount: 0,
+      maxAutoExtensions: 3,
+    });
+
+    assert.equal(result.requiredFulfilment, 20000);
+    assert.equal(result.action, "close");
+  });
 });

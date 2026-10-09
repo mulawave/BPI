@@ -15,6 +15,7 @@ import { runCspAutoContributeSweep } from "@/server/jobs/cspAutoContributeSweep"
 import { runCspBroadcastSweep } from "@/server/jobs/cspBroadcastSweep";
 import { runRecoverStuckPayments } from "@/server/jobs/recoverStuckPayments";
 import { membershipAutoRenewalCronHandler } from "@/server/jobs/membershipAutoRenewalJob";
+import { runMembershipRenewalReminders } from "@/server/jobs/membershipRenewalReminders";
 import fs from "fs";
 import path from "path";
 
@@ -471,6 +472,23 @@ function startCronJobs() {
     timezone: "Africa/Lagos"
   });
 
+  // Membership renewal reminders — daily at 06:00 WAT, before auto-renewal.
+  // 7 days, 3 days and 24 hours before renewal, in-app and by email.
+  cron.schedule("0 6 * * *", async () => {
+    console.log("\n⏰ [CRON] Triggered: Membership Renewal Reminders");
+    await runExclusive("membership-renewal-reminders", async () => {
+      try {
+        const result = await runMembershipRenewalReminders();
+        console.log(`✅ [RENEWAL-REMINDERS] ${result.summary}`);
+      } catch (error) {
+        console.error("❌ [CRON] Membership renewal reminders failed:", error);
+        await notifyAdminOfError(error, "Membership Renewal Reminders");
+      }
+    });
+  }, {
+    timezone: "Africa/Lagos"
+  });
+
   // Membership Auto-Renewal — daily at 06:10 WAT.
   // Renews memberships expiring within a day / expired within 30 days, paid
   // from the member's Main Wallet (members without funds are notified).
@@ -494,6 +512,7 @@ function startCronJobs() {
   console.log("   • CSP Auto-Contribute Sweep: every 15 minutes (*/15 * * * *)");
   console.log("   • CSP Broadcast Sweep: every 10 minutes (*/10 * * * *)");
   console.log("   • Stuck Payment Recovery: every 5 minutes (*/5 * * * *)");
+  console.log("   • Membership Renewal Reminders: daily at 6:00 AM (0 6 * * *)");
   console.log("   • Membership Auto-Renewal: daily at 6:10 AM (10 6 * * *)");
   console.log("\n⏳ Waiting for scheduled tasks...\n");
 

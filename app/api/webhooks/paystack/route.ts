@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assessPaidAmount, settleOverpayment } from "@/server/services/payment/paymentPolicy";
+import { paystackPaidNgn } from "@/server/services/payment/paystackAmount";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { webhookLimiter, applyRateLimit } from "@/lib/rateLimit";
@@ -56,11 +58,20 @@ async function writeProcessingWarning(reference: string, purpose: string, amount
   });
 }
 
-/** Verify that the webhook amount matches the stored pending payment amount. Returns true if OK or no record to compare. */
+/**
+ * Check the webhook amount against the stored pending payment. Exact (±₦1) or
+ * no record → OK. Overpaid → OK, and the difference is credited to the Main
+ * Wallet (corporate decision). Underpaid → held for admin review.
+ */
 async function verifyPaymentAmount(paymentId: string, receivedAmountNgn: number, reference: string, purpose: string): Promise<boolean> {
-  const pending = await prisma.pendingPayment.findUnique({ where: { id: paymentId }, select: { amount: true } });
+  const pending = await prisma.pendingPayment.findUnique({ where: { id: paymentId }, select: { amount: true, userId: true } });
   if (!pending || !pending.amount || pending.amount <= 0) return true; // no stored amount to compare
-  if (Math.abs(receivedAmountNgn - pending.amount) <= 1) return true; // ₦1 tolerance for rounding
+  const assessment = assessPaidAmount(receivedAmountNgn, pending.amount);
+  if (assessment.kind === "exact") return true;
+  if (assessment.kind === "over") {
+    await settleOverpayment(prisma, { userId: pending.userId, reference: reference, paidNgn: receivedAmountNgn, dueNgn: pending.amount, source: "paystack webhook" });
+    return true;
+  }
   await markPaymentNeedsReview(
     paymentId,
     `Amount mismatch: received ₦${receivedAmountNgn}, expected ₦${pending.amount}. Requires manual review.`,
@@ -113,6 +124,8 @@ export async function POST(req: NextRequest) {
     // Handle charge.success event
     if (event.event === 'charge.success') {
       const { reference, amount, status, customer, metadata } = event.data;
+      // What was paid towards our charge (excludes Paystack fees passed to the customer).
+      const paidNgn = paystackPaidNgn(event.data) ?? amount / 100;
 
       console.log('💳 [PAYSTACK-WEBHOOK] Payment successful:', {
         reference,
@@ -141,7 +154,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ message: 'Webhook acknowledged' }, { status: 200 });
         }
 
-        if (!await verifyPaymentAmount(claim.paymentId, amount / 100, reference, purpose)) {
+        if (!await verifyPaymentAmount(claim.paymentId, paidNgn, reference, purpose)) {
           console.warn('⚠️  [PAYSTACK-WEBHOOK] Amount mismatch for membership payment:', reference);
           return NextResponse.json({ message: 'Webhook acknowledged' }, { status: 200 });
         }
@@ -238,7 +251,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ message: 'Webhook acknowledged' }, { status: 200 });
         }
 
-        if (!await verifyPaymentAmount(claim.paymentId, amount / 100, reference, purpose)) {
+        if (!await verifyPaymentAmount(claim.paymentId, paidNgn, reference, purpose)) {
           console.warn('⚠️  [PAYSTACK-WEBHOOK] Amount mismatch for upgrade payment:', reference);
           return NextResponse.json({ message: 'Webhook acknowledged' }, { status: 200 });
         }
@@ -331,7 +344,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ message: 'Webhook acknowledged' }, { status: 200 });
         }
 
-        if (!await verifyPaymentAmount(claim.paymentId, amount / 100, reference, purpose)) {
+        if (!await verifyPaymentAmount(claim.paymentId, paidNgn, reference, purpose)) {
           console.warn('⚠️  [PAYSTACK-WEBHOOK] Amount mismatch for empowerment payment:', reference);
           return NextResponse.json({ message: 'Webhook acknowledged' }, { status: 200 });
         }
@@ -417,7 +430,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ message: 'Webhook acknowledged' }, { status: 200 });
         }
 
-        if (!await verifyPaymentAmount(claim.paymentId, amount / 100, reference, purpose)) {
+        if (!await verifyPaymentAmount(claim.paymentId, paidNgn, reference, purpose)) {
           console.warn('⚠️  [PAYSTACK-WEBHOOK] Amount mismatch for deposit payment:', reference);
           return NextResponse.json({ message: 'Webhook acknowledged' }, { status: 200 });
         }
@@ -469,7 +482,7 @@ export async function POST(req: NextRequest) {
           if (recoveredPurpose === 'MEMBERSHIP' && recoveredPackageId && recoveredUserId) {
             const claim = await claimPendingPayment(reference, 'MEMBERSHIP', recoveredUserId);
             if (claim.status === 'claimed') {
-              if (await verifyPaymentAmount(claim.paymentId, amount / 100, reference, 'MEMBERSHIP')) {
+              if (await verifyPaymentAmount(claim.paymentId, paidNgn, reference, 'MEMBERSHIP')) {
                 try {
                   const { activateMembershipAfterExternalPayment } = await import('@/server/services/membershipPayments.service');
                   await activateMembershipAfterExternalPayment({
@@ -498,7 +511,7 @@ export async function POST(req: NextRequest) {
           } else if (recoveredPurpose === 'MEMBERSHIP_UPGRADE' && recoveredPackageId && recoveredCurrentPackageId && recoveredUserId) {
             const claim = await claimPendingPayment(reference, 'UPGRADE', recoveredUserId);
             if (claim.status === 'claimed') {
-              if (await verifyPaymentAmount(claim.paymentId, amount / 100, reference, 'UPGRADE')) {
+              if (await verifyPaymentAmount(claim.paymentId, paidNgn, reference, 'UPGRADE')) {
                 try {
                   const { upgradeMembershipAfterExternalPayment } = await import('@/server/services/membershipPayments.service');
                   await upgradeMembershipAfterExternalPayment({
@@ -526,7 +539,7 @@ export async function POST(req: NextRequest) {
             // Fallback recovery for wallet deposits (handles legacy 'wallet_deposit' purpose mismatch)
             const claim = await claimPendingPayment(reference, 'DEPOSIT', recoveredUserId);
             if (claim.status === 'claimed') {
-              if (await verifyPaymentAmount(claim.paymentId, amount / 100, reference, 'DEPOSIT')) {
+              if (await verifyPaymentAmount(claim.paymentId, paidNgn, reference, 'DEPOSIT')) {
                 try {
                   const deposit = await fulfillDepositPayment(prisma, {
                     pendingPaymentId: claim.paymentId,
@@ -550,7 +563,7 @@ export async function POST(req: NextRequest) {
             // Fallback recovery for empowerment payments
             const claim = await claimPendingPayment(reference, 'EMPOWERMENT', recoveredUserId);
             if (claim.status === 'claimed') {
-              if (await verifyPaymentAmount(claim.paymentId, amount / 100, reference, 'EMPOWERMENT')) {
+              if (await verifyPaymentAmount(claim.paymentId, paidNgn, reference, 'EMPOWERMENT')) {
                 try {
                   await prisma.$transaction([
                     prisma.transaction.updateMany({
@@ -594,7 +607,7 @@ export async function POST(req: NextRequest) {
             // Fallback recovery for store purchases
             const claim = await claimPendingPayment(reference, 'STORE_PURCHASE', recoveredUserId);
             if (claim.status === 'claimed') {
-              if (await verifyPaymentAmount(claim.paymentId, amount / 100, reference, 'STORE_PURCHASE')) {
+              if (await verifyPaymentAmount(claim.paymentId, paidNgn, reference, 'STORE_PURCHASE')) {
                 try {
                   const order = await prisma.order.findUnique({
                     where: { id: recoveredMeta.orderId },

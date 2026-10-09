@@ -165,12 +165,14 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
   ], [userProfile]);
 
   const fromWalletOptions = useMemo(() => {
+    // Community Wallet funds are for CSP contributions only and can't be moved out.
+    const movable = walletOptions.filter((o) => o.value !== 'community');
     // CTO policy: cashback cannot be transferred out to other internal wallets.
     // (cashback->cashback via user-to-user transfer is allowed)
     if (transferType === 'inter-wallet') {
-      return walletOptions.filter((o) => o.value !== 'cashback');
+      return movable.filter((o) => o.value !== 'cashback');
     }
-    return walletOptions;
+    return movable;
   }, [transferType, walletOptions]);
 
   useEffect(() => {
@@ -391,7 +393,7 @@ export default function TransferModal({ isOpen, onClose }: TransferModalProps) {
                       onChange={(e) => setFromWallet(e.target.value as WalletType)}
                       className="w-full px-4 py-3 rounded-lg border border-input bg-background"
                     >
-                      {walletOptions.map(option => (
+                      {fromWalletOptions.map(option => (
                         <option key={option.value} value={option.value}>
                           {option.label} ({formatAmount(option.balance)}) - {option.description}
                         </option>

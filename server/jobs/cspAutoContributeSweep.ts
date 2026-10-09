@@ -18,6 +18,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { runCspAutoContribute } from "@/server/services/cspAutoContribute.service";
+import { recordAutomationFailure } from "@/server/services/walletAutoDebit.service";
 
 export type AutoContributeSweepResult = {
   success: boolean;
@@ -86,6 +87,12 @@ export async function runCspAutoContributeSweep(): Promise<AutoContributeSweepRe
     } catch (err) {
       failed++;
       console.error(`[CSP_AUTO_CONTRIBUTE_SWEEP] Failed for user ${setting.userId}:`, err);
+      await recordAutomationFailure(prisma, {
+        userId: setting.userId,
+        kind: "AUTO_CONTRIBUTE_FAILED",
+        reason: err instanceof Error ? err.message : String(err),
+        context: "scheduled auto-contribute sweep",
+      });
     }
   }
 

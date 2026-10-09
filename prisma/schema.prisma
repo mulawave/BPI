@@ -1896,6 +1896,7 @@ model User {
   cashback                                                             Float                        @default(0)
   studentCashback                                                      Float                        @default(0)
   community                                                            Float                        @default(0)
+  reserve                                                              Float                        @default(0)
   shareholder                                                          Float                        @default(0)
   shelter                                                              Float                        @default(0)
   education                                                            Float                        @default(0)
@@ -1926,6 +1927,7 @@ model User {
   sponsorId                                                            String?
   membershipActivatedAt                                                DateTime?
   membershipExpiresAt                                                  DateTime?
+  membershipGraceAnchorAt                                              DateTime?
   renewalCount                                                         Int                          @default(0)
   security                                                             Float                        @default(0)
   inviteCode                                                           String?                      @unique
@@ -2026,6 +2028,8 @@ model User {
   CspSupportRequests                                                   CspSupportRequest[]
   CspContributions                                                     CspContribution[]
   CspWaitReductionLogs                                                 CspWaitReductionLog[]
+  CspTopUpPurchases                                                    CspTopUpPurchase[]
+  HealthcareCard                                                       HealthcareCard?
   CspMemberStanding                                                    CspMemberStanding?   @relation("CspMemberStanding_user")
   CspDonations                                                         CspDonation[]        @relation("CspDonation_donorUser")
   CspTimeReductionBadges                                               CspTimeReductionBadge[] @relation("CspTimeReductionBadge_ownerUser")
@@ -2418,6 +2422,10 @@ model CspSupportRequest {
   countryCode        String?   // ISO country code for national geo-scoping
   isAdminDefault     Boolean   @default(false) // Admin-created base requests
   isActive           Boolean   @default(true)  // Admin can turn off default requests
+  // Corporate decision (follow-up Q17, 07/10/2026): admin-only, no profit
+  // motive, funds go to the BPI project account, no 20% fee, no
+  // Auto-Contribute eligibility credit for contributors.
+  isSpecialSupport   Boolean   @default(false)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   User               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2425,6 +2433,7 @@ model CspSupportRequest {
   Extensions         CspBroadcastExtension[]
   WaitReductions     CspWaitReductionLog[]
   AutoContributeLogs CspAutoContributeLog[]
+  TopUpPurchases     CspTopUpPurchase[]
 
   @@index([userId, status])
   @@index([status, broadcastExpiresAt])
@@ -2570,6 +2579,107 @@ model CspWaitReductionLog {
 
   @@unique([userId, requestId, monthKey])
   @@index([userId, requestId])
+}
+
+/// CSP top-up (time extension), corporate decision follow-up Q13 (07/10/2026).
+/// A member buys 24h or 48h of extra broadcast time. The fee goes to the
+/// member's own Community Wallet and the extension only takes effect once
+/// that same amount has been (manually or automatically) contributed to a
+/// live campaign before the countdown ends. `requestId` is null for a
+/// "pre-extension" bought before the member has made a request yet; it is
+/// attached to the member's next request when they create one.
+model CspTopUpPurchase {
+  id                String    @id @default(cuid())
+  userId            String
+  requestId         String?
+  hours             Int       // 24 | 48
+  amountPaid        Int
+  paidFrom          String    // "wallet" | "gateway"
+  contributedAmount Int       @default(0)
+  status            String    @default("pending") // pending | applied | expired | forfeited
+  purchasedAt       DateTime  @default(now())
+  appliedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  User              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Request           CspSupportRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([requestId])
+}
+
+/// Healthcare card, corporate decision follow-up Q16 (07/10/2026). One active
+/// card per member, a ₦300,000 yearly cover that resets (does not carry over)
+/// on renewal, with a monthly usage cap.
+model HealthcareCard {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  sscCode     String    @unique // BPI Social Security Code (also encoded as the card's QR)
+  status      String    @default("active") // active | expired | cancelled
+  coverAmount Int       // yearly cover, snapshot at issue/renewal
+  coverUsed   Int       @default(0) // used so far this cover year; resets on renewal
+  monthKey    String    // "YYYY-MM" the monthUsed figure applies to
+  monthUsed   Int       @default(0) // used so far this calendar month (the 10-20% monthly cap applies to this)
+  issuedAt    DateTime  @default(now())
+  expiresAt   DateTime  // issuedAt + 1 year
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  User        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Redemptions HealthcareCardRedemption[]
+
+  @@index([status])
+}
+
+/// A BPI-affiliated health centre (e.g. BPI-CHS, BPI neuro therapy spa).
+model HealthcareCentre {
+  id        String    @id @default(cuid())
+  name      String
+  location  String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  Services  HealthcareService[]
+  Redemptions HealthcareCardRedemption[]
+}
+
+/// A service/product at a centre. `discountOnly` services (e.g. products)
+/// only get the member's discount percentage off, with no cover deduction —
+/// the member pays the provider directly. Covered services deduct from the
+/// member's cover and BPI settles the centre.
+model HealthcareService {
+  id           String    @id @default(cuid())
+  centreId     String
+  name         String
+  price        Int
+  discountOnly Boolean   @default(false)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  Centre       HealthcareCentre @relation(fields: [centreId], references: [id], onDelete: Cascade)
+  Redemptions  HealthcareCardRedemption[]
+
+  @@index([centreId])
+}
+
+/// One use of the healthcare card at a centre, after the SSC/QR is scanned.
+model HealthcareCardRedemption {
+  id             String    @id @default(cuid())
+  cardId         String
+  centreId       String
+  serviceId      String?
+  servicePrice   Int
+  discountPct    Int
+  discountAmount Int
+  coveredAmount  Int       @default(0) // deducted from the member's cover (0 for discount-only services)
+  memberPays     Int       // what the member pays the provider directly
+  recordedByUserId String?
+  createdAt      DateTime  @default(now())
+  Card           HealthcareCard    @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  Centre         HealthcareCentre  @relation(fields: [centreId], references: [id], onDelete: Cascade)
+  Service        HealthcareService? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([cardId])
+  @@index([centreId])
 }
 
 /// Tracks CSP country activation state. A country becomes CSP-active when it reaches the activation threshold.

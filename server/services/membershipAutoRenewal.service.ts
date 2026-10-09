@@ -5,6 +5,7 @@ import { distributeBptReward } from "./rewards.service";
 import { recordRevenue } from "./revenue.service";
 import { notifyMembershipRenewal } from "./notification.service";
 import { deriveMembershipExpiry } from "../../lib/membershipAccess";
+import { creditCommissionOrRedirect } from "./commissionRedirect.service";
 
 // ========================================================================
 // HELPER FUNCTIONS
@@ -190,12 +191,8 @@ export async function validateAutoRenewalEligibility(
 }
 
 /**
- * Get the renewal package for a user based on their current membership
- * Rules:
- * - Regular → Regular Plus (upgrade)
- * - Regular Plus → Regular Plus (same)
- * - Gold Plus → Gold Plus (same)
- * - Platinum Plus → Platinum Plus (same)
+ * Get the renewal package for a user based on their current membership.
+ * Members renew at their current level unless they choose an upgrade.
  */
 export async function getRenewalPackage(
   prismaLike: PrismaClient | any,
@@ -262,19 +259,10 @@ export async function getRenewalPackage(
     };
   }
 
-  // No upgrade specified - use same package (or auto-upgrade from Regular to Regular Plus)
-  let renewalPackage = currentPackage;
-
-  // Auto-upgrade from Regular to Regular Plus
-  if (currentPackage.name === "Regular") {
-    const regularPlus = await prismaLike.membershipPackage.findFirst({
-      where: { name: "Regular Plus", isActive: true },
-    });
-
-    if (regularPlus) {
-      renewalPackage = regularPlus;
-    }
-  }
+  // No upgrade specified: renew at the member's current level. (Corporate
+  // decision 29/09/2026: Regular members are no longer moved to Regular Plus
+  // automatically at renewal.)
+  const renewalPackage = currentPackage;
 
   const renewalFee = renewalPackage.renewalFee || renewalPackage.price;
   const vat = renewalFee * 0.075;
@@ -303,7 +291,7 @@ const RENEWAL_TX_TIMEOUT_MS = 90_000;
 export class RenewalInsufficientFundsError extends Error {
   constructor(public required: number, public available: number) {
     super(
-      `Insufficient Main Wallet balance for renewal. Required ₦${required.toLocaleString()}, available ₦${available.toLocaleString()}. Please fund your wallet.`
+      `Insufficient balance for renewal. Required ₦${required.toLocaleString()} (Renewal Reserve pays first, then Main Wallet), available ₦${available.toLocaleString()} combined. Please fund your Main Wallet.`
     );
   }
 }
@@ -362,6 +350,7 @@ export async function processAutoRenewal(
         email: true,
         name: true,
         wallet: true,
+        reserve: true,
         country: true,
         state: true,
         activeMembershipPackageId: true,
@@ -384,8 +373,12 @@ export async function processAutoRenewal(
     }
 
     const totalCost = Math.round(renewalPackageInfo.totalCost * 100) / 100;
-    if ((user.wallet ?? 0) < totalCost) {
-      throw new RenewalInsufficientFundsError(totalCost, user.wallet ?? 0);
+    // Corporate decision (Q13, 29/09/2026): the Renewal Reserve pays first,
+    // the Main Wallet covers any shortfall.
+    const fromReserve = Math.min(Math.max(0, user.reserve ?? 0), totalCost);
+    const fromWallet = Math.round((totalCost - fromReserve) * 100) / 100;
+    if ((user.wallet ?? 0) < fromWallet) {
+      throw new RenewalInsufficientFundsError(totalCost, (user.wallet ?? 0) + fromReserve);
     }
 
     // 4. Calculate new expiry date
@@ -409,11 +402,13 @@ export async function processAutoRenewal(
       const charged = await tx.user.updateMany({
         where: {
           id: userId,
-          wallet: { gte: totalCost },
+          wallet: { gte: fromWallet },
+          reserve: { gte: fromReserve },
           membershipExpiresAt: user.membershipExpiresAt,
         },
         data: {
-          wallet: { decrement: totalCost },
+          ...(fromWallet > 0 ? { wallet: { decrement: fromWallet } } : {}),
+          ...(fromReserve > 0 ? { reserve: { decrement: fromReserve } } : {}),
           membershipExpiresAt: newExpiresAt,
           renewalCount: { increment: 1 },
           ...(renewalPackageInfo.packageId !== user.activeMembershipPackageId
@@ -423,25 +418,44 @@ export async function processAutoRenewal(
       });
 
       if (charged.count === 0) {
-        const fresh = await tx.user.findUnique({ where: { id: userId }, select: { wallet: true } });
-        if ((fresh?.wallet ?? 0) < totalCost) {
-          throw new RenewalInsufficientFundsError(totalCost, fresh?.wallet ?? 0);
+        const fresh = await tx.user.findUnique({ where: { id: userId }, select: { wallet: true, reserve: true } });
+        if ((fresh?.wallet ?? 0) < fromWallet || (fresh?.reserve ?? 0) < fromReserve) {
+          throw new RenewalInsufficientFundsError(totalCost, (fresh?.wallet ?? 0) + (fresh?.reserve ?? 0));
         }
         throw new Error("Membership was renewed or changed by another request. Please refresh.");
       }
 
+      if (fromReserve > 0) {
+        await tx.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "MEMBERSHIP_RENEWAL",
+            amount: -fromReserve,
+            description: `${renewalPackageInfo.packageName} membership renewal #${renewalNumber} (₦${fromReserve.toLocaleString()} from Renewal Reserve)`,
+            status: "completed",
+            reference: renewalReference,
+            walletType: "reserve",
+          },
+        });
+      }
+
+      if (fromWallet > 0) {
       await tx.transaction.create({
         data: {
           id: randomUUID(),
           userId,
           transactionType: "MEMBERSHIP_RENEWAL",
-          amount: -totalCost,
-          description: `${renewalPackageInfo.packageName} membership renewal #${renewalNumber} (paid from Main Wallet)`,
+          amount: -fromWallet,
+          description: fromReserve > 0
+            ? `${renewalPackageInfo.packageName} membership renewal #${renewalNumber} (₦${fromWallet.toLocaleString()} from Main Wallet, remainder from Renewal Reserve)`
+            : `${renewalPackageInfo.packageName} membership renewal #${renewalNumber} (paid from Main Wallet)`,
           status: "completed",
           reference: renewalReference,
           walletType: "main",
         },
       });
+      }
 
       if (renewalPackageInfo.vat > 0) {
         await tx.transaction.create({
@@ -474,7 +488,22 @@ export async function processAutoRenewal(
         const shelterReward = pkg[`shelter_l${level}`] || 0;
 
         const updateData: any = {};
-        if (cashReward > 0) { updateData.wallet = { increment: cashReward }; totals.cash += cashReward; }
+        // Corporate decision (follow-up Q8a/b, 06-07/10/2026): the cash
+        // commission redirects to the default beneficiaries once this
+        // referrer has been expired more than 7 days; other reward wallets
+        // are unaffected.
+        if (cashReward > 0) {
+          const result = await creditCommissionOrRedirect(tx, {
+            recipientId: referrer.id,
+            amount: cashReward,
+            description: `L${level} Cash Wallet renewal reward from ${membershipPackage.name} renewal (Referral ID: ${userId})`,
+            transactionType: RENEWAL_REWARD_TX_TYPES.cash(level),
+            reference: `${renewalReference}-L${level}-${RENEWAL_REWARD_TX_TYPES.cash(level)}`,
+            now,
+          });
+          totals.cash += cashReward;
+          if (!result.redirected) cashRewardsByReferrer.push({ referrerId: referrer.id, amount: cashReward });
+        }
         if (palliativeReward > 0) { updateData.palliative = { increment: palliativeReward }; totals.palliative += palliativeReward; }
         if (cashbackReward > 0) { updateData.cashback = { increment: cashbackReward }; totals.cashback += cashbackReward; }
         if (healthReward > 0) { updateData.health = { increment: healthReward }; totals.health += healthReward; }
@@ -487,7 +516,6 @@ export async function processAutoRenewal(
         }
 
         const rewardTx: Array<[string, number, string]> = [
-          [RENEWAL_REWARD_TX_TYPES.cash(level), cashReward, "Cash Wallet"],
           [RENEWAL_REWARD_TX_TYPES.palliative(level), palliativeReward, "Palliative Wallet"],
           [RENEWAL_REWARD_TX_TYPES.cashback(level), cashbackReward, "Cashback Wallet"],
         ];
@@ -506,7 +534,6 @@ export async function processAutoRenewal(
           });
         }
 
-        if (cashReward > 0) cashRewardsByReferrer.push({ referrerId: referrer.id, amount: cashReward });
         if (bptReward > 0) bptRewards.push({ referrerId: referrer.id, level, amount: bptReward });
       }
 

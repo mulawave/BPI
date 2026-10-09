@@ -8,6 +8,7 @@ import { compare } from "bcryptjs";
 import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { resolveAuthSecret } from "@/lib/authSecret";
 import { evaluateMembershipAccess } from "@/lib/membershipAccess";
+import { loadMembershipGraceDays } from "@/lib/membershipGrace";
 
 import {
   getAuthUserLookupCache,
@@ -81,6 +82,7 @@ async function getCachedAuthEnrichment(userId: string) {
         activeMembershipPackageId: true,
         membershipActivatedAt: true,
         membershipExpiresAt: true,
+        membershipGraceAnchorAt: true,
         userType: true,
         role: true,
         forcePasswordReset: true,
@@ -99,6 +101,8 @@ async function getCachedAuthEnrichment(userId: string) {
       membershipActivatedAt: dbUser?.membershipActivatedAt,
       membershipExpiresAt: dbUser?.membershipExpiresAt,
       renewalCycleDays: membershipPackage?.renewalCycle,
+      graceDays: await loadMembershipGraceDays(prisma),
+      graceAnchorAt: dbUser?.membershipGraceAnchorAt,
     });
 
     let hasActiveEmpowerment = false;

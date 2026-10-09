@@ -1,6 +1,7 @@
 import { auth } from "@/server/auth";
 import { redirect } from "next/navigation";
 import WalletAutoDebitSettings from "@/components/wallet/WalletAutoDebitSettings";
+import RenewalReserveCard from "@/components/wallet/RenewalReserveCard";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,10 @@ export default async function WalletSettingsPage() {
           Advanced Wallet Settings
         </h1>
 
-        <WalletAutoDebitSettings />
+        <div className="space-y-6">
+          <RenewalReserveCard />
+          <WalletAutoDebitSettings />
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,9 @@
 ﻿import { z } from "zod";
 import { createTRPCRouter, protectedProcedure, publicProcedure } from "../trpc";
 import { prisma } from "@/lib/prisma";
+import { runPostCreditAutomation } from "@/server/services/walletAutoDebit.service";
+import { creditCommissionOrRedirect } from "@/server/services/commissionRedirect.service";
+import { settleOverpayment } from "@/server/services/payment/paymentPolicy";
 import type { Prisma, MembershipPackage } from "@prisma/client";
 import { getReferralChain } from "@/server/services/referral.service";
 import { distributeBptReward } from "@/server/services/rewards.service";
@@ -750,8 +753,7 @@ export const packageRouter = createTRPCRouter({
 
         // Build update data object
         const updateData: any = {};
-        if (cashReward > 0) updateData.wallet = { increment: cashReward };
-        
+
         // Shelter-active users: palliative rewards go directly to palliative wallet
         const hasShelter = (referrerData?.isShelter === 1) || ((referrerData?.shelter ?? 0) > 0);
         
@@ -783,35 +785,42 @@ export const packageRouter = createTRPCRouter({
           });
         }
 
-        // Distribute BPT rewards using the 50/50 split service
-        let userBptShare = 0;
-        if (bptReward > 0) {
-          const bptResult = await distributeBptReward(
-            referrer.id, 
-            bptReward, 
-            `REFERRAL_L${level}`,
-            `Referral reward L${level} from ${membershipPackage.name} activation`
-          );
-          userBptShare = bptResult.userBptUnits;
-        }
-
         // Create separate transaction records for each wallet type
         const timestamp = Date.now();
         const activatorName = ctx.session.user.name || 'New Member';
 
-        // Main wallet transaction
+        // Corporate decision (follow-up Q8a/b, 06-07/10/2026): redirects to
+        // the default beneficiaries once this referrer has been expired more
+        // than 7 days. Auto-Debit only applies when actually credited.
         if (cashReward > 0) {
-          await prisma.transaction.create({
-            data: {
-              id: randomUUID(),
-              userId: referrer.id,
-              transactionType: `REFERRAL_CASH_L${level}`,
-              amount: cashReward,
-              description: `L${level} Cash Wallet referral reward from ${membershipPackage.name} activation by ${activatorName} (Referral ID: ${userId})`,
-              status: "completed",
-              reference: `REF-CASH-${packageId}-L${level}-${timestamp}`,
-            }
+          const { redirected } = await creditCommissionOrRedirect(prisma, {
+            recipientId: referrer.id,
+            amount: cashReward,
+            description: `L${level} Cash Wallet referral reward from ${membershipPackage.name} activation by ${activatorName} (Referral ID: ${userId})`,
+            transactionType: `REFERRAL_CASH_L${level}`,
+            reference: `REF-CASH-${packageId}-L${level}-${timestamp}`,
           });
+          if (!redirected) {
+            await runPostCreditAutomation({
+              prisma,
+              userId: referrer.id,
+              creditAmount: cashReward,
+              trigger: "reward",
+              context: `activation referral reward L${level} (${membershipPackage.name})`,
+            });
+          }
+        }
+
+        // Distribute BPT rewards using the 50/50 split service
+        let userBptShare = 0;
+        if (bptReward > 0) {
+          const bptResult = await distributeBptReward(
+            referrer.id,
+            bptReward,
+            `REFERRAL_L${level}`,
+            `Referral reward L${level} from ${membershipPackage.name} activation`
+          );
+          userBptShare = bptResult.userBptUnits;
         }
 
         // Palliative wallet transaction
@@ -1170,7 +1179,6 @@ export const packageRouter = createTRPCRouter({
 
         // Build update data object
         const updateData: any = {};
-        if (cashReward > 0) updateData.wallet = { increment: cashReward };
         if (palliativeReward > 0) updateData.palliative = { increment: palliativeReward };
         if (cashbackReward > 0) updateData.cashback = { increment: cashbackReward };
 
@@ -1182,16 +1190,38 @@ export const packageRouter = createTRPCRouter({
           });
         }
 
+        // Corporate decision (follow-up Q8a/b, 06-07/10/2026): redirects to
+        // the default beneficiaries once this referrer has been expired more
+        // than 7 days. Auto-Debit only applies when actually credited.
+        if (cashReward > 0) {
+          const { redirected } = await creditCommissionOrRedirect(prisma, {
+            recipientId: referrer.id,
+            amount: cashReward,
+            description: `L${level} Cash Wallet referral reward from ${membershipPackage.name} activation (mock payment)`,
+            transactionType: `REFERRAL_CASH_L${level}`,
+            reference: `REF-CASH-MOCK-${referrer.id}-L${level}-${Date.now()}`,
+          });
+          if (!redirected) {
+            await runPostCreditAutomation({
+              prisma,
+              userId: referrer.id,
+              creditAmount: cashReward,
+              trigger: "reward",
+              context: `activation referral reward L${level} (${membershipPackage.name})`,
+            });
+          }
+        }
+
         // Distribute BPT rewards using the 50/50 split service
         if (bptReward > 0) {
           await distributeBptReward(
-            referrer.id, 
-            bptReward, 
+            referrer.id,
+            bptReward,
             `REFERRAL_L${level}`,
             `Referral reward L${level} from ${membershipPackage.name} activation`
           );
         }
-        
+
         // Handle shelter rewards for Gold Plus and Platinum Plus (10 levels)
         if (membershipPackage.name === "Gold Plus" || membershipPackage.name === "Platinum Plus") {
           const shelterLevel = level; // L1-L4 only for now
@@ -3031,8 +3061,7 @@ export const packageRouter = createTRPCRouter({
           });
 
           const updateData: any = {};
-          if (bonuses.cash > 0) updateData.wallet = { increment: bonuses.cash };
-          
+
           // Route palliative rewards based on referrer's activation status
           if (bonuses.palliative > 0) {
             if (referrerData?.palliativeActivated && referrerData.selectedPalliative) {
@@ -3048,12 +3077,37 @@ export const packageRouter = createTRPCRouter({
             }
           }
           
-          if (bonuses.cashback > 0) updateData.cashback = { increment: bonuses.cashback };
+          if (Object.keys(updateData).length > 0) {
+            await prisma.user.update({
+              where: { id: referrerId },
+              data: updateData,
+            });
+          }
 
-          await prisma.user.update({
-            where: { id: referrerId },
-            data: updateData,
-          });
+          // Corporate decision (follow-up Q8a/b, 06-07/10/2026): the cash
+          // portion redirects to the default beneficiaries once this referrer
+          // has been expired more than 7 days. Auto-Debit only applies when
+          // actually credited.
+          let upgradeCashRedirected = false;
+          if (bonuses.cash > 0) {
+            const result = await creditCommissionOrRedirect(prisma, {
+              recipientId: referrerId,
+              amount: bonuses.cash,
+              description: `Referral bonus (differential) for ${newPackage.name} upgrade - Level ${level} (cash)`,
+              transactionType: `membership_upgrade_bonus_l${level}`,
+              reference: `UPGRADE-${Date.now()}-L${level}-CASH`,
+            });
+            upgradeCashRedirected = result.redirected;
+            if (!result.redirected) {
+              await runPostCreditAutomation({
+                prisma,
+                userId: referrerId,
+                creditAmount: bonuses.cash,
+                trigger: "reward",
+                context: `upgrade referral bonus L${level}`,
+              });
+            }
+          }
 
           // Distribute BPT (50% to user, 50% to admin pool)
           if (bonuses.bpt > 0) {
@@ -3071,20 +3125,25 @@ export const packageRouter = createTRPCRouter({
             console.warn(`[WARN] [VALIDATION] Bonus total mismatch for L${level}: calculated=${bonusTotal}, expected=${expectedTotal}`);
           }
 
-          // Create transaction record
-          await prisma.transaction.create({
-            data: {
-              id: randomUUID(),
-              userId: referrerId,
-              transactionType: `membership_upgrade_bonus_l${level}`,
-              amount: bonusTotal,
-              description: `Referral bonus (differential) for ${newPackage.name} upgrade - Level ${level}`,
-              status: "completed",
-              reference: `UPGRADE-${Date.now()}-L${level}`,
-            },
-          });
-          
-          console.log(`  [UPGRADE] L${level} distributed: NGN ${bonusTotal} to referrer ${referrerId.substring(0, 8)}...`);
+          // Create transaction record for the non-cash portion (cash was
+          // already recorded above, by its own reference, when credited or
+          // redirected).
+          const nonCashBonusTotal = bonusTotal - bonuses.cash;
+          if (nonCashBonusTotal > 0) {
+            await prisma.transaction.create({
+              data: {
+                id: randomUUID(),
+                userId: referrerId,
+                transactionType: `membership_upgrade_bonus_l${level}`,
+                amount: nonCashBonusTotal,
+                description: `Referral bonus (differential) for ${newPackage.name} upgrade - Level ${level}`,
+                status: "completed",
+                reference: `UPGRADE-${Date.now()}-L${level}`,
+              },
+            });
+          }
+
+          console.log(`  [UPGRADE] L${level} distributed: NGN ${bonusTotal} to referrer ${referrerId.substring(0, 8)}...${upgradeCashRedirected ? " (cash redirected, 7+ days expired)" : ""}`);
 
           // Notify referrer
           await notifyReferralReward(
@@ -3547,14 +3606,18 @@ export const packageRouter = createTRPCRouter({
       }
 
       if (!isGatewayAmountAcceptable(verification.amount, pending.amount)) {
+        // Underpayment (corporate decision, follow-up Q4): the member deposits
+        // the difference, then an admin approves this payment once the top-up
+        // arrives.
+        const shortfall = Math.max(0, Math.round((pending.amount - (verification.amount ?? 0)) * 100) / 100);
         await prisma.pendingPayment.update({
           where: { id: pending.id },
           data: {
-            reviewNotes: `Verification page: amount mismatch — gateway confirmed ₦${verification.amount}, expected ₦${pending.amount}. Manual review required.`,
+            reviewNotes: `Verification page: amount mismatch — gateway confirmed ₦${verification.amount}, expected ₦${pending.amount} (short by ₦${shortfall}). Awaiting a make-up deposit, then admin approval.`,
             updatedAt: new Date(),
           },
         });
-        throw new Error("The amount paid does not match this payment. Our team has been notified and will review it.");
+        throw new Error(`You paid ₦${shortfall.toLocaleString()} less than required. Please make a deposit for the difference, then our team will approve this payment.`);
       }
 
       const claim = await claimPendingPayment(prisma, {
@@ -3591,6 +3654,15 @@ export const packageRouter = createTRPCRouter({
       if (claim.status === "missing") {
         throw new Error("No payment record found for this reference.");
       }
+
+      // Overpayment: the difference goes to the Main Wallet (corporate decision).
+      await settleOverpayment(prisma, {
+        userId,
+        reference: input.reference,
+        paidNgn: verification.amount,
+        dueNgn: pending.amount,
+        source: `verification page (${input.gateway})`,
+      });
 
       const pendingMetadata = (pending.metadata as Record<string, any> | undefined) || {};
       const transactionType = pending.transactionType;

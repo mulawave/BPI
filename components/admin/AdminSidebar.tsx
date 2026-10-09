@@ -121,6 +121,24 @@ const navigation = [
     description: "Approve & extend CSP requests"
   },
   { 
+    name: "Auto-Debit Alerts", 
+    href: "/admin/auto-debit", 
+    icon: Activity,
+    description: "Auto-Debit rules & failed automations"
+  },
+  { 
+    name: "Special Community Support", 
+    href: "/admin/special-support", 
+    icon: Gift,
+    description: "No-profit admin campaigns (e.g. a borehole)"
+  },
+  { 
+    name: "Healthcare Card", 
+    href: "/admin/healthcare", 
+    icon: School,
+    description: "Card settings, centres & redemptions"
+  },
+  { 
     name: "CSP Donations", 
     href: "/admin/csp-donations", 
     icon: Award,
