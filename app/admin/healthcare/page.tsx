@@ -71,6 +71,40 @@ function SettingsCard() {
   );
 }
 
+function PromoBundleCard() {
+  const utils = api.useUtils();
+  const { data: enabled, isLoading } = api.healthcare.getPromoBundleEnabled.useQuery();
+  const setEnabled = api.healthcare.adminSetPromoBundleEnabled.useMutation({
+    onSuccess: () => {
+      toast.success("Promotional bundle setting saved");
+      utils.healthcare.getPromoBundleEnabled.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  if (isLoading) return <div className="h-20 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-800" />;
+
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5 space-y-3">
+      <h2 className="font-semibold text-gray-900 dark:text-white">Option 2: Promotional Healthcare Card Activation</h2>
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        ₦30,000 bundle, open to any member. A member with no active membership is first granted a free
+        promotional Regular membership, then the standard Healthcare Card subscription runs as usual.
+        No fixed end date — switch it off when the promotion ends.
+      </p>
+      <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+        <input
+          type="checkbox"
+          checked={!!enabled}
+          onChange={(e) => setEnabled.mutate({ enabled: e.target.checked })}
+          disabled={setEnabled.isPending}
+        />
+        Enabled
+      </label>
+    </div>
+  );
+}
+
 function CentresCard() {
   const utils = api.useUtils();
   const { data, isLoading } = api.healthcare.adminListCentres.useQuery();
@@ -231,10 +265,11 @@ export default function AdminHealthcarePage() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <Heart className="w-6 h-6 text-rose-600" />
-            Healthcare Card
+            BPI National Healthcare and Neuro Therapy SPA Card
           </h1>
         </div>
         <SettingsCard />
+        <PromoBundleCard />
         <CentresCard />
         <RedeemCard />
       </div>
