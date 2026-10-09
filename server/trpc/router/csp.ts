@@ -193,6 +193,13 @@ function evaluateMembershipRequirement(params: {
   return meetsMembership(membership, requiredMembership);
 }
 
+/**
+ * Corporate decision (BPI-CSP "How It Works", 09/10/2026): KYC approval and
+ * Auto-Debit/Auto-Contribute activation are baseline requirements to unlock
+ * the Support Lifeline, independent of whether the tier model is switched
+ * on. `requireKyc`/`requireAutoDebit`/`requireAutoContribute` therefore gate
+ * every request, not only tier-based ones.
+ */
 function computeEligibilityFlags(params: {
   category: CategoryKey;
   membershipMeets: boolean;
@@ -203,39 +210,51 @@ function computeEligibilityFlags(params: {
   hasAnyActivatedCountry: boolean;
   userCountryIsActivated: boolean;
   config: EligibilityConfig;
+  requireKyc: boolean;
+  requireAutoDebit: boolean;
+  requireAutoContribute: boolean;
+  kycApproved: boolean;
+  autoDebitEnabled: boolean;
+  autoContributeEnabled: boolean;
 }) {
   const {
     category, membershipMeets, membershipMeetsRegularPlus,
     qualifiedDirects, cumulativeContributions, requestsContributed,
     hasAnyActivatedCountry, userCountryIsActivated, config,
+    requireKyc, requireAutoDebit, requireAutoContribute,
+    kycApproved, autoDebitEnabled, autoContributeEnabled,
   } = params;
 
   const rules = config[category];
   const hasMembership = membershipMeets;
   const hasDistinct = requestsContributed >= rules.minDistinctRequests;
   const hasContrib = cumulativeContributions >= rules.minCumulativeContrib;
+  const hasKyc = !requireKyc || kycApproved;
+  const hasAutoDebit = !requireAutoDebit || autoDebitEnabled;
+  const hasAutoContribute = !requireAutoContribute || autoContributeEnabled;
+  const meetsBaseline = hasKyc && hasAutoDebit && hasAutoContribute;
 
   if (category === "national") {
     const hasDirects = qualifiedDirects >= rules.minDirects;
-    const eligible = hasMembership && hasDirects && hasContrib && hasDistinct;
-    return { eligible, hasMembership, hasDirects, hasContrib, hasDistinct, globalPath: null as string | null };
+    const eligible = hasMembership && hasDirects && hasContrib && hasDistinct && meetsBaseline;
+    return { eligible, hasMembership, hasDirects, hasContrib, hasDistinct, hasKyc, hasAutoDebit, hasAutoContribute, globalPath: null as string | null };
   }
 
   // Global — two paths
   // Path A: Regular Plus, admin-configured directs, ₦20k contrib, at least one active country globally
   const pathAMembership = membershipMeetsRegularPlus;
   const pathADirects = qualifiedDirects >= config.global.minDirects;
-  const pathAEligible = pathAMembership && pathADirects && hasContrib && hasDistinct && hasAnyActivatedCountry;
+  const pathAEligible = pathAMembership && pathADirects && hasContrib && hasDistinct && hasAnyActivatedCountry && meetsBaseline;
 
   // Path B: user's own country activated, admin-configured directs, ₦20k contrib
   const pathBDirects = qualifiedDirects >= config.global.minDirects;
-  const pathBEligible = pathBDirects && hasContrib && hasDistinct && userCountryIsActivated;
+  const pathBEligible = pathBDirects && hasContrib && hasDistinct && userCountryIsActivated && meetsBaseline;
 
   const eligible = pathAEligible || pathBEligible;
   const hasDirects = pathADirects || pathBDirects;
   const globalPath = pathAEligible ? "A" : pathBEligible ? "B" : null;
 
-  return { eligible, hasMembership, hasDirects, hasContrib, hasDistinct, globalPath };
+  return { eligible, hasMembership, hasDirects, hasContrib, hasDistinct, hasKyc, hasAutoDebit, hasAutoContribute, globalPath };
 }
 
 export const cspRouter = createTRPCRouter({
@@ -429,8 +448,8 @@ export const cspRouter = createTRPCRouter({
     }
 
     const categories = {
-      national: computeEligibilityFlags({ category: "national", membershipMeets: membershipMeetsNational, membershipMeetsRegularPlus, qualifiedDirects, cumulativeContributions, requestsContributed, hasAnyActivatedCountry, userCountryIsActivated, config }),
-      global: computeEligibilityFlags({ category: "global", membershipMeets: membershipMeetsGlobal, membershipMeetsRegularPlus, qualifiedDirects, cumulativeContributions, requestsContributed, hasAnyActivatedCountry, userCountryIsActivated, config }),
+      national: computeEligibilityFlags({ category: "national", membershipMeets: membershipMeetsNational, membershipMeetsRegularPlus, qualifiedDirects, cumulativeContributions, requestsContributed, hasAnyActivatedCountry, userCountryIsActivated, config, requireKyc: tierConfig.requireKyc, requireAutoDebit: tierConfig.requireAutoDebit, requireAutoContribute: tierConfig.requireAutoContribute, kycApproved, autoDebitEnabled, autoContributeEnabled }),
+      global: computeEligibilityFlags({ category: "global", membershipMeets: membershipMeetsGlobal, membershipMeetsRegularPlus, qualifiedDirects, cumulativeContributions, requestsContributed, hasAnyActivatedCountry, userCountryIsActivated, config, requireKyc: tierConfig.requireKyc, requireAutoDebit: tierConfig.requireAutoDebit, requireAutoContribute: tierConfig.requireAutoContribute, kycApproved, autoDebitEnabled, autoContributeEnabled }),
     } as const;
 
     const tierAdjustedCategories = tierConfig.tierModelEnabled
@@ -1019,6 +1038,18 @@ export const cspRouter = createTRPCRouter({
       const userCountryIsActivated = userCountryRecord?.isNationalActive ?? false;
       const hasAnyActivatedCountry = anyActivatedCountry !== null;
 
+      // Corporate decision (BPI-CSP "How It Works", 09/10/2026): KYC and
+      // Auto-Debit/Auto-Contribute are baseline requirements, independent of
+      // the tier model. Fetched once here and reused below if tier checks run.
+      const [latestKycForEligibility, autoDebitSettingForEligibility, autoContributeSettingForEligibility] = await Promise.all([
+        prisma.kycSubmission.findFirst({ where: { userId }, orderBy: { submittedAt: "desc" }, select: { status: true } }),
+        prisma.walletAutoDebitSetting.findUnique({ where: { userId }, select: { isEnabled: true } }),
+        prisma.cspAutoContributeSetting.findUnique({ where: { userId }, select: { isEnabled: true } }),
+      ]);
+      const kycApprovedForEligibility = latestKycForEligibility?.status === "approved";
+      const autoDebitEnabledForEligibility = (await loadAutoDebitPolicy(prisma)).minPercentage > 0 || (autoDebitSettingForEligibility?.isEnabled ?? false);
+      const autoContributeEnabledForEligibility = autoContributeSettingForEligibility?.isEnabled ?? false;
+
       const eligibilityFlags = computeEligibilityFlags({
         category: input.category,
         membershipMeets: input.category === "national" ? membershipMeetsNational : membershipMeetsGlobal,
@@ -1029,6 +1060,12 @@ export const cspRouter = createTRPCRouter({
         hasAnyActivatedCountry,
         userCountryIsActivated,
         config,
+        requireKyc: tierConfig.requireKyc,
+        requireAutoDebit: tierConfig.requireAutoDebit,
+        requireAutoContribute: tierConfig.requireAutoContribute,
+        kycApproved: kycApprovedForEligibility,
+        autoDebitEnabled: autoDebitEnabledForEligibility,
+        autoContributeEnabled: autoContributeEnabledForEligibility,
       });
 
       // CSP WAIVER: Check if user has an active empowerment CSP waiver (bypasses eligibility)
@@ -1037,6 +1074,18 @@ export const cspRouter = createTRPCRouter({
         select: { id: true },
       });
       const hasCspWaiver = !!cspWaiverPkg;
+
+      if (!hasCspWaiver) {
+        if (tierConfig.requireKyc && !kycApprovedForEligibility) {
+          throw new Error("KYC approval is required to unlock the CSP Support Lifeline.");
+        }
+        if (tierConfig.requireAutoDebit && !autoDebitEnabledForEligibility) {
+          throw new Error("Auto-Debit must be activated to unlock the CSP Support Lifeline.");
+        }
+        if (tierConfig.requireAutoContribute && !autoContributeEnabledForEligibility) {
+          throw new Error("Auto-Contribute must be activated to unlock the CSP Support Lifeline.");
+        }
+      }
 
       if (!eligibilityFlags.eligible && !hasCspWaiver) {
         throw new Error("You do not meet the eligibility requirements for this category.");
@@ -1095,42 +1144,18 @@ export const cspRouter = createTRPCRouter({
       let tierStanding: Awaited<ReturnType<typeof ensureMemberStanding>> | null = null;
       let tierResult: ReturnType<typeof validateTierSupportRequest> | null = null;
       if (tierConfig.tierModelEnabled) {
-        const [standing, tiers, latestKyc, autoDebit, autoContribute] = await Promise.all([
+        const [standing, tiers] = await Promise.all([
           ensureMemberStanding(prisma, userId),
           loadActiveTiers(prisma),
-          prisma.kycSubmission.findFirst({
-            where: { userId },
-            orderBy: { submittedAt: "desc" },
-            select: { status: true },
-          }),
-          prisma.walletAutoDebitSetting.findUnique({
-            where: { userId },
-            select: { isEnabled: true },
-          }),
-          prisma.cspAutoContributeSetting.findUnique({
-            where: { userId },
-            select: { isEnabled: true },
-          }),
         ]);
 
         tierStanding = standing;
         tierResult = validateTierSupportRequest(tiers, standing.contributionRight, requestedAmount);
 
-        const kycApproved = latestKyc?.status === "approved";
-        // Compulsory Auto-Debit counts as on for every member.
-        const autoDebitEnabled = (await loadAutoDebitPolicy(prisma)).minPercentage > 0 || (autoDebit?.isEnabled ?? false);
-        const autoContributeEnabled = autoContribute?.isEnabled ?? false;
-
+        // KYC / Auto-Debit / Auto-Contribute were already enforced as baseline
+        // requirements above (kycApprovedForEligibility, etc.), independent of
+        // the tier model — no need to re-check them here.
         if (!hasCspWaiver) {
-          if (tierConfig.requireKyc && !kycApproved) {
-            throw new Error("KYC approval is required for tier-based CSP requests.");
-          }
-          if (tierConfig.requireAutoDebit && !autoDebitEnabled) {
-            throw new Error("Auto-Debit must be enabled for tier-based CSP requests.");
-          }
-          if (tierConfig.requireAutoContribute && !autoContributeEnabled) {
-            throw new Error("Auto-Contribute must be enabled for tier-based CSP requests.");
-          }
           if (standing.contributionRight < tierConfig.minContributionRight) {
             throw new Error(`You need at least ₦${tierConfig.minContributionRight.toLocaleString()} in Contribution Right to request support.`);
           }

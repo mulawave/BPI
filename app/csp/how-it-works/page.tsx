@@ -29,16 +29,25 @@ export default async function HowCspWorksPage() {
           </p>
         </div>
 
-        <Section title="1. Requesting support">
+        <Section title="1. Unlocking the Support Lifeline">
           <p>
-            Submit a National or Global request once you meet the eligibility rules (minimum membership,
-            referrals, and prior contributions to other members&apos; campaigns). Your campaign target is set
-            at 120% of what you asked for — the extra 20% funds the program itself, so your own payout is
-            never reduced by it.
+            To submit a request you need: an active Regular Plus membership (or Regular, depending on the
+            category), KYC approval, Auto-Debit and Auto-Contribute switched on, the required number of
+            referrals, and a minimum amount already contributed to other members&apos; campaigns. Visit{" "}
+            <Link href="/membership/bundles" className="underline">Two Ways to Begin</Link> for the fastest
+            path to activation.
           </p>
         </Section>
 
-        <Section title="2. Going live">
+        <Section title="2. Requesting support">
+          <p>
+            Submit a National or Global request once you meet the eligibility rules above. Your campaign
+            target is set at 120% of what you asked for — the extra 20% funds the program itself, so your
+            own payout is never reduced by it.
+          </p>
+        </Section>
+
+        <Section title="3. Going live">
           <p>
             Once approved, your request broadcasts to eligible members (National campaigns only show to
             members in your own country) for a countdown — 48 hours by default. Members contribute from
@@ -47,7 +56,7 @@ export default async function HowCspWorksPage() {
           </p>
         </Section>
 
-        <Section title="3. Buying extra time">
+        <Section title="4. Buying extra time">
           <p>
             If you need more time, you can buy a 24h or 48h extension from your Main Wallet. The extension
             only takes effect once a matching amount has been contributed to your campaign — your own
@@ -57,7 +66,7 @@ export default async function HowCspWorksPage() {
           </p>
         </Section>
 
-        <Section title="4. How funds are shared at release">
+        <Section title="5. How funds are shared at release">
           <p>When your campaign is released, the amount raised is shared as follows:</p>
           <ul className="list-disc pl-5 space-y-1">
             <li>80% to you, the beneficiary — up to the full amount you requested</li>
@@ -72,7 +81,7 @@ export default async function HowCspWorksPage() {
           </p>
         </Section>
 
-        <Section title="5. After you're supported">
+        <Section title="6. After you're supported">
           <p>
             A waiting period (6, 12, 24 or 36 months, set by the admin when your request is approved) begins
             once funds are released — never before. You can shorten it: every contribution you make to other
@@ -82,10 +91,10 @@ export default async function HowCspWorksPage() {
           </p>
         </Section>
 
-        <Section title="6. The Healthcare Card and Special Community Support">
+        <Section title="7. The BPI National Healthcare and Neuro Therapy SPA Card, and Special Community Support">
           <p>
-            Members at Regular Plus or higher can subscribe to the BPI Healthcare Card for discounted and
-            partly-covered care at partner centres. Special Community Support campaigns are created directly
+            Members at Regular Plus or higher can subscribe to the BPI National Healthcare and Neuro Therapy
+            SPA Card for discounted and partly-covered care at partner centres. Special Community Support campaigns are created directly
             by BPI for community-wide causes — funds raised there go straight to the BPI Health & Project
             Account rather than to an individual member, and don&apos;t count toward Auto-Contribute or your
             own tier standing.

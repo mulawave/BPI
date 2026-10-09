@@ -14,6 +14,8 @@ import { randomUUID } from "crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { ensureBpiProjectAccount } from "@/server/services/bpiProjectAccount.service";
 import { ensureMemberStanding } from "@/server/services/csp-tier.service";
+import { isCspMembershipCurrent } from "@/server/services/csp-ledger.service";
+import { activateMembershipAfterExternalPayment } from "@/server/services/membershipPayments.service";
 
 type TxClient = PrismaClient | Prisma.TransactionClient;
 
@@ -52,6 +54,22 @@ export const DEFAULT_HEALTHCARE_SETTINGS: HealthcareCardSettings = {
   discountTier7PlusPct: 40,
   requireRegularPlusFromTier: 2,
 };
+
+/**
+ * Corporate decision (BPI-CSP "How It Works", 09/10/2026): "Option 2:
+ * Promotional Healthcare Card Activation — ₦30,000" is an admin on/off
+ * toggle with no fixed end date, open to any member (new or existing). It
+ * is the same ₦30,000 subscription as the regular Healthcare Card — the
+ * only difference is that a member with no active membership is first
+ * granted a free promotional Regular membership, so the card alone is
+ * enough to get started.
+ */
+export const HEALTHCARE_PROMO_BUNDLE_SETTINGS_KEY = "healthcare_promo_bundle_enabled";
+
+export async function isHealthcarePromoBundleEnabled(db: TxClient): Promise<boolean> {
+  const row = await db.adminSettings.findUnique({ where: { settingKey: HEALTHCARE_PROMO_BUNDLE_SETTINGS_KEY } });
+  return row?.settingValue === "true";
+}
 
 const MEMBERSHIP_ORDER = ["regular", "regular plus", "gold", "gold plus", "platinum", "platinum plus"] as const;
 
@@ -296,4 +314,51 @@ export async function redeemHealthcareCard(
 
     return { redemptionId: redemption.id, discountPct, servicePrice, discountAmount, coveredAmount, memberPays };
   });
+}
+
+/**
+ * "Option 2: Promotional Healthcare Card Activation — ₦30,000" (BPI-CSP
+ * "How It Works", 09/10/2026). Open to any member — new or existing — while
+ * an admin has the bundle switched on. A member with no current membership
+ * is first granted a free promotional "Regular" membership (no referral
+ * commissions, since nothing is paid for the membership itself), then the
+ * standard ₦30,000 Healthcare Card subscription runs unchanged — its
+ * existing default split (₦10,000 to the member's Community Wallet,
+ * ₦20,000 to the BPI Health & Project Account) already matches the bundle
+ * exactly.
+ */
+export async function subscribeHealthcareCardPromoBundle(
+  prisma: PrismaClient,
+  input: { userId: string },
+): Promise<{ cardId: string; sscCode: string; coverAmount: number; expiresAt: Date; grantedPromoMembership: boolean }> {
+  const enabled = await isHealthcarePromoBundleEnabled(prisma);
+  if (!enabled) throw new Error("The promotional Healthcare Card activation is not available right now.");
+
+  const user = await prisma.user.findUnique({
+    where: { id: input.userId },
+    select: { activeMembershipPackageId: true, membershipExpiresAt: true },
+  });
+  if (!user) throw new Error("User not found.");
+
+  let grantedPromoMembership = false;
+  if (!isCspMembershipCurrent(user)) {
+    const regularPackage = await prisma.membershipPackage.findFirst({
+      where: { name: "Regular", isActive: true },
+    });
+    if (!regularPackage) throw new Error("The Regular membership package is not configured.");
+
+    const result = await activateMembershipAfterExternalPayment({
+      prisma,
+      userId: input.userId,
+      packageId: regularPackage.id,
+      paymentReference: `HCARD-PROMO-${input.userId}`,
+      paymentMethodLabel: "Promotional Healthcare Card Bundle",
+      activatorName: "Promo System",
+      skipRewards: true,
+    });
+    grantedPromoMembership = !result.alreadyProcessed;
+  }
+
+  const card = await subscribeHealthcareCard(prisma, { userId: input.userId });
+  return { ...card, grantedPromoMembership };
 }

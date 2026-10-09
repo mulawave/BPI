@@ -11,10 +11,19 @@ const naira = (n: number) => `₦${n.toLocaleString()}`;
 export default function HealthcareCardPage() {
   const utils = api.useUtils();
   const { data, isLoading } = api.healthcare.getMyCard.useQuery();
+  const { data: promoEnabled } = api.healthcare.getPromoBundleEnabled.useQuery();
 
   const subscribe = api.healthcare.subscribe.useMutation({
     onSuccess: () => {
       toast.success("Healthcare card activated!");
+      utils.healthcare.getMyCard.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const subscribePromo = api.healthcare.subscribePromoBundle.useMutation({
+    onSuccess: () => {
+      toast.success("Promotional bundle activated!");
       utils.healthcare.getMyCard.invalidate();
     },
     onError: (err) => toast.error(err.message),
@@ -33,7 +42,7 @@ export default function HealthcareCardPage() {
       <div className="max-w-xl mx-auto space-y-6">
         <div className="text-center">
           <Heart className="w-10 h-10 text-rose-500 mx-auto mb-2" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">BPI Healthcare Card</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">BPI National Healthcare and Neuro Therapy SPA Card</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             {naira(data.price)}/year for {naira(data.coverAmount)} of health cover at BPI-affiliated centres, plus a
             {" "}{data.discountPct}% discount on covered services.
@@ -90,6 +99,18 @@ export default function HealthcareCardPage() {
             >
               {subscribe.isPending ? "Processing..." : `Subscribe for ${naira(data.price)}`}
             </button>
+            {promoEnabled && (
+              <>
+                <p className="text-xs text-gray-400">or</p>
+                <button
+                  onClick={() => subscribePromo.mutate()}
+                  disabled={subscribePromo.isPending}
+                  className="w-full py-2.5 rounded-lg border border-rose-300 text-rose-600 text-sm font-medium hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-50"
+                >
+                  {subscribePromo.isPending ? "Processing..." : `Promotional Activation — ${naira(data.price)} (includes free membership if you have none)`}
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>

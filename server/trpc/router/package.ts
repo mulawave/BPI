@@ -225,9 +225,103 @@ function computeProfitFiat(params: {
 
 // finalizeEmpowermentPackage is now imported from @/server/services/empowermentPayments.service
 
+const CSP_ACTIVATION_BUNDLE_COMMUNITY_CREDIT = 10000;
+
 export const packageRouter = createTRPCRouter({
   getPackages: publicProcedure.query(async () => {
     return await getCachedMembershipPackages();
+  }),
+
+  /**
+   * "Option 1: BPI Regular Plus and CSP Activation — ₦65,000" (BPI-CSP "How
+   * It Works", 09/10/2026). Reuses the standard Regular Plus package
+   * purchase unchanged (same price, same referral commissions) and
+   * additionally credits ₦10,000 to the buyer's Community Wallet — the
+   * bundle's CSP contribution. v1 scope: wallet-funded only (the buyer must
+   * have the full amount in their Main Wallet already, e.g. from a prior
+   * deposit); paying this bundle directly via Paystack/Flutterwave/crypto
+   * checkout is a deliberately scoped-out follow-up, not wired into the
+   * multi-gateway membership payment/webhook pipeline in this pass.
+   */
+  purchaseCspActivationBundleViaWallet: protectedProcedure.mutation(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id;
+    if (!userId) throw new Error("UNAUTHORIZED");
+
+    const membershipPackage = await prisma.membershipPackage.findFirst({
+      where: { name: "Regular Plus", isActive: true },
+    });
+    if (!membershipPackage) throw new Error("The Regular Plus package is not configured.");
+
+    const totalCost = membershipPackage.price + membershipPackage.vat + CSP_ACTIVATION_BUNDLE_COMMUNITY_CREDIT;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { wallet: true, country: true, state: true },
+    });
+    if (!user) throw new Error("User not found");
+    if ((user.wallet ?? 0) < totalCost) {
+      throw new Error(`Insufficient wallet balance. You need NGN ${totalCost.toLocaleString()}`);
+    }
+
+    const walletReference = `CSPBUNDLE-WALLET-${Date.now()}`;
+
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.user.update({ where: { id: userId }, data: { wallet: { decrement: totalCost } } });
+      await tx.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          transactionType: "MEMBERSHIP_PAYMENT",
+          amount: -totalCost,
+          description: `${membershipPackage.name} + CSP Activation bundle via wallet`,
+          status: "completed",
+          reference: walletReference,
+          walletType: "main",
+        },
+      });
+    });
+
+    await activateMembershipAfterExternalPayment({
+      prisma,
+      userId,
+      packageId: membershipPackage.id,
+      paymentReference: walletReference,
+      paymentMethodLabel: "Wallet",
+      activatorName: ctx.session?.user?.name || ctx.session?.user?.email || "Member",
+      cspActivationBonusNgn: CSP_ACTIVATION_BUNDLE_COMMUNITY_CREDIT,
+    });
+    invalidateActiveMembershipCache(userId);
+
+    const membershipProfitFiat = computeProfitFiat({
+      profitMode: ((membershipPackage.profitMode ?? "PERCENT") as any) as "PERCENT" | "FIXED" | "HYBRID",
+      profitPercent: Number(membershipPackage.profitPercent ?? 1),
+      profitFixedAmountFiat: Number(membershipPackage.profitFixedAmountFiat ?? 0),
+      baseFiat: Number(membershipPackage.price ?? 0),
+    });
+
+    await recordRevenue(prisma, {
+      source: "MEMBERSHIP_REGISTRATION",
+      amount: membershipProfitFiat,
+      currency: "NGN",
+      sourceId: `MEMBERSHIP_REGISTRATION:${walletReference}`,
+      description: `Membership purchase: ${membershipPackage.name} (CSP Activation bundle)`,
+      userId,
+      packageId: membershipPackage.id,
+      programType: "MEMBERSHIP",
+      country: user.country ?? undefined,
+      state: user.state ?? undefined,
+      region: getNigerianRegion(user.state),
+      metadata: {
+        totalPaid: totalCost,
+        basePrice: membershipPackage.price,
+        vat: membershipPackage.vat,
+        cspActivationBonus: CSP_ACTIVATION_BUNDLE_COMMUNITY_CREDIT,
+        paymentMethod: "WALLET",
+        bundle: "csp_activation",
+      },
+    });
+
+    return { success: true, gateway: "wallet", reference: walletReference, totalCost };
   }),
 
   // Initiate membership payment (wallet or external gateway)

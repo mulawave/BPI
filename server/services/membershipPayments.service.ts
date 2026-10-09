@@ -47,6 +47,14 @@ export async function activateMembershipAfterExternalPayment(params: {
   paymentMethodLabel: string;
   activatorName?: string;
   skipRewards?: boolean;
+  /**
+   * Corporate decision (BPI-CSP "How It Works", 09/10/2026): "Option 1: BPI
+   * Regular Plus and CSP Activation — ₦65,000" reuses the standard Regular
+   * Plus purchase (normal referral commissions, unchanged) and additionally
+   * credits ₦10,000 to the buyer's Community Wallet — the bundle's CSP
+   * contribution. Idempotent alongside the existing paymentReference dedup.
+   */
+  cspActivationBonusNgn?: number;
 }) {
   const {
     prisma,
@@ -57,6 +65,7 @@ export async function activateMembershipAfterExternalPayment(params: {
     paymentMethodLabel,
     activatorName,
     skipRewards = false,
+    cspActivationBonusNgn = 0,
   } = params;
 
   const existingActivation = await prisma.transaction.findFirst({
@@ -400,6 +409,24 @@ export async function activateMembershipAfterExternalPayment(params: {
     await notifyMembershipActivation(userId, membershipPackage.name, expiresAt);
   } catch {
     // Notification failure is non-critical
+  }
+
+  if (cspActivationBonusNgn > 0) {
+    await runAtomically(prisma, async (tx) => {
+      await tx.user.update({ where: { id: userId }, data: { community: { increment: cspActivationBonusNgn } } });
+      await tx.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          transactionType: "CSP_ACTIVATION_BUNDLE_CREDIT",
+          amount: cspActivationBonusNgn,
+          description: `${membershipPackage.name} + CSP Activation bundle — Community Wallet credit`,
+          status: "completed",
+          reference: `${paymentReference}-CSPBONUS`,
+          walletType: "community",
+        },
+      });
+    });
   }
 
   return {

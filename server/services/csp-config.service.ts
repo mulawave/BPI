@@ -45,9 +45,13 @@ export const TIER_CONFIG_DEFAULTS: TierConfig = {
   tierModelEnabled: false,
   contributionMultiplier: 20,
   minContributionRight: 10000,
-  requireKyc: false,
-  requireAutoDebit: false,
-  requireAutoContribute: false,
+  // Corporate decision (BPI-CSP "How It Works", 09/10/2026): KYC approval
+  // and Auto-Debit/Auto-Contribute activation are baseline requirements to
+  // unlock the Support Lifeline for every member, not just tier-based
+  // requests — see computeEligibilityFlags in server/trpc/router/csp.ts.
+  requireKyc: true,
+  requireAutoDebit: true,
+  requireAutoContribute: true,
   defaultBroadcastHours: 48,
   autoExtensionHours: 48,
   maxAutoExtensions: 3,

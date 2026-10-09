@@ -5,20 +5,41 @@ import { z } from "zod";
 import { randomUUID } from "crypto";
 import * as QRCode from "qrcode";
 import { prisma } from "@/lib/prisma";
-import { createTRPCRouter, protectedProcedure, adminProcedure } from "../trpc";
+import { createTRPCRouter, publicProcedure, protectedProcedure, adminProcedure } from "../trpc";
 import {
   loadHealthcareSettings,
   subscribeHealthcareCard,
+  subscribeHealthcareCardPromoBundle,
   loadMemberHealthcareProfile,
   membershipMeetsHealthcareRequirement,
   discountPctForTier,
   redeemHealthcareCard,
+  isHealthcarePromoBundleEnabled,
   HEALTHCARE_SETTINGS_KEYS,
+  HEALTHCARE_PROMO_BUNDLE_SETTINGS_KEY,
 } from "@/server/services/healthcareCard.service";
 
 export const healthcareRouter = createTRPCRouter({
   getSettings: protectedProcedure.query(async () => {
     return loadHealthcareSettings(prisma);
+  }),
+
+  /** Whether "Option 2: Promotional Healthcare Card Activation" is switched on. */
+  getPromoBundleEnabled: publicProcedure.query(async () => {
+    return isHealthcarePromoBundleEnabled(prisma);
+  }),
+
+  /**
+   * "Option 2: Promotional Healthcare Card Activation — ₦30,000" (BPI-CSP
+   * "How It Works"). Open to any member. Grants a free promotional Regular
+   * membership first if the caller has none, then runs the standard
+   * ₦30,000 Healthcare Card subscription.
+   */
+  subscribePromoBundle: protectedProcedure.mutation(async ({ ctx }) => {
+    const userId = (ctx.session?.user as any)?.id as string | undefined;
+    if (!userId) throw new Error("UNAUTHORIZED");
+    const result = await subscribeHealthcareCardPromoBundle(prisma, { userId });
+    return { success: true, ...result };
   }),
 
   /** The member's own card, eligibility and current discount. */
@@ -84,6 +105,17 @@ export const healthcareRouter = createTRPCRouter({
           create: { id: randomUUID(), settingKey, settingValue, updatedAt: new Date() },
         }),
       ));
+      return { success: true };
+    }),
+
+  adminSetPromoBundleEnabled: adminProcedure
+    .input(z.object({ enabled: z.boolean() }))
+    .mutation(async ({ input }) => {
+      await prisma.adminSettings.upsert({
+        where: { settingKey: HEALTHCARE_PROMO_BUNDLE_SETTINGS_KEY },
+        update: { settingValue: String(input.enabled), updatedAt: new Date() },
+        create: { id: randomUUID(), settingKey: HEALTHCARE_PROMO_BUNDLE_SETTINGS_KEY, settingValue: String(input.enabled), updatedAt: new Date() },
+      });
       return { success: true };
     }),
 
