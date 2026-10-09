@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth } from "@/server/auth";
 import { redirect } from "next/navigation";
 import CspDashboard from "@/components/csp/CspDashboard";
@@ -15,6 +16,11 @@ export default async function CspPage() {
 
   return (
     <CspShell session={session}>
+      <div className="flex justify-end mb-2">
+        <Link href="/csp/how-it-works" className="text-xs text-gray-500 dark:text-gray-400 underline hover:text-gray-700 dark:hover:text-gray-200">
+          How CSP works
+        </Link>
+      </div>
       <CspDashboard userName={session?.user?.name ?? session?.user?.email} />
       <div className="mt-6">
         <CspAutoContributeSettings />

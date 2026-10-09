@@ -21,6 +21,7 @@ type BroadcastSweepCandidate = {
   raisedAmount: number;
   thresholdAmount: number;
   minFulfilmentPct: number | null;
+  tierContributionRight: number | null;
   autoExtendCount: number;
   broadcastExpiresAt: Date | null;
 };
@@ -50,8 +51,18 @@ export function decideCspBroadcastSweepAction(input: {
   minFulfilmentPct: number | null;
   autoExtendCount: number;
   maxAutoExtensions: number;
+  /**
+   * Corporate decision (follow-up Q11, 07/10/2026): a campaign must raise
+   * 2x the member's TIER contribution amount (not their exact individual
+   * contribution, and not the request's own threshold/markup amount)
+   * before the close countdown is allowed to end. When present, this
+   * replaces the legacy minFulfilmentPct-of-threshold requirement.
+   */
+  tierContributionRight?: number | null;
 }): BroadcastSweepDecision {
-  const requiredFulfilment = Math.ceil(((input.minFulfilmentPct ?? 0) / 100) * input.thresholdAmount);
+  const requiredFulfilment = input.tierContributionRight
+    ? 2 * input.tierContributionRight
+    : Math.ceil(((input.minFulfilmentPct ?? 0) / 100) * input.thresholdAmount);
   const canAutoExtend = input.autoExtendCount < input.maxAutoExtensions;
   const action = input.raisedAmount < requiredFulfilment && canAutoExtend ? "extend" : "close";
 
@@ -100,6 +111,7 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
       raisedAmount: true,
       thresholdAmount: true,
       minFulfilmentPct: true,
+      tierContributionRight: true,
       autoExtendCount: true,
       broadcastExpiresAt: true,
     },
@@ -125,6 +137,7 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
             raisedAmount: true,
             thresholdAmount: true,
             minFulfilmentPct: true,
+            tierContributionRight: true,
             autoExtendCount: true,
             broadcastExpiresAt: true,
           },
@@ -144,6 +157,7 @@ export async function runCspBroadcastSweep(): Promise<BroadcastSweepResult> {
           raisedAmount: current.raisedAmount,
           thresholdAmount: current.thresholdAmount,
           minFulfilmentPct: current.minFulfilmentPct,
+          tierContributionRight: current.tierContributionRight,
           autoExtendCount: current.autoExtendCount,
           maxAutoExtensions: config.maxAutoExtensions,
         });

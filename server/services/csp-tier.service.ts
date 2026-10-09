@@ -64,14 +64,32 @@ export async function loadActiveTiers(db: Pick<PrismaClient, "cspTier">): Promis
   });
 }
 
-type StandingDb = Pick<PrismaClient, "cspTier" | "cspContribution" | "cspMemberStanding">;
+type StandingDb = Pick<PrismaClient, "cspTier" | "cspContribution" | "cspMemberStanding" | "cspTopUpPurchase">;
+
+/**
+ * Corporate decision (follow-up Q13, 07/10/2026): a contribution a member
+ * makes specifically to cover their own CSP time-extension fee does not
+ * count towards their tier contribution-right. `CspTopUpPurchase.
+ * contributedAmount` tracks exactly how much of a member's own
+ * contributions went towards covering their own pending/applied/forfeited
+ * purchase, capped at the fee itself (`amountPaid`) — anything contributed
+ * beyond the fee still counts normally.
+ */
+async function sumTopUpCoveredContributions(db: StandingDb, userId: string): Promise<number> {
+  const purchases = await db.cspTopUpPurchase.findMany({
+    where: { userId },
+    select: { contributedAmount: true, amountPaid: true },
+  });
+  return purchases.reduce((sum, p) => sum + Math.min(p.contributedAmount, p.amountPaid), 0);
+}
 
 async function backfillContributionRight(db: StandingDb, userId: string) {
   const aggregate = await db.cspContribution.aggregate({
     where: { contributorId: userId },
     _sum: { amount: true },
   });
-  return aggregate._sum.amount ?? 0;
+  const topUpCovered = await sumTopUpCoveredContributions(db, userId);
+  return Math.max(0, (aggregate._sum.amount ?? 0) - topUpCovered);
 }
 
 export function reconcileStandingFromContributionRight(

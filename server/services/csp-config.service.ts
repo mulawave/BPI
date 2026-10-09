@@ -1,12 +1,13 @@
 import { prisma } from "@/lib/prisma";
 
 /**
- * Corporate decision (follow-up Q11, 07/10/2026): when the CSP "2x" minimum-
- * funding rule is built (a campaign must raise 2x a tier's contribution
- * amount before the 48-hour close countdown starts), the 2x should double
- * the member's TIER contribution amount, not their exact individual
- * contribution. Not wired into the broadcast countdown yet — recorded here
- * for that build.
+ * Corporate decision (follow-up Q11, 07/10/2026): the CSP "2x" minimum-
+ * funding rule — a campaign must raise 2x a tier's contribution amount
+ * before the close countdown is allowed to end — doubles the member's
+ * TIER contribution amount, not their exact individual contribution.
+ * Wired into the sweep via `decideCspBroadcastSweepAction` in
+ * `server/jobs/cspBroadcastSweep.ts`, keyed off each request's own
+ * `tierContributionRight` (set at submission time).
  */
 export const CSP_TWO_X_RULE_BASE = "tier_contribution_amount" as const;
 

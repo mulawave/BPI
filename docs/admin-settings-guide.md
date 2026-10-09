@@ -117,8 +117,10 @@ Admin-only campaigns with no profit motive (e.g. a borehole for a state or LGA).
 
 A single system wallet (`server/services/bpiProjectAccount.service.ts`) holds the ₦20,000 health-project share of each Healthcare Card subscription and all Special Community Support payouts. An admin manually disburses from it to the contractor, provider or programme — there is no automatic transfer to an external account.
 
-## Still open
+## 11. Closed out (this push): the three previously-open items
 
-- The "How CSP works" page (text from the CEO).
-- The CSP "2x" minimum-funding rule (follow-up Q11/Q22/Q25) is recorded as a decision (`CSP_TWO_X_RULE_BASE` in `server/services/csp-config.service.ts`) but not wired into the broadcast countdown — it changes *when a campaign's countdown starts*, which needs its own careful pass against the live broadcast-sweep logic.
-- A known simplification: a contribution a member makes specifically to cover their own time-extension fee still counts toward their CSP tier contribution-right (corporate said it should not); carving that out needs tracking which ledger rows are "topping up an extension" versus ordinary contributions.
+- **"How CSP works" page**: `/csp/how-it-works`, linked from the top of the member CSP dashboard. Written from the current code defaults (not the CEO's original draft text, which was never supplied) — update it directly if corporate wants different wording.
+- **The CSP "2x" minimum-funding rule** (follow-up Q11/Q22/Q25) is now wired into the broadcast sweep: `decideCspBroadcastSweepAction` (`server/jobs/cspBroadcastSweep.ts`) requires a campaign to raise 2x its own `tierContributionRight` (set at submission) before the countdown is allowed to close, replacing the legacy `minFulfilmentPct`-of-threshold check wherever a tier is on the request. Only takes effect with the tier model switched on (`csp_tier_model_enabled`), same as the rest of the sweep.
+- **Top-up-fee contributions no longer count toward CSP tier contribution-right.** `server/services/csp-tier.service.ts`'s `backfillContributionRight` now subtracts, per member, however much of their contributions went toward covering their own `CspTopUpPurchase` fee (capped at the fee itself — any amount contributed beyond the fee still counts normally).
+
+CSP top-up remains **off by default** (`csp_topup_enabled`) and the Healthcare Card ships at its recorded default price — both are deployment decisions for whoever enables them, not engineering gaps.

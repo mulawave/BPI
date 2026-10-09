@@ -33,7 +33,7 @@ export type SponsorProgressConfig = {
 
 type CoolingDb = Pick<
   PrismaClient,
-  "referral" | "user" | "kycSubmission" | "membershipPackage" | "cspMemberStanding" | "cspRuleChangeLog" | "cspTier" | "cspContribution"
+  "referral" | "user" | "kycSubmission" | "membershipPackage" | "cspMemberStanding" | "cspRuleChangeLog" | "cspTier" | "cspContribution" | "cspTopUpPurchase"
 >;
 
 function addMonths(date: Date, months: number) {
