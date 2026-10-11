@@ -88,9 +88,11 @@ export async function purchaseTopUp(
   }
 
   return prisma.$transaction(async (tx) => {
+    // The fee moves from the Main Wallet to the member's own Community
+    // Wallet, from which it is then contributed to other campaigns.
     const debited = await tx.user.updateMany({
       where: { id: input.userId, wallet: { gte: amountPaid } },
-      data: { wallet: { decrement: amountPaid } },
+      data: { wallet: { decrement: amountPaid }, community: { increment: amountPaid } },
     });
     if (debited.count === 0) throw new Error("Insufficient Main Wallet balance for this time extension.");
 
@@ -116,6 +118,18 @@ export async function purchaseTopUp(
         status: "completed",
         walletType: "main",
         reference: `CSP-TOPUP-${purchase.id}`,
+      },
+    });
+    await tx.transaction.create({
+      data: {
+        id: randomUUID(),
+        userId: input.userId,
+        transactionType: "CSP_TOPUP_COMMUNITY_CREDIT",
+        amount: amountPaid,
+        description: `${input.hours}h CSP time extension fee — moved to your Community Wallet to contribute to live campaigns`,
+        status: "completed",
+        walletType: "community",
+        reference: `CSP-TOPUP-${purchase.id}-COMMUNITY`,
       },
     });
 
@@ -148,31 +162,42 @@ export async function attachPreExtension(tx: TxClient, input: { userId: string; 
 }
 
 /**
- * Called after a contribution is recorded. If the contributor has a pending
- * top-up purchase on this request and their contributions to it (since
- * buying the extension) now cover the fee, apply the extra hours to the
- * broadcast countdown (capped at the admin maximum) and mark it applied.
+ * Called after a contribution is recorded. Members cannot contribute to
+ * their own request, so an extension is covered by the purchaser's
+ * contributions to OTHER live campaigns: if the contributor has a pending
+ * extension attached to their own live request, this contribution counts
+ * towards its fee. Once the fee is covered, the extra hours go onto the
+ * purchaser's own request (capped at the admin maximum) and the purchase is
+ * marked applied. Only the part of a contribution needed to cover the fee
+ * is counted, so `contributedAmount` never exceeds `amountPaid`.
  */
 export async function tryApplyTopUp(
   tx: TxClient,
   input: { requestId: string; contributorId: string; contributionAmount: number },
 ): Promise<void> {
   const purchase = await tx.cspTopUpPurchase.findFirst({
-    where: { requestId: input.requestId, userId: input.contributorId, status: "pending" },
+    where: {
+      userId: input.contributorId,
+      status: "pending",
+      requestId: { not: null },
+      NOT: { requestId: input.requestId },
+      Request: { status: "broadcasting" },
+    },
     orderBy: { purchasedAt: "asc" },
   });
-  if (!purchase) return;
+  if (!purchase || !purchase.requestId) return;
+  const ownRequestId = purchase.requestId;
 
-  const contributedAmount = purchase.contributedAmount + input.contributionAmount;
+  const contributedAmount = Math.min(purchase.amountPaid, purchase.contributedAmount + input.contributionAmount);
   if (contributedAmount < purchase.amountPaid) {
     await tx.cspTopUpPurchase.update({ where: { id: purchase.id }, data: { contributedAmount } });
     return;
   }
 
-  const request = await tx.cspSupportRequest.findUnique({ where: { id: input.requestId }, select: { broadcastExpiresAt: true } });
+  const request = await tx.cspSupportRequest.findUnique({ where: { id: ownRequestId }, select: { broadcastExpiresAt: true } });
   if (!request) return;
   const settings = await loadCspTopUpSettings(tx);
-  const appliedHours = await sumAppliedHours(tx, input.requestId);
+  const appliedHours = await sumAppliedHours(tx, ownRequestId);
   const hoursToApply = Math.min(purchase.hours, Math.max(0, settings.maxExtraHours - appliedHours));
   if (hoursToApply <= 0) {
     await tx.cspTopUpPurchase.update({ where: { id: purchase.id }, data: { contributedAmount, status: "forfeited" } });
@@ -182,7 +207,7 @@ export async function tryApplyTopUp(
   const now = new Date();
   const base = request.broadcastExpiresAt && request.broadcastExpiresAt > now ? request.broadcastExpiresAt : now;
   await tx.cspSupportRequest.update({
-    where: { id: input.requestId },
+    where: { id: ownRequestId },
     data: { broadcastExpiresAt: new Date(base.getTime() + hoursToApply * 60 * 60 * 1000) },
   });
   await tx.cspTopUpPurchase.update({

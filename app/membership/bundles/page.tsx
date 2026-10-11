@@ -27,8 +27,9 @@ export default function MembershipBundlesPage() {
   });
 
   const healthcareBundle = api.healthcare.subscribePromoBundle.useMutation({
-    onSuccess: () => {
-      toast.success("Promotional Healthcare Card activated!");
+    onSuccess: (result) => {
+      if (result.promoMembershipError) toast.error(result.promoMembershipError);
+      else toast.success("Promotional Healthcare Card activated!");
       utils.healthcare.getMyCard.invalidate();
     },
     onError: (err) => toast.error(err.message),
@@ -58,7 +59,7 @@ export default function MembershipBundlesPage() {
             </h2>
           </div>
           <ul className="text-sm text-gray-600 dark:text-gray-300 list-disc pl-5 space-y-1">
-            <li>BPI Regular Plus Membership (normal referral commissions apply)</li>
+            <li>BPI Regular Plus Membership (normal referral commissions apply) — for members without an active membership; current members upgrade or renew instead</li>
             <li>A ₦10,000 CSP contribution, credited to your Community Wallet</li>
             <li>Access to the CSP qualification process once KYC and Auto-Debit/Auto-Contribute are active</li>
           </ul>

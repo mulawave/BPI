@@ -259,6 +259,9 @@ export function CspDashboard({ userName }: CspDashboardProps) {
         hasDirects: false,
         hasContrib: false,
         hasDistinct: false,
+        hasKyc: false,
+        hasAutoDebit: false,
+        hasAutoContribute: false,
         meetsMinPerContribution: false,
         globalPath: null as string | null,
       };
@@ -270,6 +273,9 @@ export function CspDashboard({ userName }: CspDashboardProps) {
       hasDirects: backend.hasDirects,
       hasContrib: backend.hasContrib,
       hasDistinct: backend.hasDistinct,
+      hasKyc: backend.hasKyc,
+      hasAutoDebit: backend.hasAutoDebit,
+      hasAutoContribute: backend.hasAutoContribute,
       meetsMinPerContribution: profile.minPerContribution >= 500,
       globalPath: backend.globalPath ?? null,
     };
@@ -1128,6 +1134,9 @@ export function CspDashboard({ userName }: CspDashboardProps) {
                 { ok: effectiveMinDirects === 0 || eligibility.hasDirects, on: "Directs OK", off: directsRequirementLabel },
                 { ok: eligibility.hasContrib, on: "Contribution OK", off: `${formatAmount(categoryRules[supportCategory]?.minCumulativeContrib ?? 10000)} cumulative` },
                 { ok: eligibility.hasDistinct, on: "10 requests met", off: `${profile.minDistinctRequests} distinct requests needed` },
+                { ok: eligibility.hasKyc, on: "KYC OK", off: "Complete KYC" },
+                { ok: eligibility.hasAutoDebit, on: "Auto-Debit OK", off: "Turn on Auto-Debit" },
+                { ok: eligibility.hasAutoContribute, on: "Auto-Contribute OK", off: "Turn on Auto-Contribute" },
               ].map((s, i) => (
                 <span key={i} className={"inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold ring-1 " + (s.ok ? "bg-emerald-500/15 text-emerald-200 ring-emerald-300/40" : "bg-amber-500/15 text-amber-200 ring-amber-300/40")}>
                   {s.ok ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
