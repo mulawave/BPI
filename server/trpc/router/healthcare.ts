@@ -15,6 +15,7 @@ import {
   discountPctForTier,
   redeemHealthcareCard,
   isHealthcarePromoBundleEnabled,
+  findHealthcareCardBySsc,
   HEALTHCARE_SETTINGS_KEYS,
   HEALTHCARE_PROMO_BUNDLE_SETTINGS_KEY,
 } from "@/server/services/healthcareCard.service";
@@ -46,16 +47,20 @@ export const healthcareRouter = createTRPCRouter({
   getMyCard: protectedProcedure.query(async ({ ctx }) => {
     const userId = (ctx.session?.user as any)?.id as string | undefined;
     if (!userId) throw new Error("UNAUTHORIZED");
-    const [card, settings, profile] = await Promise.all([
+    const [card, settings, profile, user] = await Promise.all([
       prisma.healthcareCard.findUnique({ where: { userId } }),
       loadHealthcareSettings(prisma),
       loadMemberHealthcareProfile(prisma, userId),
+      prisma.user.findUnique({ where: { id: userId }, select: { ssc: true } }),
     ]);
+    // The card number is the member's SSC.
+    const ssc = user?.ssc ?? null;
     const eligible = membershipMeetsHealthcareRequirement(settings, profile.membershipName, profile.tierNumber);
     const discountPct = discountPctForTier(settings, profile.tierNumber);
-    const qrDataUrl = card ? await QRCode.toDataURL(card.sscCode) : null;
+    const qrDataUrl = card && ssc ? await QRCode.toDataURL(ssc) : null;
     return {
       card,
+      ssc,
       qrDataUrl,
       eligible,
       discountPct,
@@ -170,11 +175,13 @@ export const healthcareRouter = createTRPCRouter({
 
   // ── Admin / centre staff: redemption (SSC / QR scan) ─────────────
   adminLookupCard: adminProcedure
-    .input(z.object({ sscCode: z.string().min(3) }))
+    .input(z.object({ ssc: z.string().min(3) }))
     .query(async ({ input }) => {
+      const found = await findHealthcareCardBySsc(prisma, input.ssc);
+      if (!found) return null;
       const card = await prisma.healthcareCard.findUnique({
-        where: { sscCode: input.sscCode.trim().toUpperCase() },
-        include: { User: { select: { id: true, name: true, email: true } } },
+        where: { id: found.id },
+        include: { User: { select: { id: true, name: true, email: true, ssc: true } } },
       });
       if (!card) return null;
       const settings = await loadHealthcareSettings(prisma);
@@ -187,11 +194,11 @@ export const healthcareRouter = createTRPCRouter({
     }),
 
   adminRedeemCard: adminProcedure
-    .input(z.object({ sscCode: z.string().min(3), centreId: z.string(), serviceId: z.string().optional() }))
+    .input(z.object({ ssc: z.string().min(3), centreId: z.string(), serviceId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const adminId = (ctx.session?.user as any)?.id as string | undefined;
       return redeemHealthcareCard(prisma, {
-        sscCode: input.sscCode.trim().toUpperCase(),
+        ssc: input.ssc,
         centreId: input.centreId,
         serviceId: input.serviceId,
         recordedByUserId: adminId,

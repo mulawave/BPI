@@ -62,8 +62,8 @@ export default function HealthcareCardPage() {
               <Image src={data.qrDataUrl} alt="Card QR code" width={180} height={180} className="mx-auto rounded-lg" unoptimized />
             )}
             <div>
-              <div className="text-xs uppercase text-gray-400 tracking-wide">BPI Social Security Code</div>
-              <div className="text-lg font-mono font-semibold text-gray-900 dark:text-white">{card!.sscCode}</div>
+              <div className="text-xs uppercase text-gray-400 tracking-wide">SSC (card number)</div>
+              <div className="text-lg font-mono font-semibold text-gray-900 dark:text-white">{data.ssc}</div>
             </div>
             <div className="grid grid-cols-2 gap-4 text-left">
               <div className="rounded-lg bg-gray-50 dark:bg-gray-900 p-3">

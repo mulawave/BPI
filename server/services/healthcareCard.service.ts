@@ -16,6 +16,7 @@ import { ensureBpiProjectAccount } from "@/server/services/bpiProjectAccount.ser
 import { ensureMemberStanding } from "@/server/services/csp-tier.service";
 import { isCspMembershipCurrent } from "@/server/services/csp-ledger.service";
 import { activateMembershipAfterExternalPayment } from "@/server/services/membershipPayments.service";
+import { ensureMemberSsc, normalizeSsc } from "@/server/services/ssc.service";
 
 type TxClient = PrismaClient | Prisma.TransactionClient;
 
@@ -116,14 +117,6 @@ function monthKeyOf(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function generateSscCode(): string {
-  // "BPI-" + 10 random uppercase alphanumeric characters.
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let s = "";
-  for (let i = 0; i < 10; i++) s += chars[Math.floor(Math.random() * chars.length)];
-  return `BPI-${s}`;
-}
-
 /**
  * Subscribes or renews a member's healthcare card for one year. Debits the
  * Main Wallet, splits the fee, and resets the cover (unused cover does not
@@ -132,7 +125,7 @@ function generateSscCode(): string {
 export async function subscribeHealthcareCard(
   prisma: PrismaClient,
   input: { userId: string },
-): Promise<{ cardId: string; sscCode: string; coverAmount: number; expiresAt: Date }> {
+): Promise<{ cardId: string; ssc: string; coverAmount: number; expiresAt: Date }> {
   const settings = await loadHealthcareSettings(prisma);
 
   return prisma.$transaction(async (tx) => {
@@ -176,6 +169,9 @@ export async function subscribeHealthcareCard(
       },
     });
 
+    // The card number is the member's SSC; assign one if they don't have it yet.
+    const ssc = await ensureMemberSsc(tx, input.userId);
+
     const now = new Date();
     const expiresAt = new Date(now);
     expiresAt.setFullYear(expiresAt.getFullYear() + 1);
@@ -198,7 +194,6 @@ export async function subscribeHealthcareCard(
           data: {
             id: randomUUID(),
             userId: input.userId,
-            sscCode: generateSscCode(),
             status: "active",
             coverAmount: settings.coverAmount,
             coverUsed: 0,
@@ -209,8 +204,15 @@ export async function subscribeHealthcareCard(
           },
         });
 
-    return { cardId: card.id, sscCode: card.sscCode, coverAmount: card.coverAmount, expiresAt: card.expiresAt };
+    return { cardId: card.id, ssc, coverAmount: card.coverAmount, expiresAt: card.expiresAt };
   });
+}
+
+/** Finds a member's card by their SSC (the card number). */
+export async function findHealthcareCardBySsc(prisma: PrismaClient, ssc: string) {
+  const user = await prisma.user.findFirst({ where: { ssc: normalizeSsc(ssc) }, select: { id: true } });
+  if (!user) return null;
+  return prisma.healthcareCard.findUnique({ where: { userId: user.id } });
 }
 
 /**
@@ -241,7 +243,7 @@ export async function loadMemberHealthcareProfile(
  */
 export async function redeemHealthcareCard(
   prisma: PrismaClient,
-  input: { sscCode: string; centreId: string; serviceId?: string; recordedByUserId?: string },
+  input: { ssc: string; centreId: string; serviceId?: string; recordedByUserId?: string },
 ): Promise<{
   redemptionId: string;
   discountPct: number;
@@ -250,7 +252,7 @@ export async function redeemHealthcareCard(
   coveredAmount: number;
   memberPays: number;
 }> {
-  const card = await prisma.healthcareCard.findUnique({ where: { sscCode: input.sscCode } });
+  const card = await findHealthcareCardBySsc(prisma, input.ssc);
   if (!card) throw new Error("Card not found.");
   if (card.status !== "active" || card.expiresAt < new Date()) throw new Error("This card is not active.");
 
@@ -332,7 +334,7 @@ export async function subscribeHealthcareCardPromoBundle(
   input: { userId: string },
 ): Promise<{
   cardId: string;
-  sscCode: string;
+  ssc: string;
   coverAmount: number;
   expiresAt: Date;
   grantedPromoMembership: boolean;

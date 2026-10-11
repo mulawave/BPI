@@ -209,7 +209,7 @@ function RedeemCard() {
   const [centreId, setCentreId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const { data: centres } = api.healthcare.adminListCentres.useQuery();
-  const { data: lookup, isLoading } = api.healthcare.adminLookupCard.useQuery({ sscCode: lookupSsc }, { enabled: lookupSsc.length >= 3 });
+  const { data: lookup, isLoading } = api.healthcare.adminLookupCard.useQuery({ ssc: lookupSsc }, { enabled: lookupSsc.length >= 3 });
   const redeem = api.healthcare.adminRedeemCard.useMutation({
     onSuccess: (res) => toast.success(`Recorded: ${res.discountPct}% discount, member pays ${naira(res.memberPays)}${res.coveredAmount > 0 ? `, ₦${res.coveredAmount.toLocaleString()} from cover` : ""}`),
     onError: (err) => toast.error(err.message),
@@ -220,7 +220,7 @@ function RedeemCard() {
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5 space-y-3">
       <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2"><Search className="w-4 h-4" /> Record a card use</h2>
       <div className="flex gap-2">
-        <input value={ssc} onChange={(e) => setSsc(e.target.value)} placeholder="Scan or type the SSC code" className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+        <input value={ssc} onChange={(e) => setSsc(e.target.value)} placeholder="Scan or type the member's SSC (card number)" className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
         <button onClick={() => setLookupSsc(ssc.trim())} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm">Find</button>
       </div>
       {isLoading && <p className="text-sm text-gray-500">Looking up...</p>}
@@ -241,7 +241,7 @@ function RedeemCard() {
             </select>
           )}
           <button
-            onClick={() => redeem.mutate({ sscCode: lookup.card.sscCode, centreId, serviceId: serviceId || undefined })}
+            onClick={() => redeem.mutate({ ssc: lookup.card.User.ssc ?? lookupSsc, centreId, serviceId: serviceId || undefined })}
             disabled={redeem.isPending || !centreId}
             className="w-full py-2 rounded-lg bg-rose-600 text-white text-sm font-medium disabled:opacity-50"
           >

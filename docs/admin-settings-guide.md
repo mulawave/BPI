@@ -107,7 +107,9 @@ Paid from the member's Main Wallet. The fee moves to the member's own Community 
 | Require Regular Plus from tier # | 2 | Regular is only eligible at Tier 1; Regular Plus+ required from this tier up. |
 | Discount, tiers 1-3 / 4-6 / 7+ (%) | 10 / 20 / 40 | Discount on covered services, by the member's CSP tier. |
 
-Member page: `/healthcare` — subscribe/renew, see the card's SSC code and QR, cover remaining and current discount. Admin page: `/admin/healthcare` — settings, manage centres and their services (mark a service "discount only" for products excluded from the cover — the member pays the provider directly at the discounted price), and record a redemption by scanning or typing a member's SSC code. Covered services deduct from the member's cover (capped monthly and yearly) and BPI settles the centre separately (reconciled by an admin, not an automatic bank transfer); discount-only services never touch the cover.
+Member page: `/healthcare` — subscribe/renew, see the card number and QR, cover remaining and current discount. Admin page: `/admin/healthcare` — settings, manage centres and their services (mark a service "discount only" for products excluded from the cover — the member pays the provider directly at the discounted price), and record a redemption by scanning or typing a member's SSC code. Covered services deduct from the member's cover (capped monthly and yearly) and BPI settles the centre separately (reconciled by an admin, not an automatic bank transfer); discount-only services never touch the cover.
+
+**The card number is the member's SSC** (`User.ssc`, format `XXX-XXXX-XXX`) — there is only one number. A member without an SSC is given one automatically when they first subscribe. SSCs (including the admin bulk-generate tool) now come from one shared, cryptographically secure generator in `server/services/ssc.service.ts`.
 
 ## 9. Special Community Support — Admin → Special Community Support
 
