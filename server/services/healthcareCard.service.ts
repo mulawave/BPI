@@ -319,46 +319,61 @@ export async function redeemHealthcareCard(
 /**
  * "Option 2: Promotional Healthcare Card Activation — ₦30,000" (BPI-CSP
  * "How It Works", 09/10/2026). Open to any member — new or existing — while
- * an admin has the bundle switched on. A member with no current membership
- * is first granted a free promotional "Regular" membership (no referral
- * commissions, since nothing is paid for the membership itself), then the
- * standard ₦30,000 Healthcare Card subscription runs unchanged — its
- * existing default split (₦10,000 to the member's Community Wallet,
- * ₦20,000 to the BPI Health & Project Account) already matches the bundle
- * exactly.
+ * an admin has the bundle switched on. The standard ₦30,000 Healthcare Card
+ * subscription runs first (its ₦10,000 Community Wallet / ₦20,000 BPI
+ * Health & Project Account split already matches the bundle). Only once
+ * that payment has gone through is a member with no current membership
+ * granted a free promotional "Regular" membership (no referral
+ * commissions) — never before, so the membership can't be obtained without
+ * paying for the card.
  */
 export async function subscribeHealthcareCardPromoBundle(
   prisma: PrismaClient,
   input: { userId: string },
-): Promise<{ cardId: string; sscCode: string; coverAmount: number; expiresAt: Date; grantedPromoMembership: boolean }> {
+): Promise<{
+  cardId: string;
+  sscCode: string;
+  coverAmount: number;
+  expiresAt: Date;
+  grantedPromoMembership: boolean;
+  promoMembershipError: string | null;
+}> {
   const enabled = await isHealthcarePromoBundleEnabled(prisma);
   if (!enabled) throw new Error("The promotional Healthcare Card activation is not available right now.");
+
+  const regularPackage = await prisma.membershipPackage.findFirst({
+    where: { name: "Regular", isActive: true },
+  });
+  if (!regularPackage) throw new Error("The Regular membership package is not configured.");
+
+  const card = await subscribeHealthcareCard(prisma, { userId: input.userId });
 
   const user = await prisma.user.findUnique({
     where: { id: input.userId },
     select: { activeMembershipPackageId: true, membershipExpiresAt: true },
   });
-  if (!user) throw new Error("User not found.");
+  if (!user || isCspMembershipCurrent(user)) {
+    return { ...card, grantedPromoMembership: false, promoMembershipError: null };
+  }
 
-  let grantedPromoMembership = false;
-  if (!isCspMembershipCurrent(user)) {
-    const regularPackage = await prisma.membershipPackage.findFirst({
-      where: { name: "Regular", isActive: true },
-    });
-    if (!regularPackage) throw new Error("The Regular membership package is not configured.");
-
-    const result = await activateMembershipAfterExternalPayment({
+  try {
+    await activateMembershipAfterExternalPayment({
       prisma,
       userId: input.userId,
       packageId: regularPackage.id,
-      paymentReference: `HCARD-PROMO-${input.userId}`,
+      // One grant per paid card subscription.
+      paymentReference: `HCARD-PROMO-${card.cardId}-${card.expiresAt.getTime()}`,
       paymentMethodLabel: "Promotional Healthcare Card Bundle",
       activatorName: "Promo System",
       skipRewards: true,
     });
-    grantedPromoMembership = !result.alreadyProcessed;
+    return { ...card, grantedPromoMembership: true, promoMembershipError: null };
+  } catch (err) {
+    console.error(`[HEALTHCARE PROMO] Card paid but free membership grant failed for ${input.userId}:`, err);
+    return {
+      ...card,
+      grantedPromoMembership: false,
+      promoMembershipError: "Your card is active, but the free membership could not be activated. Please contact support.",
+    };
   }
-
-  const card = await subscribeHealthcareCard(prisma, { userId: input.userId });
-  return { ...card, grantedPromoMembership };
 }

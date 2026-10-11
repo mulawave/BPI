@@ -22,8 +22,9 @@ export default function HealthcareCardPage() {
   });
 
   const subscribePromo = api.healthcare.subscribePromoBundle.useMutation({
-    onSuccess: () => {
-      toast.success("Promotional bundle activated!");
+    onSuccess: (result) => {
+      if (result.promoMembershipError) toast.error(result.promoMembershipError);
+      else toast.success("Promotional bundle activated!");
       utils.healthcare.getMyCard.invalidate();
     },
     onError: (err) => toast.error(err.message),

@@ -24,6 +24,7 @@ import {
   markPendingPaymentReviewed,
 } from "@/server/services/payment/pendingPaymentFulfillment";
 import { activateMembershipAfterExternalPayment, upgradeMembershipAfterExternalPayment } from "@/server/services/membershipPayments.service";
+import { isCspMembershipCurrent } from "@/server/services/csp-ledger.service";
 import { resolveAppBaseUrl } from "@/lib/appUrl";
 import { deriveMembershipExpiry } from "@/lib/membershipAccess";
 import {
@@ -256,17 +257,28 @@ export const packageRouter = createTRPCRouter({
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { wallet: true, country: true, state: true },
+      select: { wallet: true, country: true, state: true, activeMembershipPackageId: true, membershipExpiresAt: true },
     });
     if (!user) throw new Error("User not found");
-    if ((user.wallet ?? 0) < totalCost) {
-      throw new Error(`Insufficient wallet balance. You need NGN ${totalCost.toLocaleString()}`);
+    // Activation overwrites the member's package, so a current member (e.g.
+    // Gold) would be downgraded and their upline paid again. Option 1 is for
+    // starting a membership; current members upgrade or renew instead.
+    if (isCspMembershipCurrent(user)) {
+      throw new Error("You already have an active membership. Use Upgrade or Renew instead — Option 1 is for activating a new membership.");
     }
+    const membershipPortion = totalCost - CSP_ACTIVATION_BUNDLE_COMMUNITY_CREDIT;
 
-    const walletReference = `CSPBUNDLE-WALLET-${Date.now()}`;
+    const walletReference = `CSPBUNDLE-WALLET-${randomUUID()}`;
 
+    // Debit and the ₦10,000 Community Wallet credit commit together.
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.user.update({ where: { id: userId }, data: { wallet: { decrement: totalCost } } });
+      const debited = await tx.user.updateMany({
+        where: { id: userId, wallet: { gte: totalCost } },
+        data: { wallet: { decrement: totalCost }, community: { increment: CSP_ACTIVATION_BUNDLE_COMMUNITY_CREDIT } },
+      });
+      if (debited.count === 0) {
+        throw new Error(`Insufficient wallet balance. You need NGN ${totalCost.toLocaleString()}`);
+      }
       await tx.transaction.create({
         data: {
           id: randomUUID(),
@@ -279,17 +291,51 @@ export const packageRouter = createTRPCRouter({
           walletType: "main",
         },
       });
+      await tx.transaction.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          transactionType: "CSP_ACTIVATION_BUNDLE_CREDIT",
+          amount: CSP_ACTIVATION_BUNDLE_COMMUNITY_CREDIT,
+          description: `${membershipPackage.name} + CSP Activation bundle — Community Wallet credit`,
+          status: "completed",
+          reference: `${walletReference}-CSPBONUS`,
+          walletType: "community",
+        },
+      });
     });
 
-    await activateMembershipAfterExternalPayment({
-      prisma,
-      userId,
-      packageId: membershipPackage.id,
-      paymentReference: walletReference,
-      paymentMethodLabel: "Wallet",
-      activatorName: ctx.session?.user?.name || ctx.session?.user?.email || "Member",
-      cspActivationBonusNgn: CSP_ACTIVATION_BUNDLE_COMMUNITY_CREDIT,
-    });
+    try {
+      await activateMembershipAfterExternalPayment({
+        prisma,
+        userId,
+        packageId: membershipPackage.id,
+        paymentReference: walletReference,
+        paymentMethodLabel: "Wallet",
+        activatorName: ctx.session?.user?.name || ctx.session?.user?.email || "Member",
+      });
+    } catch (err) {
+      // Activation's database work commits in a single transaction and
+      // everything after it is best-effort, so a throw means no membership
+      // was activated. Refund the membership portion to the Main Wallet; the
+      // ₦10,000 stays in the member's own Community Wallet.
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await tx.user.update({ where: { id: userId }, data: { wallet: { increment: membershipPortion } } });
+        await tx.transaction.create({
+          data: {
+            id: randomUUID(),
+            userId,
+            transactionType: "MEMBERSHIP_PAYMENT_REFUND",
+            amount: membershipPortion,
+            description: `Refund: ${membershipPackage.name} activation failed (CSP Activation bundle)`,
+            status: "completed",
+            reference: `${walletReference}-REFUND`,
+            walletType: "main",
+          },
+        });
+      });
+      throw err;
+    }
     invalidateActiveMembershipCache(userId);
 
     const membershipProfitFiat = computeProfitFiat({

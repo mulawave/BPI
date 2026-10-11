@@ -59,8 +59,9 @@ export default async function HowCspWorksPage() {
         <Section title="4. Buying extra time">
           <p>
             If you need more time, you can buy a 24h or 48h extension from your Main Wallet. The extension
-            only takes effect once a matching amount has been contributed to your campaign — your own
-            contribution to cover that fee doesn&apos;t count toward your own tier standing. An extension
+            fee moves into your Community Wallet, and the extra time is added to your campaign once you have
+            contributed that same amount to other members&apos; live campaigns (manually or through
+            Auto-Contribute). Those contributions don&apos;t count toward your own tier standing. An extension
             you buy before submitting a request is held for your next one; any extension that goes unused
             is forfeited, never refunded or carried further.
           </p>
