@@ -33,16 +33,7 @@ import { executeAdminPaymentReview } from "@/server/services/payment/adminPaymen
 import { executeReferralSync } from "@/server/services/referralSync.service";
 import { deriveMembershipExpiry } from "@/lib/membershipAccess";
 
-function generateSscCode(): string {
-  const segment = (length: number) =>
-    Array.from({ length }, () => Math.floor(Math.random() * 36).toString(36).toUpperCase()).join("");
-
-  return `${segment(3)}-${segment(4)}-${segment(3)}`;
-}
-
-function normalizeSsc(input: string): string {
-  return input.trim().toUpperCase();
-}
+import { generateSscCode, normalizeSsc } from "@/server/services/ssc.service";
 
 // ── Newsletter Background Job Tracking ──────────────────────────────
 interface SentEmailEntry {

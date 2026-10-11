@@ -2610,11 +2610,11 @@ model CspTopUpPurchase {
 
 /// Healthcare card, corporate decision follow-up Q16 (07/10/2026). One active
 /// card per member, a ₦300,000 yearly cover that resets (does not carry over)
-/// on renewal, with a monthly usage cap.
+/// on renewal, with a monthly usage cap. The card number is the member's
+/// SSC (User.ssc) — there is no separate card number.
 model HealthcareCard {
   id          String    @id @default(cuid())
   userId      String    @unique
-  sscCode     String    @unique // BPI Social Security Code (also encoded as the card's QR)
   status      String    @default("active") // active | expired | cancelled
   coverAmount Int       // yearly cover, snapshot at issue/renewal
   coverUsed   Int       @default(0) // used so far this cover year; resets on renewal
